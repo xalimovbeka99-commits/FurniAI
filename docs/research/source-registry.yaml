@@ -1,0 +1,187 @@
+# FurniAI Source Registry (seed) — proposed schema + initial entries
+# Every researched item gets one record. Move to knowledge/sources/registry.yaml
+# once the structure is approved.
+#
+# schema:
+#   id:            stable slug
+#   title:         human name
+#   org:           author/organization
+#   url:           canonical URL (repo+path for code)
+#   type:          standard | manufacturer-doc | oss-repo | practitioner | inspiration
+#   tier:          A | B | C | D          (per 02-research-plan.md rubric)
+#   accessed:      YYYY-MM-DD
+#   version:       edition / tag / commit  (required before any reuse)
+#   license:       SPDX or prose; "unknown" blocks reuse
+#   market:        global | UAE | EU | US
+#   topics:        [list]
+#   findings:      short paraphrase (no long copyrighted passages)
+#   verification:  verified-web | prior-knowledge | unverified
+#   approved_uses: e.g. "concept extraction", "dependency", "facts w/ citation"
+#   prohibited:    e.g. "no code copying (GPL)"
+#   derived:       rules/catalog entries traced back to this source
+
+sources:
+  # ---- Tier B: code/implementations (see 01-github-landscape.md) ----
+  - id: oss-woodworking-freecad
+    title: Woodworking workbench (FreeCAD)
+    org: dprojects
+    url: https://github.com/dprojects/Woodworking
+    type: oss-repo
+    tier: B
+    accessed: 2026-07-23
+    license: MIT
+    verification: verified-web
+    approved_uses: concept extraction; possible code reference
+    topics: [cabinet-parameterization, dowels, drilling, cutlist]
+  - id: oss-opencutlist
+    title: OpenCutList (SketchUp)
+    org: L'Air du Bois
+    url: https://github.com/lairdubois/lairdubois-opencutlist-sketchup-extension
+    type: oss-repo
+    tier: B
+    accessed: 2026-07-23
+    license: GPL-3.0
+    verification: verified-web
+    approved_uses: concept extraction only
+    prohibited: no code copying into closed-source product
+    topics: [part-semantics, grain, edge-banding, cutting-diagrams, labels]
+  - id: oss-deepnest
+    title: Deepnest
+    org: Jack000
+    url: https://github.com/Jack000/Deepnest
+    type: oss-repo
+    tier: B
+    accessed: 2026-07-23
+    license: check-at-adoption
+    verification: verified-web (abandoned; use deepnest-next fork if ever needed)
+    approved_uses: none (avoid)
+  - id: oss-libnest2d
+    title: libnest2d
+    org: tamasmeszaros (Ultimaker fork maintained)
+    url: https://github.com/tamasmeszaros/libnest2d
+    type: oss-repo
+    tier: B
+    accessed: 2026-07-23
+    license: LGPL-3.0
+    verification: verified-web
+    approved_uses: dynamic-link dependency candidate, Phase F only
+  - id: oss-freecad-mcp
+    title: FreeCAD MCP
+    org: neka-nat
+    url: https://github.com/neka-nat/freecad-mcp
+    type: oss-repo
+    tier: B
+    accessed: 2026-07-23
+    license: MIT
+    verification: verified-web
+    approved_uses: architecture reference (AI→CAD tool control)
+    prohibited: never expose code-execution surface to customers
+  - id: oss-cadquery
+    title: CadQuery
+    org: CadQuery
+    url: https://github.com/CadQuery/cadquery
+    type: oss-repo
+    tier: B
+    accessed: 2026-07-23
+    license: Apache-2.0
+    verification: prior-knowledge   # re-verify at adoption
+    approved_uses: Phase-D exact-geometry PoC candidate
+  - id: oss-bosl2
+    title: BOSL2
+    org: BelfrySCAD
+    url: https://github.com/BelfrySCAD/BOSL2
+    type: oss-repo
+    tier: B
+    accessed: 2026-07-23
+    license: BSD-2-Clause
+    verification: prior-knowledge
+    approved_uses: attachment-grammar concepts for custom-parts schema
+  - id: oss-ortools
+    title: Google OR-Tools (CP-SAT)
+    org: Google
+    url: https://developers.google.com/optimization
+    type: oss-repo
+    tier: B
+    accessed: 2026-07-23
+    license: Apache-2.0
+    verification: prior-knowledge
+    approved_uses: rectangular sheet optimization, Phase F
+  - id: oss-cabinet-mcp
+    title: cabinet-mcp
+    org: chemrich
+    url: https://github.com/chemrich/cabinet-mcp
+    type: oss-repo
+    tier: B
+    accessed: 2026-07-23
+    license: unknown — BLOCKS reuse until checked
+    verification: verified-web (existence); license unverified
+    approved_uses: pattern validation only (graded validation, tool registry)
+
+  # ---- Tier A: authoritative (access/licensing to confirm before facts enter rules) ----
+  - id: std-awi
+    title: AWI Standards + Cabinet Design Series
+    org: Architectural Woodwork Institute
+    url: https://awinet.org/standards/
+    type: standard
+    tier: A
+    accessed: 2026-07-23
+    license: paid/licensed — do not reproduce content
+    verification: unverified (paywall/access to confirm)
+    topics: [casework-tolerances, cabinet-construction]
+  - id: mfr-blum
+    title: Blum technical catalogue + product database
+    org: Julius Blum GmbH
+    url: https://publications.blum.com/2024/catalogue/en/
+    type: manufacturer-doc
+    tier: A
+    accessed: 2026-07-23
+    verification: unverified (fetch per-product data at Phase B)
+    topics: [hinges, drawer-systems, lift-systems, drilling-patterns]
+    findings: per-product drilling patterns and weight limits must come from the exact series/version page, never a generic "hinge rule"
+  - id: mfr-hettich
+    title: Hettich technical downloads
+    org: Hettich
+    url: https://www.hettich.com/en-us/services-1/downloads
+    type: manufacturer-doc
+    tier: A
+    verification: unverified
+  - id: mfr-egger
+    title: EGGER decors/boards
+    org: EGGER
+    url: https://www.egger.com/en/furniture-interior-design/range/
+    type: manufacturer-doc
+    tier: A
+    verification: unverified
+    topics: [boards, decors, thickness, sheet-sizes, edge-banding]
+  - id: sys-bazis
+    title: BAZIS (Woodworker/Cabinet/Cutting/CNC)
+    org: Bazis Soft
+    url: https://bazissoft.com/
+    type: manufacturer-doc
+    tier: A
+    verification: unverified
+    findings: the factory-side system FurniAI's CSV/PDF must remain compatible with; import format spec is a Phase-E research item
+  - id: fact-partner-factory
+    title: Partner factory procedures (Bekzod / UAE factory)
+    org: internal
+    type: standard
+    tier: A
+    verification: pending — REQUIRES BEKZOD
+    topics: [board-stock, edge-bander, drilling, tolerances, labor, machine-profiles]
+    findings: highest-value unrecorded source; see decisions list
+
+  # ---- Tier C: practitioner (hypotheses only, never production rules) ----
+  - id: pract-reddit-grain-match
+    title: Grain-matched fronts discussion set
+    url: https://www.reddit.com/r/cabinetry/comments/1akk2qm/
+    type: practitioner
+    tier: C
+    verification: unverified
+    findings: grain matching needs sheet sequence + kerf + edge-band + reveal awareness — already partially encoded in production.js grain field; full sequence-matching is a gap
+  - id: pract-reddit-panel-opt
+    title: Panel optimization / cutlist-error discussions
+    url: https://www.reddit.com/r/cabinetry/comments/1fqglvs/
+    type: practitioner
+    tier: C
+    verification: unverified
+    findings: "simple panel optimization" ≠ cabinet nesting/CAM; cutlist errors cluster at edge-banding allowances and nominal-vs-actual thickness
