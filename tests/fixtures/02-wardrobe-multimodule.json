@@ -1,0 +1,8 @@
+{
+  "id": "wardrobe-multimodule",
+  "description": "360cm 6-section wardrobe with drawers+shelves — bay 57.9cm, clean",
+  "class": "regression",
+  "capability": "preview",
+  "config": { "type": "wardrobe", "w": 360, "h": 280, "d": 60, "sections": 6, "drawers": 4, "shelves": 6, "doorType": "solid", "mat": "walnut", "handle": "black", "led": "warm" },
+  "expect": { "findings": [] }
+}

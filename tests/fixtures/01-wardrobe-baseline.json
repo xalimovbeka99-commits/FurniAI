@@ -1,0 +1,8 @@
+{
+  "id": "wardrobe-baseline",
+  "description": "240cm 4-section oak wardrobe — clean config must stay clean (bay 57.8cm, under 65cm span info threshold)",
+  "class": "regression",
+  "capability": "preview",
+  "config": { "type": "wardrobe", "w": 240, "h": 260, "d": 60, "sections": 4, "drawers": 2, "shelves": 4, "doorType": "solid", "mat": "oak", "handle": "gold", "led": "off" },
+  "expect": { "findings": [] }
+}

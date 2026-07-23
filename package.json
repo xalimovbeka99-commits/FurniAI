@@ -7,8 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "npm run test:unit && npm run test:validator",
+    "test:unit": "vitest run",
+    "test:watch": "vitest",
+    "test:validator": "node --test tests/validator.test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.28.0",

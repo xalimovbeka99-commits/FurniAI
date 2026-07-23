@@ -1,0 +1,8 @@
+{
+  "id": "sideboard-drawer-overload",
+  "description": "KNOWN GAP: 6 drawers in a 45cm-tall sideboard passes silently today; expected future rule: drawer-count-vs-height finding",
+  "class": "knownGap",
+  "capability": "preview",
+  "config": { "type": "sideboard", "w": 200, "h": 45, "d": 45, "sections": 2, "drawers": 6, "shelves": 0, "doorType": "solid", "mat": "graphite", "handle": "black", "led": "off" },
+  "expect": { "todo": "no drawer-height rule exists; current silence is the documented gap, not correct behavior" }
+}

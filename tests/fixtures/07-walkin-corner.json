@@ -1,0 +1,8 @@
+{
+  "id": "walkin-l-corner-doorinfo",
+  "description": "VALIDATOR COVERAGE ONLY: walk-in L with mirror doors -> info that the corner cubby is always open. Does NOT verify Builder corner geometry.",
+  "class": "characterization",
+  "capability": "preview",
+  "config": { "type": "walkin_l", "w": 300, "h": 260, "d": 60, "sections": 3, "drawers": 2, "shelves": 0, "doorType": "mirror", "mat": "oak", "handle": "gold", "led": "warm" },
+  "expect": { "findings": [ { "field": "doorType", "severity": "info", "messageIncludes": "corner" } ] }
+}
