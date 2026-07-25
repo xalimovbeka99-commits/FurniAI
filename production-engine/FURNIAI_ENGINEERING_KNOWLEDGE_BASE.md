@@ -338,8 +338,9 @@ of continuous run and absorb it in the scribe fillers, not in the door gaps.
 
 ### Vanities
 Height with top 800–900 mm · depth 450–550 mm · basin clearance below ≥ 250 mm ·
-mirror centre 1500–1650 mm from floor · **MR-MDF mandatory** · leave a plumbing cut-out
-zone in the back panel and a removable rear access panel.
+mirror centre 1500–1650 mm from floor · **MR-MDF mandatory**. FurniAI designs the
+joinery unit only. Add a rear access panel or cut-out only when the user supplies
+an approved dimensioned envelope.
 
 ### Dressing tables
 Top 720–760 mm · knee clearance ≥ 580 mm · mirror centre 1100–1200 mm (seated eye height).
@@ -352,7 +353,7 @@ between them · hinged door needs 900 mm clear swing, sliding needs 600 mm.
 
 ## 9. Kitchen system logic
 
-A kitchen is not one object; it is **three runs plus appliances**:
+A kitchen is not one object; it is a coordinated **cabinetry system**:
 
 1. **Base run** — 720 carcass on a 150 plinth. Modules ≤ 1200 mm. Drawer-line (3 rows) is
    the default modern spec; doors + one drawer is the budget spec.
@@ -365,9 +366,11 @@ A kitchen is not one object; it is **three runs plus appliances**:
 - Diagonal corner with a carousel — best access, eats the most cubic space.
 - **Never** put a corner unit within the door-swing arc of an adjacent drawer bank.
 
-**Appliance rules:** every appliance is a fixed void, not a flexible one. Take the aperture
-from the manufacturer's spec sheet, add the ventilation gap, then design the cabinetry
-around it — never the other way round.
+**External-system boundary:** FurniAI does not design, select or engineer
+appliances, plumbing, sanitary fixtures or electrical systems. When an external
+item affects the cabinetry, use only an approved, dimensioned clearance or
+cut-out envelope supplied by the user or responsible professional. Treat that
+envelope as immutable geometry.
 
 ---
 

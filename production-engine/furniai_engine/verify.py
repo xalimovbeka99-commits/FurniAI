@@ -172,8 +172,7 @@ for typ, sizes in [
         area = sum(p.area_m2 for u in us for p in u.parts if p.group!="accessory")
         bnd = (2*(W*H)+2*(W*D)+2*(H*D))/1e6
         facs.append(area/bnd)
-    cur = {"wardrobe":1.6,"kitchen_base":1.8,"kitchen_wall":1.6,"vanity":1.5,
-           "shelving":1.7,"cabinet":1.5}[typ]
+    cur = S.PANEL_FACTOR.get(typ, 1.5)
     meas = sum(facs)/len(facs)
     recs[typ] = round(meas,2)
     print(f"  {typ:16}{len(sizes):<14}{cur:>9.2f}{meas:>10.2f}{(meas/cur-1)*100:>8.0f}%")

@@ -84,13 +84,22 @@ Only `RELEASED_BY_FACTORY` may be presented as ready to manufacture.
 - The existing configurator stores module widths as ratios; the Python planner
   may split long runs and currently discards custom bay layouts during that
   split. A lossless, tested module/bay adapter is required.
-- Kitchen requests need individual run lengths, corner strategy, appliance
-  openings, service voids, worktop, sink, and plumbing/electrical constraints.
+- Kitchen requests need individual cabinet-run lengths, corner-cabinet strategy,
+  cabinet module widths, worktop/joinery finish, fillers, scribes and end panels.
   One overall width is insufficient for production.
-- Vanity jobs require basin, trap, service cut-out, mounting system, wall
-  substrate, and wet-area material details.
+- Vanity jobs cover the joinery unit only: cabinet geometry, drawers/doors,
+  mounting system, wall substrate, finish and any user-specified cut-out
+  envelope. FurniAI does not design plumbing or sanitary fixtures.
 - Wardrobe mirror/sliding fronts require an approved supplier system and
   weight/hardware rules.
 - Material and hardware catalog entries need supplier SKU, thickness,
   availability, machining template, and revision data.
 - No factory profile has yet been physically qualified.
+
+## Product scope boundary
+
+FurniAI designs and manufactures furniture joinery only. It does not design,
+select or engineer plumbing, electrical systems, sanitary fixtures or
+appliances. When an external item affects the cabinet, FurniAI accepts only a
+user- or professional-supplied clearance or cut-out envelope and treats it as a
+fixed geometric constraint without reasoning about the external system.

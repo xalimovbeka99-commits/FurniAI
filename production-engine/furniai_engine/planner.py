@@ -56,6 +56,23 @@ def _split_tall(spec: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [main, top]
 
 
+def _partition_bays(orig_bays: List[Dict[str, Any]], n: int) -> List[List[Dict[str, Any]]]:
+    if not orig_bays:
+        return [[] for _ in range(n)]
+    if len(orig_bays) == n:
+        return [[copy.deepcopy(b)] for b in orig_bays]
+    if len(orig_bays) % n == 0:
+        k = len(orig_bays) // n
+        return [copy.deepcopy(orig_bays[i * k:(i + 1) * k]) for i in range(n)]
+    k = len(orig_bays) / n
+    res = []
+    for i in range(n):
+        i0 = int(round(i * k))
+        i1 = int(round((i + 1) * k))
+        res.append(copy.deepcopy(orig_bays[i0:i1]))
+    return res
+
+
 def _split_run(spec: Dict[str, Any]) -> List[Dict[str, Any]]:
     W = spec["width"]
     if W <= MAX_MODULE_W or spec.get("no_split"):
@@ -64,6 +81,8 @@ def _split_run(spec: Dict[str, Any]) -> List[Dict[str, Any]]:
     each = W / n
     if each < MIN_MODULE_W:
         return [spec]
+    orig_bays = spec.get("bays")
+    bays_part = _partition_bays(orig_bays, n) if orig_bays else None
     out = []
     x = 0.0
     for i in range(n):
@@ -71,7 +90,10 @@ def _split_run(spec: Dict[str, Any]) -> List[Dict[str, Any]]:
         u["width"] = round(each, 1)
         u["unit_id"] = f"{spec.get('unit_id','U1')}.{i+1}"
         u["_stack_x"] = round(x, 1)
-        u.pop("bays", None)          # re-generate a layout at the new width
+        if bays_part and bays_part[i]:
+            u["bays"] = bays_part[i]
+        else:
+            u.pop("bays", None)
         out.append(u)
         x += each
     out[0]["_note"] = (f"Run of {W:.0f}mm split into {n} carcasses of "

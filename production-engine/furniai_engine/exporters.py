@@ -32,8 +32,10 @@ def cutlist_rows(units) -> List[Dict[str, Any]]:
                 "Unit": u.meta.get("unit_id", ""),
                 "Part ID": p.pid,
                 "Part Name": p.name,
-                "Length (mm)": round(p.length, 1),
-                "Width (mm)": round(p.width, 1),
+                "Length_Finished (mm)": round(p.length, 1),
+                "Width_Finished (mm)": round(p.width, 1),
+                "Length_Raw_Cut (mm)": round(p.raw_length, 1),
+                "Width_Raw_Cut (mm)": round(p.raw_width, 1),
                 "Thk (mm)": round(p.thickness, 1),
                 "Material": S.MATERIALS.get(p.material, {}).get("label", p.material),
                 "Qty": p.qty,
@@ -82,8 +84,8 @@ def export_dxf_parts(units, outdir):
             for op in p.ops:
                 _draw_op(msp, op, L, W)
             msp.add_text(
-                f"{p.pid} {p.name} | {L:.1f}x{W:.1f}x{p.thickness:.1f} | "
-                f"{p.material} | QTY {p.qty}",
+                f"{p.pid} {p.name} | Fin: {L:.1f}x{W:.1f}x{p.thickness:.1f} | "
+                f"Cut: {p.raw_length:.1f}x{p.raw_width:.1f} | {p.material} | QTY {p.qty}",
                 height=max(12, L / 60),
                 dxfattribs={"layer": S.CNC_LAYERS["label"]["name"]}
             ).set_placement((0, -max(25, L / 40)))

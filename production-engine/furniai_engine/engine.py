@@ -63,6 +63,22 @@ class Part:
     def area_m2(self) -> float:
         return self.length * self.width / 1e6 * self.qty
 
+    @property
+    def raw_length(self) -> float:
+        band_w1 = self.edges.get("W1", 0.0)
+        band_w2 = self.edges.get("W2", 0.0)
+        return round(max(0.0, self.length - (band_w1 + band_w2)), 1)
+
+    @property
+    def raw_width(self) -> float:
+        band_l1 = self.edges.get("L1", 0.0)
+        band_l2 = self.edges.get("L2", 0.0)
+        return round(max(0.0, self.width - (band_l1 + band_l2)), 1)
+
+    @property
+    def raw_size(self) -> Tuple[float, float]:
+        return (self.raw_length, self.raw_width)
+
     def band_metres(self) -> float:
         m = 0.0
         for e, t in self.edges.items():

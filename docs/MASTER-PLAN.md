@@ -131,7 +131,7 @@ All main structural panels use 18 mm MDF in the MVP unless:
 
 - the user explicitly selects another supported construction;
 - an approved category rule requires a different component;
-- or an item is not an MDF structural panel, such as glass, mirror, appliance, lighting or hardware.
+- or an item is not an MDF structural panel, such as glass, mirror, lighting or hardware.
 
 Every exception must be explicit in the model.
 
@@ -322,7 +322,6 @@ Core component vocabulary should include:
 - rail;
 - mirror;
 - glass;
-- appliance;
 - LED;
 - and custom component.
 
@@ -505,7 +504,7 @@ Joinery details that affect exact drilling must be associated with a verified sy
 - fillers;
 - scribe panels;
 - service voids;
-- plumbing/electrical/appliance zones;
+- user-specified cabinet openings, voids and wall obstructions;
 - delivery dimensions;
 - anchoring;
 - and site-measurement uncertainty.

@@ -13,6 +13,7 @@ __pycache__/
 /production-engine/output/
 /production-engine/furniai_engine/out/
 /production-engine/furniai_engine/out_*/
+/production-engine/furniai_engine/jobs/
 
 # next.js
 /.next/

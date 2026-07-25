@@ -240,7 +240,8 @@ labour and waste factors.
 *Gate:* a signed first-article inspection sheet with every row passing.
 
 **Phase 6 — Catalogue.**
-Kitchens end to end (corners, appliances, worktops), walk-in wardrobes, laundry,
+Kitchen cabinetry end to end (runs, corners, worktops and joinery finishes),
+walk-in wardrobes, laundry cabinetry,
 TV walls. Each is a new `type` plus an auto-layout function and its gate checks —
 not a new architecture.
 
@@ -252,10 +253,13 @@ These are real, already measured, and waiting:
 
 - **Corner units are not modelled.** Blind corner, L-shaped bi-fold, diagonal
   carousel. This is the hardest part of any kitchen and the biggest gap.
-- **Appliance apertures are not modelled.** Every appliance is a fixed void taken
-  from the manufacturer's spec sheet, plus ventilation. Design the cabinetry
-  around it, never the reverse.
-- **Worktops, splashbacks and sink/hob cut-outs** are not generated.
+- **External systems are outside scope.** FurniAI does not design or select
+  appliances, plumbing, sanitary fixtures or electrical systems. If the user
+  supplies an approved opening or clearance envelope that affects the joinery,
+  preserve it as a fixed geometric constraint.
+- **Worktops and splashbacks are joinery scope.** Any special cut-out is generated
+  only from an approved dimensioned envelope supplied by the user or responsible
+  professional.
 - **Nesting is guillotine only.** Correct for a beam saw. If the shop cuts on a
   router, a free-form nester would gain 5–10 points of yield.
 - **Sheet yield on one-off units is 29–45 %.** Real, and honest, but batching

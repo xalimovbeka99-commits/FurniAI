@@ -485,6 +485,11 @@ def _gate_production(r, panels, nres):
     nolabel = [p.pid for p in panels if not p.pid]
     r.add(G, "every part has an ID", not nolabel, "; ".join(nolabel[:3]))
 
+    bad_raw = [f"{p.pid} {p.name}: raw {p.raw_length}x{p.raw_width}"
+               for p in panels if p.raw_length <= 0 or p.raw_width <= 0]
+    r.add(G, "every panel has valid raw cut dimensions", not bad_raw,
+          "; ".join(bad_raw[:3]))
+
 
 # ---------------------------------------------------------- 8. LOGISTICS
 def _gate_logistics(r, panels, units):

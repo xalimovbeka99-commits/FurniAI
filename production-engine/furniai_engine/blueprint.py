@@ -621,8 +621,8 @@ def _qc_install(c, units, n, meta):
         "hinge plates -> hang fronts -> adjust to 3mm gaps -> number every part -> "
         "knock down.",
         "SITE PREP: confirm wall type (UAE block + render vs gypsum), mark a level "
-        "datum line, check floor level across the run, confirm services "
-        "(sockets/plumbing) behind the unit.",
+        "datum line, check floor level across the run, and confirm all wall "
+        "obstructions and approved joinery cut-out envelopes behind the unit.",
         "1. Set the plinth / legs, level across the full run to "
         f"{S.TOLERANCE['level_over_1m']}mm per metre.",
         "2. Assemble carcasses on the floor; square by checking diagonals before the "

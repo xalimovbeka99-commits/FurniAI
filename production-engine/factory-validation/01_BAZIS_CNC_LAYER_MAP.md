@@ -14,7 +14,7 @@ encodes tool and depth.
 | DXF layer | Entity | Tool | Ø | Depth | Side | Notes |
 |---|---|---|---|---|---|---|
 | `CONTOUR` | LWPOLYLINE, closed | Router / saw | — | through | — | The part outline. One per file. |
-| `CONTOUR_IN` | LWPOLYLINE, closed | Router | — | through | A | Internal cut-outs (sockets, plumbing) |
+| `CONTOUR_IN` | LWPOLYLINE, closed | Router | — | through | A | Approved internal joinery cut-outs |
 | `DRILL_5_12` | CIRCLE | Vertical borer | **5.0** | **12.0** | A (and B on dividers) | System-32 rows, shelf pins, hinge plates, runner fixings |
 | `DRILL_8_24` | CIRCLE | Vertical borer | **8.0** | 24.0 | A | Construction dowels |
 | `DRILL_8_13` | CIRCLE | Vertical borer | **8.0** | **13.0** | A | Hinge-cup fixing dowels — shallow on purpose |

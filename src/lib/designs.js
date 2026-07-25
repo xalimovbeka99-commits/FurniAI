@@ -112,7 +112,7 @@ export const DESIGNS = [
       modules: [
         { kind: "door", widthRatio: 0.2, doorCount: 1, shelfCount: 2 },
         { kind: "drawerBank", widthRatio: 0.2, drawerRows: 3 },
-        { kind: "applianceGap", widthRatio: 0.2 },
+        { kind: "door", widthRatio: 0.2, doorCount: 1, shelfCount: 2 },
         { kind: "drawerBank", widthRatio: 0.15, drawerRows: 2 },
         { kind: "door", widthRatio: 0.25, doorCount: 2, shelfCount: 2 },
       ],
@@ -133,7 +133,7 @@ export const DESIGNS = [
         { kind: "door", widthRatio: 0.3, doorCount: 2, shelfCount: 2 },
         { kind: "drawerBank", widthRatio: 0.25, drawerRows: 4 },
         { kind: "door", widthRatio: 0.2, doorCount: 1, shelfCount: 1 },
-        { kind: "applianceGap", widthRatio: 0.25 },
+        { kind: "door", widthRatio: 0.25, doorCount: 1, shelfCount: 2 },
       ],
     },
   },
