@@ -11,6 +11,7 @@ __pycache__/
 *.py[cod]
 .venv/
 /production-engine/output/
+/production-engine/furniai_engine/out/
 /production-engine/furniai_engine/out_*/
 
 # next.js
