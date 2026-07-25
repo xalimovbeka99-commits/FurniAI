@@ -7,7 +7,7 @@
     "api/production.py": {
       "maxDuration": 60,
       "includeFiles": "production-engine/furniai_engine/**",
-      "excludeFiles": "{production-engine/furniai_engine/output/**,production-engine/furniai_engine/out*/**,production-engine/furniai_engine/jobs/**,production-engine/furniai_engine/test_*.py,production-engine/furniai_engine/*_test.py,production-engine/furniai_engine/run_all_harnesses.py}"
+      "excludeFiles": "{production-engine/**/output/**,production-engine/**/out*/**,production-engine/**/jobs/**,production-engine/**/test*.py,production-engine/**/run_all_harnesses.py}"
     }
   }
 }
