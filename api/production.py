@@ -18,6 +18,8 @@ import copy
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -31,6 +33,27 @@ import inspector  # noqa: E402
 
 MAX_REQUEST_BYTES = 64 * 1024
 MAX_RESPONSE_BYTES = 4_300_000
+SUPABASE_URL = os.environ.get(
+    "SUPABASE_URL",
+    "https://upavdjmovubblowrxncp.supabase.co",
+).rstrip("/")
+SUPABASE_ANON_KEY = os.environ.get(
+    "SUPABASE_ANON_KEY",
+    (
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+        "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVwYXZkam1vdnViYmxvd3J4bmNwIiw"
+        "icm9sZSI6ImFub24iLCJpYXQiOjE3ODExODQ4NjcsImV4cCI6MjA5Njc2MDg2N30."
+        "gZIO8V01ygXNsueDae1NA0EUpsjYC7D9f4wLv-0e5K4"
+    ),
+)
+ALLOWED_ORIGINS = {
+    origin.strip().rstrip("/")
+    for origin in os.environ.get(
+        "FURNIAI_ALLOWED_ORIGINS",
+        "https://furnia.vercel.app",
+    ).split(",")
+    if origin.strip()
+}
 
 TYPE_MAP = {
     "wardrobe": "wardrobe",
@@ -420,29 +443,58 @@ def build_factory_review_pack(payload: dict[str, Any]) -> tuple[dict[str, Any], 
 
 
 class handler(BaseHTTPRequestHandler):
-    def _cors(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header(
-            "Access-Control-Expose-Headers",
-            "Content-Disposition, X-FurniAI-Build-ID, X-FurniAI-Verdict, X-FurniAI-Release",
-        )
-
     def _send_json(self, status: int, data: dict[str, Any]) -> None:
         body = json.dumps(data, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
-        self._cors()
         self.end_headers()
         self.wfile.write(body)
 
+    def _origin_is_allowed(self) -> bool:
+        origin = (self.headers.get("Origin") or "").rstrip("/")
+        if origin in ALLOWED_ORIGINS:
+            return True
+        if os.environ.get("VERCEL") != "1" and origin.startswith(
+            ("http://127.0.0.1:", "http://localhost:")
+        ):
+            return True
+        return False
+
+    def _authenticated_user(self) -> dict[str, Any] | None:
+        authorization = self.headers.get("Authorization", "")
+        if not authorization.startswith("Bearer "):
+            return None
+        token = authorization[7:].strip()
+        if not token or len(token) > 4096:
+            return None
+        request = Request(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
+            },
+        )
+        try:
+            with urlopen(request, timeout=8) as response:
+                user = json.loads(response.read().decode("utf-8"))
+        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+            return None
+        if not isinstance(user, dict) or not user.get("id"):
+            return None
+        return user
+
     def do_OPTIONS(self) -> None:
-        self.send_response(204)
-        self._cors()
-        self.end_headers()
+        self._send_json(
+            405,
+            {
+                "ok": False,
+                "code": "CROSS_ORIGIN_NOT_ALLOWED",
+                "error": "Cross-origin production requests are not allowed.",
+            },
+        )
 
     def do_GET(self) -> None:
         self._send_json(
@@ -457,6 +509,28 @@ class handler(BaseHTTPRequestHandler):
         )
 
     def do_POST(self) -> None:
+        if not self._origin_is_allowed():
+            self._send_json(
+                403,
+                {
+                    "ok": False,
+                    "code": "ORIGIN_NOT_ALLOWED",
+                    "error": "Production packs can only be generated from FurniAI.",
+                },
+            )
+            return
+        user = self._authenticated_user()
+        if user is None:
+            self._send_json(
+                401,
+                {
+                    "ok": False,
+                    "code": "AUTHENTICATION_REQUIRED",
+                    "error": "Sign in to FurniAI before generating a production pack.",
+                },
+            )
+            return
+
         try:
             content_length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
@@ -476,6 +550,7 @@ class handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(content_length).decode("utf-8"))
             if not isinstance(payload, dict):
                 raise ProductionRequestError("Request body must be a JSON object.")
+            payload["requested_by"] = user["id"]
             report, packed = build_factory_review_pack(payload)
         except json.JSONDecodeError:
             self._send_json(
@@ -517,6 +592,5 @@ class handler(BaseHTTPRequestHandler):
             "X-FurniAI-Release",
             report["manufacturing_release"]["status"],
         )
-        self._cors()
         self.end_headers()
         self.wfile.write(packed)

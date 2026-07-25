@@ -40,6 +40,28 @@ def wardrobe_payload():
 
 
 class ProductionBridgeTests(unittest.TestCase):
+    def test_only_furniai_origin_can_submit_production_jobs(self):
+        request_handler = production_api.handler.__new__(production_api.handler)
+        request_handler.headers = {"Origin": "https://furnia.vercel.app"}
+        self.assertTrue(request_handler._origin_is_allowed())
+        request_handler.headers = {"Origin": "https://attacker.example"}
+        self.assertFalse(request_handler._origin_is_allowed())
+        request_handler.headers = {}
+        self.assertFalse(request_handler._origin_is_allowed())
+
+    def test_anonymous_production_request_is_rejected_before_body_processing(self):
+        request_handler = production_api.handler.__new__(production_api.handler)
+        captured = {}
+        request_handler._origin_is_allowed = lambda: True
+        request_handler._authenticated_user = lambda: None
+        request_handler._send_json = lambda status, data: captured.update(
+            status=status,
+            data=data,
+        )
+        request_handler.do_POST()
+        self.assertEqual(captured["status"], 401)
+        self.assertEqual(captured["data"]["code"], "AUTHENTICATION_REQUIRED")
+
     def test_translates_frontend_centimetres_and_structure(self):
         spec = production_api.frontend_config_to_spec(wardrobe_payload())
         self.assertEqual((spec["width"], spec["height"], spec["depth"]), (2400, 2400, 600))

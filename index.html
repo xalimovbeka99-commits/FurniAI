@@ -1551,13 +1551,21 @@ function setProductionStatus(state,title,message){
 async function downloadProductionPack(cfg,projectId){
   const btn=document.getElementById('omEngine');
   if(!btn||btn.disabled)return;
+  if(!sb||!currentUser){
+    setProductionStatus('failed','Sign in required','Production-pack generation is available only to authenticated FurniAI users.');
+    openAuthModal();
+    return;
+  }
   btn.disabled=true;
   btn.textContent='Running engineering checks…';
   setProductionStatus('loading','Deterministic engine running','Validating geometry, machining, nesting, hardware and production-pack consistency.');
   try{
+    const {data:sessionData,error:sessionError}=await sb.auth.getSession();
+    const accessToken=sessionData&&sessionData.session&&sessionData.session.access_token;
+    if(sessionError||!accessToken)throw new Error('Your session expired. Sign in again before generating a production pack.');
     const response=await fetch('/api/production',{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+accessToken},
       body:JSON.stringify({
         project_id:projectId,
         revision_id:projectId+'-R1',
