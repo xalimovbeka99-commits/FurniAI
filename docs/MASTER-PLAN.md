@@ -1,5 +1,12 @@
 > **Status: AUTHORITATIVE — adopted 2026-07-23.** Supersedes the retrieval-focused research master prompt (reference-only). Bekzod's final decisions of 2026-07-23 applied: 18mm MDF MVP convention; factory interview deferred (not a Phase-0 prerequisite); nesting/CNC staged (knowledge + machine-neutral features early, engines later, machine-specific output prohibited until validated); mm as target canonical unit via versioned migration; capability statuses in all benchmarks.
 
+> **2026-07-25 engineering companion:** the repository-specific CAD/CAM audit,
+> canonical model, release gates, integration strategy, source review and
+> phased acceptance criteria are in
+> [research/07-furniture-cad-cam-execution-blueprint.md](research/07-furniture-cad-cam-execution-blueprint.md).
+> This companion adds implementation detail without replacing the decisions in
+> this authoritative plan.
+
 # FurniAI — Authoritative Master Plan Prompt
 
 **Founder:** Bekzod Khalimov  
@@ -1593,4 +1600,3 @@ These are starting points, not automatic truth or permission to copy.
 - Hettich technical downloads: https://www.hettich.com/en-us/services-1/downloads
 - EGGER furniture/interior products: https://www.egger.com/en/furniture-interior-design/range/
 - AWI standards overview: https://awinet.org/standards/
-

@@ -6,6 +6,13 @@
 # testing
 /coverage
 
+# python
+__pycache__/
+*.py[cod]
+.venv/
+/production-engine/output/
+/production-engine/furniai_engine/out_*/
+
 # next.js
 /.next/
 /out/

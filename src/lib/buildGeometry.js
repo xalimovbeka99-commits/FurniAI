@@ -49,10 +49,15 @@ export function buildGeometry(config) {
   const interiorW = innerW;
   const interiorBottom = baseY + T;
   const interiorH = carcassH - 2 * T;
+  // Dividers occupy real width inside the carcass. Ratios divide only the
+  // remaining clear bay width; otherwise every divider is added on top of
+  // `interiorW` and the final bay/door extends beyond the right side panel.
+  const dividerCount = Math.max(0, modules.length - 1);
+  const clearBayWidth = interiorW - dividerCount * T;
 
   let cursorX = interiorLeft;
   modules.forEach((mod, i) => {
-    const modW = interiorW * mod.widthRatio;
+    const modW = clearBayWidth * mod.widthRatio;
     const modCenterX = cursorX + modW / 2;
 
     // Divider between modules (not after the last one)
@@ -99,6 +104,74 @@ export function buildGeometry(config) {
   });
 
   return parts;
+}
+
+/**
+ * Deterministic geometry QA for the rectangular-panel kernel. Furniture-
+ * specific construction and hardware rules belong in the domain validator.
+ *
+ * @returns {{ code: string, partId: string|null, message: string }[]}
+ */
+export function validateGeometry(parts, config, tolerance = 1e-9) {
+  const issues = [];
+  const { width: W, height: H, depth: D } = config.dimensions;
+  const bounds = {
+    minX: -W / 2,
+    maxX: W / 2,
+    minY: 0,
+    maxY: H,
+    minZ: -D / 2,
+    maxZ: D / 2,
+  };
+
+  for (const part of parts) {
+    const values = [...(part.size || []), ...(part.position || [])];
+    if (values.length !== 6 || values.some((value) => !Number.isFinite(value))) {
+      issues.push({
+        code: "NON_FINITE_GEOMETRY",
+        partId: part.id || null,
+        message: `Part "${part.id || "unknown"}" has incomplete or non-finite size/position values.`,
+      });
+      continue;
+    }
+
+    const [w, h, d] = part.size;
+    const [x, y, z] = part.position;
+    if (w <= 0 || h <= 0 || d <= 0) {
+      issues.push({
+        code: "NON_POSITIVE_PART_SIZE",
+        partId: part.id || null,
+        message: `Part "${part.id || "unknown"}" must have positive width, height and depth.`,
+      });
+      continue;
+    }
+
+    const extents = {
+      minX: x - w / 2,
+      maxX: x + w / 2,
+      minY: y - h / 2,
+      maxY: y + h / 2,
+      minZ: z - d / 2,
+      maxZ: z + d / 2,
+    };
+    const outside =
+      extents.minX < bounds.minX - tolerance ||
+      extents.maxX > bounds.maxX + tolerance ||
+      extents.minY < bounds.minY - tolerance ||
+      extents.maxY > bounds.maxY + tolerance ||
+      extents.minZ < bounds.minZ - tolerance ||
+      extents.maxZ > bounds.maxZ + tolerance;
+
+    if (outside) {
+      issues.push({
+        code: "PART_OUTSIDE_ENVELOPE",
+        partId: part.id || null,
+        message: `Part "${part.id || "unknown"}" extends outside the configured furniture envelope.`,
+      });
+    }
+  }
+
+  return issues;
 }
 
 /** Total finished panel area in m² (drives material cost). */

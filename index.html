@@ -181,6 +181,9 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 .b-row{margin-bottom:14px}
 .b-row label{font-size:12.5px;color:var(--ink-soft);display:flex;justify-content:space-between;margin-bottom:6px}
 .b-row label b{color:var(--ink);font-family:'Space Mono',monospace;font-weight:700}
+.b-main.custom-type .preset-only{display:none}
+.b-custom-note{display:none;font-size:12.5px;color:var(--ink-soft);line-height:1.5;background:#F4F2EB;border-radius:10px;padding:12px 14px;margin-bottom:8px}
+.b-main.custom-type .custom-only{display:block}
 .b-row input[type=range]{width:100%;accent-color:var(--brass);cursor:pointer}
 .b-row select{width:100%;font-family:'Inter',sans-serif;font-size:13px;padding:8px 10px;border:1px solid var(--line-soft);border-radius:9px;background:var(--paper);color:var(--ink);cursor:pointer}
 .b-swatches{display:flex;gap:8px;flex-wrap:wrap}
@@ -305,8 +308,10 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 .auth-close:hover{background:#EDE8DC;color:#1C1E21}
 .auth-title{font-family:'Fraunces',serif;font-size:1.4rem;font-weight:600;margin-bottom:6px}
 .auth-sub{font-size:13px;color:#5C626E;margin-bottom:22px}
-.auth-google{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:12px;border-radius:10px;border:1px solid #DFD9CC;background:#fff;cursor:pointer;font-family:'Inter',sans-serif;font-size:13.5px;font-weight:600;color:#1C1E21;margin-bottom:16px}
+.auth-google{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:12px;border-radius:10px;border:1px solid #DFD9CC;background:#fff;cursor:pointer;font-family:'Inter',sans-serif;font-size:13.5px;font-weight:600;color:#1C1E21;margin-bottom:10px}
 .auth-google:hover{background:#F4F2EB}
+.auth-apple{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:12px;border-radius:10px;border:1px solid #1C1E21;background:#1C1E21;cursor:pointer;font-family:'Inter',sans-serif;font-size:13.5px;font-weight:600;color:#fff;margin-bottom:16px}
+.auth-apple:hover{background:#000}
 .auth-divider{display:flex;align-items:center;gap:12px;margin:16px 0;font-size:11px;color:#8b8f97;text-transform:uppercase;letter-spacing:.08em}
 .auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:#EDE8DC}
 .auth-input{width:100%;padding:11px 14px;border:1px solid #DFD9CC;border-radius:10px;background:#fff;font-size:13.5px;margin-bottom:10px;font-family:'Inter',sans-serif;box-sizing:border-box}
@@ -343,6 +348,16 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 .ai-inputrow input{flex:1;border:1px solid var(--line-soft);border-radius:100px;padding:10px 16px;font-family:inherit;font-size:13.5px;outline:none}
 .ai-send{background:var(--ink);color:var(--paper);border:none;border-radius:100px;padding:10px 20px;font-family:'Space Mono',monospace;font-size:12px;cursor:pointer}
 .ai-send:disabled{opacity:.5;cursor:default}
+.ai-attach{background:none;border:1px solid var(--line-soft);border-radius:100px;width:38px;height:38px;font-size:15px;cursor:pointer;flex-shrink:0}
+.ai-attach:hover{background:#F4F2EB}
+.ai-img-preview{display:flex;align-items:center;gap:8px;padding:0 20px 10px;margin-top:-4px}
+.ai-img-preview img{width:44px;height:44px;object-fit:cover;border-radius:8px;border:1px solid var(--line-soft)}
+.ai-img-preview button{background:none;border:1px solid var(--line-soft);border-radius:100px;width:22px;height:22px;font-size:11px;cursor:pointer;color:#888}
+.ai-drawer .ai-img-preview{padding:0 14px 8px}
+.ai-msg.user img{display:block;max-width:180px;border-radius:10px;margin-bottom:6px}
+.ai-msg.ai-similar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:transparent;padding:2px 0;font-size:12px;color:#5C626E}
+.ai-similar-chip{font-family:'Space Mono',monospace;font-size:11px;background:#F4F2EB;border:1px solid var(--line-soft);border-radius:100px;padding:5px 11px;cursor:pointer;color:var(--ink)}
+.ai-similar-chip:hover{background:var(--brass);color:#fff}
 .ai-fab{position:fixed;right:20px;bottom:20px;z-index:40;background:var(--ink);color:var(--paper);border:none;border-radius:100px;padding:12px 18px;font-family:'Space Mono',monospace;font-size:12px;cursor:pointer;box-shadow:0 12px 30px -12px rgba(33,30,25,.5)}
 .ai-drawer{position:fixed;right:20px;bottom:70px;width:320px;max-height:60vh;background:#fff;border:1px solid var(--line-soft);border-radius:16px;box-shadow:0 20px 50px -20px rgba(0,0,0,.3);display:flex;flex-direction:column;z-index:41}
 .ai-drawer-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line-soft);font-family:'Space Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.08em}
@@ -514,8 +529,11 @@ footer ul a:hover{opacity:1;color:var(--brass)}
         <button class="ai-chip">Build a luxury TV unit with LED lighting</button>
         <button class="ai-chip">Create a walk-in wardrobe with glass doors</button>
       </div>
+      <div class="ai-img-preview" id="aiImgPreview" hidden><img id="aiImgPreviewThumb"><button id="aiImgPreviewRemove" title="Remove photo">✕</button></div>
       <div class="ai-inputrow">
-        <input type="text" id="aiInput" placeholder="Describe the furniture you want…">
+        <button class="ai-attach" id="aiAttachBtn" title="Attach a photo of furniture">📷</button>
+        <input type="file" id="aiImgInput" accept="image/*" hidden>
+        <input type="text" id="aiInput" placeholder="Describe the furniture you want, or attach a photo…">
         <button class="ai-send" id="aiSend">Send</button>
       </div>
     </div>
@@ -534,15 +552,16 @@ footer ul a:hover{opacity:1;color:var(--brass)}
   </div>
   <div class="b-main show-left">
     <aside class="b-panel left">
-      <div class="b-ptitle">Structure</div>
-      <div class="b-row"><label>Sections <b id="sec-val">4</b></label><input type="range" id="sections" min="2" max="6" value="4" step="1"></div>
-      <div class="b-row"><label>Drawer rows <b id="drw-val">3</b></label><input type="range" id="drawers" min="0" max="5" value="3" step="1"></div>
-      <div class="b-row"><label>Shelves inside <b id="sh-val">4</b></label><input type="range" id="shelves" min="0" max="6" value="4" step="1"></div>
-      <div class="b-ptitle">Doors</div>
-      <div class="b-row"><select id="door-type">
+      <div class="b-ptitle preset-only">Structure</div>
+      <div class="b-row preset-only"><label>Sections <b id="sec-val">4</b></label><input type="range" id="sections" min="2" max="6" value="4" step="1"></div>
+      <div class="b-row preset-only"><label>Drawer rows <b id="drw-val">3</b></label><input type="range" id="drawers" min="0" max="5" value="3" step="1"></div>
+      <div class="b-row preset-only"><label>Shelves inside <b id="sh-val">4</b></label><input type="range" id="shelves" min="0" max="6" value="4" step="1"></div>
+      <div class="b-ptitle preset-only">Doors</div>
+      <div class="b-row preset-only"><select id="door-type">
         <option value="solid">Solid panel</option><option value="glass">Glass panel</option>
         <option value="mirror">Full mirror</option><option value="open">Open (no door)</option>
       </select></div>
+      <div class="b-custom-note custom-only">This is a custom, AI-composed design — use the chat to change its shape (add/remove/move parts). Material still applies below.</div>
       <div class="b-ptitle">Preview</div>
       <button class="b-act" id="toggle-doors">⊟ Open / close doors</button>
       <button class="b-act" id="toggle-drawers">⊡ Open / close drawers</button>
@@ -560,19 +579,19 @@ footer ul a:hover{opacity:1;color:var(--brass)}
     </div>
 
     <aside class="b-panel right">
-      <div class="b-ptitle">Dimensions</div>
-      <div class="b-row"><label>Width <b><span id="w-val">240</span> cm</b></label><input type="range" id="width" min="120" max="360" value="240" step="10"></div>
-      <div class="b-row"><label>Height <b><span id="h-val">240</span> cm</b></label><input type="range" id="height" min="180" max="280" value="240" step="10"></div>
-      <div class="b-row"><label>Depth <b><span id="d-val">60</span> cm</b></label><input type="range" id="depth" min="40" max="80" value="60" step="5"></div>
+      <div class="b-ptitle preset-only">Dimensions</div>
+      <div class="b-row preset-only"><label>Width <b><span id="w-val">240</span> cm</b></label><input type="range" id="width" min="120" max="360" value="240" step="10"></div>
+      <div class="b-row preset-only"><label>Height <b><span id="h-val">240</span> cm</b></label><input type="range" id="height" min="180" max="280" value="240" step="10"></div>
+      <div class="b-row preset-only"><label>Depth <b><span id="d-val">60</span> cm</b></label><input type="range" id="depth" min="40" max="80" value="60" step="5"></div>
       <div class="b-ptitle">Material</div>
       <div class="b-swatches" id="bSwatches"></div>
-      <div class="b-ptitle">Handle</div>
-      <div class="b-row"><select id="handle-type">
+      <div class="b-ptitle preset-only">Handle</div>
+      <div class="b-row preset-only"><select id="handle-type">
         <option value="gold">Gold bar</option><option value="black">Black bar</option>
         <option value="chrome">Chrome bar</option><option value="push">Push (hidden)</option><option value="none">None</option>
       </select></div>
-      <div class="b-ptitle">LED Lighting</div>
-      <div class="b-row"><select id="led">
+      <div class="b-ptitle preset-only">LED Lighting</div>
+      <div class="b-row preset-only"><select id="led">
         <option value="warm">Warm white</option><option value="cool">Cool white</option><option value="off">Off</option>
       </select></div>
       <div class="b-ptitle">Production</div>
@@ -583,7 +602,10 @@ footer ul a:hover{opacity:1;color:var(--brass)}
   <div class="ai-drawer" id="aiDrawer" hidden>
     <div class="ai-drawer-head"><span>AI Designer</span><button id="aiDrawerClose">✕</button></div>
     <div class="ai-msgs" id="aiDrawerMsgs"></div>
+    <div class="ai-img-preview" id="aiDrawerImgPreview" hidden><img id="aiDrawerImgPreviewThumb"><button id="aiDrawerImgPreviewRemove" title="Remove photo">✕</button></div>
     <div class="ai-inputrow">
+      <button class="ai-attach" id="aiDrawerAttachBtn" title="Attach a photo of furniture">📷</button>
+      <input type="file" id="aiDrawerImgInput" accept="image/*" hidden>
       <input type="text" id="aiDrawerInput" placeholder="e.g. make it wider, add a drawer…">
       <button class="ai-send" id="aiDrawerSend">Send</button>
     </div>
@@ -968,6 +990,7 @@ const Builder={
     else if(T.startsWith('vanity'))this.buildVanity();
     else if(T==='bookshelf')this.buildBookshelf();
     else if(T==='sideboard')this.buildSideboard();
+    else if(T==='custom')this.buildCustom();
     else this.buildWardrobe();
     const fl=this.scene.getObjectByName('floor');
     if(fl){
@@ -1046,6 +1069,20 @@ const Builder={
         this.makeDoor(sw-.006,cabH-P*2-.006,x,bb+cabH/2,D/2,this.cfg.doorType,null,(i%2===0)?'left':'right');}}
     const ctT=.025;this.box(W+.04,ctT,D+.04,0x141414,0,bb+cabH+ctT/2,.01,.18,.12);
     if(this.cfg.led!=='off'){const ledC=this.cfg.led==='warm'?0xffd9a0:0xcfe6ff;const led=this.box(W*.9,P*.2,.006,ledC,0,bb+cabH-.015,D/2-.02,.4,0);led.material.emissive=new THREE.Color(ledC);led.material.emissiveIntensity=.9}},
+
+  // Custom (freeform) furniture: the AI composes this from generic parts
+  // (see set_custom_design in api/chat.js) instead of picking a preset type.
+  // Deliberately reuses the exact same box() primitive/material pipeline as
+  // every preset builder above — same grain texture, shadows, lighting — so
+  // a custom piece looks native, not bolted on. cfg.parts positions/sizes
+  // are in cm (converted to m here), origin at the piece's own bounding-box
+  // center, matching every worked example in the system prompt.
+  buildCustom(){
+    const m=MAT[this.cfg.mat]||MAT.oak;
+    (this.cfg.parts||[]).forEach(p=>{
+      this.box(p.w/100,p.h/100,p.d/100,m.color,p.x/100,p.y/100,p.z/100,m.rough,m.metal);
+    });
+  },
 
   buildWalkinL(){const H=this.cfg.h/100,D=this.cfg.d/100,backLen=this.cfg.w/100,sideLen=Math.min(backLen*.65,2.6);
     const backInner=backLen-D;                         // back run stops short; side run owns the corner square
@@ -1253,8 +1290,11 @@ const Builder={
     else if(c.type.startsWith('vanity')){this.camDist=4.2;this.rotY=.5}
     else if(c.type==='bookshelf'){this.camDist=3.8;this.rotY=.5}
     else if(c.type==='sideboard'){this.camDist=3.5;this.rotY=.5}
+    else if(c.type==='custom'){const maxDim=Math.max(c.w,c.h,c.d)/100;this.camDist=Math.max(2.2,maxDim*2.2);this.rotY=.5}
     else{this.camDist=4.6;this.rotY=.5}this.rotX=.06;
-    
+
+    document.querySelector('.b-main').classList.toggle('custom-type',c.type==='custom');
+
     // Adjust slider ranges dynamically based on product type
     const wEl=document.getElementById('width');
     const hEl=document.getElementById('height');
@@ -1347,7 +1387,14 @@ function generatePanelList(cfg){
   const W=cfg.w*10,H=cfg.h*10,D=cfg.d*10,T=18,Tb=6;
   const mat=MAT[cfg.mat].label;const rows=[];
   const add=(name,material,w,h,thickness,qty,grain,edge)=>rows.push({name,material,w,h,thickness,qty,grain,edge});
-  if(cfg.type==='wardrobe'||cfg.type==='bookshelf'){
+  if(cfg.type==='custom'){
+    // No preset shape to reason about — one row per part, straight from
+    // what the AI actually placed (see set_custom_design in api/chat.js).
+    (cfg.parts||[]).forEach(p=>{
+      const label=p.role.charAt(0).toUpperCase()+p.role.slice(1);
+      add(label,mat,Math.round(p.w*10),Math.round(p.h*10),Math.round(p.d*10),1,'—','—');
+    });
+  } else if(cfg.type==='wardrobe'||cfg.type==='bookshelf'){
     add('Side panel',mat,H,D,T,2,'Vertical','2 edges (front+bottom)');
     add('Top panel',mat,W-T*2,D,T,1,'Horizontal','1 edge (front)');
     add('Bottom panel',mat,W-T*2,D,T,1,'Horizontal','1 edge (front)');
@@ -1392,16 +1439,48 @@ function generatePanelList(cfg){
   }
   return rows;
 }
+// Real Blum Clip Top cup (Ø35mm, 13mm deep, 22.5mm in from the door edge).
+// Count follows Blum's own placement algorithm: hinges start 100mm from the
+// door's top/bottom edge, with one more added past 1200mm and another past
+// 1800mm of door height — so this is keyed off each door PANEL's own height
+// (mm), not the overall cabinet height, which is what let a short kitchen
+// door (always well under 1200mm) get over-counted before.
+function hingeSpecFor(doorHeightMm){
+  if(doorHeightMm>1800)return{count:4,model:'Blum CLIP top BLUMOTION, full overlay, soft-close'};
+  if(doorHeightMm>1200)return{count:3,model:'Blum CLIP top BLUMOTION, full overlay, soft-close'};
+  return{count:2,model:'Blum CLIP top BLUMOTION, full overlay, soft-close'};
+}
+// Slide model tier by bay size — a proxy for load (bigger drawers hold more),
+// not a real fill/weight calculation, but a real supplier tier instead of one
+// generic "soft-close runner" line for every drawer regardless of size.
+function slideSpecFor(bayWidthMm,depthMm){
+  if(depthMm>=550&&bayWidthMm>=500)return{model:'Blum Movento 760H, full-extension, soft-close, undermount',loadKg:60};
+  if(bayWidthMm>600||depthMm>550)return{model:'Blum Tandem plus 563H, full-extension, soft-close, undermount',loadKg:50};
+  return{model:'Blum Tandem 550H, full-extension, soft-close, undermount',loadKg:30};
+}
+const HANDLE_PACK_SIZE=10; // placeholder — set to your real supplier's pack size
 function generateHardwareList(cfg,panels){
   const hw=[];
-  const doorQty=panels.filter(p=>/door/i.test(p.name)&&!/drawer/i.test(p.name)).reduce((s,p)=>s+p.qty,0);
-  const drawerQty=cfg.drawers||0,shelfQty=cfg.shelves||0;
-  if(doorQty>0)hw.push({name:'Concealed hinges',qty:doorQty*(cfg.h>=200?3:2),note:(cfg.h>=200?'3':'2')+' per door'});
-  if(drawerQty>0)hw.push({name:'Soft-close drawer runners',qty:drawerQty,note:'1 pair per drawer'});
+  const doorPanels=panels.filter(p=>/door/i.test(p.name)&&!/drawer/i.test(p.name));
+  const drawerFrontPanels=panels.filter(p=>/drawer front/i.test(p.name));
+  const shelfQty=cfg.shelves||0;
+  doorPanels.forEach(p=>{
+    const h=hingeSpecFor(p.h);
+    hw.push({name:'Concealed hinges — '+h.model,qty:p.qty*h.count,note:h.count+' per door ('+Math.round(p.h)+'mm tall)'});
+  });
+  drawerFrontPanels.forEach(p=>{
+    const s=slideSpecFor(p.w,cfg.d*10);
+    hw.push({name:'Drawer slides — '+s.model,qty:p.qty,note:'1 pair per drawer, rated '+s.loadKg+'kg'});
+  });
   if(shelfQty>0)hw.push({name:'Shelf support pegs',qty:shelfQty*4,note:'4 per shelf'});
   if(cfg.handle&&cfg.handle!=='none'){
     const label=cfg.handle==='push'?'Push-to-open latches':'Handles ('+cfg.handle+')';
-    if(doorQty+drawerQty>0)hw.push({name:label,qty:doorQty+drawerQty,note:'1 per door/drawer'});
+    const doorQty=doorPanels.reduce((s,p)=>s+p.qty,0),drawerQty=drawerFrontPanels.reduce((s,p)=>s+p.qty,0);
+    const qty=doorQty+drawerQty;
+    if(qty>0){
+      const packs=Math.ceil(qty/HANDLE_PACK_SIZE);
+      hw.push({name:label,qty,note:'1 per door/drawer — order '+packs+' pack(s) of '+HANDLE_PACK_SIZE});
+    }
   }
   if(cfg.type==='sideboard'||cfg.type==='vanity_freestanding')hw.push({name:'Adjustable metal legs',qty:4,note:'levelling feet'});
   if((cfg.type==='wardrobe'||cfg.type.startsWith('walkin'))&&cfg.doorType!=='open')hw.push({name:'Hanging rods + end supports',qty:Math.max(1,cfg.sections-(cfg.drawers>0?1:0)),note:'1 per open section'});
@@ -1528,30 +1607,86 @@ function openOrderModal(cfg){
 
 /* ===== AI Designer ===== */
 let aiHistory=[],aiBusy=false;
+let currentConversationId=null,recentDesignsCache=null;
+let aiPendingImage=null,aiDrawerPendingImage=null; // {mediaType,dataUrl,base64} or null
 function startAIDesigner(){
   aiHistory=[];
+  currentConversationId=null;
+  recentDesignsCache=null;
+  aiPendingImage=null;
   const m=document.getElementById('aiMsgs');if(m)m.innerHTML='';
   const s=document.getElementById('aiSuggest');if(s)s.hidden=false;
+  const p=document.getElementById('aiImgPreview');if(p)p.hidden=true;
   go('#/ai');
 }
-function renderAiMsg(containerId,cls,text){
+function renderAiMsg(containerId,cls,text,imageDataUrl){
   const c=document.getElementById(containerId);if(!c)return null;
-  const div=document.createElement('div');div.className='ai-msg '+cls;div.textContent=text;
+  const div=document.createElement('div');div.className='ai-msg '+cls;
+  if(imageDataUrl){const img=document.createElement('img');img.src=imageDataUrl;div.appendChild(img)}
+  if(text)div.appendChild(document.createTextNode(text));
   c.appendChild(div);c.scrollTop=c.scrollHeight;
   return div;
 }
-async function aiSendMessage(text,targetMsgsId,isDrawer){
-  if(!text||aiBusy)return;
+// Downscale to a max dimension and re-encode as JPEG — vision models don't need
+// full-resolution photos, and this keeps the request well under serverless
+// body-size limits regardless of the original photo's size.
+function resizeImageFile(file,maxDim){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onerror=()=>reject(new Error('Could not read file'));
+    reader.onload=()=>{
+      const img=new Image();
+      img.onerror=()=>reject(new Error('Not a valid image'));
+      img.onload=()=>{
+        const scale=Math.min(1,maxDim/Math.max(img.width,img.height));
+        const w=Math.round(img.width*scale),h=Math.round(img.height*scale);
+        const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
+        canvas.getContext('2d').drawImage(img,0,0,w,h);
+        const dataUrl=canvas.toDataURL('image/jpeg',0.85);
+        resolve({mediaType:'image/jpeg',dataUrl,base64:dataUrl.split(',')[1]});
+      };
+      img.src=reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+function bindImageAttach(attachBtnId,fileInputId,previewId,thumbId,removeId,setPending){
+  const attachBtn=document.getElementById(attachBtnId),fileInput=document.getElementById(fileInputId);
+  const preview=document.getElementById(previewId),thumb=document.getElementById(thumbId),removeBtn=document.getElementById(removeId);
+  if(!attachBtn||!fileInput)return;
+  attachBtn.addEventListener('click',()=>fileInput.click());
+  fileInput.addEventListener('change',async()=>{
+    const file=fileInput.files&&fileInput.files[0];fileInput.value='';
+    if(!file)return;
+    try{
+      const img=await resizeImageFile(file,1024);
+      setPending(img);
+      if(thumb)thumb.src=img.dataUrl;
+      if(preview)preview.hidden=false;
+    }catch(e){alert('Could not read that image — try a different file.')}
+  });
+  if(removeBtn)removeBtn.addEventListener('click',()=>{setPending(null);if(preview)preview.hidden=true});
+}
+async function aiSendMessage(text,targetMsgsId,isDrawer,image){
+  if((!text&&!image)||aiBusy)return;
   aiBusy=true;
   const sendId=isDrawer?'aiDrawerSend':'aiSend';
   const sendBtn=document.getElementById(sendId);if(sendBtn)sendBtn.disabled=true;
   const suggest=document.getElementById('aiSuggest');if(suggest&&!isDrawer)suggest.hidden=true;
-  aiHistory.push({role:'user',content:text});
-  renderAiMsg(targetMsgsId,'user',text);
+  const msgText=text||'What furniture is this? Design something like it.';
+  const content=image
+    ? [{type:'image',source:{type:'base64',media_type:image.mediaType,data:image.base64}},{type:'text',text:msgText}]
+    : msgText;
+  aiHistory.push({role:'user',content});
+  renderAiMsg(targetMsgsId,'user',text,image&&image.dataUrl);
   const thinking=renderAiMsg(targetMsgsId,'thinking','Thinking…');
   try{
     const body={messages:aiHistory};
     if(isDrawer&&Builder.cfg)body.currentConfig=Builder.cfg;
+    if(currentUser){
+      if(recentDesignsCache===null)recentDesignsCache=await loadRecentDesignsForAI();
+      if(recentDesignsCache.length)body.pastDesigns=recentDesignsCache;
+    }
     const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const data=await res.json();
     if(thinking)thinking.remove();
@@ -1561,9 +1696,27 @@ async function aiSendMessage(text,targetMsgsId,isDrawer){
       aiHistory.push({role:'assistant',content:data.reply||'…'});
       renderAiMsg(targetMsgsId,'assistant',data.reply||'Here you go.');
       if(data.config){
-        if(isDrawer)applyAiConfigToBuilder(data.config);
-        else openAiDesignInBuilder(data.config);
+        if(isDrawer){
+          applyAiConfigToBuilder(data.config);
+          renderFixChips(targetMsgsId,data.findings,fix=>applyAiConfigToBuilder(fix));
+        }else{
+          // Score against the catalog / compute fix chips BEFORE the new
+          // design is pushed onto DESIGNS, and give the user a moment to
+          // act on either before being auto-navigated to the new design.
+          // Builder.cfg is NOT the new design yet at this point (navigation
+          // is deliberately delayed), so a fix chip here corrects the
+          // pending config and opens that instead of touching Builder.cfg.
+          let picked=false;
+          const similarShown=image?renderSimilarDesigns(targetMsgsId,data.config,()=>{picked=true}):false;
+          const fixShown=renderFixChips(targetMsgsId,data.findings,fix=>{
+            picked=true;
+            openAiDesignInBuilder(Object.assign({},data.config,fix));
+          });
+          setTimeout(()=>{if(!picked)openAiDesignInBuilder(data.config)},(similarShown||fixShown)?2500:0);
+        }
       }
+      if(data.correction)saveAiCorrection(data.correction,data.config&&data.config.type);
+      saveAiConversation();
     }
   }catch(e){
     if(thinking)thinking.remove();
@@ -1571,6 +1724,74 @@ async function aiSendMessage(text,targetMsgsId,isDrawer){
   }
   aiBusy=false;
   if(sendBtn)sendBtn.disabled=false;
+}
+// Similar Design Finder (Skill #4): attribute-overlap scoring against the
+// existing catalog — no embeddings/vision model needed, just the same
+// vocabulary set_furniture_config already produces. Deliberately simple:
+// type match matters most, then material/door/handle/led, then a small
+// bonus for close overall dimensions.
+function scoreDesignMatch(d,cfg){
+  let score=0;
+  if(d.type===cfg.type)score+=40;
+  if(d.mat===cfg.mat)score+=20;
+  if(d.doorType===cfg.doorType)score+=15;
+  if(d.handle===cfg.handle)score+=10;
+  if(d.led===cfg.led)score+=5;
+  const dimDiff=(Math.abs(d.w-cfg.w)/Math.max(d.w,cfg.w))+(Math.abs(d.h-cfg.h)/Math.max(d.h,cfg.h))+(Math.abs(d.d-cfg.d)/Math.max(d.d,cfg.d));
+  score+=Math.max(0,10*(1-dimDiff/3));
+  return Math.round(score);
+}
+function findSimilarDesigns(cfg,topN){
+  return DESIGNS.map((d,i)=>({index:i,name:d.name,score:scoreDesignMatch(d,cfg)}))
+    .sort((a,b)=>b.score-a.score).slice(0,topN||3);
+}
+// Renders the chip row and returns true if anything was shown. `onPick` fires
+// when the user clicks an existing design instead of waiting to be taken to
+// their new AI-generated one — the caller uses this to cancel that handoff.
+function renderSimilarDesigns(containerId,cfg,onPick){
+  const matches=findSimilarDesigns(cfg,3).filter(m=>m.score>=40);
+  if(!matches.length)return false;
+  const c=document.getElementById(containerId);if(!c)return false;
+  const div=document.createElement('div');div.className='ai-msg assistant ai-similar';
+  div.innerHTML='Closest existing designs: ';
+  matches.forEach(m=>{
+    const chip=document.createElement('button');chip.className='ai-similar-chip';
+    chip.textContent=m.name+' ('+m.score+'% match)';
+    chip.addEventListener('click',()=>{onPick&&onPick();go('#/build/'+m.index)});
+    div.appendChild(chip);
+  });
+  c.appendChild(div);c.scrollTop=c.scrollHeight;
+  return true;
+}
+// Auto-repair (cabinet-mcp pattern): a "warning" finding with a computed
+// fix (see constructionValidator.js) gets a one-click chip instead of
+// leaving the customer to work out new numbers from the prose message.
+// `onApply(fix)` is supplied by the caller rather than hardcoded here — for
+// a fresh design (still pending, not yet pushed to DESIGNS/navigated to)
+// applying a fix means correcting that pending config and opening THAT
+// version instead; for a live in-builder refinement, Builder.cfg already IS
+// the current design, so it can merge straight in. Touching Builder.cfg
+// directly for the former case is the bug this fixes — it isn't the new
+// design yet at click time, since navigation is deliberately delayed so the
+// chip is visible at all.
+function renderFixChips(containerId,findings,onApply){
+  const fixable=(findings||[]).filter(f=>f.severity==='warning'&&f.fix);
+  if(!fixable.length)return false;
+  const c=document.getElementById(containerId);if(!c)return false;
+  const div=document.createElement('div');div.className='ai-msg assistant ai-similar';
+  div.innerHTML='Suggested fix: ';
+  fixable.forEach(f=>{
+    const chip=document.createElement('button');chip.className='ai-similar-chip';
+    const desc=Object.entries(f.fix).map(([k,v])=>k+' → '+v).join(', ');
+    chip.textContent='Apply: '+desc;
+    chip.addEventListener('click',()=>{
+      onApply(f.fix);
+      chip.disabled=true;chip.textContent='✓ Applied';
+    });
+    div.appendChild(chip);
+  });
+  c.appendChild(div);c.scrollTop=c.scrollHeight;
+  return true;
 }
 function openAiDesignInBuilder(cfg){
   DESIGNS.push(cfg);
@@ -1597,26 +1818,38 @@ function applyAiConfigToBuilder(cfg){
 function bindAI(){
   const input=document.getElementById('aiInput');
   const sendBtn=document.getElementById('aiSend');
-  const doSend=()=>{const v=input.value.trim();if(!v)return;input.value='';aiSendMessage(v,'aiMsgs',false)};
+  const doSend=()=>{
+    const v=input.value.trim();if(!v&&!aiPendingImage)return;input.value='';
+    const img=aiPendingImage;aiPendingImage=null;
+    const preview=document.getElementById('aiImgPreview');if(preview)preview.hidden=true;
+    aiSendMessage(v,'aiMsgs',false,img);
+  };
   if(sendBtn)sendBtn.addEventListener('click',doSend);
   if(input)input.addEventListener('keydown',e=>{if(e.key==='Enter')doSend()});
   document.querySelectorAll('.ai-chip').forEach(chip=>{
     chip.addEventListener('click',()=>aiSendMessage(chip.textContent,'aiMsgs',false));
   });
+  bindImageAttach('aiAttachBtn','aiImgInput','aiImgPreview','aiImgPreviewThumb','aiImgPreviewRemove',img=>{aiPendingImage=img});
   const fab=document.getElementById('aiFab'),drawer=document.getElementById('aiDrawer');
   if(fab)fab.addEventListener('click',()=>{drawer.hidden=!drawer.hidden});
   const drawerClose=document.getElementById('aiDrawerClose');
   if(drawerClose)drawerClose.addEventListener('click',()=>{drawer.hidden=true});
   const drawerInput=document.getElementById('aiDrawerInput');
   const drawerSend=document.getElementById('aiDrawerSend');
-  const doDrawerSend=()=>{const v=drawerInput.value.trim();if(!v)return;drawerInput.value='';aiSendMessage(v,'aiDrawerMsgs',true)};
+  const doDrawerSend=()=>{
+    const v=drawerInput.value.trim();if(!v&&!aiDrawerPendingImage)return;drawerInput.value='';
+    const img=aiDrawerPendingImage;aiDrawerPendingImage=null;
+    const preview=document.getElementById('aiDrawerImgPreview');if(preview)preview.hidden=true;
+    aiSendMessage(v,'aiDrawerMsgs',true,img);
+  };
   if(drawerSend)drawerSend.addEventListener('click',doDrawerSend);
   if(drawerInput)drawerInput.addEventListener('keydown',e=>{if(e.key==='Enter')doDrawerSend()});
+  bindImageAttach('aiDrawerAttachBtn','aiDrawerImgInput','aiDrawerImgPreview','aiDrawerImgPreviewThumb','aiDrawerImgPreviewRemove',img=>{aiDrawerPendingImage=img});
 }
 
 /* ===== Auth + saved projects (Supabase) ===== */
-const SUPABASE_URL='https://haqifjohzhqhjmfgvdfw.supabase.co';
-const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhcWlmam9oemhxaGptZmd2ZGZ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MjYyMzUsImV4cCI6MjA5OTEwMjIzNX0.84QLDst09-Q1inSH0RikRxn_Vl1UPM9KrXX8qbWfj7Y';
+const SUPABASE_URL='https://upavdjmovubblowrxncp.supabase.co';
+const SUPABASE_ANON_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVwYXZkam1vdnViYmxvd3J4bmNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExODQ4NjcsImV4cCI6MjA5Njc2MDg2N30.gZIO8V01ygXNsueDae1NA0EUpsjYC7D9f4wLv-0e5K4';
 let sb=null,currentUser=null,authMode='signin';
 function authConfigured(){return SUPABASE_URL&&!SUPABASE_URL.startsWith('YOUR_')}
 function initAuth(){
@@ -1664,14 +1897,22 @@ async function signInWithGoogle(){
   if(!sb)return;
   await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.origin}});
 }
+async function signInWithApple(){
+  if(!sb)return;
+  await sb.auth.signInWithOAuth({provider:'apple',options:{redirectTo:location.origin}});
+}
 async function signOut(){
   if(!sb)return;
   await sb.auth.signOut();
+  currentConversationId=null;
+  recentDesignsCache=null;
   go('#/');
 }
 function bindAuthUI(){
   const googleBtn=document.getElementById('authGoogleBtn');
   if(googleBtn)googleBtn.addEventListener('click',signInWithGoogle);
+  const appleBtn=document.getElementById('authAppleBtn');
+  if(appleBtn)appleBtn.addEventListener('click',signInWithApple);
   const submitBtn=document.getElementById('authSubmitBtn');
   if(submitBtn)submitBtn.addEventListener('click',submitAuthForm);
   const toggleLink=document.getElementById('authToggleLink');
@@ -1684,9 +1925,53 @@ async function saveCurrentDesign(){
   if(!currentUser){openAuthModal();return}
   const name=prompt('Name this design:',Builder.cfg.name||'My design');
   if(!name)return;
-  const {error}=await sb.from('projects').insert({user_id:currentUser.id,name,config:Builder.cfg});
+  const {data,error}=await sb.from('projects').insert({user_id:currentUser.id,name,config:Builder.cfg}).select().single();
   if(error){alert('Could not save: '+error.message);return}
   alert('Saved to My Projects.');
+  recentDesignsCache=null; // stale now — refetch next time the AI needs context
+  // Link the active AI conversation (if any) to the design it produced, so
+  // "another one like the one from last month" can eventually trace back to it.
+  if(currentConversationId&&data){
+    await sb.from('ai_conversations').update({project_id:data.id}).eq('id',currentConversationId);
+  }
+}
+/* AI memory (pillar 6): persist the chat + surface past designs as context.
+   Best-effort only — a failed save here should never block the chat UI. */
+async function loadRecentDesignsForAI(){
+  if(!authConfigured()||!currentUser||!sb)return[];
+  try{
+    const {data,error}=await sb.from('projects').select('name,config,created_at').order('created_at',{ascending:false}).limit(5);
+    if(error||!data)return[];
+    return data.map(row=>({...row.config,name:row.name,createdAt:row.created_at}));
+  }catch(e){return[]}
+}
+async function saveAiConversation(){
+  if(!authConfigured()||!currentUser||!sb)return;
+  try{
+    if(currentConversationId){
+      await sb.from('ai_conversations').update({messages:aiHistory,updated_at:new Date().toISOString()}).eq('id',currentConversationId);
+    }else{
+      const {data,error}=await sb.from('ai_conversations').insert({user_id:currentUser.id,messages:aiHistory}).select().single();
+      if(!error&&data)currentConversationId=data.id;
+    }
+  }catch(e){/* memory is best-effort — never surface this to the chat UI */}
+}
+// Correction logging (pillar 8): the AI calls log_correction server-side
+// when the customer corrects something it got wrong (usually a photo
+// misread) — the actual write happens here, same best-effort, never-block
+// pattern as saveAiConversation. Signed-out users just don't get logged;
+// the design fix itself already happened regardless.
+async function saveAiCorrection(correction,furnitureType){
+  if(!authConfigured()||!currentUser||!sb||!correction)return;
+  try{
+    await sb.from('ai_corrections').insert({
+      user_id:currentUser.id,
+      furniture_type:furnitureType||null,
+      field:correction.field,
+      wrong_value:correction.wrongValue,
+      correct_value:correction.correctValue,
+    });
+  }catch(e){/* best-effort — never surface this to the chat UI */}
 }
 async function loadProjects(){
   const grid=document.getElementById('projectsGrid');
@@ -1788,6 +2073,10 @@ if(document.readyState!=='loading')boot();else addEventListener('DOMContentLoade
     <button class="auth-google" id="authGoogleBtn">
       <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92a8.78 8.78 0 0 0 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.81.54-1.84.87-3.04.87-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.73A5.4 5.4 0 0 1 3.68 9c0-.6.1-1.19.29-1.73V4.94H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.06l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.59-2.59C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.94l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
       Continue with Google
+    </button>
+    <button class="auth-apple" id="authAppleBtn">
+      <svg width="16" height="16" viewBox="0 0 17 20" fill="currentColor"><path d="M14.1 10.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.8-.9-3-.8-1.5 0-3 .9-3.8 2.3-1.6 2.9-.4 7.1 1.1 9.4.8 1.1 1.7 2.4 2.9 2.4 1.2 0 1.6-.8 3-.8 1.4 0 1.8.8 3 .7 1.2 0 2-1.1 2.8-2.3.9-1.3 1.2-2.5 1.3-2.6-.1 0-2.4-.9-2.4-3.9zM11.7 3.7c.7-.8 1.1-1.9 1-3-1 0-2.1.6-2.8 1.5-.6.7-1.1 1.9-1 2.9 1.1.1 2.1-.5 2.8-1.4z"/></svg>
+      Continue with Apple
     </button>
     <div class="auth-divider">or</div>
     <input type="email" class="auth-input" id="authEmail" placeholder="Email" autocomplete="email">
