@@ -2,5 +2,12 @@
   "cleanUrls": true,
   "framework": null,
   "buildCommand": "mkdir -p dist && cp index.html styles.css app.js dist/",
-  "outputDirectory": "dist"
+  "outputDirectory": "dist",
+  "functions": {
+    "api/production.py": {
+      "maxDuration": 60,
+      "includeFiles": "production-engine/furniai_engine/**",
+      "excludeFiles": "{production-engine/furniai_engine/output/**,production-engine/furniai_engine/out*/**,production-engine/furniai_engine/jobs/**,production-engine/furniai_engine/test_*.py,production-engine/furniai_engine/*_test.py,production-engine/furniai_engine/run_all_harnesses.py}"
+    }
+  }
 }

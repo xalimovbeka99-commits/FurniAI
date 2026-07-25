@@ -296,9 +296,16 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 .om-section{display:flex;flex-direction:column}
 .om-input{width:100%;padding:10px 14px;border:1px solid #DFD9CC;border-radius:10px;background:#fff;font-size:13px;color:#1C1E21;font-family:'Inter',sans-serif;outline:none;margin-bottom:8px;-webkit-appearance:none;appearance:none}
 .om-input:focus{border-color:#00B4D8}
-.om-foot{display:flex;gap:10px;padding:16px 26px;border-top:1px solid #EDE8DC;flex-shrink:0}
-.om-btn{flex:1;padding:12px;border-radius:12px;font-size:12px;font-weight:700;cursor:pointer;text-align:center;border:none;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:filter .15s;font-family:'Space Mono',monospace;letter-spacing:.06em}
+.om-engine-status{border:1px solid #DFD9CC;border-radius:12px;background:#fff;padding:13px 15px;font-size:12px;line-height:1.5;color:#5C626E}
+.om-engine-status strong{display:block;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:#1C1E21;margin-bottom:4px}
+.om-engine-status.loading{border-color:#00B4D8;background:#F1FBFD}
+.om-engine-status.passed{border-color:#69A87A;background:#F1F8F3;color:#285B37}
+.om-engine-status.failed{border-color:#C77B70;background:#FFF5F3;color:#7A2E25}
+.om-foot{display:flex;gap:10px;padding:16px 26px;border-top:1px solid #EDE8DC;flex-shrink:0;flex-wrap:wrap}
+.om-btn{flex:1;min-width:150px;padding:12px;border-radius:12px;font-size:12px;font-weight:700;cursor:pointer;text-align:center;border:none;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:filter .15s;font-family:'Space Mono',monospace;letter-spacing:.06em}
 .om-btn:hover{filter:brightness(.88)}
+.om-btn:disabled{opacity:.55;cursor:not-allowed;filter:none}
+.om-btn-engine{background:#00B4D8;color:#fff}
 .om-btn-print{background:#F4F2EB;color:#1C1E21;border:1px solid #DFD9CC}
 .om-btn-wa{background:#25D366;color:#fff}
 /* ── Auth ── */
@@ -1527,6 +1534,66 @@ function buildAssemblyBlueprint(panels){
   html+='</div>';
   return html;
 }
+const PRODUCTION_PACK_UNSUPPORTED={
+  walkin_l:'L-shaped walk-ins need separate run lengths and a qualified corner-unit rule.',
+  walkin_u:'U-shaped walk-ins need three separate run lengths and qualified corner-unit rules.',
+  kitchen_l:'L-shaped kitchens need separate run lengths and a qualified corner-cabinet strategy.',
+  kitchen_u:'U-shaped kitchens need three separate run lengths and qualified corner-cabinet strategies.',
+  kitchen_island:'Kitchen-and-island projects need separate wall-run and island specifications.',
+  custom:'Freeform AI geometry is not yet accepted by the deterministic factory engine.'
+};
+function setProductionStatus(state,title,message){
+  const box=document.getElementById('omEngineStatus');
+  if(!box)return;
+  box.className='om-engine-status'+(state?' '+state:'');
+  box.innerHTML='<strong>'+title+'</strong><span>'+message+'</span>';
+}
+async function downloadProductionPack(cfg,projectId){
+  const btn=document.getElementById('omEngine');
+  if(!btn||btn.disabled)return;
+  btn.disabled=true;
+  btn.textContent='Running engineering checks…';
+  setProductionStatus('loading','Deterministic engine running','Validating geometry, machining, nesting, hardware and production-pack consistency.');
+  try{
+    const response=await fetch('/api/production',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        project_id:projectId,
+        revision_id:projectId+'-R1',
+        zone:document.getElementById('omCustZone').value,
+        config:cfg
+      })
+    });
+    if(!response.ok){
+      let data={};
+      try{data=await response.json()}catch(_e){}
+      const failures=data.report&&Array.isArray(data.report.failures)?data.report.failures:[];
+      const detail=failures.slice(0,2).map(f=>f.detail||f.name).filter(Boolean).join(' ');
+      throw new Error((data.error||'The configuration did not pass production checks.')+(detail?' '+detail:''));
+    }
+    const blob=await response.blob();
+    const disposition=response.headers.get('Content-Disposition')||'';
+    const filenameMatch=disposition.match(/filename="?([^"]+)"?/i);
+    const buildId=response.headers.get('X-FurniAI-Build-ID')||'unknown';
+    const filename=filenameMatch?filenameMatch[1]:'FurniAI-'+buildId+'-factory-review.zip';
+    const href=URL.createObjectURL(blob);
+    const link=document.createElement('a');
+    link.href=href;
+    link.download=filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(()=>URL.revokeObjectURL(href),30000);
+    setProductionStatus('passed','Engineering checks passed · build '+buildId,'Factory-review ZIP downloaded. Manufacturing release is still blocked until the selected factory profile passes physical qualification.');
+    btn.textContent='Download pack again';
+  }catch(error){
+    setProductionStatus('failed','Production pack not generated',error.message||'The production engine could not generate this pack.');
+    btn.textContent='Try production engine again';
+  }finally{
+    btn.disabled=false;
+  }
+}
 function openOrderModal(cfg){
   const projectId='FA-'+Math.floor(1000+Math.random()*9000)+'-'+new Date().getFullYear();
   const panels=generatePanelList(cfg);
@@ -1542,6 +1609,19 @@ function openOrderModal(cfg){
   const hb=document.getElementById('omHwBody');hb.innerHTML='';
   hardware.forEach(h=>{const tr=document.createElement('tr');tr.innerHTML='<td>'+h.name+'</td><td>×'+h.qty+'</td><td>'+h.note+'</td>';hb.appendChild(tr)});
   const modal=document.getElementById('orderModal');modal.hidden=false;
+  const engineBtn=document.getElementById('omEngine');
+  const unsupported=PRODUCTION_PACK_UNSUPPORTED[cfg.type];
+  if(unsupported){
+    engineBtn.disabled=true;
+    engineBtn.textContent='Geometry not supported';
+    engineBtn.onclick=null;
+    setProductionStatus('failed','Production connection blocked',unsupported);
+  }else{
+    engineBtn.disabled=false;
+    engineBtn.textContent='Generate verified ZIP';
+    setProductionStatus('','Production engine connected','Generate a deterministic PDF, cut list, DXF set, nesting files, scene data and inspection report.');
+    engineBtn.onclick=()=>downloadProductionPack(cfg,projectId);
+  }
   function updWA(){
     const name=document.getElementById('omCustName').value.trim()||'—';
     const phone=document.getElementById('omCustPhone').value.trim()||'—';
@@ -2030,6 +2110,10 @@ if(document.readyState!=='loading')boot();else addEventListener('DOMContentLoade
         <span class="om-k">Material</span><span class="om-v" id="omMat">—</span>
         <span class="om-k">Finish</span><span class="om-v" id="omDoor">—</span>
       </div>
+      <div class="om-engine-status" id="omEngineStatus" aria-live="polite">
+        <strong>Production engine connected</strong>
+        <span>Generate a deterministic factory-review pack from this frozen configuration.</span>
+      </div>
       <div class="om-section">
         <div class="om-stitle">Panel List</div>
         <table class="om-table">
@@ -2058,7 +2142,8 @@ if(document.readyState!=='loading')boot();else addEventListener('DOMContentLoade
       </div>
     </div>
     <div class="om-foot">
-      <button class="om-btn om-btn-print" id="omPrint">Print / Save PDF</button>
+      <button class="om-btn om-btn-engine" id="omEngine">Generate verified ZIP</button>
+      <button class="om-btn om-btn-print" id="omPrint">Preview PDF</button>
       <a class="om-btn om-btn-wa" id="omWA" href="#" target="_blank">Send via WhatsApp</a>
     </div>
   </div>
