@@ -1,0 +1,8 @@
+{
+  "id": "wardrobe-shelf-span-info",
+  "description": "240cm / 3 sections -> 77.6cm bay, in the 65-90cm info band: info only, no fix attached (info findings carry no patch)",
+  "class": "regression",
+  "capability": "preview",
+  "config": { "type": "wardrobe", "w": 240, "h": 260, "d": 60, "sections": 3, "drawers": 0, "shelves": 3, "doorType": "solid", "mat": "white", "handle": "gold", "led": "off" },
+  "expect": { "findings": [ { "field": "shelves", "severity": "info", "hasFix": false } ] }
+}

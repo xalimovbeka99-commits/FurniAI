@@ -61,8 +61,10 @@ designs.js preset → customize (panels) → price → pay → freeze config + O
    → production.js → cut list CSV + production PDF (English, mm) → factory / BAZIS
 ```
 
-No 3ds Max, no AutoCAD, no SketchUp, no 3D-mesh export. The factory works from
-**PDF + CSV**, exactly as agreed. Every file carries the OrderID for traceability.
+No 3ds Max, AutoCAD, SketchUp or 3D-mesh export is required for the current
+preview. The intended factory handoff is a versioned **PDF + CSV/neutral
+package** with an OrderID for traceability. Exact hardware drilling, drawings,
+nesting and CNC remain blocked until factory and machine profiles are validated.
 
 ## Run it
 
@@ -78,7 +80,8 @@ npm run dev
 ## Verified in this build
 
 - All 7 starter designs validate and produce real cut lists (0 problems).
-- Production pack + CSV generate correct mm dimensions with OrderID on every row.
+- Production-preview pack + CSV generate deterministic mm dimensions with
+  OrderID traceability and an explicit manufacturing-release block.
 - Geometry builder: correct parts, in-bounds, reflows on resize.
 - All JavaScript syntax-checked; React/r3f compiles clean.
 

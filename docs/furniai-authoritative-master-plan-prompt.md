@@ -1476,6 +1476,29 @@ Each category requires knowledge, tests, geometry support, configurator support 
 
 Note: kitchen, sideboard, bookcase, and office cabinet already have dedicated knowledge (§8) — this phase's remaining scope for those four is geometry/configurator support and capability status, not the knowledge layer itself.
 
+### Current category-expansion evidence (2026-07-26)
+
+An experimental deterministic two-run L-kitchen proof now exists in the Python
+engine. It preserves separate run lengths, places the second run in a
+perpendicular world frame, removes fronts from the disclosed blind-corner bays,
+draws one elevation per run, and records the finished assembly envelope in the
+pack. Automated tests, pack consistency and DXF read-back audits cover this
+proof.
+
+Capability status remains **experimental / factory qualification required**:
+
+- the authenticated server adapter accepts an L-kitchen only with two explicit
+  run lengths, but the live browser configurator still has no second-run input
+  and marks L-kitchen production unsupported;
+- U- and island-kitchen production requests remain rejected;
+- no pull-out, carousel or bi-fold corner mechanism is selected or machined;
+- worktops, scribes, fillers, end panels and room-wall tolerances are not yet
+  represented in this proof;
+- no machine profile or first article has been physically qualified.
+
+This evidence does not complete Phase 8 and must not be presented as
+manufacturing release.
+
 ---
 
 ## 28. Working protocol for Claude Code

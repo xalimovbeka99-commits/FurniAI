@@ -1,5 +1,7 @@
 -- FurniAI accounts + saved projects schema
 -- Run this in Supabase Dashboard -> SQL Editor -> New query -> paste -> Run
+-- Safe to re-run: every statement is idempotent (IF NOT EXISTS / DROP...IF EXISTS
+-- before CREATE), so a partial or repeated run never errors on "already exists".
 
 -- Profiles: one row per signed-up user, auto-created on signup
 create table if not exists public.profiles (
@@ -11,10 +13,12 @@ create table if not exists public.profiles (
 
 alter table public.profiles enable row level security;
 
+drop policy if exists "Users can view their own profile" on public.profiles;
 create policy "Users can view their own profile"
   on public.profiles for select
   using (auth.uid() = id);
 
+drop policy if exists "Users can update their own profile" on public.profiles;
 create policy "Users can update their own profile"
   on public.profiles for update
   using (auth.uid() = id);
@@ -53,18 +57,22 @@ create table if not exists public.projects (
 
 alter table public.projects enable row level security;
 
+drop policy if exists "Users can view their own projects" on public.projects;
 create policy "Users can view their own projects"
   on public.projects for select
   using (auth.uid() = user_id);
 
+drop policy if exists "Users can insert their own projects" on public.projects;
 create policy "Users can insert their own projects"
   on public.projects for insert
   with check (auth.uid() = user_id);
 
+drop policy if exists "Users can update their own projects" on public.projects;
 create policy "Users can update their own projects"
   on public.projects for update
   using (auth.uid() = user_id);
 
+drop policy if exists "Users can delete their own projects" on public.projects;
 create policy "Users can delete their own projects"
   on public.projects for delete
   using (auth.uid() = user_id);
@@ -84,16 +92,48 @@ create table if not exists public.ai_conversations (
 
 alter table public.ai_conversations enable row level security;
 
+drop policy if exists "Users can view their own conversations" on public.ai_conversations;
 create policy "Users can view their own conversations"
   on public.ai_conversations for select
   using (auth.uid() = user_id);
 
+drop policy if exists "Users can insert their own conversations" on public.ai_conversations;
 create policy "Users can insert their own conversations"
   on public.ai_conversations for insert
   with check (auth.uid() = user_id);
 
+drop policy if exists "Users can update their own conversations" on public.ai_conversations;
 create policy "Users can update their own conversations"
   on public.ai_conversations for update
   using (auth.uid() = user_id);
 
 create index if not exists ai_conversations_user_id_idx on public.ai_conversations(user_id);
+
+-- AI corrections: an append-only log of times the AI got something wrong
+-- (usually a photo misread) and the customer corrected it — e.g. "that's
+-- walnut, not oak". Never updated or deleted; over time this becomes a
+-- real, proprietary dataset of exactly what this app's customers correct,
+-- which no generic model provides.
+create table if not exists public.ai_corrections (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  furniture_type text,
+  field text not null,
+  wrong_value text not null,
+  correct_value text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.ai_corrections enable row level security;
+
+drop policy if exists "Users can view their own corrections" on public.ai_corrections;
+create policy "Users can view their own corrections"
+  on public.ai_corrections for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "Users can insert their own corrections" on public.ai_corrections;
+create policy "Users can insert their own corrections"
+  on public.ai_corrections for insert
+  with check (auth.uid() = user_id);
+
+create index if not exists ai_corrections_user_id_idx on public.ai_corrections(user_id);

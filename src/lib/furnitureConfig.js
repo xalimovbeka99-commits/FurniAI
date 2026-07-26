@@ -23,7 +23,7 @@ export const BACK_THICKNESS = 0.005;  // 5mm back panel
 /** A single module is one vertical "bay" of the piece, left to right. */
 function makeModule(kind, widthRatio, extra = {}) {
   return {
-    kind,                 // "door" | "drawerBank" | "openShelf" | "applianceGap"
+    kind,                 // "door" | "drawerBank" | "openShelf"
     widthRatio,           // share of total internal width (all modules sum to 1)
     doorCount: 0,
     drawerRows: 0,
@@ -50,7 +50,7 @@ function defaultModules(typeKey) {
       return [
         makeModule("door", 0.25, { doorCount: 1, shelfCount: 2 }),
         makeModule("drawerBank", 0.25, { drawerRows: 3 }),
-        makeModule("applianceGap", 0.2),
+        makeModule("door", 0.2, { doorCount: 1, shelfCount: 2 }),
         makeModule("door", 0.3, { doorCount: 2, shelfCount: 2 }),
       ];
     case "cabinet":

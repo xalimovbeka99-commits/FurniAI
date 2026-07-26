@@ -1,0 +1,8 @@
+{
+  "id": "sliding-mirror-wardrobe-conceptual",
+  "description": "KNOWN GAP, capability conceptual: wide mirror-front wardrobe (sliding territory). No sliding-system or capability-status rule exists; the model must not imply production-ready sliding geometry/machining",
+  "class": "knownGap",
+  "capability": "conceptual",
+  "config": { "type": "wardrobe", "w": 320, "h": 260, "d": 65, "sections": 4, "drawers": 0, "shelves": 2, "doorType": "mirror", "mat": "graphite", "handle": "none", "led": "warm" },
+  "expect": { "todo": "expected future finding: conceptual capability status until a verified sliding system exists" }
+}

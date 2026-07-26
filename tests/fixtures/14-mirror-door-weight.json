@@ -1,0 +1,8 @@
+{
+  "id": "mirror-door-weight",
+  "description": "KNOWN GAP: tall wide mirror doors exceed typical hinge weight ratings; rule pending a chosen hinge series (research W2)",
+  "class": "knownGap",
+  "capability": "preview",
+  "config": { "type": "wardrobe", "w": 120, "h": 280, "d": 60, "sections": 1, "drawers": 0, "shelves": 0, "doorType": "mirror", "mat": "oak", "handle": "gold", "led": "off" },
+  "expect": { "todo": "no door-weight rule exists; needs hinge-series data before thresholds can be authored" }
+}

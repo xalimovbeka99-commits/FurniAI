@@ -12,7 +12,6 @@ const MODULE_KINDS = [
   ["door", "Doors"],
   ["drawerBank", "Drawers"],
   ["openShelf", "Open shelves"],
-  ["applianceGap", "Appliance gap"],
 ];
 
 export default function StructurePanel() {

@@ -1,0 +1,8 @@
+{
+  "id": "vanity-below-comfort",
+  "description": "60cm vanity height -> info about 86-91cm comfort height",
+  "class": "regression",
+  "capability": "preview",
+  "config": { "type": "vanity_freestanding", "w": 120, "h": 60, "d": 50, "sections": 2, "drawers": 2, "shelves": 0, "doorType": "solid", "mat": "white", "handle": "chrome", "led": "off" },
+  "expect": { "findings": [ { "field": "h", "severity": "info", "messageIncludes": "vanity" } ] }
+}

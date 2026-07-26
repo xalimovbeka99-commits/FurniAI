@@ -1,20 +1,28 @@
 /**
- * production.js — the factory output. Pure, deterministic, no AI.
- * ===============================================================
- * Turns a FROZEN order config into the data the factory needs:
- *   • a cut list (panels in mm, with edge banding + grain)
- *   • a CSV string ready to save / hand to the operator / enter into BAZIS
- *   • a production-pack data object (header + cut list + drilling + summary)
- *     that a PDF renderer turns into the printable factory sheet.
+ * production.js — deterministic production-PREVIEW data, no AI.
+ * =============================================================
+ * Turns a frozen config into an indicative cut list/CSV and a production-pack
+ * object. Geometry is checked, but the release stays blocked until exact
+ * hardware, construction, stock, tooling, machine and postprocessor profiles
+ * are approved. This module does not generate drawings, nesting or CNC code.
  *
- * Same order in → identical files out, every time. A drill position is maths,
- * never a guess. This is the CNC/PDF path agreed for the factory (no CAD, no
- * 3D-mesh export — BAZIS or the operator works from PDF + CSV).
+ * Same order in → identical preview data out, every time. The future factory
+ * path may pass an approved neutral package into BAZIS or another validated
+ * adapter; it must never treat these generic planning notes as machine data.
  */
-import { buildGeometry, partsToCutList } from "./buildGeometry.js";
+import { buildGeometry, partsToCutList, validateGeometry } from "./buildGeometry.js";
 import { MATERIALS } from "./knowledgeBase.js";
 
 const PANEL_THK_MM = 18;
+
+export const PRODUCTION_CAPABILITIES = Object.freeze({
+  geometry: "preview",
+  cutList: "preview",
+  drawings: "unsupported",
+  drilling: "conceptual",
+  nesting: "unsupported",
+  cnc: "unsupported",
+});
 
 /** Decide edge banding + grain per part role (simple, factory-sane defaults). */
 function finishFor(role) {
@@ -56,23 +64,27 @@ export function buildCutList(config) {
   return rows;
 }
 
-/** Drilling / hardware spec derived from the config (mm). */
+/**
+ * Conceptual drilling planning notes.
+ *
+ * Exact boring depends on the hardware SKU, panel construction, factory
+ * tooling and machine profile. Generic rules of thumb must never be emitted
+ * as CNC-ready instructions.
+ */
 export function buildDrillingSpec(config) {
   const spec = [];
-  const H = Math.round(config.dimensions.height * 1000);
   (config.modules || []).forEach((m, i) => {
     if (m.doorCount > 0) {
-      const hinges = H > 1800 ? 5 : H > 1200 ? 4 : 3;
-      spec.push(`Section ${i + 1}: ${m.doorCount} door(s), ${hinges} hinge cups Ø35mm × 12.5mm deep per door, hinge side ${m.hingeSide}.`);
+      spec.push(`Section ${i + 1}: ${m.doorCount} door(s), hinge side ${m.hingeSide}; select an exact hinge SKU and validate door size/weight before generating bore operations.`);
     }
     if (m.drawerRows > 0) {
-      spec.push(`Section ${i + 1}: ${m.drawerRows} drawer slide pair(s), full-extension, pilot holes per slide template.`);
+      spec.push(`Section ${i + 1}: ${m.drawerRows} drawer slide pair(s); select the exact runner SKU, nominal length and load class before generating drilling.`);
     }
     if (m.shelfCount > 0) {
-      spec.push(`Section ${i + 1}: shelf-pin holes Ø5mm, 32mm system, ${m.shelfCount} adjustable shelf position(s).`);
+      spec.push(`Section ${i + 1}: ${m.shelfCount} adjustable shelf position(s); line-bore diameter, setbacks and range require the approved factory construction profile.`);
     }
   });
-  spec.push("Carcass joinery: confirmat Ø4.5mm pilot holes per connector map; back panel groove 6mm × 10mm, 12mm from rear edge.");
+  spec.push("Carcass joinery, back-panel fixing and all machining coordinates are blocked until a versioned factory profile is selected and validated.");
   return spec;
 }
 
@@ -80,9 +92,23 @@ export function buildDrillingSpec(config) {
 export function buildProductionPack(order) {
   const { orderId, config, customer = {}, price = null, createdAt = new Date().toISOString() } = order;
   const d = config.dimensions;
+  const geometry = buildGeometry(config);
+  const geometryIssues = validateGeometry(geometry, config);
+  const releaseBlockers = [
+    ...geometryIssues.map((issue) => `${issue.code}: ${issue.message}`),
+    "Exact hardware SKUs and manufacturer drilling templates are not selected.",
+    "Factory construction, stock, tooling, machine and postprocessor profiles are not approved.",
+    "Drawing, nesting and CNC capabilities are not implemented.",
+  ];
   return {
     orderId,
     createdAt,
+    capabilityStatus: PRODUCTION_CAPABILITIES,
+    manufacturingRelease: {
+      allowed: false,
+      status: "blocked",
+      blockers: releaseBlockers,
+    },
     header: {
       furnitureType: config.type,
       style: config.style,
@@ -98,6 +124,7 @@ export function buildProductionPack(order) {
     },
     cutList: buildCutList(config),
     drilling: buildDrillingSpec(config),
+    geometryValidation: geometryIssues,
     summary: summarise(config),
   };
 }

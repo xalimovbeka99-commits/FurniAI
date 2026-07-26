@@ -1,0 +1,8 @@
+{
+  "id": "wardrobe-narrow-bay",
+  "description": "140cm / 6 sections -> 21.2cm bays, below the 25cm floor: warning + deterministic fix to 5 sections (25.8cm)",
+  "class": "regression",
+  "capability": "preview",
+  "config": { "type": "wardrobe", "w": 140, "h": 220, "d": 55, "sections": 6, "drawers": 0, "shelves": 0, "doorType": "solid", "mat": "oak", "handle": "chrome", "led": "off" },
+  "expect": { "findings": [ { "field": "sections", "severity": "warning", "messageIncludes": "too narrow", "hasFix": true, "fixEquals": { "sections": 5 } } ] }
+}

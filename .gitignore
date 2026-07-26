@@ -6,6 +6,15 @@
 # testing
 /coverage
 
+# python
+__pycache__/
+*.py[cod]
+.venv/
+/production-engine/output/
+/production-engine/furniai_engine/out/
+/production-engine/furniai_engine/out_*/
+/production-engine/furniai_engine/jobs/
+
 # next.js
 /.next/
 /out/
@@ -24,6 +33,7 @@ yarn-error.log*
 
 # local env files
 .env*.local
+.claude/settings.local.json
 
 # vercel
 .vercel

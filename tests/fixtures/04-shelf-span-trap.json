@@ -1,0 +1,8 @@
+{
+  "id": "wardrobe-shelf-span-trap",
+  "description": "240cm single section with shelves -> 236cm unsupported span: warning + fix to 4 sections (57.8cm, first n at or under 65)",
+  "class": "regression",
+  "capability": "preview",
+  "config": { "type": "wardrobe", "w": 240, "h": 260, "d": 60, "sections": 1, "drawers": 0, "shelves": 2, "doorType": "open", "mat": "oak", "handle": "none", "led": "off" },
+  "expect": { "findings": [ { "field": "shelves", "severity": "warning", "messageIncludes": "sag", "hasFix": true, "fixEquals": { "sections": 4 } } ], "fixResolves": true }
+}

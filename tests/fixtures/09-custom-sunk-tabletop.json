@@ -1,0 +1,12 @@
+{
+  "id": "custom-sunk-tabletop",
+  "description": "Observed bug class: tabletop declared restsOnParts on the leg but positioned 4cm too low -> warning with exact corrected y (34); applying the fix must clear ALL findings",
+  "class": "regression",
+  "capability": "preview",
+  "config": { "type": "custom", "w": 120, "h": 75, "d": 60,
+    "parts": [
+      { "role": "leg",   "w": 5,   "h": 70, "d": 5,  "x": 0, "y": -2.5, "z": 0, "restsOnFloor": true,  "restsOnParts": [] },
+      { "role": "panel", "w": 120, "h": 3,  "d": 60, "x": 0, "y": 30,   "z": 0, "restsOnFloor": false, "restsOnParts": [0] }
+    ] },
+  "expect": { "findings": [ { "field": "parts", "severity": "warning", "messageIncludes": "overlap" }, { "field": "parts", "severity": "warning", "hasFix": true, "messageIncludes": "should rest on part" } ], "fixResolves": true }
+}

@@ -1,0 +1,3 @@
+Regenerate the factory pack with:
+  python3 factory_test.py <outdir>
+  python3 audit_dxf.py   <outdir>

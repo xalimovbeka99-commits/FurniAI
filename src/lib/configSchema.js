@@ -17,7 +17,7 @@ import {
 } from "./knowledgeBase.js";
 import { createDefaultConfig, clampDimension, normaliseModules } from "./furnitureConfig.js";
 
-const MODULE_KINDS = ["door", "drawerBank", "openShelf", "applianceGap"];
+const MODULE_KINDS = ["door", "drawerBank", "openShelf"];
 
 const intIn = (v, min, max, fallback) => {
   const n = Math.round(Number(v));

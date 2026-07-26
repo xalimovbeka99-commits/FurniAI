@@ -1,0 +1,13 @@
+{
+  "id": "custom-intentional-gap",
+  "description": "No-false-positive regression: undeclared relationships are never guessed; a shelf floating between two sides with no restsOn declaration yields zero findings",
+  "class": "regression",
+  "capability": "preview",
+  "config": { "type": "custom", "w": 82, "h": 100, "d": 30,
+    "parts": [
+      { "role": "panel", "w": 2,  "h": 100, "d": 30, "x": -40, "y": 0,  "z": 0, "restsOnFloor": true, "restsOnParts": [] },
+      { "role": "panel", "w": 2,  "h": 100, "d": 30, "x": 40,  "y": 0,  "z": 0, "restsOnFloor": true, "restsOnParts": [] },
+      { "role": "shelf", "w": 78, "h": 2,   "d": 30, "x": 0,   "y": 10, "z": 0, "restsOnFloor": false, "restsOnParts": [] }
+    ] },
+  "expect": { "findings": [] }
+}

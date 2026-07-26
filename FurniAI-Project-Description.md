@@ -2,7 +2,7 @@
 
 ## What it is
 
-FurniAI is a custom-furniture e-commerce platform: a marketing landing page plus a live, in-browser 3D configurator, wired to a factory-dispatch order flow. A customer picks a design from a catalog, customizes its dimensions/materials/finish in real time on a rotating 3D model, and submits it as a manufacturing order (CNC cut list + customer details) via WhatsApp or a printable PDF sheet.
+FurniAI is a custom-furniture e-commerce platform: a marketing landing page plus a live, in-browser 3D configurator, wired to a quote/factory-dispatch preview flow. A customer picks a design from a catalog, customizes its dimensions/materials/finish in real time on a rotating 3D model, and submits the concept plus an indicative cut list and customer details via WhatsApp or a printable PDF sheet. The current live output is not CNC-ready.
 
 **Live site:** `furnia.vercel.app`
 
@@ -71,7 +71,7 @@ Defined in a `DESIGNS` array (`index.html:514`), each entry is a parametric spec
 
 ### Factory dispatch flow (recently added — replaces a placeholder `alert()`)
 Clicking "Finish & get final price" now opens a full order modal instead of a stub alert:
-1. **`generateCutList(cfg)`** — computes real CNC-ready panel dimensions (mm, 18mm panel thickness assumption) by furniture type: side panels, top/bottom, back panel (HDF), shelves, dividers, drawer fronts/boxes, doors, plinth, countertop (Compact/Marble/Quartz 20mm for kitchens/vanities/sideboards), splashback for kitchens
+1. **`generateCutList(cfg)`** — computes an indicative panel schedule (mm, using simplified fixed-thickness assumptions) by furniture type: side panels, top/bottom, back panel (HDF), shelves, dividers, drawer fronts/boxes, doors, plinth, countertop and splashback. It does not include validated joinery, hardware drilling, drawings, nesting, tolerances or a machine profile, so it must not be sent directly to CNC.
 2. **`openOrderModal(cfg)`** — renders an order summary (name, type, dimensions, material, door style, price) plus the numbered cut list in a table, and a customer-details form (name, phone, delivery zone)
 3. **Dispatch options:**
    - **WhatsApp** — builds a `wa.me/?text=...` deep link (no hardcoded number — opens WhatsApp letting the user pick who to send it to) containing the full spec and cut list, live-updated as the customer fills in their details
