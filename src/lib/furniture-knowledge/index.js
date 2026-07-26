@@ -6,6 +6,10 @@
  * plus (ideally) its own dedicated rules file like wardrobe.js.
  */
 import * as wardrobe from "./wardrobe.js";
+import * as kitchen from "./kitchen.js";
+import * as bookcase from "./bookcase.js";
+import * as officeCabinet from "./officeCabinet.js";
+import * as sideboard from "./sideboard.js";
 import { genericKnowledgeFor } from "./genericCategory.js";
 import { FURNITURE_TYPES } from "../fsl/enums.js";
 
@@ -13,25 +17,30 @@ export { CONFIGURATOR_TYPE_MAP, isConfiguratorSupportedType, configuratorTypeFor
 export { CONFIGURATOR_COMPONENT_SUPPORT, componentSupport, isComponentConfiguratorSupported } from "./components.js";
 export { pickConfiguratorMaterialKey, isKnownConfiguratorMaterialKey } from "./materials.js";
 
-function wardrobeKnowledge() {
+/** Adapts a category module (wardrobe.js-shaped exports) into the normalized knowledge shape below. */
+function knowledgeFrom(mod) {
   return {
-    furnitureType: wardrobe.FURNITURE_TYPE,
-    dimensionRules: wardrobe.DIMENSION_RULES,
-    defaultMaterials: wardrobe.DEFAULT_MATERIALS,
-    defaultStyle: wardrobe.DEFAULT_STYLE,
-    allowedComponents: wardrobe.ALLOWED_COMPONENTS,
-    semanticWarnings: wardrobe.semanticWarnings,
-    defaultComponentQuantity: wardrobe.defaultComponentQuantity,
-    defaultComponentProperties: wardrobe.defaultComponentProperties,
-    defaultMaterialRefFor: wardrobe.defaultMaterialRefFor,
+    furnitureType: mod.FURNITURE_TYPE,
+    dimensionRules: mod.DIMENSION_RULES,
+    defaultMaterials: mod.DEFAULT_MATERIALS,
+    defaultStyle: mod.DEFAULT_STYLE,
+    allowedComponents: mod.ALLOWED_COMPONENTS,
+    semanticWarnings: mod.semanticWarnings,
+    defaultComponentQuantity: mod.defaultComponentQuantity,
+    defaultComponentProperties: mod.defaultComponentProperties,
+    defaultMaterialRefFor: mod.defaultMaterialRefFor,
   };
 }
 
 const KNOWLEDGE_BY_TYPE = {
-  wardrobe: wardrobeKnowledge,
+  wardrobe: () => knowledgeFrom(wardrobe),
+  kitchen: () => knowledgeFrom(kitchen),
+  bookcase: () => knowledgeFrom(bookcase),
+  office_cabinet: () => knowledgeFrom(officeCabinet),
+  sideboard: () => knowledgeFrom(sideboard),
 };
 
-/** The only category with dedicated rules today — everything else uses the generic fallback. */
+/** Categories with dedicated rules today — everything else uses the generic fallback. */
 export const CATEGORIES_WITH_DEDICATED_KNOWLEDGE = Object.freeze(Object.keys(KNOWLEDGE_BY_TYPE));
 
 /**

@@ -163,10 +163,29 @@ last piece, but nothing reads or writes it yet.
   current direction; this new 36-section prompt supersedes both. The spec file was
   removed from the working tree this session; `START-HERE.md`'s dangling reference to it
   was patched so the doc isn't broken, but its content still describes the old model.
-- **No automated tests anywhere.** Any new engine code should carry real tests from the
-  start — the vision prompt requires this explicitly (Section 36) and the "✓ tested"
-  claims already in this repo for `buildGeometry.js`/`pricing.js`/`production.js` are
-  not backed by anything that actually runs.
+- **No automated tests anywhere** *(true as of 2026-07-12, when this analysis was
+  written).* Any new engine code should carry real tests from the start — the vision
+  prompt requires this explicitly (Section 36) and the "✓ tested" claims already in
+  this repo for `buildGeometry.js`/`pricing.js`/`production.js` are not backed by
+  anything that actually runs.
+  **Update (2026-07-23):** no longer accurate for the code that didn't exist yet on
+  2026-07-12. FSL v1 (`src/lib/fsl/`, `src/lib/furniture-brain/`,
+  `src/lib/furniture-knowledge/`, the configurator adapter, the generation API route)
+  added Vitest, and a Phase 0 evaluation-harness pass (master plan §27) added
+  characterization tests for `furnitureConfig.js`, `buildGeometry.js`,
+  `configSchema.js`, and `knowledgeBase.js` — all previously untested. 154 tests pass
+  today, plus 13 explicit `test.todo` knownGap entries
+  (`furniture-brain/wardrobeBenchmark.test.js`) documenting what's still missing
+  rather than leaving it silently uncovered. `buildGeometry.js` now has panel-output
+  characterization tests specifically, closing part of the original gap this bullet
+  warned about — but `pricing.js` and `production.js` still have none, and neither
+  does a broader end-to-end geometry/production **evaluation harness** (the
+  benchmark-case suite described in the archived knowledge-research master prompt,
+  §15: multi-module wardrobes, corner/L-shapes, resize-after-production-intent, etc.
+  — see `docs/research/furniai-brain-knowledge-research-master-prompt.md`, and the
+  knownGap register above for the current, authoritative version of that list). Unit/
+  characterization tests on individual modules and end-to-end evaluation of
+  geometry/production output remain different things; only the former exists today.
 - **Loose end, unrelated to the new engine but open right now:** Supabase
   auth/saved-projects (roadmap pillar 6) is mid-flight. Real project credentials were
   wired into `index.html` this session but are still uncommitted pending your

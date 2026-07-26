@@ -187,8 +187,13 @@ See [fsl-v1.md](fsl-v1.md#known-limitations-v1).
 2. Wire `conversation_id`/`project_id` to Supabase once the saved-projects
    schema (`supabase/schema.sql`) is actually applied — right now they're
    accepted and echoed into `fsl.metadata` but nothing persists them.
-3. Add dedicated knowledge (`furniture-knowledge/kitchen.js`, etc.) for the
-   other four configurator-supported types instead of the generic fallback.
+3. ~~Add dedicated knowledge for the other four configurator-supported
+   types~~ — done: `kitchen.js`, `bookcase.js`, `officeCabinet.js`
+   (2026-07-22), and `sideboard.js` (2026-07-23, after confirming via a
+   read-only audit that it had the same inherited-default mismatch
+   `office_cabinet` had — the `cabinet` configurator type's 1800mm height
+   default). All five configurator-supported types now have dedicated
+   knowledge (see `docs/furniture-knowledge/*.md`).
 4. Consider whether hanging rails and drawer boxes are worth adding to
    `buildGeometry.js` — they're the two most product-relevant gaps the
    compatibility system surfaces today.

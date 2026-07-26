@@ -58,18 +58,21 @@ today, each as a single rectangular carcass:
 | `wardrobe` | Yes | `wardrobe` |
 | `kitchen` | Yes (one cabinet, not a fitted layout) | `kitchen` |
 | `bookcase` | Yes | `shelves` |
-| `office_cabinet` | Yes (existing `office` default is desk-height, 750mm — a pre-existing knowledgeBase.js quirk, not corrected here) | `office` |
-| `sideboard` | Yes (existing `cabinet` default is 1800mm tall — same caveat) | `cabinet` |
+| `office_cabinet` | Yes — dedicated knowledge corrects the inherited desk-height (750mm) default | `office` |
+| `sideboard` | Yes — dedicated knowledge corrects the inherited tall-cabinet (1800mm) default | `cabinet` |
 | `walk_in_closet` | No | — |
 | `tv_unit` | No | — |
 | `shoe_cabinet` | No | — |
 | `bathroom_vanity` | No | — |
 | `custom_cabinet` | No | — |
 
-Only **wardrobe** has dedicated knowledge (dimension ranges, door-width rules,
-component defaults) per Section 18's "start with one robust category." The
-other nine use a generic fallback (`furniture-knowledge/genericCategory.js`):
-wide structural bounds, a rough concept default, no component-specific rules.
+**wardrobe**, **kitchen**, **bookcase**, **office_cabinet**, and **sideboard**
+have dedicated knowledge (dimension ranges, category-specific semantic
+checks, component defaults) — see `docs/furniture-knowledge/*.md` for each.
+The remaining five (`walk_in_closet`, `tv_unit`, `shoe_cabinet`,
+`bathroom_vanity`, `custom_cabinet`) use a generic fallback
+(`furniture-knowledge/genericCategory.js`): wide structural bounds, a rough
+concept default, no component-specific rules.
 
 ## Components
 
@@ -144,8 +147,8 @@ Section 3 primary user story, dimensions/components explicit) and
 
 ## Known limitations (v1)
 
-- Only wardrobe has dedicated knowledge; all other types use wide generic
-  bounds and no component rules.
+- Wardrobe, kitchen, bookcase, and office_cabinet have dedicated knowledge;
+  the remaining six types use wide generic bounds and no component rules.
 - `/builder` renders one carcass per request — no multi-cabinet runs, so a
   "kitchen" FSL document means one cabinet in kitchen styling, not a fitted
   kitchen layout.

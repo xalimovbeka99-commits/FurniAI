@@ -10,11 +10,16 @@
  * Where a configurator mapping exists (categories.js), the default comes
  * straight from knowledgeBase.js's own FURNITURE_TYPES defaults, so a
  * "no dimensions given" concept and what `/builder` would actually build
- * never disagree. Two of those existing defaults are shaped oddly for
- * their FSL type — office_cabinet -> "office" defaults to desk height
- * (750mm), sideboard -> "cabinet" defaults to 1800mm tall — that's a
- * pre-existing knowledgeBase.js modelling choice, not something invented
- * here; see docs/fsl-v1.md limitations rather than silently overriding it.
+ * never disagree. Two configurator-mapped types this file would otherwise
+ * serve had a default shaped oddly for their FSL type — office_cabinet ->
+ * "office" defaulting to desk height (750mm), sideboard -> "cabinet"
+ * defaulting to 1800mm tall — both are a pre-existing knowledgeBase.js
+ * modelling choice, not something invented here, and both now have a
+ * dedicated knowledge file (officeCabinet.js, sideboard.js) that corrects
+ * the default instead, so this fallback no longer actually serves either
+ * type. Left documented here as a warning for the *next* type added to
+ * CONFIGURATOR_TYPE_MAP: check knowledgeBase.js's default before assuming
+ * this fallback's numbers are sensible for a new FSL type.
  */
 import { FURNITURE_TYPES as CONFIGURATOR_FURNITURE_TYPES } from "../knowledgeBase.js";
 import { configuratorTypeFor } from "./categories.js";

@@ -26,7 +26,7 @@ is exposed as an API for other systems to call.
 |---|---|---|---|
 | 1 | Multi-channel input (photo / PDF / drawing / typed / voice, any device) | **Text only** at the time of writing; image/PDF input and browser-voice input were added the same day — see "Status update" below. | `src/app/api/v1/furniture/generate/route.js` |
 | 2 | AI brain + internal furniture "language" | **Real, working first version.** Natural language → validated structured spec. | `src/lib/furniture-brain/brain.js`, `src/lib/fsl/` (schema/enums/validator) |
-| 3 | Deep furniture knowledge (learned from a large reference corpus) | **One category only, hand-authored.** Not learned from ingested reference material. | `src/lib/furniture-knowledge/wardrobe.js`; everything else falls back to `genericCategory.js` |
+| 3 | Deep furniture knowledge (learned from a large reference corpus) | **Five categories, hand-authored** (wardrobe, kitchen, bookcase, office_cabinet, sideboard — see "Status update" below). Still not learned from ingested reference material — see Decision below. | `src/lib/furniture-knowledge/{wardrobe,kitchen,bookcase,officeCabinet,sideboard}.js`; the remaining five FSL types fall back to `genericCategory.js` |
 | 4 | Live 3D model the client edits themselves | **Real but narrow.** Parametric, genuinely reactive — but covers fewer types/shapes than the live product already does elsewhere. | `src/components/builder/`, `src/lib/buildGeometry.js`, `src/lib/furnitureConfig.js` |
 | 5 | Production output (CNC, nesting, blueprints, board specs) | **Cut list + drilling notes only.** No true nesting/sheet optimization, no CAD-grade drawing sheets, no BAZIS/CNC file export. | `src/lib/production.js` |
 | 6 | Public API | **First surface exists.** One endpoint, not yet versioned/hardened/documented for external consumers. | `src/app/api/v1/furniture/generate/route.js` |
@@ -91,6 +91,49 @@ Phase 1 (input expansion) work started same day this roadmap was written:
   proposed, with no server-side voice handling.
 - Orphaned `/cad-lab` support modules deleted (see above).
 
+**Decision (2026-07-22): furniture expertise is built as hand-authored rule
+files per category, not a reference-ingestion/retrieval system** — this
+resolves what was open question 1 below. `kitchen.js`, `bookcase.js`, and
+`officeCabinet.js` were added the same day, each with its own dimension
+rules, defaults, and at least one category-specific semantic check (kitchen:
+worktop-depth clearance and base-cabinet door width; bookcase: shelf-span
+sag risk; office_cabinet: filing-drawer width) — the same shape as
+`wardrobe.js`, not a shortcut. `office_cabinet` also fixes a latent bug this
+process surfaced: it previously inherited the `office` configurator type's
+750mm desk-height default via the generic fallback, which never fit what
+"office_cabinet" names — it now defaults to a proper tall storage cabinet
+(1800mm). All four dedicated categories are registered in
+`furniture-knowledge/index.js`'s `KNOWLEDGE_BY_TYPE` and covered by tests
+(29 new, 76 total passing). Reference-ingestion remains a possible future
+upgrade, not ruled out — just not the v1 approach.
+
+**Update (2026-07-23): `sideboard.js` added, same pattern.** A read-only
+audit (requested before writing any code) confirmed `sideboard` had the
+identical bug: it fell through to `genericCategory.js` and inherited the
+`cabinet` configurator type's 1800mm-tall default from `knowledgeBase.js` —
+wrong for a low, wide, display-height piece. `sideboard.js` now corrects
+this (default 1600×800×450mm; see
+[`docs/furniture-knowledge/sideboard-rules.md`](furniture-knowledge/sideboard-rules.md)),
+registered in `KNOWLEDGE_BY_TYPE` the same way, with a regression test
+proving it no longer resolves through the generic fallback. Deliberately
+kept independent — no shared "cabinet base" module was introduced; each
+category file remains its own thing, consistent with the decision above.
+`leg` is in its allowed-components list (a genuinely typical sideboard
+detail) but has no default quantity/properties, so it only appears when a
+request explicitly asks for it — and since `leg` geometry is unsupported by
+`/builder` today, any design that does include it is correctly reported as
+`partially_supported`, not silently marked compatible. All five
+configurator-supported FSL types now have dedicated knowledge; 90 tests
+passing (76 → 90, +14).
+
+A much larger research charter proposing exactly that reference-ingestion/
+retrieval architecture (source registries, catalogs, case memory, GitHub/
+standards/Reddit research, CAM/CNC/nesting) was reviewed on 2026-07-23 and
+archived, unactioned, at
+[`docs/research/furniai-brain-knowledge-research-master-prompt.md`](research/furniai-brain-knowledge-research-master-prompt.md)
+— kept as a starting point if this decision is ever revisited, not as a plan
+in progress.
+
 **Pillar 4 (geometry expansion) is deprioritized, not just deferred.** The
 live static site's corner-cabinet/plinth/door geometry has already been
 through a long fix → revert → fix cycle (see git history) and the founder
@@ -108,15 +151,15 @@ ships on its own:
    `furniture-brain` request path~~ — done 2026-07-22, see "Status update"
    above. Remaining: surface attachment support in a real client, not just
    `/fsl-lab`.
-2. **Knowledge expansion (pillar 3).** Add dedicated
-   `furniture-knowledge/<type>.js` files for the next few categories
-   (kitchen, bookcase, office cabinet are the ones `/builder` can already
-   render — see `fsl-v1.md`'s compatibility table). Separately, decide how
-   "deep expertise" actually gets built: hand-authored rule files (current
-   pattern — precise, slow to scale) versus ingesting real reference
-   material (supplier catalogs, joinery standards, CNC/BAZIS specs) into a
-   retrieval system the brain consults. These are very different engineering
-   efforts and worth deciding explicitly rather than defaulting into one.
+2. **Knowledge expansion (pillar 3).** ~~Add dedicated
+   `furniture-knowledge/<type>.js` files for the next few categories~~ — done:
+   kitchen, bookcase, office_cabinet (2026-07-22), sideboard (2026-07-23);
+   see "Status update" above. All five configurator-supported FSL types now
+   have dedicated knowledge. The five configurator-unsupported types
+   (`walk_in_closet`, `tv_unit`, `shoe_cabinet`, `bathroom_vanity`,
+   `custom_cabinet`) still use the generic fallback by design — no
+   configurator to render them into yet, so dedicated rules would have
+   nothing to validate against beyond the concept stage.
 3. ~~**Geometry expansion (pillar 4).**~~ **Skipped by decision (2026-07-22)**
    — no proactive rebuild of `buildGeometry.js`/the configurator to chase
    parity with the live site's corner/L/U/kitchen-run geometry. Only add a
@@ -131,10 +174,9 @@ ships on its own:
 
 ## Open questions (need your call, not a guess)
 
-1. **How should furniture expertise actually be built** — more hand-written
-   rule files per category (current, proven pattern), or ingesting real
-   reference documents into a retrieval layer the brain queries at
-   generation time? Different systems, different cost/timeline.
+1. ~~**How should furniture expertise actually be built**~~ — decided
+   2026-07-22: hand-written rule files per category, see "Status update"
+   above.
 2. **What's acceptable cost/latency for multimodal input?** Vision/PDF
    analysis is a per-request AI cost and adds latency versus the plain text
    path — worth setting a rough budget as usage grows.
@@ -142,3 +184,6 @@ ships on its own:
    what order (geometry first, then production, then cut the static site
    over)? The long-term home is decided; the migration plan itself isn't
    written yet.
+4. ~~**Should `sideboard` get dedicated knowledge next**~~ — resolved
+   2026-07-23: audited, confirmed the same inherited-default mismatch, and
+   fixed with `sideboard.js`. See "Status update" above.
