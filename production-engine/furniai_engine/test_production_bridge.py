@@ -75,15 +75,42 @@ class ProductionBridgeTests(unittest.TestCase):
             "glass_panel",
         )
 
-    def test_rejects_corner_geometry_instead_of_flattening_it(self):
+    def test_rejects_fork_corner_geometry_instead_of_flattening_it(self):
+        # kitchen_u is a fork (two side runs on opposite ends of the same back
+        # run), which needs placement math and a visual check this engine
+        # cannot do yet - see planner._expand_kitchen_runs. It stays rejected
+        # even though the simpler two-run L-shape chain is now supported.
         payload = wardrobe_payload()
-        payload["config"]["type"] = "kitchen_l"
+        payload["config"]["type"] = "kitchen_u"
         with self.assertRaises(production_api.ProductionRequestError) as raised:
             production_api.frontend_config_to_spec(payload)
         self.assertEqual(
             raised.exception.code,
             "PRODUCTION_GEOMETRY_NOT_SUPPORTED",
         )
+
+    def test_builds_l_shape_kitchen_from_explicit_run_lengths(self):
+        payload = wardrobe_payload()
+        payload["config"] = {
+            "name": "Corner Kitchen",
+            "type": "kitchen_l",
+            "mat": "sage",
+            "handle": "black",
+            "runs": [{"length": 3000}, {"length": 1800}],
+        }
+        spec = production_api.frontend_config_to_spec(payload)
+        self.assertEqual(spec["type"], "kitchen")
+        self.assertEqual(spec["layout"], "l_shape")
+        self.assertEqual(
+            [r["length"] for r in spec["runs"]], [3000, 1800],
+        )
+        self.assertEqual(spec["runs"][0]["corner"], "end")
+        self.assertEqual(spec["runs"][1]["corner"], "start")
+        # "never guess a dimension": a missing runs array is a clear 4xx,
+        # not a fabricated run length.
+        payload["config"].pop("runs")
+        with self.assertRaises(production_api.ProductionRequestError):
+            production_api.frontend_config_to_spec(payload)
 
     def test_builds_review_pack_but_never_factory_releases_it(self):
         report, packed = production_api.build_factory_review_pack(wardrobe_payload())

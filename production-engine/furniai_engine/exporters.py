@@ -156,26 +156,42 @@ def scene_json(units) -> Dict[str, Any]:
     for u in units:
         off_x = u.spec.get("_stack_x", 0.0)
         off_y = u.spec.get("_stack_y", 0.0)
+        # A multi-run kitchen anchors this whole run's local frame at
+        # (corner_x, corner_z) and turns it rot degrees (0 or 90) - see
+        # planner._expand_kitchen_runs. Every other unit defaults to
+        # corner_x=corner_z=rot=0, which collapses back to exactly the
+        # existing "x + off_x, z" placement below - no behaviour change
+        # for anything that isn't a multi-run kitchen.
+        corner_x = u.spec.get("_corner_x", 0.0)
+        corner_z = u.spec.get("_corner_z", 0.0)
+        rot = u.spec.get("_stack_rot_deg", 0)
         for p in u.parts:
             dx, dy, dz = p.size
             if dx <= 0 or dy <= 0 or dz <= 0:
                 continue
             mat = S.MATERIALS.get(p.material, {})
             for k, (x, y, z) in enumerate(p.instances or [p.pos]):
+                lx, lz = x + off_x, z
+                if rot == 90:
+                    wx, wz = corner_x + lz, corner_z + lx
+                    wdx, wdz = dz, dx
+                else:
+                    wx, wz = corner_x + lx, corner_z + lz
+                    wdx, wdz = dx, dz
                 boxes.append({
                     "pid": p.pid if p.qty == 1 else f"{p.pid}#{k+1}",
                     "name": p.name, "group": p.group,
-                    "pos": [round(x + off_x, 1), round(y + off_y, 1), round(z, 1)],
-                    "size": [round(dx, 1), round(dy, 1), round(dz, 1)],
+                    "pos": [round(wx, 1), round(y + off_y, 1), round(wz, 1)],
+                    "size": [round(wdx, 1), round(dy, 1), round(wdz, 1)],
                     "color": mat.get("hex", "#cfcfcf"),
                     "material": mat.get("label", p.material),
                     "cut": [round(p.length, 1), round(p.width, 1),
                             round(p.thickness, 1)],
                     "qty": p.qty,
                 })
-                bbox[0] = max(bbox[0], x + off_x + dx)
+                bbox[0] = max(bbox[0], wx + wdx)
                 bbox[1] = max(bbox[1], y + off_y + dy)
-                bbox[2] = max(bbox[2], z + dz)
+                bbox[2] = max(bbox[2], wz + wdz)
     return {
         "units": [u.meta for u in units],
         "bbox": [round(v, 1) for v in bbox],

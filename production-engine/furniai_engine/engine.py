@@ -248,6 +248,20 @@ class CabinetBuilder:
         if not s.get("bays"):
             s["bays"] = self._auto_bays(s)
         s["bays"] = self._enforce_spans(s)
+        # A run flagged as meeting a corner (see planner._expand_kitchen_runs)
+        # loses the front on whichever bay actually sits at the corner - a
+        # real hinged/drawer front there would swing straight into the
+        # perpendicular run. This is the "blind corner" every fitted kitchen
+        # has; the disclosed BLIND_CORNER warning (raised once self.u exists,
+        # in build()) is what tells the factory a pull-out is still needed.
+        role = s.get("_corner_role")
+        if role in ("blind_end", "blind_start") and s["bays"]:
+            idx = len(s["bays"]) - 1 if role == "blind_end" else 0
+            bay = s["bays"][idx]
+            bay["front"] = {"kind": "none"}
+            for m in bay.get("modules", []):
+                m["front"] = {"kind": "none"}
+            s["_blind_corner_bay_index"] = idx
         return s
 
     def _enforce_spans(self, s):
@@ -352,6 +366,13 @@ class CabinetBuilder:
 
         self.bore_zones = {}          # bay index -> list of (y0, y1) absolute
         self.shelf_fix = {}           # bay index -> absolute Y of each fixed shelf
+        if s.get("_corner_role") in ("blind_end", "blind_start"):
+            idx = s.get("_blind_corner_bay_index", 0)
+            self.u.flag("warn", "BLIND_CORNER",
+                        f"Bay {idx + 1} has no front - blind corner needs a "
+                        f"pull-out mechanism to be usable.",
+                        "Specify a corner pull-out or carousel accessory "
+                        "before manufacturing release.")
         self._bays()                  # layout first: it decides where holes go
         self._fronts()                # fronts add hinge-plate zones
         self._carcass()               # now bore only what is actually needed

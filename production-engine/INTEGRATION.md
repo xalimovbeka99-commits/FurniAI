@@ -79,14 +79,24 @@ than silently regenerating different machine files.
 
 Only `RELEASED_BY_FACTORY` may be presented as ready to manufacture.
 
-## Current blockers before connecting the UI
+## Current integration gaps
 
 - The existing configurator stores module widths as ratios; the Python planner
   may split long runs and currently discards custom bay layouts during that
   split. A lossless, tested module/bay adapter is required.
-- Kitchen requests need individual cabinet-run lengths, corner-cabinet strategy,
-  cabinet module widths, worktop/joinery finish, fillers, scribes and end panels.
-  One overall width is insufficient for production.
+- The authenticated server bridge supports rectangular configurations and
+  accepts `kitchen_l` only when the request supplies exactly two explicit run
+  lengths. It deliberately rejects `kitchen_u` and island layouts rather than
+  flattening them into an unsafe straight run.
+- The engine has an experimental two-run L-kitchen placement proof with
+  separate run lengths, perpendicular world geometry, separate drawing
+  elevations and disclosed blind-corner bays. The current browser configurator
+  still has no second-run input and marks L-kitchen production unsupported, so
+  the server contract is exercised only by explicit API requests and tests. It
+  is not a qualified corner-cabinet system. The product UI still needs separate
+  run-length inputs, cabinet module widths, a selected
+  corner-accessory/cabinet strategy, worktop and joinery finish, fillers,
+  scribes and end panels.
 - Vanity jobs cover the joinery unit only: cabinet geometry, drawers/doors,
   mounting system, wall substrate, finish and any user-specified cut-out
   envelope. FurniAI does not design plumbing or sanitary fixtures.

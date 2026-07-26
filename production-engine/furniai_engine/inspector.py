@@ -184,10 +184,10 @@ def _gate_geometry(r, spec, units, parts, scene):
                   f"{p.name}: {len(p.instances)} positions for qty {p.qty}")
 
     bb = scene["bbox"]
-    want = [spec.get("width"), spec.get("height"), spec.get("depth")]
+    want = planner.expected_envelope(spec)
     r.add(G, "assembly fills its declared envelope",
           all(w is None or abs(b - w) < 1.5 for b, w in zip(bb, want)),
-          f"bbox {bb} vs spec {want}",
+          f"bbox {bb} vs planned envelope {want}",
           "Parts are missing, or a carcass offset is wrong.")
 
     # carcass closes out across the width
@@ -222,15 +222,27 @@ def _gate_geometry(r, spec, units, parts, scene):
                       f"{len(items)} leaves, total gap {gaps:.2f} vs "
                       f"{expect:.2f} expected")
 
-    # solid overlap
+    # solid overlap - world-placed, so a multi-run kitchen's perpendicular
+    # runs (see planner._expand_kitchen_runs) are checked against each other
+    # too, not just within one carcass. Defaults (corner_x=corner_z=rot=0)
+    # collapse to exactly the previous ox/oy-only placement for every other
+    # spec.
     boxes = []
     for u in units:
         ox = u.spec.get("_stack_x", 0.0); oy = u.spec.get("_stack_y", 0.0)
+        cx = u.spec.get("_corner_x", 0.0); cz = u.spec.get("_corner_z", 0.0)
+        rot = u.spec.get("_stack_rot_deg", 0)
         for p in u.parts:
             if p.group == "accessory":
                 continue
             for (x, y, z) in p.instances:
-                boxes.append((p, (x + ox, y + oy, z), p.size))
+                lx, lz = x + ox, z
+                dx, dy, dz = p.size
+                if rot == 90:
+                    wx, wz, wdx, wdz = cx + lz, cz + lx, dz, dx
+                else:
+                    wx, wz, wdx, wdz = cx + lx, cz + lz, dx, dz
+                boxes.append((p, (wx, y + oy, wz), (wdx, dy, wdz)))
     gd = S.CARCASS["back_groove_depth"] + 0.2
     clashes = []
     for (pa, pa_pos, pa_sz), (pb, pb_pos, pb_sz) in itertools.combinations(boxes, 2):

@@ -19,10 +19,24 @@ def build_id(spec: dict) -> str:
     return f"{h}"
 
 
+def dimension_label(spec: dict) -> str:
+    """Human-readable input dimensions without inventing missing values."""
+    runs = spec.get("runs")
+    if runs:
+        lengths = [r.get("length") for r in runs]
+        if all(isinstance(v, (int, float)) for v in lengths):
+            return "RUNS " + "+".join(f"{v:.0f}" for v in lengths) + "mm"
+        return "RUN DIMENSIONS INCOMPLETE"
+
+    dims = [spec.get("width"), spec.get("height"), spec.get("depth")]
+    if all(isinstance(v, (int, float)) for v in dims):
+        return "x".join(f"{v:.0f}" for v in dims)
+    return "DIMENSIONS INCOMPLETE"
+
+
 def stamp(spec: dict) -> str:
     """The one-line identity that appears on every artefact."""
     return (f"{spec.get('name', spec.get('type','unit'))} | "
-            f"{spec.get('width',0):.0f}x{spec.get('height',0):.0f}x"
-            f"{spec.get('depth',0):.0f} | "
+            f"{dimension_label(spec)} | "
             f"{spec.get('material','-')} | "
             f"BUILD {build_id(spec)} | STD {STANDARDS_VERSION}")

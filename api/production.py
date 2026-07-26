@@ -58,6 +58,7 @@ ALLOWED_ORIGINS = {
 TYPE_MAP = {
     "wardrobe": "wardrobe",
     "kitchen": "kitchen",
+    "kitchen_l": "kitchen",
     "vanity_freestanding": "vanity",
     "vanity_floating": "vanity",
     "bookshelf": "shelving",
@@ -67,11 +68,16 @@ TYPE_MAP = {
 UNSUPPORTED_TYPES = {
     "walkin_l": "L-shaped walk-ins need separate run lengths and a qualified corner-unit rule.",
     "walkin_u": "U-shaped walk-ins need three separate run lengths and qualified corner-unit rules.",
-    "kitchen_l": "L-shaped kitchens need separate run lengths and a qualified corner-cabinet strategy.",
-    "kitchen_u": "U-shaped kitchens need three separate run lengths and qualified corner-cabinet strategies.",
+    "kitchen_u": "U-shaped kitchens need a fork corner - two side runs attached to opposite "
+                 "ends of the same back run - which needs its own placement math this engine "
+                 "does not yet build and cannot be visually verified here. L-shaped "
+                 "(two-run) kitchens are supported.",
     "kitchen_island": "Kitchen-and-island projects need separate wall-run and island specifications.",
     "custom": "Freeform AI geometry is not yet accepted by the deterministic factory engine.",
 }
+
+MIN_RUN_LENGTH_MM = 300
+MAX_RUN_LENGTH_MM = 8000
 
 MATERIAL_MAP = {
     "oak": "oak",
@@ -150,6 +156,39 @@ def _millimetres(config: dict[str, Any], short_key: str, long_key: str) -> int:
         minimum=150,
         maximum=8000,
     )
+
+
+def _run_lengths(config: dict[str, Any]) -> list[int]:
+    """Two explicit wall-run lengths for an L-shaped kitchen.
+
+    The production engine never guesses a run length (see
+    production-engine/furniai_engine/planner.py: `_expand_kitchen_runs`), so
+    the browser must send exactly two runs; each entry uses the same
+    short-key-in-cm / long-key-in-mm convention as `_millimetres()`.
+    """
+    runs = config.get("runs")
+    if not isinstance(runs, list) or len(runs) != 2:
+        raise ProductionRequestError(
+            "kitchen_l requires a runs array of exactly 2 wall lengths, e.g. "
+            '"runs": [{"length": 3000}, {"length": 1800}] (millimetres).'
+        )
+    lengths: list[int] = []
+    for index, entry in enumerate(runs):
+        if not isinstance(entry, dict):
+            raise ProductionRequestError(f"runs[{index}] must be an object with a length.")
+        field = f"runs[{index}].length"
+        if "l" in entry:
+            try:
+                value: Any = float(entry["l"]) * 10
+            except (TypeError, ValueError) as exc:
+                raise ProductionRequestError(f"{field} must be a number.") from exc
+        else:
+            value = entry.get("length")
+        lengths.append(
+            _bounded_int(value, field=field, minimum=MIN_RUN_LENGTH_MM,
+                         maximum=MAX_RUN_LENGTH_MM)
+        )
+    return lengths
 
 
 def _door_front(door_type: str) -> dict[str, Any] | None:
@@ -272,6 +311,58 @@ def _vanity_bays(
     return bays
 
 
+def _material_handle_zone_name(
+    config: dict[str, Any], payload: dict[str, Any]
+) -> tuple[str, str, str, str]:
+    material_key = str(config.get("mat", config.get("material", "oak"))).lower()
+    material = MATERIAL_MAP.get(material_key)
+    if not material:
+        raise ProductionRequestError(f"Unknown production material {material_key!r}.")
+
+    handle_key = str(config.get("handle", "none")).lower()
+    handle = HANDLE_MAP.get(handle_key)
+    if handle is None:
+        raise ProductionRequestError(f"Unknown handle type {handle_key!r}.")
+
+    zone_raw = str(payload.get("zone", config.get("zone", "dubai"))).strip().lower()
+    zone = ZONE_MAP.get(zone_raw, "dubai")
+    safe_name = re.sub(
+        r"[^A-Za-z0-9 _.-]+",
+        "",
+        str(config.get("name", "FurniAI Furniture")),
+    ).strip()[:80] or "FurniAI Furniture"
+    return material, handle, zone, safe_name
+
+
+def _kitchen_l_spec(config: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    run_lengths = _run_lengths(config)
+    material, handle, zone, safe_name = _material_handle_zone_name(config, payload)
+    return {
+        "name": safe_name,
+        "unit_id": "FA1",
+        "type": "kitchen",
+        "layout": "l_shape",
+        "runs": [
+            {"length": run_lengths[0], "corner": "end"},
+            {"length": run_lengths[1], "corner": "start"},
+        ],
+        "material": material,
+        "front_material": material,
+        "handle": handle,
+        "led": str(config.get("led", "off")).lower(),
+        "zone": zone,
+        "brief": (
+            f"{safe_name}: L-shape kitchen, {run_lengths[0]} + {run_lengths[1]} mm "
+            "wall runs, blind corner disclosed, furniture joinery only."
+        ),
+        "source": {
+            "contract": "furniai-configurator/1",
+            "project_id": str(payload.get("project_id", ""))[:80],
+            "revision_id": str(payload.get("revision_id", ""))[:80],
+        },
+    }
+
+
 def frontend_config_to_spec(payload: dict[str, Any]) -> dict[str, Any]:
     config = payload.get("config", payload)
     if not isinstance(config, dict):
@@ -289,6 +380,9 @@ def frontend_config_to_spec(payload: dict[str, Any]) -> dict[str, Any]:
             f"Furniture type {frontend_type!r} is not supported by the production engine.",
             code="PRODUCTION_GEOMETRY_NOT_SUPPORTED",
         )
+
+    if frontend_type == "kitchen_l":
+        return _kitchen_l_spec(config, payload)
 
     width = _millimetres(config, "w", "width")
     height = _millimetres(config, "h", "height")
@@ -315,23 +409,7 @@ def frontend_config_to_spec(payload: dict[str, Any]) -> dict[str, Any]:
     if door_type not in DOOR_STYLE_MAP:
         raise ProductionRequestError(f"Unknown door type {door_type!r}.")
 
-    material_key = str(config.get("mat", config.get("material", "oak"))).lower()
-    material = MATERIAL_MAP.get(material_key)
-    if not material:
-        raise ProductionRequestError(f"Unknown production material {material_key!r}.")
-
-    handle_key = str(config.get("handle", "none")).lower()
-    handle = HANDLE_MAP.get(handle_key)
-    if handle is None:
-        raise ProductionRequestError(f"Unknown handle type {handle_key!r}.")
-
-    zone_raw = str(payload.get("zone", config.get("zone", "dubai"))).strip().lower()
-    zone = ZONE_MAP.get(zone_raw, "dubai")
-    safe_name = re.sub(
-        r"[^A-Za-z0-9 _.-]+",
-        "",
-        str(config.get("name", "FurniAI Furniture")),
-    ).strip()[:80] or "FurniAI Furniture"
+    material, handle, zone, safe_name = _material_handle_zone_name(config, payload)
 
     spec: dict[str, Any] = {
         "name": safe_name,

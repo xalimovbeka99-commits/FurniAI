@@ -419,13 +419,26 @@ def draw_nesting(c, nest_result, page_no, meta):
 def build_pdf(path, units, nest_result, quote, project=None):
     project = project or {}
     import buildid
-    Sheet.STAMP = buildid.stamp(project) if project.get("width") else ""
+    Sheet.STAMP = buildid.stamp(project) if project else ""
     meta = units[0].meta["unit_id"].split(".")[0]
     c = pdfcanvas.Canvas(path, pagesize=landscape(A3))
     c.setTitle(f"FurniAI shop drawings - {project.get('name', meta)}")
     n = 1
     _cover(c, units, nest_result, quote, project, n); n += 1
-    draw_elevations(c, units, n); n += 1
+    # A multi-run kitchen (see planner._expand_kitchen_runs) has no single
+    # front elevation - two perpendicular runs don't share a projection
+    # plane. _draw_elev only ever reasons in one run's own local X/Y/Z, so
+    # draw one elevation+plan-section sheet per run instead of flattening
+    # every run onto the same page, which would draw run B rotated wrong
+    # and stacked on top of run A.
+    run_ids = sorted({u.spec.get("_run_id") for u in units
+                       if u.spec.get("_run_id")})
+    if run_ids:
+        for rid in run_ids:
+            run_units = [u for u in units if u.spec.get("_run_id") == rid]
+            draw_elevations(c, run_units, n); n += 1
+    else:
+        draw_elevations(c, units, n); n += 1
     n = draw_part_sheets(c, units, n)
 
     from exporters import cutlist_rows

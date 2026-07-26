@@ -251,8 +251,13 @@ not a new architecture.
 
 These are real, already measured, and waiting:
 
-- **Corner units are not modelled.** Blind corner, L-shaped bi-fold, diagonal
-  carousel. This is the hardest part of any kitchen and the biggest gap.
+- **Corner systems are not factory-qualified.** The engine now has an
+  experimental two-run L-kitchen placement proof: perpendicular run frames,
+  separate elevations and blind bays with fronts suppressed. It does not yet
+  model or select a pull-out, L-shaped bi-fold or diagonal carousel, and it is
+  not exposed in the live configurator; only the authenticated server adapter
+  accepts an explicit two-run request. U-shaped and island production geometry
+  remain unsupported.
 - **External systems are outside scope.** FurniAI does not design or select
   appliances, plumbing, sanitary fixtures or electrical systems. If the user
   supplies an approved opening or clearance envelope that affects the joinery,

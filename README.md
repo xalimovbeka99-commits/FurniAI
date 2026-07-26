@@ -40,4 +40,10 @@ python3 -m http.server 8000
 ## Notes
 
 - Prices are indicative (AED) and computed in `app.js` (`Builder.updatePrice`); edit the `DESIGNS` array and `MAT` table at the top of `app.js` to change pieces, materials, and base prices.
-- This is the front-end. The deterministic cut-list / production-pack pipeline described in the FurniAI spec is represented visually (the "built to spec" section) and is the natural next thing to wire in.
+- Supported rectangular configurations can request an authenticated
+  deterministic factory-review pack through `/api/production`. The pack is
+  never presented as factory-released: physical machine qualification and a
+  signed first article are still required. The server adapter accepts an
+  experimental L-kitchen only with two explicit run lengths; the live browser
+  still marks L-kitchen production unsupported because it has no second-run
+  input. U/island production geometry remains rejected.

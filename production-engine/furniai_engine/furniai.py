@@ -33,7 +33,9 @@ def run(spec: dict, outdir: str) -> dict:
     exporters.export_viewer_html(units, os.path.join(outdir, "viewer.html"),
                                  title=spec.get("name", spec.get("type", "Unit")),
                                  stamp=buildid.stamp(spec))
-    exporters.export_scene_json(units, os.path.join(outdir, "scene.json"))
+    scene = exporters.scene_json(units)
+    with open(os.path.join(outdir, "scene.json"), "w", encoding="utf-8") as fh:
+        json.dump(scene, fh, indent=1)
     exporters.export_cutlist_csv(units, os.path.join(outdir, "cutlist.csv"))
     dxf = exporters.export_dxf_parts(units, os.path.join(outdir, "dxf"))
     ndxf = exporters.export_dxf_nest(nest_result, os.path.join(outdir, "nest"))
@@ -56,6 +58,7 @@ def run(spec: dict, outdir: str) -> dict:
         "carcasses": [u.meta for u in units],
         "part_count": sum(p.qty for p in parts),
         "unique_parts": len(parts),
+        "overall_envelope": scene["bbox"],
         "panel_area_m2": round(sum(p.area_m2 for p in parts), 3),
         "edgeband_m": round(sum(p.band_metres() for p in parts), 1),
         "sheets": nest_result["sheet_count"],
@@ -108,6 +111,16 @@ DEMOS = {
         "width": 3000, "height": 720, "depth": 560,
         "material": "sage", "handle": "black_strip", "zone": "dubai",
         "brief": "3.0m drawer-line base run, MR-MDF",
+    },
+    "kitchen_l": {
+        "name": "L-Shape Kitchen", "unit_id": "K2", "type": "kitchen",
+        "layout": "l_shape", "material": "sage", "handle": "black_strip",
+        "zone": "dubai",
+        "runs": [
+            {"length": 3000, "corner": "end"},
+            {"length": 1800, "corner": "start"},
+        ],
+        "brief": "3.0m + 1.8m L-shape run, MR-MDF, blind corner disclosed",
     },
     "vanity": {
         "name": "Guest Bath Vanity", "unit_id": "V1", "type": "vanity",
