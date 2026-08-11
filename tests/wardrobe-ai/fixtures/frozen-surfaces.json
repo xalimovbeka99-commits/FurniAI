@@ -4,7 +4,7 @@
   "algorithm": "sha256",
   "files": {
     "src/app/builder/page.jsx": "eb340f6e0b4ce7948001fc2e4b02567c5df760c6a5e758e944313d7f7793ead3",
-    "src/components/builder/FurnitureModel.jsx": "fab83a33f866d61e7a1ff28187239689fc90781463abbd064e2dc56a00025537",
+    "src/components/builder/FurnitureModel.jsx": "a70c5a5dfbc6a2086d240aee1337484a471e3462a7ea6c1dfec456c24a0a3dbe",
     "src/store/furnitureStore.js": "e8edf73aa7141d38171681c2074b7e470ada4a7f2304c314ef58c6c07d731c33",
     "src/lib/furnitureConfig.js": "0e5b7966e6d3b5d9f10e2ead5e3dcb6432917b63ed29dd876ac278c1cc16efec",
     "src/lib/configSchema.js": "c0a8def6ec24db6c28ed390bdf8a22daf8c9810b58669db8735a86b8e4bde0d6",
@@ -20,6 +20,11 @@
       "file": "src/components/builder/FurnitureModel.jsx",
       "reason": "Same root cause as page.jsx: stale baseline, not a new violation. The diff replaces `useMemo(() => buildGeometry(config), [config])` with a conditional that renders `buildWardrobeGeometry(wardrobeModel)` when a Wardrobe AI model exists, falling back to the exact original `buildGeometry(config)` otherwise. The render loop, click-to-select behavior, and materials logic below this hook are byte-for-byte unchanged. Full diff verified via `git diff -- src/components/builder/FurnitureModel.jsx` before updating this hash.",
       "diffSummary": "+13/-2 lines: useWardrobeAIStore + buildWardrobeGeometry imports, wardrobeModel selector, useMemo body becomes a ternary, dependency array gains wardrobeModel."
+    },
+    {
+      "file": "src/components/builder/FurnitureModel.jsx",
+      "reason": "Reproducibility fix, not a content change: the hash above was originally captured from a working-tree copy with LF line endings; core.autocrlf=true (no .gitattributes override) means a genuinely clean `git clone`/`git worktree add` checkout of this exact commit materializes this file with CRLF line endings instead, hashing differently even though the byte content of every line is identical. Re-captured from `git worktree add --detach <dir> <commit>` so the recorded hash matches what any clean checkout on this platform actually produces.",
+      "diffSummary": "Hash only; no source change. Same root cause could recur for any frozen file if it is ever git-added while its working-tree copy has LF endings — verify frozen-surface hashes from a clean worktree checkout, not the authoring working tree."
     }
   ],
   "defaultWardrobeSemanticBaseline": {

@@ -8,12 +8,10 @@ reported as `NOT IMPLEMENTED`, never silently absent or implied to exist.
 **Wardrobe AI exists only inside this repository's Next.js workspace
 (`src/`) and has not been deployed anywhere.** The live, customer-facing
 site at the current Vercel deployment is still the static `index.html`/
-`app.js`/`api/chat.js` build described in
-[docs/architecture/SYSTEM_ARCHITECTURE.md](architecture/SYSTEM_ARCHITECTURE.md)
-— that deployment does not import from `src/` at all, so nothing in this
-phase changes what a real visitor sees today, and no build/deploy step run
-as part of Phase 1 has published `src/app/builder`'s new "Ask AI" panel
-anywhere public.
+`app.js`/`api/chat.js` build at the repository root — that deployment does
+not import from `src/` at all, so nothing in this phase changes what a real
+visitor sees today, and no build/deploy step run as part of Phase 1 has
+published `src/app/builder`'s new "Ask AI" panel anywhere public.
 
 Concretely:
 - No `vercel.json` routing change, environment variable, or build config

@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "docs:check": "node scripts/check-docs.mjs",
     "test": "npm run test:unit && npm run test:validator",
     "test:unit": "vitest run",
     "test:watch": "vitest",
@@ -24,6 +25,8 @@
   },
   "devDependencies": {
     "autoprefixer": "^10.4.20",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^14.2.16",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.15",
     "vitest": "^2.1.9"

@@ -10,7 +10,7 @@ export default function NotFound() {
         Page not found
       </h1>
       <p className="text-[#5C626E] text-sm max-w-xs leading-relaxed mb-10">
-        This URL doesn't exist. The configurator and gallery are just one click away.
+        This URL does not exist. The configurator and gallery are just one click away.
       </p>
       <div className="flex flex-wrap gap-4 justify-center">
         <Link
