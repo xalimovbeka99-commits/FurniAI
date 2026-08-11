@@ -1,0 +1,23 @@
+{
+  "fixtureVersion": "frozen-surfaces/1",
+  "capturedAt": "2026-08-11",
+  "algorithm": "sha256",
+  "files": {
+    "src/app/builder/page.jsx": "9e9c64614247ede7d71de266440ba88c83cdc6b41293e1668a21461ecee0d005",
+    "src/components/builder/FurnitureModel.jsx": "afa4ff35325831736af8399639331b4ce1476925c47942d8a8bdef53ddc1ba9a",
+    "src/store/furnitureStore.js": "e8edf73aa7141d38171681c2074b7e470ada4a7f2304c314ef58c6c07d731c33",
+    "src/lib/furnitureConfig.js": "0e5b7966e6d3b5d9f10e2ead5e3dcb6432917b63ed29dd876ac278c1cc16efec",
+    "src/lib/configSchema.js": "c0a8def6ec24db6c28ed390bdf8a22daf8c9810b58669db8735a86b8e4bde0d6",
+    "src/lib/buildGeometry.js": "447f29e0c8c10827716eba65ab305a444a8e9532b849d90b15c3ea9aa6ace298"
+  },
+  "defaultWardrobeSemanticBaseline": {
+    "type": "wardrobe",
+    "dimensionsMetres": { "width": 2.4, "height": 2.8, "depth": 0.6 },
+    "moduleKinds": ["door", "door", "drawerBank"],
+    "moduleCount": 3,
+    "shelfCount": 6,
+    "drawerFrontCount": 3,
+    "doorCount": 2,
+    "dividerCount": 2
+  }
+}

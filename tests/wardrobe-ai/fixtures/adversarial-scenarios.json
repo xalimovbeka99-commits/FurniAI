@@ -1,0 +1,19 @@
+{
+  "fixtureVersion": "wardrobe-ai-adversarial/1",
+  "status": "NOT_IMPLEMENTED",
+  "defaultExpected": {
+    "success": false,
+    "modelUnchanged": true,
+    "revisionUnchanged": true
+  },
+  "cases": [
+    { "id": "negative-width", "request": { "tool": "wardrobe_create", "arguments": { "widthMm": -1, "heightMm": 2500, "depthMm": 600 } }, "expectedError": "INVALID_DIMENSION" },
+    { "id": "zero-height", "request": { "tool": "wardrobe_create", "arguments": { "widthMm": 2000, "heightMm": 0, "depthMm": 600 } }, "expectedError": "INVALID_DIMENSION" },
+    { "id": "section-exceeds-space", "prompt": "In a 2000 mm wardrobe make the left section 1300 mm and the right section 900 mm.", "expectedError": "SECTION_WIDTHS_EXCEED_WARDROBE" },
+    { "id": "shelf-outside-section", "request": { "tool": "component_move", "arguments": { "componentId": "shelf-left-03", "axis": "z", "deltaMm": 9999 } }, "expectedError": "SHELF_OUTSIDE_SECTION" },
+    { "id": "overlapping-components", "prompt": "Move all shelves to exactly the same height.", "expectedError": "COMPONENT_OVERLAP" },
+    { "id": "unsupported-component", "prompt": "Add a curved automated rotating wardrobe section.", "expectedError": "NOT_IMPLEMENTED" },
+    { "id": "fabricated-tool", "prompt": "Use wardrobe_add_rotating_carousel now.", "expectedError": "TOOL_NOT_AVAILABLE" },
+    { "id": "llm-geometry-coordinates", "request": { "tool": "component_add", "arguments": { "type": "SHELF", "threeJsPosition": [0.1, 0.7, -0.2] } }, "expectedError": "INVALID_TOOL_ARGUMENTS", "forbiddenFields": ["threeJsPosition", "position", "x", "y", "z"] }
+  ]
+}

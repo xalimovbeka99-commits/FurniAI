@@ -1,0 +1,41 @@
+{
+  "fixtureVersion": "wardrobe-ai-verification/1",
+  "status": "NOT_IMPLEMENTED",
+  "coordinatePolicy": "Expected results contain canonical semantic properties only. Three.js coordinates are forbidden.",
+  "scenarios": [
+    {
+      "id": "create-three-section-wardrobe",
+      "prompt": "Create a 2400 mm wide, 2600 mm high, 600 mm deep wardrobe. Three sections: left 600 mm with six shelves, middle 1000 mm with double hanging, and use the remaining width on the right for four drawers with hanging above.",
+      "expected": {
+        "dimensionsMm": { "width": 2400, "height": 2600, "depth": 600 },
+        "sectionCount": 3,
+        "sections": [
+          { "semanticRef": "left", "widthMm": 600, "componentCounts": { "SHELF": 6 } },
+          { "semanticRef": "middle", "widthMm": 1000, "componentCounts": { "HANGING_RAIL": 2 } },
+          { "semanticRef": "right", "widthMm": 800, "componentCounts": { "DRAWER_BANK": 1, "HANGING_RAIL": 1 }, "drawerCount": 4 }
+        ]
+      }
+    },
+    {
+      "id": "asymmetric-explicit-absolute-widths",
+      "prompt": "Create a 2700 mm wide, 2500 mm high, 600 mm deep asymmetric wardrobe with absolute section widths of 550 mm, 925 mm, and 1225 mm from left to right.",
+      "expected": {
+        "dimensionsMm": { "width": 2700, "height": 2500, "depth": 600 },
+        "sectionCount": 3,
+        "sectionWidthsMm": [550, 925, 1225],
+        "sectionWidthsAreAbsolute": true,
+        "sectionWidthSumMm": 2700
+      }
+    },
+    {
+      "id": "two-equal-sections",
+      "prompt": "Create a 2000 x 2500 x 600 mm wardrobe with two equal sections.",
+      "expected": {
+        "dimensionsMm": { "width": 2000, "height": 2500, "depth": 600 },
+        "sectionCount": 2,
+        "sectionWidthsMm": [1000, 1000],
+        "sectionWidthsAreEqual": true
+      }
+    }
+  ]
+}

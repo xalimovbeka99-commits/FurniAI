@@ -1,0 +1,28 @@
+{
+  "fixtureVersion": "wardrobe-ai-conversation/1",
+  "status": "NOT_IMPLEMENTED",
+  "scenarios": [
+    {
+      "id": "stable-model-five-turn-edit",
+      "preconditions": {
+        "singleCanonicalModel": true,
+        "stableIdsRequired": true,
+        "successfulTurnCreatesRevision": true
+      },
+      "turns": [
+        { "turn": 1, "prompt": "Create a 2400 x 2600 x 600 mm wardrobe with three sections.", "expected": { "revision": 1, "sectionCount": 3 } },
+        { "turn": 2, "prompt": "Make the left section 700 mm.", "expected": { "revision": 2, "sectionRef": "left", "widthMm": 700, "preserveUnchangedIds": true } },
+        { "turn": 3, "prompt": "Add six shelves there.", "expected": { "revision": 3, "sectionRef": "left", "componentCounts": { "SHELF": 6 }, "preserveUnchangedIds": true } },
+        { "turn": 4, "prompt": "Move shelf 3 exactly 125 mm upward.", "expected": { "revision": 4, "componentOrdinal": { "type": "SHELF", "ordinal": 3, "sectionRef": "left" }, "deltaMm": 125, "preserveTargetId": true, "preserveUnchangedIds": true } },
+        { "turn": 5, "prompt": "Remove the top shelf.", "expected": { "revision": 5, "sectionRef": "left", "componentCounts": { "SHELF": 5 }, "removedSemanticRef": "top-shelf", "preserveRemainingIds": true } }
+      ],
+      "finalExpected": {
+        "sameAggregateIdAcrossTurns": true,
+        "revision": 5,
+        "leftSectionWidthMm": 700,
+        "leftShelfCount": 5,
+        "allDimensionsAreIntegerMm": true
+      }
+    }
+  ]
+}
