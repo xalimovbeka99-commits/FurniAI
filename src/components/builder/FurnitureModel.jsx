@@ -11,7 +11,9 @@
  */
 import { useMemo } from "react";
 import { useFurnitureStore } from "@/store/furnitureStore";
+import { useWardrobeAIStore } from "@/store/wardrobeAIStore";
 import { buildGeometry } from "@/lib/buildGeometry";
+import { buildWardrobeGeometry } from "@/lib/wardrobe-model/buildWardrobeGeometry";
 import { MATERIALS } from "@/lib/knowledgeBase";
 
 // Roles that should look like the chosen material; others are neutral carcass.
@@ -34,8 +36,15 @@ export default function FurnitureModel({ config: customConfig, selectModule: cus
   const selectModule = customSelectModule || storeSelectModule;
   const selectedModule = customSelectedModule !== undefined ? customSelectedModule : storeSelectedModule;
 
-  // Rebuild only when the config actually changes.
-  const parts = useMemo(() => buildGeometry(config), [config]);
+  // A wardrobe built by the Wardrobe AI (src/lib/wardrobe-model) takes over
+  // rendering when one exists; otherwise this falls back to the existing
+  // manually-configured piece exactly as before. Same part shape either way
+  // — see buildWardrobeGeometry.js.
+  const wardrobeModel = useWardrobeAIStore((s) => s.model);
+  const parts = useMemo(
+    () => (wardrobeModel ? buildWardrobeGeometry(wardrobeModel) : buildGeometry(config)),
+    [wardrobeModel, config]
+  );
 
   return (
     <group>

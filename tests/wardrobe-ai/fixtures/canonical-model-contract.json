@@ -1,0 +1,44 @@
+{
+  "contractVersion": "wardrobe-model-verification/1",
+  "status": "NOT_IMPLEMENTED",
+  "requiredProperties": {
+    "dimensions": {
+      "unit": "mm",
+      "representation": "integer",
+      "axes": ["widthMm", "heightMm", "depthMm"],
+      "minimumExclusive": 0
+    },
+    "identity": {
+      "wardrobeIdStableAcrossEdits": true,
+      "sectionIdsStableAcrossUnrelatedEdits": true,
+      "componentIdsStableAcrossMoveAndUpdate": true,
+      "geometryOrderMustNotDetermineIds": true
+    },
+    "serialization": {
+      "canonical": true,
+      "deterministic": true,
+      "sameModelProducesSameBytes": true
+    },
+    "sectionLayout": {
+      "absoluteWidthsMm": true,
+      "widthsMustFitWardrobe": true,
+      "overlapAllowed": false
+    },
+    "independence": {
+      "forbiddenDependencies": ["three", "@react-three/fiber", "react", "zustand", "LLM provider SDK"],
+      "forbiddenModelFields": ["threeJsPosition", "mesh", "geometry", "materialRef", "x", "y", "z"]
+    }
+  },
+  "examples": {
+    "valid": [
+      { "widthMm": 2400, "heightMm": 2600, "depthMm": 600, "sectionWidthsMm": [800, 800, 800] },
+      { "widthMm": 2700, "heightMm": 2500, "depthMm": 600, "sectionWidthsMm": [550, 925, 1225] }
+    ],
+    "invalid": [
+      { "reason": "negative dimension", "widthMm": -1, "heightMm": 2600, "depthMm": 600 },
+      { "reason": "zero dimension", "widthMm": 2400, "heightMm": 0, "depthMm": 600 },
+      { "reason": "fractional millimetres", "widthMm": 2400.5, "heightMm": 2600, "depthMm": 600 },
+      { "reason": "sections exceed wardrobe", "widthMm": 2400, "heightMm": 2600, "depthMm": 600, "sectionWidthsMm": [1200, 1201] }
+    ]
+  }
+}

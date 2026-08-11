@@ -1,0 +1,15 @@
+{
+  "fixtureVersion": "phase1-protected-surfaces/1",
+  "algorithm": "sha256-normalized-lf",
+  "capturedFromCommit": "54fe328b4165374df171cb60678e69da0009d34a",
+  "files": {
+    "src/lib/wardrobe-model/schema.js": "076935549617b6fa631594252de248defe96d0aba1be3366662fa0cb01f6cbd6",
+    "src/lib/wardrobe-model/kernel.js": "d7638a7273fd13a2947b661d8700cc87c9dc9bd75ddb441dbe73ced2ef63a923",
+    "src/lib/wardrobe-model/validator.js": "5c02446f20820576926e8e43693960307dd43e1826ed7dd4cb6f7a25c1430302",
+    "src/lib/wardrobe-tools/tools.js": "d3c697525fa38c87acb40537badb3d594ded6be6fc255d6e7de754628e073248",
+    "src/lib/wardrobe-agent/runWardrobeAgent.js": "abe6586371cefd176eb19640ca1d26bd4f4afe05dd832d9e4ba0426d92015a7a",
+    "src/components/builder/FurnitureModel.jsx": "fab83a33f866d61e7a1ff28187239689fc90781463abbd064e2dc56a00025537",
+    "src/app/builder/page.jsx": "fc14fcb672f85b9b700839049441f8977319c66c95aa00a1b4918e43637d8876",
+    "vercel.json": "d44f5072f523796be2e9aa28aa24692d1dcf1d955f6f10e50e151d34863fffaf"
+  }
+}

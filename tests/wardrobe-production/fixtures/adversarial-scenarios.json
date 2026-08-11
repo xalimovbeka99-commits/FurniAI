@@ -1,0 +1,24 @@
+{
+  "fixtureVersion": "wardrobe-production-adversarial/1",
+  "status": "NOT_IMPLEMENTED",
+  "defaultExpected": {
+    "productionStatus": "PRODUCTION_BLOCKED",
+    "pdfGenerated": false,
+    "sourceWardrobeUnchanged": true
+  },
+  "cases": [
+    { "id": "non-positive-panel", "mutation": { "target": "panel", "field": "lengthMm", "value": 0 }, "expectedCode": "INVALID_PANEL_DIMENSION" },
+    { "id": "wrong-thickness", "mutation": { "target": "panel", "field": "thicknessMm", "value": 17 }, "expectedCode": "PANEL_THICKNESS_MISMATCH" },
+    { "id": "hole-outside-panel", "mutation": { "target": "operation", "field": "xMm", "value": 99999 }, "expectedCode": "MACHINING_OUTSIDE_PANEL" },
+    { "id": "hole-too-deep", "mutation": { "target": "operation", "field": "depthMm", "value": 99 }, "expectedCode": "MACHINING_DEPTH_EXCEEDS_PANEL" },
+    { "id": "invalid-edge-drill", "mutation": { "target": "operation", "field": "face", "value": "UNSUPPORTED_FACE" }, "expectedCode": "INVALID_EDGE_DRILL" },
+    { "id": "mating-holes-misaligned", "mutation": { "target": "connection", "field": "referencePosition", "deltaMm": 1 }, "expectedCode": "MATING_OPERATIONS_MISALIGNED" },
+    { "id": "missing-panel", "mutation": { "target": "panels", "operation": "removeReferencedPanel" }, "expectedCode": "MISSING_MANUFACTURING_PANEL" },
+    { "id": "duplicate-panel-id", "mutation": { "target": "panels", "operation": "duplicateCanonicalId" }, "expectedCode": "DUPLICATE_CANONICAL_ID" },
+    { "id": "orphan-panel", "mutation": { "target": "panels", "operation": "removeSourceTrace" }, "expectedCode": "ORPHAN_MANUFACTURING_PANEL" },
+    { "id": "shelf-outside-section", "mutation": { "target": "shelfMounting", "field": "centerlineMm", "value": 99999 }, "expectedCode": "SHELF_OUTSIDE_SECTION" },
+    { "id": "pdf-panel-dimension-mismatch", "mutation": { "target": "pdfDrawingData", "field": "lengthMm", "deltaMm": 1 }, "expectedCode": "DRAWING_MODEL_MISMATCH" },
+    { "id": "unapproved-rule", "mutation": { "target": "joineryRule", "field": "status", "value": "CANDIDATE" }, "expectedCode": "JOINERY_RULE_NOT_APPROVED" },
+    { "id": "llm-supplied-drilling", "mutation": { "target": "prepare_for_production", "field": "machiningOperations", "value": [] }, "expectedCode": "UNAUTHORIZED_PRODUCTION_INPUT" }
+  ]
+}

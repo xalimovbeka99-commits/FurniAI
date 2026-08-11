@@ -1,0 +1,8 @@
+{
+  "referenceId": "wardrobe-62",
+  "status": "BLOCKED_NO_SOURCE",
+  "sourceDocument": null,
+  "sourceRevision": null,
+  "facts": [],
+  "blockingReason": "No Wardrobe 62 source PDF or extracted evidence is present in the repository. Manufacturing facts must not be invented."
+}
