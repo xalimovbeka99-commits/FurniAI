@@ -12,6 +12,13 @@ configurator tests as evidence that Wardrobe AI works.
 
 ## Fixtures
 
+- `tests/wardrobe-ai/fixtures/canonical-model-contract.json` defines integer
+  millimetre, stable-identity, deterministic-serialization, section-fit, and
+  UI/Three.js/LLM-independence requirements without defining an implementation.
+- `tests/wardrobe-ai/fixtures/tool-contracts.json` defines the shared validation,
+  atomicity, structured-result, and exact-behavior cases for the agreed eight
+  deterministic tools. All execution remains blocked until Claude publishes
+  the real interfaces.
 - `tests/wardrobe-ai/fixtures/golden-scenarios.json` stores semantic expected
   models, including asymmetric wardrobes with explicit absolute section widths.
   It intentionally contains no rendering coordinates.

@@ -1,0 +1,65 @@
+{
+  "contractVersion": "wardrobe-tools-verification/1",
+  "status": "NOT_IMPLEMENTED",
+  "globalRequirements": {
+    "strictSchema": true,
+    "additionalProperties": false,
+    "integerMillimetres": true,
+    "validateBeforeExecute": true,
+    "validateResultBeforeCommit": true,
+    "invalidOperationLeavesModelUnchanged": true,
+    "structuredResult": true
+  },
+  "tools": [
+    {
+      "name": "wardrobe_create",
+      "requiredArguments": ["widthMm", "heightMm", "depthMm"],
+      "successProperties": ["success", "model", "revision"],
+      "contractCases": ["creates canonical empty wardrobe", "rejects non-positive dimensions", "rejects fractional millimetres"]
+    },
+    {
+      "name": "wardrobe_resize",
+      "requiredArguments": ["wardrobeId", "dimensionsMm"],
+      "successProperties": ["success", "wardrobeId", "oldDimensionsMm", "newDimensionsMm", "revision"],
+      "contractCases": ["preserves wardrobe ID", "rejects resize that invalidates section layout", "does not partially commit"]
+    },
+    {
+      "name": "section_add",
+      "requiredArguments": ["wardrobeId", "sectionId", "widthMm"],
+      "successProperties": ["success", "sectionId", "revision"],
+      "contractCases": ["uses caller-supplied stable semantic ID", "rejects duplicate ID", "rejects width exceeding available space"]
+    },
+    {
+      "name": "section_resize",
+      "requiredArguments": ["sectionId", "widthMm"],
+      "successProperties": ["success", "sectionId", "oldWidthMm", "newWidthMm", "revision"],
+      "contractCases": ["changes exact absolute width", "preserves section ID", "rejects invalid aggregate width"]
+    },
+    {
+      "name": "component_add",
+      "requiredArguments": ["sectionId", "componentId", "type", "properties"],
+      "allowedComponentTypes": ["SHELF", "DRAWER_BANK", "HANGING_RAIL", "DIVIDER", "DOOR"],
+      "successProperties": ["success", "componentId", "revision"],
+      "contractCases": ["uses stable semantic ID", "rejects unsupported type", "rejects geometry coordinates", "rejects impossible placement"]
+    },
+    {
+      "name": "component_move",
+      "requiredArguments": ["componentId", "axis", "deltaMm"],
+      "allowedAxes": ["z"],
+      "successProperties": ["success", "componentId", "oldZ", "newZ", "revision"],
+      "contractCases": ["moves by exact integer delta", "preserves component ID", "rejects outside-section result", "does not silently clamp"]
+    },
+    {
+      "name": "component_remove",
+      "requiredArguments": ["componentId"],
+      "successProperties": ["success", "componentId", "revision"],
+      "contractCases": ["removes only target component", "preserves remaining IDs", "rejects unknown ID without revision"]
+    },
+    {
+      "name": "component_update",
+      "requiredArguments": ["componentId", "properties"],
+      "successProperties": ["success", "componentId", "oldProperties", "newProperties", "revision"],
+      "contractCases": ["updates only allowed properties", "preserves component ID", "rejects unknown fields", "rejects invalid resulting model"]
+    }
+  ]
+}
