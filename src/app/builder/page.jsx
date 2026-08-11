@@ -5,7 +5,7 @@
  * Left tool panel | 3D viewport | Right tool panel.
  * The hardcoded models are gone; the centre renders whatever the config says.
  */
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Canvas } from "@react-three/fiber";
@@ -13,6 +13,7 @@ import { OrbitControls, Environment, Grid } from "@react-three/drei";
 import StructurePanel from "@/components/builder/StructurePanel";
 import AppearancePanel from "@/components/builder/AppearancePanel";
 import FurnitureModel from "@/components/builder/FurnitureModel";
+import WardrobeAIPanel from "@/components/builder/WardrobeAIPanel";
 import { useFurnitureStore } from "@/store/furnitureStore";
 import { getDesign } from "@/lib/designs";
 
@@ -22,6 +23,9 @@ function BuilderContent() {
   const loadConfig = useFurnitureStore((s) => s.loadConfig);
   const searchParams = useSearchParams();
   const designId = searchParams.get("design");
+  // Closed by default: the page is pixel-identical to before until a user
+  // opts in. See docs/WARDROBE_AI_BASELINE.md's frozen-surface decision.
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
 
   useEffect(() => {
     if (designId) {
@@ -48,7 +52,13 @@ function BuilderContent() {
           <span className="bg-gradient-to-r from-[#C5A880] to-[#00B4D8] bg-clip-text text-transparent">AI</span>
           <span className="font-mono text-[10px] tracking-widest text-[#5C626E] uppercase font-normal ml-1.5 hidden sm:inline-block">Configurator</span>
         </div>
-        <div className="w-12" /> {/* spacer to keep logo centred */}
+        <button
+          type="button"
+          onClick={() => setAiPanelOpen((v) => !v)}
+          className="font-mono text-xs tracking-wider text-[#5C626E] hover:text-[#1C1E21] transition-colors"
+        >
+          {aiPanelOpen ? "Hide AI" : "Ask AI"}
+        </button>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
@@ -76,6 +86,8 @@ function BuilderContent() {
         <div className="pointer-events-none absolute left-4 top-4 rounded bg-white/80 px-3 py-1.5 text-xs text-neutral-600 backdrop-blur">
           Click a door or drawer to edit that section · drag to orbit
         </div>
+
+        {aiPanelOpen && <WardrobeAIPanel onClose={() => setAiPanelOpen(false)} />}
       </main>
 
         <AppearancePanel />

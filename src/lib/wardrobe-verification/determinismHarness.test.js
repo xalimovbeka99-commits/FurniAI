@@ -1,9 +1,10 @@
-import { describe, expect, it, test } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   canonicalSerialize,
   DEFAULT_DETERMINISM_RUNS,
   runDeterminismHarness
 } from "../../../tests/wardrobe-ai/determinismHarness.js";
+import { createWardrobe } from "../wardrobe-model/kernel.js";
 
 describe("Wardrobe AI determinism harness infrastructure", () => {
   it("canonicalizes object keys without reordering semantic arrays", () => {
@@ -30,5 +31,14 @@ describe("Wardrobe AI determinism harness infrastructure", () => {
     expect(result).toMatchObject({ deterministic: false, mismatchRun: 2 });
   });
 
-  test.todo("BLOCKED: run the same canonical wardrobe_create command 100 times against Claude's deterministic kernel");
+  it("EXECUTED: runs the same canonical wardrobe_create command 100 times against the real deterministic kernel", async () => {
+    const result = await runDeterminismHarness({
+      command: { widthMm: 2400, heightMm: 2600, depthMm: 600 },
+      execute: async (command) => createWardrobe(command),
+    });
+    expect(result).toMatchObject({ deterministic: true, runs: DEFAULT_DETERMINISM_RUNS, mismatchRun: null });
+    const model = JSON.parse(result.canonicalOutput);
+    expect(model.id).toBe("wardrobe-01");
+    expect(model.sections[0].id).toBe("section-01");
+  });
 });
