@@ -1,0 +1,18 @@
+{
+  "referenceId": "wardrobe-73-b2-shelf-positions",
+  "status": "CANDIDATE",
+  "ruleId": "WR-SHELF-POSITION-73-B2-CANDIDATE",
+  "source": {
+    "kind": "USER_SUPPLIED_PHASE_2_REQUEST",
+    "document": "Wardrobe 73 production drawing",
+    "documentAvailable": false,
+    "revision": null,
+    "pageOrDetail": "B2",
+    "units": "mm"
+  },
+  "positionsMm": [370, 788, 1206, 1624, 2042, 2462],
+  "authorization": {
+    "mayDriveProduction": false,
+    "requiredBeforeVerification": ["source PDF", "drawing revision", "page/detail confirmation", "dimension interpretation", "qualified review"]
+  }
+}

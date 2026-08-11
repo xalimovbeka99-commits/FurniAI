@@ -1,0 +1,46 @@
+{
+  "contractVersion": "wardrobe-production-verification/1",
+  "status": "NOT_IMPLEMENTED",
+  "source": {
+    "aggregate": "WardrobeModel",
+    "approvedRevisionRequired": true,
+    "secondCanonicalFurnitureModelForbidden": true
+  },
+  "units": { "engineering": "integer_mm", "fractionalAllowed": false },
+  "panel": {
+    "requiredFields": ["id", "sourceComponentId", "type", "lengthMm", "widthMm", "thicknessMm", "position", "orientation", "materialId", "edges", "machiningOperations"],
+    "supportedTypes": ["LEFT_SIDE", "RIGHT_SIDE", "TOP", "BOTTOM", "BACK", "VERTICAL_DIVIDER", "SHELF"],
+    "stableIdentityRequired": true,
+    "orderDerivedIdsForbidden": true,
+    "sourceTraceabilityRequired": true
+  },
+  "sectionReconciliation": {
+    "formula": "outerWidthMm - 2*panelThicknessMm - (sectionCount-1)*panelThicknessMm",
+    "example": {
+      "outerWidthMm": 2400,
+      "panelThicknessMm": 18,
+      "sectionCount": 3,
+      "availableClearWidthMm": 2328
+    }
+  },
+  "connection": {
+    "requiredFields": ["id", "type", "partA", "partB", "referencePosition"],
+    "supportedTypes": ["SHELF_SIDE", "SHELF_DIVIDER", "TOP_SIDE", "BOTTOM_SIDE", "BACK_CARCASS"]
+  },
+  "joinery": {
+    "supportedTypes": ["CONFIRMAT", "DOWEL", "SHELF_SUPPORT"],
+    "requiredRuleFields": ["ruleId", "revision", "status", "source", "compatiblePanelThicknessMm", "holeDiameterMm", "holeDepthMm", "edgeOffsetMm", "requiredMatingOperation"],
+    "allowedStatuses": ["CANDIDATE", "VERIFIED", "APPROVED", "DEPRECATED"]
+  },
+  "machiningOperation": {
+    "requiredFields": ["id", "panelId", "type", "face", "xMm", "yMm", "diameterMm", "depthMm"],
+    "supportedTypes": ["DRILL", "EDGE_DRILL", "THROUGH_DRILL"]
+  },
+  "shelfMounting": {
+    "requiredFields": ["shelfId", "sectionId", "bottomMm", "centerlineMm", "topMm", "thicknessMm", "clearOpeningBelowMm", "clearOpeningAboveMm"],
+    "invariants": ["bottomMm=centerlineMm-thicknessMm/2", "topMm=centerlineMm+thicknessMm/2"]
+  },
+  "outputs": ["PANELS", "ASSEMBLY_GRAPH", "MACHINING", "VALIDATION", "CUT_LIST", "BOM", "DRAWING_DATA", "PRODUCTION_PDF"],
+  "releaseStates": ["PRODUCTION_BLOCKED", "FACTORY_QUALIFICATION_REQUIRED", "RELEASED_BY_FACTORY"],
+  "phase2ForbiddenOutputs": ["NESTING", "CNC", "DXF_MACHINE_POSTPROCESSOR"]
+}
