@@ -1,0 +1,155 @@
+/**
+ * Provider-neutral error taxonomy (Step 5 of the provider-failover mission).
+ * ----------------------------------------------------------------------
+ * ProviderError is thrown by individual provider adapters (Anthropic,
+ * OpenAI) for problems that are about the PROVIDER, not about the request:
+ * missing/invalid credentials, rate limits, quota, timeouts, transient
+ * server errors, or the provider being unreachable. Every one of these
+ * codes is retriable — providerRouter.js fails over to the next configured
+ * provider when it sees one.
+ *
+ * Anything else (FslError business-logic codes, wardrobe kernel/tool
+ * errors, JSON parsing failures in the route, deterministic validation
+ * failures) is NOT a ProviderError and must never trigger failover — see
+ * isRetriableProviderFailure below and providerRouter.js's callWithFailover.
+ */
+
+export const PROVIDER_ERROR_CODES = Object.freeze({
+  MISSING_API_KEY: "MISSING_API_KEY",
+  AUTH_ERROR: "AUTH_ERROR",
+  RATE_LIMITED: "RATE_LIMITED",
+  QUOTA_EXCEEDED: "QUOTA_EXCEEDED",
+  TIMEOUT: "TIMEOUT",
+  SERVER_ERROR: "SERVER_ERROR",
+  UNAVAILABLE: "UNAVAILABLE",
+  UNKNOWN: "UNKNOWN",
+});
+
+// Every one of these is a "the provider itself could not serve this
+// request" condition — safe to retry on a different provider. AUTH_ERROR
+// (an actually-configured-but-rejected key) is included alongside the
+// explicitly-listed MISSING_API_KEY: a revoked/expired/invalid key is the
+// same class of provider-availability problem from FurniAI's perspective,
+// even though the mission's example list only names the missing-key case.
+const RETRIABLE_CODES = new Set([
+  PROVIDER_ERROR_CODES.MISSING_API_KEY,
+  PROVIDER_ERROR_CODES.AUTH_ERROR,
+  PROVIDER_ERROR_CODES.RATE_LIMITED,
+  PROVIDER_ERROR_CODES.QUOTA_EXCEEDED,
+  PROVIDER_ERROR_CODES.TIMEOUT,
+  PROVIDER_ERROR_CODES.SERVER_ERROR,
+  PROVIDER_ERROR_CODES.UNAVAILABLE,
+]);
+
+export class ProviderError extends Error {
+  /**
+   * @param {string} code one of PROVIDER_ERROR_CODES
+   * @param {string} message client-safe message — never a raw SDK error, header, or key
+   * @param {{ provider?: string|null, cause?: Error|null }} [opts]
+   */
+  constructor(code, message, { provider = null, cause = null } = {}) {
+    super(message);
+    this.name = "ProviderError";
+    this.code = code in PROVIDER_ERROR_CODES ? code : PROVIDER_ERROR_CODES.UNKNOWN;
+    this.provider = provider;
+    this.cause = cause;
+  }
+
+  get retriable() {
+    return RETRIABLE_CODES.has(this.code);
+  }
+}
+
+/** Thrown by providerRouter.js when every configured provider was tried (or
+ * none is configured at all) and none could serve the request. Distinct
+ * from ProviderError so call sites can tell "one provider hiccuped" apart
+ * from "there is no working AI provider right now" without inspecting a
+ * list. */
+export class AllProvidersUnavailableError extends Error {
+  constructor(message = "No AI provider is currently available.", { attempted = [] } = {}) {
+    super(message);
+    this.name = "AllProvidersUnavailableError";
+    this.code = "AI_PROVIDER_UNAVAILABLE";
+    this.attempted = attempted;
+  }
+}
+
+/**
+ * Classifies a raw SDK error (Anthropic or OpenAI — both SDKs attach a
+ * numeric `status`/`response.status` and follow the same fetch-based
+ * AbortError convention for timeouts) into a ProviderError. Never rethrows
+ * or logs the raw error — callers get a stable, secret-free message.
+ */
+export function classifySdkError(err, providerName) {
+  if (err?.name === "AbortError") {
+    return new ProviderError(PROVIDER_ERROR_CODES.TIMEOUT, "The AI provider did not respond in time.", { provider: providerName, cause: err });
+  }
+  const status = err?.status ?? err?.response?.status ?? null;
+  if (status === 401 || status === 403) {
+    return new ProviderError(PROVIDER_ERROR_CODES.AUTH_ERROR, "The AI provider rejected the request credentials.", { provider: providerName, cause: err });
+  }
+  if (status === 429) {
+    return new ProviderError(PROVIDER_ERROR_CODES.RATE_LIMITED, "The AI provider is rate-limiting requests.", { provider: providerName, cause: err });
+  }
+  if (typeof status === "number" && status >= 500) {
+    return new ProviderError(PROVIDER_ERROR_CODES.SERVER_ERROR, "The AI provider had a server-side error.", { provider: providerName, cause: err });
+  }
+  if (err?.name === "APIConnectionError" || ["ECONNREFUSED", "ENOTFOUND", "ETIMEDOUT", "EAI_AGAIN"].includes(err?.code)) {
+    return new ProviderError(PROVIDER_ERROR_CODES.UNAVAILABLE, "The AI provider is unreachable.", { provider: providerName, cause: err });
+  }
+  return new ProviderError(PROVIDER_ERROR_CODES.UNKNOWN, "The AI provider request failed.", { provider: providerName, cause: err });
+}
+
+/**
+ * True for errors that should trigger provider failover: ProviderError
+ * instances marked retriable, plus the FSL layer's own two provider-level
+ * FslError codes (AI_PROVIDER_ERROR, AI_PROVIDER_TIMEOUT) so the router can
+ * classify failures from anthropicProvider.js / openaiProvider.js — both of
+ * which preserve the existing FslError contract for the FSL extraction
+ * operation — without providerRouter.js importing fsl/errors.js directly.
+ *
+ * Deliberately false for STRUCTURED_OUTPUT_ERROR: a provider that responded
+ * but never produced a valid tool call is a model/prompt-quality outcome,
+ * not a provider-availability one, and the mission's explicit failover list
+ * does not include it — retrying a second provider on every ambiguous user
+ * message would double cost/latency for a case that often reproduces on
+ * both providers anyway. Everything else (validation errors, kernel/tool
+ * errors, malformed requests) is also false, by construction: those are
+ * never ProviderError/FslError-provider-coded in the first place.
+ *
+ * Also recognizes two shapes that reach the chat router unclassified by
+ * design (see anthropicChatClient.js): runWardrobeAgent.js's own
+ * `AgentTimeoutError` (its internal AbortController timeout), and a raw
+ * Anthropic/OpenAI SDK error that was never wrapped in a ProviderError —
+ * classified on the spot via classifySdkError and treated as retriable
+ * unless classification lands on UNKNOWN, where "fail over blindly" is a
+ * worse default than "surface the real error."
+ */
+export function isRetriableProviderFailure(err) {
+  if (err instanceof ProviderError) return err.retriable;
+  if (err && err.name === "FslError") {
+    return err.code === "AI_PROVIDER_ERROR" || err.code === "AI_PROVIDER_TIMEOUT";
+  }
+  if (err && err.name === "AgentTimeoutError") return true;
+  if (err && (typeof err.status === "number" || typeof err?.response?.status === "number" || err.name === "APIConnectionError")) {
+    return classifySdkError(err, null).retriable;
+  }
+  return false;
+}
+
+/**
+ * A stable code string for observability logging (Step 9), covering the
+ * same error shapes isRetriableProviderFailure recognizes — used so a raw,
+ * unclassified SDK error (from anthropicChatClient.js's deliberate
+ * passthrough) still shows a real code in providerRouter.js's attempt log
+ * instead of `null`. Returns null only when nothing recognizable is found.
+ */
+export function errorCodeOf(err) {
+  if (err instanceof ProviderError) return err.code;
+  if (err && err.name === "FslError") return err.code;
+  if (err && err.name === "AgentTimeoutError") return PROVIDER_ERROR_CODES.TIMEOUT;
+  if (err && (typeof err.status === "number" || typeof err?.response?.status === "number" || err.name === "APIConnectionError")) {
+    return classifySdkError(err, null).code;
+  }
+  return err?.code ?? null;
+}

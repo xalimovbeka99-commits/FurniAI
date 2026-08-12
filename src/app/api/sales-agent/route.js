@@ -10,13 +10,6 @@ import { NextResponse } from "next/server";
 import { runSalesAgent } from "@/lib/salesAgent";
 
 export async function POST(req) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json(
-      { error: "ANTHROPIC_API_KEY is not set" },
-      { status: 500 }
-    );
-  }
-
   let body;
   try {
     body = await req.json();
@@ -36,6 +29,9 @@ export async function POST(req) {
     const result = await runSalesAgent({ messages });
     return NextResponse.json(result, { status: 200 });
   } catch (err) {
+    if (err?.message === "AI_PROVIDER_UNAVAILABLE") {
+      return NextResponse.json({ error: "The sales agent is not available right now." }, { status: 503 });
+    }
     console.error("sales-agent error:", err);
     return NextResponse.json({ error: "Agent failed" }, { status: 500 });
   }

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const generateFurnitureSpecification = vi.fn();
 vi.mock("@/lib/services/furnitureGenerationService", () => ({ generateFurnitureSpecification }));
-vi.mock("@/lib/ai-provider", () => ({ createAnthropicProvider: vi.fn(() => ({})) }));
+vi.mock("@/lib/ai-provider", () => ({ createExtractionAiProvider: vi.fn(() => ({})) }));
 
 const { POST } = await import("./route.js");
 

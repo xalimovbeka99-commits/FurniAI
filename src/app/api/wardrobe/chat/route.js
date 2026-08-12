@@ -9,7 +9,7 @@
  */
 import { NextResponse } from "next/server";
 import { runWardrobeAgent } from "@/lib/wardrobe-agent/runWardrobeAgent";
-import { createAnthropicWardrobeClient, WardrobeAgentConfigError } from "@/lib/wardrobe-agent/client";
+import { createChatProviderRouter, shouldExposeProviderDebugInfo, AllProvidersUnavailableError } from "@/lib/ai-provider";
 
 const MESSAGE_MAX_LENGTH = 2000;
 
@@ -55,18 +55,15 @@ export async function POST(req) {
     return errorResponse(400, "INVALID_REQUEST", error);
   }
 
-  let client;
-  try {
-    client = createAnthropicWardrobeClient();
-  } catch (err) {
-    if (err instanceof WardrobeAgentConfigError) {
-      return errorResponse(503, "AI_PROVIDER_UNAVAILABLE", "The Wardrobe AI is not available right now.");
-    }
-    throw err;
-  }
+  // Provider-independent by construction (Steps 2, 4-6): tries every
+  // provider named in AI_PROVIDER_ORDER, in order, retrying the whole
+  // agent turn on the next provider only for provider-level availability
+  // problems — never for a deterministic tool failure or a bad wardrobe
+  // edit. Same eight Wardrobe tools and the same WardrobeModel either way.
+  const router = createChatProviderRouter({ operation: "wardrobe_chat" });
 
   try {
-    const result = await runWardrobeAgent({ client, ...request });
+    const { result, provider, attempted } = await router.run((client) => runWardrobeAgent({ client, ...request }));
     return NextResponse.json({
       ok: true,
       model: result.model,
@@ -74,8 +71,14 @@ export async function POST(req) {
       assistantMessage: result.assistantMessage,
       toolCalls: result.toolCalls.map((c) => ({ name: c.name, input: c.input, result: c.result })),
       conversation: result.conversation,
+      // Step 9: safe provider metadata, dev/founder-preview only — never
+      // shown to normal customers, never a key/header/raw payload.
+      ...(shouldExposeProviderDebugInfo() ? { provider, fallback: attempted.filter((a) => a.outcome !== "skipped_unconfigured").length > 1 } : {}),
     });
   } catch (err) {
+    if (err instanceof AllProvidersUnavailableError) {
+      return errorResponse(503, "AI_PROVIDER_UNAVAILABLE", "The Wardrobe AI is not available right now.");
+    }
     if (err?.name === "AgentTimeoutError") {
       return errorResponse(504, "AI_PROVIDER_TIMEOUT", "The Wardrobe AI did not respond in time.");
     }
