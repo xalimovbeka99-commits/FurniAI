@@ -171,9 +171,45 @@ describe("redactErrorForLogging — Codex finding #2 fix: never let a raw error/
     expect(redactErrorForLogging(err)).toEqual({ name: "FslError", code: "AI_PROVIDER_ERROR", message: "The AI provider request failed." });
   });
 
-  it("handles a plain error with no .code gracefully", () => {
+  it("FINAL SECURITY FIX (Codex): a plain/untrusted error's message is NOT trusted — replaced with a fixed generic message, even with no secret present", () => {
     const err = new TypeError("cannot read properties of undefined");
-    expect(redactErrorForLogging(err)).toEqual({ name: "TypeError", code: null, message: "cannot read properties of undefined" });
+    expect(redactErrorForLogging(err)).toEqual({ name: "TypeError", code: "UNKNOWN_ERROR", message: "An internal AI provider error occurred." });
+  });
+
+  it("FINAL SECURITY FIX (Codex) — untrusted-message regression: a raw/unknown error with a secret DIRECTLY in .message (no .cause involved) is never surfaced", () => {
+    const secret = "SECRET_SHOULD_NEVER_APPEAR";
+    // A raw SDK/transport error whose .message itself embeds request
+    // content — the exact case the previous version of this function
+    // failed to guard against, since it trusted every error's .message.
+    const rawSdkError = new Error(`Authorization: Bearer ${secret}`);
+    const redacted = redactErrorForLogging(rawSdkError);
+    expect(redacted.message).not.toContain(secret);
+    expect(redacted).toEqual({ name: "Error", code: "UNKNOWN_ERROR", message: "An internal AI provider error occurred." });
+  });
+
+  it("FINAL SECURITY FIX (Codex) — trusted-domain messages ARE still preserved: safe known errors still produce useful logs", () => {
+    const provErr = new ProviderError(PROVIDER_ERROR_CODES.RATE_LIMITED, "The AI provider is rate-limiting requests.", { provider: "openai" });
+    expect(redactErrorForLogging(provErr)).toEqual({ name: "ProviderError", code: "RATE_LIMITED", message: "The AI provider is rate-limiting requests." });
+
+    const fslErr = new FslError(ERROR_CODES.AI_PROVIDER_REQUEST_ERROR, "The AI provider rejected the request.");
+    expect(redactErrorForLogging(fslErr)).toEqual({ name: "FslError", code: "AI_PROVIDER_REQUEST_ERROR", message: "The AI provider rejected the request." });
+
+    const allDownErr = new AllProvidersUnavailableError();
+    expect(redactErrorForLogging(allDownErr)).toEqual({ name: "AllProvidersUnavailableError", code: "AI_PROVIDER_UNAVAILABLE", message: "No AI provider is currently available." });
+
+    const timeoutErr = Object.assign(new Error("The AI provider did not respond in time."), { name: "AgentTimeoutError" });
+    expect(redactErrorForLogging(timeoutErr)).toEqual({ name: "AgentTimeoutError", code: null, message: "The AI provider did not respond in time." });
+  });
+
+  it("FINAL SECURITY FIX (Codex) — a spoofed .name does NOT grant trust: only a real instance of a trusted class (or the AgentTimeoutError name, its one unavoidable exception) is trusted", () => {
+    const secret = "SECRET_SHOULD_NEVER_APPEAR_SPOOFED";
+    const spoofed = Object.assign(new Error(`some raw content with ${secret}`), { name: "ProviderError", code: "AUTH_ERROR" });
+    // NOT an `instanceof ProviderError` — a raw error with a merely-matching
+    // .name string must not inherit trust from real ProviderError instances.
+    expect(spoofed instanceof ProviderError).toBe(false);
+    const redacted = redactErrorForLogging(spoofed);
+    expect(redacted.message).not.toContain(secret);
+    expect(redacted).toEqual({ name: "ProviderError", code: "UNKNOWN_ERROR", message: "An internal AI provider error occurred." });
   });
 
   it("BLOCKER 2 exact regression (Codex 'PR #4 Required Corrections'): a marker planted in message, cause, fake headers, and fake payload appears ZERO times after redaction", () => {

@@ -180,6 +180,11 @@ export function isRetriableProviderFailure(err) {
   return false;
 }
 
+/** Generic, fixed message for anything not on the trusted allowlist below —
+ * never derived from the error being redacted. */
+const GENERIC_UNSAFE_MESSAGE = "An internal AI provider error occurred.";
+const GENERIC_UNSAFE_CODE = "UNKNOWN_ERROR";
+
 /**
  * Redacts an error down to `{name, code, message}` for logging. Required
  * because Node's console.error/util.inspect prints an Error's `.cause`
@@ -189,16 +194,33 @@ export function isRetriableProviderFailure(err) {
  * still leak whatever the wrapped SDK error's own `.message`/`.stack`
  * contains (headers, request bodies, partial keys). Every route's catch
  * block must log the RETURN VALUE of this function, never the error object
- * itself. `.message` is safe to include as-is for ProviderError/FslError/
- * AllProvidersUnavailableError/AgentTimeoutError, since every throw site in
- * this codebase uses a fixed, hand-written string for those — never
- * interpolates raw provider content into `.message`. For anything else
- * (a genuine unexpected application bug), the message is also safe to
- * surface: it's our own code's error text, not a provider payload — but
- * `.cause` is dropped unconditionally regardless of error type.
+ * itself.
+ *
+ * `.message` is an ALLOWLIST, not a blocklist (fixing a second review
+ * finding: the previous version trusted *every* error's `.message`,
+ * including a raw/unrecognized SDK or transport error whose message text
+ * is not guaranteed sanitized and could itself directly embed request
+ * content like `Authorization: Bearer <token>` — no `.cause` needed for
+ * that leak). `.message` is passed through only for the handful of error
+ * classes this codebase constructs itself with a fixed, hand-written
+ * string and never interpolates raw provider/SDK content into: ProviderError,
+ * FslError, AllProvidersUnavailableError, and runWardrobeAgent.js's
+ * AgentTimeoutError (checked by `.name` — it isn't exported, and every
+ * throw site for it is a single hardcoded string in that one file).
+ * Anything else — a plain Error, TypeError, raw Anthropic/OpenAI SDK error,
+ * or any error class not on this list — is unknown input and gets a fixed
+ * generic message instead. `.name` and `.code` are still passed through
+ * (short symbolic identifiers, not free-form text) so logs stay
+ * distinguishable; only the free-text `.message` is gated.
  */
 export function redactErrorForLogging(err) {
-  return { name: err?.name ?? "Error", code: err?.code ?? null, message: err?.message ?? String(err) };
+  const isTrustedDomainError =
+    err instanceof ProviderError || err instanceof FslError || err instanceof AllProvidersUnavailableError || err?.name === "AgentTimeoutError";
+
+  if (isTrustedDomainError) {
+    return { name: err.name, code: err.code ?? null, message: err.message };
+  }
+  return { name: err?.name ?? "Error", code: GENERIC_UNSAFE_CODE, message: GENERIC_UNSAFE_MESSAGE };
 }
 
 /**

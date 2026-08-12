@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const runSalesAgent = vi.fn();
 vi.mock("@/lib/salesAgent", () => ({ runSalesAgent }));
-vi.mock("@/lib/ai-provider", () => ({
-  redactErrorForLogging: (err) => ({ name: err?.name ?? "Error", code: err?.code ?? null, message: err?.message ?? String(err) }),
-}));
+
+// Real redactErrorForLogging/ProviderError come through unmocked so this
+// file exercises the ACTUAL security-relevant redaction logic.
+const { ProviderError: RealProviderError } = await vi.importActual("@/lib/ai-provider");
 
 const { POST } = await import("./route.js");
 
@@ -44,7 +45,7 @@ describe("POST /api/sales-agent", () => {
     const logSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const secret = "sk-ant-should-never-be-logged";
-      const err = Object.assign(new Error("safe redacted message"), { name: "ProviderError", code: "UNKNOWN", cause: new Error(`Authorization: Bearer ${secret}`) });
+      const err = new RealProviderError("UNKNOWN", "safe redacted message", { cause: new Error(`Authorization: Bearer ${secret}`) });
       runSalesAgent.mockRejectedValueOnce(err);
 
       const { status } = await post({ messages: [{ role: "user", content: "hi" }] });
@@ -52,6 +53,24 @@ describe("POST /api/sales-agent", () => {
       expect(status).toBe(500);
       expect(logSpy).toHaveBeenCalledWith("sales-agent error:", { name: "ProviderError", code: "UNKNOWN", message: "safe redacted message" });
       expect(JSON.stringify(logSpy.mock.calls)).not.toContain(secret);
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it("FINAL SECURITY FIX (Codex) — untrusted-message regression: a raw/unrecognized error with the secret DIRECTLY in .message is never logged or returned", async () => {
+    const MARKER = "SECRET_SHOULD_NEVER_APPEAR";
+    const logSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const rawSdkError = new Error(`Authorization: Bearer ${MARKER}`);
+      runSalesAgent.mockRejectedValueOnce(rawSdkError);
+
+      const { status, body } = await post({ messages: [{ role: "user", content: "hi" }] });
+
+      expect(status).toBe(500);
+      expect(logSpy).toHaveBeenCalledWith("sales-agent error:", { name: "Error", code: "UNKNOWN_ERROR", message: "An internal AI provider error occurred." });
+      expect(JSON.stringify(logSpy.mock.calls)).not.toContain(MARKER);
+      expect(JSON.stringify(body)).not.toContain(MARKER);
     } finally {
       logSpy.mockRestore();
     }

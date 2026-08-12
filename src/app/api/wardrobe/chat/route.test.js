@@ -3,20 +3,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const runMock = vi.fn();
 const createChatProviderRouter = vi.fn(() => ({ run: runMock }));
 
-class FakeAllProvidersUnavailableError extends Error {
-  constructor() {
-    super("No AI provider is currently available.");
-    this.name = "AllProvidersUnavailableError";
-    this.code = "AI_PROVIDER_UNAVAILABLE";
-  }
-}
+// Real redactErrorForLogging/ProviderError/FslError/AllProvidersUnavailableError
+// come through unmocked (via importOriginal) so this file exercises the
+// ACTUAL security-relevant redaction logic end to end, not a hand-rolled
+// stand-in that could silently drift from it. Only the router construction
+// and the debug-info toggle are mocked.
+const { AllProvidersUnavailableError: RealAllProvidersUnavailableError, ProviderError: RealProviderError } = await vi.importActual("@/lib/ai-provider");
 
-vi.mock("@/lib/ai-provider", () => ({
-  createChatProviderRouter,
-  shouldExposeProviderDebugInfo: () => true,
-  AllProvidersUnavailableError: FakeAllProvidersUnavailableError,
-  redactErrorForLogging: (err) => ({ name: err?.name ?? "Error", code: err?.code ?? null, message: err?.message ?? String(err) }),
-}));
+vi.mock("@/lib/ai-provider", async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    createChatProviderRouter,
+    shouldExposeProviderDebugInfo: () => true,
+  };
+});
 
 const { POST } = await import("./route.js");
 
@@ -75,7 +76,7 @@ describe("POST /api/wardrobe/chat", () => {
   });
 
   it("maps AllProvidersUnavailableError to 503 AI_PROVIDER_UNAVAILABLE", async () => {
-    runMock.mockRejectedValueOnce(new FakeAllProvidersUnavailableError());
+    runMock.mockRejectedValueOnce(new RealAllProvidersUnavailableError());
     const { status, body } = await post({ message: "Create a wardrobe." });
     expect(status).toBe(503);
     expect(body.code).toBe("AI_PROVIDER_UNAVAILABLE");
@@ -100,11 +101,7 @@ describe("POST /api/wardrobe/chat", () => {
     const logSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const secret = "sk-ant-real-secret-should-never-be-logged";
-      const providerErr = Object.assign(new Error("safe redacted message"), {
-        name: "ProviderError",
-        code: "UNKNOWN",
-        cause: new Error(`Authorization: Bearer ${secret}`),
-      });
+      const providerErr = new RealProviderError("UNKNOWN", "safe redacted message", { cause: new Error(`Authorization: Bearer ${secret}`) });
       runMock.mockRejectedValueOnce(providerErr);
 
       await post({ message: "Create a wardrobe." });
@@ -123,6 +120,28 @@ describe("POST /api/wardrobe/chat", () => {
     }
   });
 
+  it("FINAL SECURITY FIX (Codex) — untrusted-message regression: a raw/unrecognized error with the secret DIRECTLY in .message (no .cause, no spoofed name) is never logged or returned", async () => {
+    const MARKER = "SECRET_SHOULD_NEVER_APPEAR";
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      // A genuinely raw/unknown error — not one of our trusted domain
+      // classes — whose OWN message embeds request content, with no cause
+      // involved at all. This is exactly the gap the previous
+      // redactErrorForLogging (message always trusted) missed.
+      const rawSdkError = new Error(`Authorization: Bearer ${MARKER}`);
+      runMock.mockRejectedValueOnce(rawSdkError);
+
+      const res = await POST(req({ message: "Create a wardrobe." }));
+      const responseText = JSON.stringify(await res.json());
+
+      expect(errorSpy).toHaveBeenCalledWith("wardrobe agent route error:", { name: "Error", code: "UNKNOWN_ERROR", message: "An internal AI provider error occurred." });
+      expect(JSON.stringify(errorSpy.mock.calls)).not.toContain(MARKER);
+      expect(responseText).not.toContain(MARKER);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it("BLOCKER 2 exact regression (Codex 'PR #4 Required Corrections'): a synthetic marker placed in message/cause/headers/payload appears ZERO times in logs or the serialized client response", async () => {
     const MARKER = "SECRET_SHOULD_NEVER_APPEAR";
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -137,11 +156,7 @@ describe("POST /api/wardrobe/chat", () => {
         headers: { authorization: `Bearer ${MARKER}`, "x-api-key": MARKER },
         payload: { request: { apiKey: MARKER }, response: { detail: MARKER } },
       });
-      const providerErr = Object.assign(new Error("safe redacted message — no marker here"), {
-        name: "ProviderError",
-        code: "UNKNOWN",
-        cause: rawSdkError,
-      });
+      const providerErr = new RealProviderError("UNKNOWN", "safe redacted message — no marker here", { cause: rawSdkError });
       runMock.mockRejectedValueOnce(providerErr);
 
       const res = await POST(req({ message: "Create a wardrobe." }));
