@@ -79,6 +79,8 @@ export default function FslLabPage() {
 
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    // Browser capability detection is intentionally synchronized after mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setVoiceSupported(!!SpeechRecognition);
     if (!SpeechRecognition) return;
     const recognition = new SpeechRecognition();
