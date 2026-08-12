@@ -86,4 +86,59 @@ describe("createExtractionAiProvider (FSL extraction, provider-independent)", ()
     expect(anthropicCreateMock).toHaveBeenCalledTimes(2); // Anthropic's own one bounded repair attempt
     expect(openaiCreateMock).not.toHaveBeenCalled(); // never escalated to a second provider
   });
+
+  // ---- Codex "PR #4 Required Corrections" — Blocker 1, exact scenario matrix ----
+  describe("Blocker 1 exact scenario matrix (router level, not just unit classification)", () => {
+    it("HTTP 400 (malformed provider request — an integration defect) does NOT cause fallback to the second provider", async () => {
+      anthropicCreateMock.mockRejectedValue({ status: 400, message: "invalid request: unknown parameter" });
+      const provider = createExtractionAiProvider({ order: ["anthropic", "openai"], anthropicApiKey: "a-key", openaiApiKey: "o-key" });
+
+      const rejection = await provider.extractRequirements("a wardrobe").catch((e) => e);
+      expect(rejection.code).toBe("AI_PROVIDER_REQUEST_ERROR");
+      expect(openaiCreateMock).not.toHaveBeenCalled(); // no fallback
+    });
+
+    it("an unknown/unrecognized SDK failure does NOT cause fallback to the second provider", async () => {
+      anthropicCreateMock.mockRejectedValue(new Error("some error shape neither SDK ever actually throws"));
+      const provider = createExtractionAiProvider({ order: ["anthropic", "openai"], anthropicApiKey: "a-key", openaiApiKey: "o-key" });
+
+      const rejection = await provider.extractRequirements("a wardrobe").catch((e) => e);
+      expect(rejection.code).toBe("AI_PROVIDER_REQUEST_ERROR");
+      expect(openaiCreateMock).not.toHaveBeenCalled(); // no fallback
+    });
+
+    it("HTTP 429 (rate limit) DOES cause fallback to the second provider", async () => {
+      anthropicCreateMock.mockRejectedValue({ status: 429, message: "rate limited" });
+      openaiCreateMock.mockResolvedValueOnce(openaiToolResponse({ furniture_type: "wardrobe", dimensions: {}, components: [], explicit_fields: [] }));
+      const provider = createExtractionAiProvider({ order: ["anthropic", "openai"], anthropicApiKey: "a-key", openaiApiKey: "o-key" });
+
+      const result = await provider.extractRequirements("a wardrobe");
+      expect(result.furniture_type).toBe("wardrobe");
+      expect(openaiCreateMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("HTTP 500/502/503 (transient provider server error) DOES cause fallback to the second provider", async () => {
+      for (const status of [500, 502, 503]) {
+        anthropicCreateMock.mockReset();
+        openaiCreateMock.mockReset();
+        anthropicCreateMock.mockRejectedValue({ status, message: "server error" });
+        openaiCreateMock.mockResolvedValueOnce(openaiToolResponse({ furniture_type: "wardrobe", dimensions: {}, components: [], explicit_fields: [] }));
+        const provider = createExtractionAiProvider({ order: ["anthropic", "openai"], anthropicApiKey: "a-key", openaiApiKey: "o-key" });
+
+        const result = await provider.extractRequirements("a wardrobe");
+        expect(result.furniture_type).toBe("wardrobe");
+        expect(openaiCreateMock).toHaveBeenCalledTimes(1);
+      }
+    });
+
+    it("timeout/network-unavailable DOES cause fallback to the second provider", async () => {
+      anthropicCreateMock.mockImplementation(() => Promise.reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
+      openaiCreateMock.mockResolvedValueOnce(openaiToolResponse({ furniture_type: "wardrobe", dimensions: {}, components: [], explicit_fields: [] }));
+      const provider = createExtractionAiProvider({ order: ["anthropic", "openai"], anthropicApiKey: "a-key", openaiApiKey: "o-key", timeoutMs: 5 });
+
+      const result = await provider.extractRequirements("a wardrobe");
+      expect(result.furniture_type).toBe("wardrobe");
+      expect(openaiCreateMock).toHaveBeenCalledTimes(1);
+    });
+  });
 });

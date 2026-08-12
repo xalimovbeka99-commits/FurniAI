@@ -122,4 +122,39 @@ describe("POST /api/wardrobe/chat", () => {
       logSpy.mockRestore();
     }
   });
+
+  it("BLOCKER 2 exact regression (Codex 'PR #4 Required Corrections'): a synthetic marker placed in message/cause/headers/payload appears ZERO times in logs or the serialized client response", async () => {
+    const MARKER = "SECRET_SHOULD_NEVER_APPEAR";
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      // The marker is planted in every place a raw SDK failure object could
+      // plausibly carry sensitive content: the wrapped cause's own message,
+      // a fake `headers` bag (e.g. Authorization), and a fake provider
+      // response `payload` — none of which redactErrorForLogging ever reads.
+      const rawSdkError = Object.assign(new Error(`upstream rejected request: ${MARKER}`), {
+        headers: { authorization: `Bearer ${MARKER}`, "x-api-key": MARKER },
+        payload: { request: { apiKey: MARKER }, response: { detail: MARKER } },
+      });
+      const providerErr = Object.assign(new Error("safe redacted message — no marker here"), {
+        name: "ProviderError",
+        code: "UNKNOWN",
+        cause: rawSdkError,
+      });
+      runMock.mockRejectedValueOnce(providerErr);
+
+      const res = await POST(req({ message: "Create a wardrobe." }));
+      const responseText = JSON.stringify(await res.json());
+
+      const allLoggedText = JSON.stringify([...errorSpy.mock.calls, ...warnSpy.mock.calls, ...logSpy.mock.calls]);
+
+      expect(allLoggedText).not.toContain(MARKER);
+      expect(responseText).not.toContain(MARKER);
+    } finally {
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+      logSpy.mockRestore();
+    }
+  });
 });

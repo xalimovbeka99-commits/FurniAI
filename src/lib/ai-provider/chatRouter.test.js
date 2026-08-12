@@ -78,6 +78,23 @@ describe("createChatProviderRouter", () => {
     expect(provider).toBe("openai");
     expect(anthropicCreateMock).not.toHaveBeenCalled();
   });
+
+  // ---- Codex "PR #4 Required Corrections" — Blocker 1, chat-side parity ----
+  it("HTTP 400 from the Anthropic client (an integration defect) does NOT cause fallback to OpenAI on the chat path", async () => {
+    const router = createChatProviderRouter({ order: ["anthropic", "openai"], anthropicApiKey: "a-key", openaiApiKey: "o-key" });
+    anthropicCreateMock.mockRejectedValueOnce({ status: 400, message: "invalid request" });
+    const rejection = await router.run((client) => client.messages.create({ max_tokens: 10, messages: [] })).catch((e) => e);
+    expect(rejection.status).toBe(400); // propagated raw, unclassified — anthropicChatClient.js is a deliberate passthrough
+    expect(openaiCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("an unknown/unrecognized failure from the Anthropic client does NOT cause fallback to OpenAI on the chat path", async () => {
+    const router = createChatProviderRouter({ order: ["anthropic", "openai"], anthropicApiKey: "a-key", openaiApiKey: "o-key" });
+    const bug = new Error("some shape neither SDK ever throws");
+    anthropicCreateMock.mockRejectedValueOnce(bug);
+    await expect(router.run((client) => client.messages.create({ max_tokens: 10, messages: [] }))).rejects.toBe(bug);
+    expect(openaiCreateMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("shouldExposeProviderDebugInfo", () => {

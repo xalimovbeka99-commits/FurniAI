@@ -176,6 +176,19 @@ describe("redactErrorForLogging — Codex finding #2 fix: never let a raw error/
     expect(redactErrorForLogging(err)).toEqual({ name: "TypeError", code: null, message: "cannot read properties of undefined" });
   });
 
+  it("BLOCKER 2 exact regression (Codex 'PR #4 Required Corrections'): a marker planted in message, cause, fake headers, and fake payload appears ZERO times after redaction", () => {
+    const MARKER = "SECRET_SHOULD_NEVER_APPEAR";
+    const rawSdkError = Object.assign(new Error(`upstream failure: ${MARKER}`), {
+      headers: { authorization: `Bearer ${MARKER}` },
+      payload: { request: { apiKey: MARKER }, response: { detail: MARKER } },
+    });
+    const err = new ProviderError(PROVIDER_ERROR_CODES.UNKNOWN, "safe message, no marker here", { cause: rawSdkError, provider: "anthropic" });
+
+    const redacted = redactErrorForLogging(err);
+    expect(JSON.stringify(redacted)).not.toContain(MARKER);
+    expect(redacted).toEqual({ name: "ProviderError", code: "UNKNOWN", message: "safe message, no marker here" });
+  });
+
   it("ProviderError's own .cause is non-enumerable and excluded from JSON.stringify/spread — defense in depth alongside redactErrorForLogging", () => {
     const err = new ProviderError(PROVIDER_ERROR_CODES.UNKNOWN, "x", { cause: new Error("SECRET_IN_CAUSE") });
     expect(JSON.stringify(err)).not.toContain("SECRET_IN_CAUSE");

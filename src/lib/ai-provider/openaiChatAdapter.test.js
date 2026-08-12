@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createOpenAIChatClient } from "./openaiChatAdapter.js";
 import { runWardrobeAgent } from "../wardrobe-agent/runWardrobeAgent.js";
 
@@ -124,5 +124,47 @@ describe("runWardrobeAgent driven entirely through the OpenAI adapter", () => {
     expect(result.model).toBeNull(); // nothing committed
     expect(result.toolCalls[0].result.success).toBe(false);
     expect(result.toolCalls[0].result.error).toBe("INVALID_DIMENSION");
+  });
+});
+
+describe("BLOCKER 3 exact regression (Codex 'PR #4 Required Corrections'): OPENAI_MODEL reaches the actual SDK call", () => {
+  const originalEnv = process.env.OPENAI_MODEL;
+  beforeEach(() => {
+    createMock.mockReset();
+  });
+  afterEach(() => {
+    if (originalEnv === undefined) delete process.env.OPENAI_MODEL;
+    else process.env.OPENAI_MODEL = originalEnv;
+  });
+
+  it("createOpenAIChatClient(), with no explicit model, resolves from process.env.OPENAI_MODEL", async () => {
+    process.env.OPENAI_MODEL = "gpt-6-test-model";
+    createMock.mockResolvedValueOnce({ choices: [{ message: { content: "ok", tool_calls: [] } }] });
+
+    const client = createOpenAIChatClient({ apiKey: "k" });
+    await client.messages.create({ max_tokens: 10, messages: [{ role: "user", content: "hi" }] });
+
+    expect(createMock.mock.calls[0][0].model).toBe("gpt-6-test-model");
+  });
+
+  it("runWardrobeAgent, end to end, sends the OPENAI_MODEL-configured model to the SDK — never the Anthropic-style params.model it internally builds", async () => {
+    process.env.OPENAI_MODEL = "gpt-6-test-model";
+    createMock.mockResolvedValueOnce({ choices: [{ message: { content: "ok", tool_calls: [] } }] });
+
+    const client = createOpenAIChatClient({ apiKey: "k" }); // reads process.env.OPENAI_MODEL at construction, same as production
+    await runWardrobeAgent({ client, model: null, message: "Create a wardrobe." });
+
+    expect(createMock.mock.calls[0][0].model).toBe("gpt-6-test-model");
+  });
+
+  it("falls back to the built-in default when OPENAI_MODEL is unset", async () => {
+    delete process.env.OPENAI_MODEL;
+    createMock.mockResolvedValueOnce({ choices: [{ message: { content: "ok", tool_calls: [] } }] });
+
+    const client = createOpenAIChatClient({ apiKey: "k" });
+    await client.messages.create({ max_tokens: 10, messages: [] });
+
+    expect(createMock.mock.calls[0][0].model).toBeTruthy();
+    expect(createMock.mock.calls[0][0].model).not.toBe("gpt-6-test-model");
   });
 });
