@@ -13,7 +13,7 @@
  */
 import { NextResponse } from "next/server";
 import { generateFurnitureSpecification } from "@/lib/services/furnitureGenerationService";
-import { createExtractionAiProvider } from "@/lib/ai-provider";
+import { createExtractionAiProvider, redactErrorForLogging } from "@/lib/ai-provider";
 import { ERROR_CODES, httpStatusForCode } from "@/lib/fsl/errors";
 import { GENERATION_TARGETS } from "@/lib/fsl/enums";
 
@@ -190,7 +190,7 @@ export async function POST(req) {
     const { httpStatus, body } = await generateFurnitureSpecification(request, { aiProvider });
     return NextResponse.json(body, { status: httpStatus });
   } catch (err) {
-    console.error("furniture generation route error:", err);
+    console.error("furniture generation route error:", redactErrorForLogging(err));
     return errorResponse(ERROR_CODES.INTERNAL_ERROR, "Something went wrong generating the furniture specification.");
   }
 }

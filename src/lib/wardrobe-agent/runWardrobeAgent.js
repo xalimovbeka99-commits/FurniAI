@@ -6,10 +6,19 @@
  *   prompt -> LLM reasoning -> tool call -> tool result -> LLM sees result
  *          -> next tool -> ... -> finished model
  *
- * `client` is anything shaped like the @anthropic-ai/sdk `Anthropic`
- * instance already used in src/lib/ai-provider/anthropicProvider.js
- * (`client.messages.create({...}, {signal})`), or the deterministic
- * fakeWardrobeAgentProvider.js used in tests — the loop does not care which.
+ * `client` is anything implementing FurniAI's normalized chat-client
+ * contract (`client.messages.create({...}, {signal}) -> {content:[...]}`)
+ * — the real Anthropic client, the OpenAI adapter, or the deterministic
+ * fakeWardrobeAgentProvider.js used in tests all satisfy it; the loop does
+ * not care which, and does not hardcode a model name (fixing a bug found
+ * in review: this file used to default `modelName` to a hardcoded Claude
+ * model string and forward it as `params.model` on every call, which
+ * permanently shadowed the chat client's own configured model — making
+ * ANTHROPIC_MODEL/OPENAI_MODEL env vars silently ineffective for Wardrobe
+ * AI specifically. Leaving `modelName` unset by default lets each chat
+ * client (anthropicChatClient.js / openaiChatAdapter.js) apply its own
+ * configured default; passing an explicit `modelName` still overrides it,
+ * same precedence as before).
  *
  * The LLM never touches the model directly: every tool_use block is
  * executed through src/lib/wardrobe-tools/tools.js, which is the only
@@ -21,7 +30,6 @@ import { findTool } from "../wardrobe-tools/tools.js";
 import { toAnthropicTools } from "../wardrobe-tools/toAnthropicTools.js";
 import { buildWardrobeSystemPrompt, summarizeModelForPrompt } from "./systemPrompt.js";
 
-const DEFAULT_MODEL_NAME = "claude-sonnet-4-6";
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_MAX_TOOL_CALLS = 10;
 
@@ -71,7 +79,9 @@ function toolResultForModel(result) {
  *   message: string,
  *   maxToolCalls?: number,
  *   timeoutMs?: number,
- *   modelName?: string,
+ *   modelName?: string, // omit to use the chat client's own configured
+ *                       // default (which respects ANTHROPIC_MODEL/
+ *                       // OPENAI_MODEL); set explicitly only to override it.
  * }} args
  * @returns {Promise<{
  *   model: object | null,
@@ -88,7 +98,7 @@ export async function runWardrobeAgent({
   message,
   maxToolCalls = DEFAULT_MAX_TOOL_CALLS,
   timeoutMs = DEFAULT_TIMEOUT_MS,
-  modelName = DEFAULT_MODEL_NAME,
+  modelName, // intentionally no hardcoded default — see file-level doc comment
 }) {
   let currentModel = model;
   const messages = [

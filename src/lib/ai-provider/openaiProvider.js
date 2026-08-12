@@ -25,7 +25,7 @@ import OpenAI from "openai";
 import { FslError, ERROR_CODES } from "../fsl/errors.js";
 import { extractionToolSchema, EXTRACT_TOOL_NAME } from "./extractionSchema.js";
 import { buildSystemPrompt } from "./promptTemplate.js";
-import { classifySdkError } from "./errors.js";
+import { toFslProviderError } from "./errors.js";
 
 const DEFAULT_MODEL = "gpt-5.6-luna";
 const DEFAULT_TIMEOUT_MS = 20000;
@@ -133,11 +133,11 @@ export function createOpenAIProvider({ apiKey = process.env.OPENAI_API_KEY, mode
         { signal: controller.signal }
       );
     } catch (err) {
-      const classified = classifySdkError(err, "openai");
-      throw new FslError(
-        classified.code === "TIMEOUT" ? ERROR_CODES.AI_PROVIDER_TIMEOUT : ERROR_CODES.AI_PROVIDER_ERROR,
-        classified.code === "TIMEOUT" ? "The AI provider did not respond in time." : "The AI provider request failed."
-      );
+      // Preserves classifySdkError's retriable/non-retriable distinction —
+      // a genuine integration defect (e.g. a 400 from a malformed request)
+      // surfaces as the non-retriable AI_PROVIDER_REQUEST_ERROR instead of
+      // silently failing over to the other provider. See errors.js.
+      throw toFslProviderError(err, "openai");
     } finally {
       clearTimeout(timeout);
     }

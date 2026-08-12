@@ -1,0 +1,59 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const runSalesAgent = vi.fn();
+vi.mock("@/lib/salesAgent", () => ({ runSalesAgent }));
+vi.mock("@/lib/ai-provider", () => ({
+  redactErrorForLogging: (err) => ({ name: err?.name ?? "Error", code: err?.code ?? null, message: err?.message ?? String(err) }),
+}));
+
+const { POST } = await import("./route.js");
+
+function req(body) {
+  return { json: async () => body };
+}
+async function post(body) {
+  const res = await POST(req(body));
+  return { status: res.status, body: await res.json() };
+}
+
+describe("POST /api/sales-agent", () => {
+  beforeEach(() => {
+    runSalesAgent.mockReset();
+  });
+
+  it("rejects a request with no messages array", async () => {
+    const { status } = await post({});
+    expect(status).toBe(400);
+    expect(runSalesAgent).not.toHaveBeenCalled();
+  });
+
+  it("returns the agent reply on success", async () => {
+    runSalesAgent.mockResolvedValueOnce({ reply: "Hello!" });
+    const { status, body } = await post({ messages: [{ role: "user", content: "hi" }] });
+    expect(status).toBe(200);
+    expect(body.reply).toBe("Hello!");
+  });
+
+  it("maps the AI_PROVIDER_UNAVAILABLE sentinel error to 503", async () => {
+    runSalesAgent.mockRejectedValueOnce(new Error("AI_PROVIDER_UNAVAILABLE"));
+    const { status } = await post({ messages: [{ role: "user", content: "hi" }] });
+    expect(status).toBe(503);
+  });
+
+  it("REGRESSION (Codex finding #2): logs a redacted error, never the raw error/cause, on an unexpected failure", async () => {
+    const logSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const secret = "sk-ant-should-never-be-logged";
+      const err = Object.assign(new Error("safe redacted message"), { name: "ProviderError", code: "UNKNOWN", cause: new Error(`Authorization: Bearer ${secret}`) });
+      runSalesAgent.mockRejectedValueOnce(err);
+
+      const { status } = await post({ messages: [{ role: "user", content: "hi" }] });
+
+      expect(status).toBe(500);
+      expect(logSpy).toHaveBeenCalledWith("sales-agent error:", { name: "ProviderError", code: "UNKNOWN", message: "safe redacted message" });
+      expect(JSON.stringify(logSpy.mock.calls)).not.toContain(secret);
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+});

@@ -15,6 +15,7 @@ vi.mock("@/lib/ai-provider", () => ({
   createChatProviderRouter,
   shouldExposeProviderDebugInfo: () => true,
   AllProvidersUnavailableError: FakeAllProvidersUnavailableError,
+  redactErrorForLogging: (err) => ({ name: err?.name ?? "Error", code: err?.code ?? null, message: err?.message ?? String(err) }),
 }));
 
 const { POST } = await import("./route.js");
@@ -93,5 +94,32 @@ describe("POST /api/wardrobe/chat", () => {
     expect(status).toBe(500);
     expect(body.code).toBe("WARDROBE_AGENT_ERROR");
     expect(JSON.stringify(body)).not.toContain("sensitive details");
+  });
+
+  it("REGRESSION (Codex finding #2): logs a redacted error, never the raw error object, when the caught error carries a secret-bearing cause", async () => {
+    const logSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const secret = "sk-ant-real-secret-should-never-be-logged";
+      const providerErr = Object.assign(new Error("safe redacted message"), {
+        name: "ProviderError",
+        code: "UNKNOWN",
+        cause: new Error(`Authorization: Bearer ${secret}`),
+      });
+      runMock.mockRejectedValueOnce(providerErr);
+
+      await post({ message: "Create a wardrobe." });
+
+      expect(logSpy).toHaveBeenCalledWith("wardrobe agent route error:", { name: "ProviderError", code: "UNKNOWN", message: "safe redacted message" });
+      // the raw error/cause object itself must never be one of the logged arguments
+      for (const call of logSpy.mock.calls) {
+        for (const arg of call) {
+          expect(arg).not.toBe(providerErr);
+          expect(arg).not.toBe(providerErr.cause);
+        }
+      }
+      expect(JSON.stringify(logSpy.mock.calls)).not.toContain(secret);
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 });

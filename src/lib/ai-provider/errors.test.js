@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { ProviderError, PROVIDER_ERROR_CODES, AllProvidersUnavailableError, classifySdkError, isRetriableProviderFailure } from "./errors.js";
+import {
+  ProviderError,
+  PROVIDER_ERROR_CODES,
+  AllProvidersUnavailableError,
+  classifySdkError,
+  isRetriableProviderFailure,
+  toFslProviderError,
+  redactErrorForLogging,
+} from "./errors.js";
 import { FslError, ERROR_CODES } from "../fsl/errors.js";
 
 describe("ProviderError", () => {
@@ -113,5 +121,81 @@ describe("AllProvidersUnavailableError", () => {
     const err = new AllProvidersUnavailableError("none available", { attempted: [{ provider: "anthropic", outcome: "failed_retriable" }] });
     expect(err.code).toBe("AI_PROVIDER_UNAVAILABLE");
     expect(err.attempted).toHaveLength(1);
+  });
+});
+
+describe("toFslProviderError — Codex finding #1 fix: retriable vs non-retriable extraction failures", () => {
+  it("maps a timeout to AI_PROVIDER_TIMEOUT", () => {
+    const err = Object.assign(new Error("aborted"), { name: "AbortError" });
+    expect(toFslProviderError(err, "anthropic")).toMatchObject({ name: "FslError", code: "AI_PROVIDER_TIMEOUT" });
+  });
+
+  it("maps a retriable provider-availability failure (5xx, 429, auth, network) to the retriable AI_PROVIDER_ERROR", () => {
+    for (const raw of [{ status: 500 }, { status: 429 }, { status: 401 }, { code: "ECONNREFUSED" }]) {
+      expect(toFslProviderError(raw, "openai")).toMatchObject({ name: "FslError", code: "AI_PROVIDER_ERROR" });
+    }
+  });
+
+  it("maps a client-error-shaped failure (HTTP 400) to the NON-retriable AI_PROVIDER_REQUEST_ERROR — the bug Codex flagged", () => {
+    const err = toFslProviderError({ status: 400, message: "bad request" }, "anthropic");
+    expect(err.code).toBe("AI_PROVIDER_REQUEST_ERROR");
+    expect(isRetriableProviderFailure(err)).toBe(false);
+  });
+
+  it("maps a genuinely unrecognized failure to the NON-retriable AI_PROVIDER_REQUEST_ERROR rather than guessing it's retriable", () => {
+    const err = toFslProviderError(new Error("something neither SDK ever throws"), "openai");
+    expect(err.code).toBe("AI_PROVIDER_REQUEST_ERROR");
+    expect(isRetriableProviderFailure(err)).toBe(false);
+  });
+
+  it("never includes the raw error's message in the returned FslError", () => {
+    const secret = "sk-ant-leak-test-should-not-appear";
+    const err = toFslProviderError(new Error(`failed with key ${secret} in the request`), "anthropic");
+    expect(err.message).not.toContain(secret);
+  });
+});
+
+describe("redactErrorForLogging — Codex finding #2 fix: never let a raw error/cause reach console.error", () => {
+  it("reduces a ProviderError down to {name, code, message} — no cause", () => {
+    const err = new ProviderError(PROVIDER_ERROR_CODES.AUTH_ERROR, "The AI provider rejected the request credentials.", {
+      provider: "anthropic",
+      cause: new Error("Authorization: Bearer sk-ant-real-secret-value"),
+    });
+    const redacted = redactErrorForLogging(err);
+    expect(redacted).toEqual({ name: "ProviderError", code: "AUTH_ERROR", message: "The AI provider rejected the request credentials." });
+    expect(JSON.stringify(redacted)).not.toContain("sk-ant-real-secret-value");
+  });
+
+  it("reduces an FslError down to {name, code, message}", () => {
+    const err = new FslError(ERROR_CODES.AI_PROVIDER_ERROR, "The AI provider request failed.");
+    expect(redactErrorForLogging(err)).toEqual({ name: "FslError", code: "AI_PROVIDER_ERROR", message: "The AI provider request failed." });
+  });
+
+  it("handles a plain error with no .code gracefully", () => {
+    const err = new TypeError("cannot read properties of undefined");
+    expect(redactErrorForLogging(err)).toEqual({ name: "TypeError", code: null, message: "cannot read properties of undefined" });
+  });
+
+  it("ProviderError's own .cause is non-enumerable and excluded from JSON.stringify/spread — defense in depth alongside redactErrorForLogging", () => {
+    const err = new ProviderError(PROVIDER_ERROR_CODES.UNKNOWN, "x", { cause: new Error("SECRET_IN_CAUSE") });
+    expect(JSON.stringify(err)).not.toContain("SECRET_IN_CAUSE");
+    expect(JSON.stringify({ ...err })).not.toContain("SECRET_IN_CAUSE");
+    expect(Object.keys(err)).not.toContain("cause"); // for-in / Object.keys don't see it
+    expect(err.cause).toBeInstanceOf(Error); // but it's still there for a debugger that asks for it by name
+  });
+
+  it("REGRESSION (Codex finding #2): documents why redaction is required — the raw error object still carries .cause with the secret reachable", () => {
+    // Node's console.error prints an Error's .cause unconditionally, even
+    // when non-enumerable (verified empirically; not something this test
+    // suite can portably re-assert against console's internal formatting).
+    // What this test guards is the actual risk surface: as long as the raw
+    // error object carries the secret-bearing cause, passing IT (instead of
+    // redactErrorForLogging's output) to console.error is unsafe. If a
+    // future change ever logs `err` directly instead of the redacted form,
+    // this is the reachable data that would leak.
+    const err = new ProviderError(PROVIDER_ERROR_CODES.UNKNOWN, "safe message", { cause: new Error("RAW_SDK_SECRET_XYZ") });
+    expect(err.cause.message).toContain("RAW_SDK_SECRET_XYZ");
+    // ...which is exactly why every call site logs redactErrorForLogging(err), not err:
+    expect(JSON.stringify(redactErrorForLogging(err))).not.toContain("RAW_SDK_SECRET_XYZ");
   });
 });

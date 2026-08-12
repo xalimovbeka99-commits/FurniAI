@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const generateFurnitureSpecification = vi.fn();
 vi.mock("@/lib/services/furnitureGenerationService", () => ({ generateFurnitureSpecification }));
-vi.mock("@/lib/ai-provider", () => ({ createExtractionAiProvider: vi.fn(() => ({})) }));
+vi.mock("@/lib/ai-provider", () => ({
+  createExtractionAiProvider: vi.fn(() => ({})),
+  redactErrorForLogging: (err) => ({ name: err?.name ?? "Error", code: err?.code ?? null, message: err?.message ?? String(err) }),
+}));
 
 const { POST } = await import("./route.js");
 
@@ -92,5 +95,21 @@ describe("POST /api/v1/furniture/generate — route-level request validation", (
     const { status, body } = await post({ message: "a wardrobe", attachments: "nope" });
     expect(status).toBe(400);
     expect(body.errors[0].field).toBe("attachments");
+  });
+
+  it("REGRESSION (Codex finding #2): logs a redacted error, never the raw error/cause, on an unexpected service failure", async () => {
+    const logSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const secret = "sk-openai-should-never-be-logged";
+      const err = Object.assign(new Error("safe redacted message"), { name: "ProviderError", code: "UNKNOWN", cause: new Error(`key=${secret}`) });
+      generateFurnitureSpecification.mockRejectedValueOnce(err);
+
+      await post({ message: "a modern white wardrobe, 2400mm wide" });
+
+      expect(logSpy).toHaveBeenCalledWith("furniture generation route error:", { name: "ProviderError", code: "UNKNOWN", message: "safe redacted message" });
+      expect(JSON.stringify(logSpy.mock.calls)).not.toContain(secret);
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 });

@@ -23,7 +23,7 @@ export { createExtractionAiProvider } from "./extractionRouter.js";
 export { createFakeProvider } from "./fakeProvider.js";
 export { PROMPT_VERSION, buildSystemPrompt } from "./promptTemplate.js";
 export { resolveProviderOrder, callWithFailover, KNOWN_PROVIDERS } from "./providerRouter.js";
-export { ProviderError, PROVIDER_ERROR_CODES, AllProvidersUnavailableError, isRetriableProviderFailure, classifySdkError } from "./errors.js";
+export { ProviderError, PROVIDER_ERROR_CODES, AllProvidersUnavailableError, isRetriableProviderFailure, classifySdkError, toFslProviderError, redactErrorForLogging } from "./errors.js";
 export { createAnthropicChatClient } from "./anthropicChatClient.js";
 export { createOpenAIChatClient } from "./openaiChatAdapter.js";
 export { createChatProviderRouter, shouldExposeProviderDebugInfo } from "./chatRouter.js";

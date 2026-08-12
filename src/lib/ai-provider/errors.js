@@ -13,6 +13,7 @@
  * failures) is NOT a ProviderError and must never trigger failover — see
  * isRetriableProviderFailure below and providerRouter.js's callWithFailover.
  */
+import { FslError, ERROR_CODES } from "../fsl/errors.js";
 
 export const PROVIDER_ERROR_CODES = Object.freeze({
   MISSING_API_KEY: "MISSING_API_KEY",
@@ -52,11 +53,22 @@ export class ProviderError extends Error {
     this.name = "ProviderError";
     this.code = code in PROVIDER_ERROR_CODES ? code : PROVIDER_ERROR_CODES.UNKNOWN;
     this.provider = provider;
-    this.cause = cause;
+    // Non-enumerable and non-JSON-serializable on purpose: `cause` may hold
+    // the raw SDK error (which can embed request headers, payloads, or
+    // partial secrets in its own .message). Kept for a debugger to inspect
+    // by name, but excluded from JSON.stringify/spread/for-in and from
+    // Node's default console.error printing of this error object — see
+    // redactErrorForLogging below, which is what call sites must use
+    // instead of logging this object directly.
+    Object.defineProperty(this, "cause", { value: cause, enumerable: false, writable: true, configurable: true });
   }
 
   get retriable() {
     return RETRIABLE_CODES.has(this.code);
+  }
+
+  toJSON() {
+    return { name: this.name, code: this.code, message: this.message, provider: this.provider };
   }
 }
 
@@ -101,6 +113,37 @@ export function classifySdkError(err, providerName) {
 }
 
 /**
+ * Maps a raw SDK error to the FSL extraction contract's error codes
+ * (Step 7: "the structured extraction contract must remain the same from
+ * the FurniAI Brain's perspective"), preserving classifySdkError's
+ * retriable/non-retriable distinction instead of collapsing every non-
+ * timeout failure into the single retriable AI_PROVIDER_ERROR code.
+ *
+ * - TIMEOUT                              -> AI_PROVIDER_TIMEOUT (retriable)
+ * - retriable (auth/rate-limit/5xx/net)  -> AI_PROVIDER_ERROR (retriable)
+ * - anything else (4xx client error, a   -> AI_PROVIDER_REQUEST_ERROR
+ *   malformed request WE built, or a         (NOT retriable — this is an
+ *   genuinely unrecognized failure)          integration defect, not a
+ *                                             "try the other provider" case)
+ *
+ * Fixing a bug found in review: both anthropicProvider.js and
+ * openaiProvider.js previously threw AI_PROVIDER_ERROR for every non-abort
+ * failure, which made a 400-class integration defect (bad request shape,
+ * config mistake) silently fail over to the second provider instead of
+ * surfacing as the real bug it is.
+ */
+export function toFslProviderError(err, providerName) {
+  const classified = classifySdkError(err, providerName);
+  if (classified.code === PROVIDER_ERROR_CODES.TIMEOUT) {
+    return new FslError(ERROR_CODES.AI_PROVIDER_TIMEOUT, "The AI provider did not respond in time.");
+  }
+  if (classified.retriable) {
+    return new FslError(ERROR_CODES.AI_PROVIDER_ERROR, "The AI provider request failed.");
+  }
+  return new FslError(ERROR_CODES.AI_PROVIDER_REQUEST_ERROR, "The AI provider rejected the request.");
+}
+
+/**
  * True for errors that should trigger provider failover: ProviderError
  * instances marked retriable, plus the FSL layer's own two provider-level
  * FslError codes (AI_PROVIDER_ERROR, AI_PROVIDER_TIMEOUT) so the router can
@@ -135,6 +178,27 @@ export function isRetriableProviderFailure(err) {
     return classifySdkError(err, null).retriable;
   }
   return false;
+}
+
+/**
+ * Redacts an error down to `{name, code, message}` for logging. Required
+ * because Node's console.error/util.inspect prints an Error's `.cause`
+ * chain UNCONDITIONALLY — even when `cause` is a non-enumerable property
+ * (verified: `Object.defineProperty(..., {enumerable:false})` does not
+ * suppress it) — so `console.error("...", err)` on a raw ProviderError can
+ * still leak whatever the wrapped SDK error's own `.message`/`.stack`
+ * contains (headers, request bodies, partial keys). Every route's catch
+ * block must log the RETURN VALUE of this function, never the error object
+ * itself. `.message` is safe to include as-is for ProviderError/FslError/
+ * AllProvidersUnavailableError/AgentTimeoutError, since every throw site in
+ * this codebase uses a fixed, hand-written string for those — never
+ * interpolates raw provider content into `.message`. For anything else
+ * (a genuine unexpected application bug), the message is also safe to
+ * surface: it's our own code's error text, not a provider payload — but
+ * `.cause` is dropped unconditionally regardless of error type.
+ */
+export function redactErrorForLogging(err) {
+  return { name: err?.name ?? "Error", code: err?.code ?? null, message: err?.message ?? String(err) };
 }
 
 /**

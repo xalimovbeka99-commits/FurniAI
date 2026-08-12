@@ -82,11 +82,11 @@ describe("createOpenAIProvider", () => {
     await expect(provider.extractRequirements("a wardrobe")).rejects.toMatchObject({ code: "AI_PROVIDER_TIMEOUT" });
   });
 
-  it("maps any other provider failure to a generic AI_PROVIDER_ERROR without leaking the raw error", async () => {
+  it("maps a genuinely unrecognized/unclassifiable failure to the NON-retriable AI_PROVIDER_REQUEST_ERROR, not AI_PROVIDER_ERROR — never leaks the raw error", async () => {
     createMock.mockRejectedValue(new Error("connection reset by peer at 10.0.0.5:443"));
     const provider = createOpenAIProvider({ apiKey: "test-key" });
     const rejection = await provider.extractRequirements("a wardrobe").catch((e) => e);
-    expect(rejection.code).toBe("AI_PROVIDER_ERROR");
+    expect(rejection.code).toBe("AI_PROVIDER_REQUEST_ERROR");
     expect(rejection.message).not.toContain("10.0.0.5");
   });
 
@@ -94,6 +94,13 @@ describe("createOpenAIProvider", () => {
     createMock.mockRejectedValue({ status: 429, message: "rate limited" });
     const provider = createOpenAIProvider({ apiKey: "test-key" });
     await expect(provider.extractRequirements("a wardrobe")).rejects.toMatchObject({ code: "AI_PROVIDER_ERROR" });
+  });
+
+  it("maps a client-error-style failure (HTTP 400 — a malformed request WE built) to the NON-retriable AI_PROVIDER_REQUEST_ERROR — never silently failed over to the other provider", async () => {
+    createMock.mockRejectedValue({ status: 400, message: "invalid request: unknown parameter" });
+    const provider = createOpenAIProvider({ apiKey: "test-key" });
+    const rejection = await provider.extractRequirements("a wardrobe").catch((e) => e);
+    expect(rejection.code).toBe("AI_PROVIDER_REQUEST_ERROR");
   });
 
   it("sends image attachments as image_url data URIs alongside a trailing text block", async () => {

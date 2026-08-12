@@ -9,7 +9,7 @@
  */
 import { NextResponse } from "next/server";
 import { runWardrobeAgent } from "@/lib/wardrobe-agent/runWardrobeAgent";
-import { createChatProviderRouter, shouldExposeProviderDebugInfo, AllProvidersUnavailableError } from "@/lib/ai-provider";
+import { createChatProviderRouter, shouldExposeProviderDebugInfo, AllProvidersUnavailableError, redactErrorForLogging } from "@/lib/ai-provider";
 
 const MESSAGE_MAX_LENGTH = 2000;
 
@@ -82,7 +82,7 @@ export async function POST(req) {
     if (err?.name === "AgentTimeoutError") {
       return errorResponse(504, "AI_PROVIDER_TIMEOUT", "The Wardrobe AI did not respond in time.");
     }
-    console.error("wardrobe agent route error:", err);
+    console.error("wardrobe agent route error:", redactErrorForLogging(err));
     return errorResponse(500, "WARDROBE_AGENT_ERROR", "Something went wrong running the Wardrobe AI.");
   }
 }

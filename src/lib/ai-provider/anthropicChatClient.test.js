@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createAnthropicChatClient } from "./anthropicChatClient.js";
+import { runWardrobeAgent } from "../wardrobe-agent/runWardrobeAgent.js";
 
 const createMock = vi.fn();
 vi.mock("@anthropic-ai/sdk", () => ({
@@ -45,5 +46,30 @@ describe("createAnthropicChatClient", () => {
     const rejection = await client.messages.create({ max_tokens: 10, messages: [] }).catch((e) => e);
     expect(rejection).toBe(abortErr); // identity preserved — not wrapped into a ProviderError
     expect(rejection.name).toBe("AbortError");
+  });
+
+  it("REGRESSION (Codex finding #3): runWardrobeAgent honors ANTHROPIC_MODEL — it no longer forces its own hardcoded model, shadowing the client's configured one", async () => {
+    createMock.mockResolvedValueOnce({ content: [{ type: "text", text: "ok" }] });
+    // Simulates ANTHROPIC_MODEL=claude-opus-4-8 having been read by the
+    // client's own default resolution (createAnthropicChatClient's `model`
+    // param mirrors process.env.ANTHROPIC_MODEL in production).
+    const client = createAnthropicChatClient({ apiKey: "k", model: "claude-opus-4-8" });
+
+    await runWardrobeAgent({ client, model: null, message: "Create a wardrobe." });
+
+    // Before the fix, runWardrobeAgent always supplied modelName="claude-sonnet-4-6",
+    // which — because it's always truthy — permanently won the `params.model || model`
+    // precedence in anthropicChatClient.js, so the client's own configured
+    // "claude-opus-4-8" was never actually sent to the SDK.
+    expect(createMock.mock.calls[0][0].model).toBe("claude-opus-4-8");
+  });
+
+  it("an explicit modelName passed to runWardrobeAgent still overrides the client's configured default", async () => {
+    createMock.mockResolvedValueOnce({ content: [{ type: "text", text: "ok" }] });
+    const client = createAnthropicChatClient({ apiKey: "k", model: "claude-opus-4-8" });
+
+    await runWardrobeAgent({ client, model: null, message: "Create a wardrobe.", modelName: "claude-sonnet-4-6" });
+
+    expect(createMock.mock.calls[0][0].model).toBe("claude-sonnet-4-6");
   });
 });
