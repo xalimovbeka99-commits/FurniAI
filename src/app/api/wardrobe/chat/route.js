@@ -6,15 +6,28 @@
  * /api/v1/furniture/generate. Transport only: parse, run the agent, map
  * the result to a response. All furniture/model logic lives in
  * src/lib/wardrobe-agent + src/lib/wardrobe-tools + src/lib/wardrobe-model.
+ *
+ * Imports are relative, and responses use the plain Web `Response`
+ * constructor instead of `NextResponse`, on purpose: this module is also
+ * loaded directly (outside the Next.js build) by the framework-null static
+ * site's api/wardrobe/chat.js transport, which bundles with a plain Node/
+ * esbuild resolver that understands neither the `@/` path alias nor
+ * `next/server` (Next 14's package.json declares no `./server` export
+ * subpath for consumers outside its own toolchain). A Route Handler only
+ * needs to return a standard Response — NextResponse's extra helpers
+ * (cookies/rewrites/redirects) are never used here, so nothing is lost.
  */
-import { NextResponse } from "next/server";
-import { runWardrobeAgent } from "@/lib/wardrobe-agent/runWardrobeAgent";
-import { createAnthropicWardrobeClient, WardrobeAgentConfigError } from "@/lib/wardrobe-agent/client";
+import { runWardrobeAgent } from "../../../../lib/wardrobe-agent/runWardrobeAgent.js";
+import { createAnthropicWardrobeClient, WardrobeAgentConfigError } from "../../../../lib/wardrobe-agent/client.js";
 
 const MESSAGE_MAX_LENGTH = 2000;
 
+function jsonResponse(body, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+}
+
 function errorResponse(status, code, error) {
-  return NextResponse.json({ ok: false, code, error }, { status });
+  return jsonResponse({ ok: false, code, error }, status);
 }
 
 function validateBody(body) {
@@ -67,7 +80,7 @@ export async function POST(req) {
 
   try {
     const result = await runWardrobeAgent({ client, ...request });
-    return NextResponse.json({
+    return jsonResponse({
       ok: true,
       model: result.model,
       revision: result.revision,
