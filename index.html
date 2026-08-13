@@ -1780,7 +1780,13 @@ function bindImageAttach(attachBtnId,fileInputId,previewId,thumbId,removeId,setP
   if(removeBtn)removeBtn.addEventListener('click',()=>{setPending(null);if(preview)preview.hidden=true});
 }
 async function aiSendMessage(text,targetMsgsId,isDrawer,image){
-  if(isDrawer&&!image)return wardrobeAiSendMessage(text,targetMsgsId);
+  // Scoped to M1: only an already-active wardrobe routes to the canonical
+  // Wardrobe AI bridge. Every other furniture type (kitchen, vanity,
+  // bookshelf, sideboard, walk-in, custom) keeps using /api/chat exactly as
+  // before — the adapter always sets type:"wardrobe", so routing this
+  // unconditionally would silently replace a kitchen/vanity mid-edit with a
+  // wardrobe the customer never asked for.
+  if(isDrawer&&!image&&Builder.cfg&&Builder.cfg.type==='wardrobe')return wardrobeAiSendMessage(text,targetMsgsId);
   if((!text&&!image)||aiBusy)return;
   aiBusy=true;
   const sendId=isDrawer?'aiDrawerSend':'aiSend';

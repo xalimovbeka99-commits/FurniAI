@@ -150,6 +150,7 @@ describe("canonical Wardrobe Model to legacy Builder adapter", () => {
     expect(legacySource).toContain("applyWardrobeModel(model)");
     expect(legacySource).toContain("this.build();return this.cfg");
     expect(legacySource).toContain("new THREE.WebGLRenderer");
+    expect(legacySource).toContain("Builder.cfg.type==='wardrobe'");
     for (const signature of [
       "buildWardrobe()", "buildWalkinL()", "buildWalkinU()", "buildKitchen()", "buildVanity()",
       "makeDoor(", "makeDrawer(", "setupOrbit()", "toggle-doors", "toggle-drawers",
