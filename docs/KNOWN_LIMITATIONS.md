@@ -3,7 +3,25 @@
 Stated plainly, per the project rule that unsupported functionality must be
 reported as `NOT IMPLEMENTED`, never silently absent or implied to exist.
 
-## Deployment status — NOT DEPLOYED
+## Deployment status — PARTIALLY DEPLOYED as of the M1 legacy builder bridge
+
+**Superseded, 2026-08-13:** the paragraph below described Phase 1's original
+state (Wardrobe AI reachable only via `next dev`). That is no longer the
+whole picture. The M1 legacy-builder bridge (`legacy-builder-adapter.js`,
+`api/wardrobe/chat.js`) now gives the deployed static site one real, narrow
+path into `src/`: the in-builder "Ask AI" drawer, when the active design is
+already `type:"wardrobe"`, calls `POST /api/wardrobe/chat`, which is a thin
+framework-null transport that imports and calls
+`src/app/api/wardrobe/chat/route.js`'s `POST` handler directly (see
+`api/wardrobe/chat.js`'s own doc comment). That route in turn runs
+`runWardrobeAgent` against the real, unmodified Wardrobe AI kernel/tools.
+`src/app/builder` (the Next.js page) itself is still not deployed by this
+Vercel project — only the one API route it shares is now reachable from the
+static site. See the new "M1 — Legacy Builder AI Bridge" section below for
+the full, current picture (routing, unit conversion, adapter limits).
+
+<details>
+<summary>Original Phase 1 text (2026-08-12), kept for history</summary>
 
 **Wardrobe AI exists only inside this repository's Next.js workspace
 (`src/`) and has not been deployed anywhere.** The live, customer-facing
@@ -21,6 +39,8 @@ Concretely:
 - Moving Wardrobe AI onto the deployed site is a **separate, explicit gate**
   after Phase 1 passes independent verification — it has not been requested
   or attempted here, and shouldn't be inferred from "the tests pass."
+
+</details>
 
 ## Schema / geometry
 
@@ -64,7 +84,15 @@ Concretely:
 
 ## Integration scope
 
-- **The legacy static site (`index.html`/`app.js`) is untouched.** Per the
+- **Superseded, 2026-08-13:** the bullet below was true for Phase 1 as
+  originally shipped. The M1 legacy-builder bridge deliberately touches
+  `index.html` (and, for parity, the standalone `app.js` copy) with a small,
+  additive integration surface — see "M1 — Legacy Builder AI Bridge" below
+  for exactly what changed and why. `src/lib/wardrobe-model/`,
+  `wardrobe-tools/`, and `runWardrobeAgent.js` themselves are still
+  untouched by M1; only the render/config boundary gained a new,
+  narrow entry point.
+- ~~The legacy static site (`index.html`/`app.js`) is untouched.~~ Per the
   frozen-surface decision, this work lives entirely under `src/` (the
   in-development Next.js app) and does not affect what real customers see
   at the deployed URL today.
@@ -82,6 +110,74 @@ Concretely:
   multi-module FSL→buildGeometry wiring, wall-to-wall fillers/scribes,
   L-shaped/corner/sloped-ceiling wardrobes, sliding-vs-hinged rendering,
   image-based dimension extraction, and custom arbitrary-panel furniture.
+
+## M1 — Legacy Builder AI Bridge (2026-08-13)
+
+What actually ships to the deployed static site as of this milestone, and
+exactly where it stops:
+
+- **Entry point is scoped to one place.** Only the in-builder "Ask AI"
+  drawer routes to the canonical Wardrobe AI, and only when the design
+  currently open is already `Builder.cfg.type === 'wardrobe'`
+  (`index.html`'s `aiSendMessage`). Every other furniture type (kitchen,
+  vanity, bookshelf, sideboard, both walk-in shapes, custom) keeps using the
+  original `/api/chat` flow completely unchanged. The top-level, pre-builder
+  "Ask AI" page (`#/ai`, reached before opening any design) also still uses
+  `/api/chat` for every type, including a brand-new wardrobe — it does not
+  route to the new bridge. Starting a wardrobe from nothing via the
+  canonical model requires first opening any wardrobe preset, then asking
+  the in-drawer AI to create a new one (`wardrobe_create` explicitly
+  replaces "any wardrobe currently being edited").
+- **Material, handle, LED, and door style are not AI-controlled.** The
+  canonical `WardrobeModel` (`src/lib/wardrobe-model/schema.js`) has no
+  finish/material/handle/LED/door-style field at all — only dimensions,
+  sections, and structural components (SHELF/DRAWER_BANK/HANGING_RAIL/DOOR
+  leaves+hingeSide). `wardrobeModelToLegacyConfiguration()` in
+  `legacy-builder-adapter.js` deliberately leaves `mat`/`doorType`/`handle`/
+  `led` untouched (spread from whatever `Builder.cfg` already had) rather
+  than guessing a value with no source of truth. A door's presence/absence
+  or style is therefore never changed by the AI in M1 — asking it to "make
+  the doors glass" or "remove the doors" has no tool that can do that yet.
+- **The adapter's own bounds are tighter than the kernel's.** The kernel
+  allows width 300–6000mm / height 300–3000mm / depth 200–1200mm; the
+  legacy adapter additionally requires width 1200–3600mm, height
+  1800–2800mm, depth 400–800mm, 1–6 sections, 0–6 shelves and 0–8 drawer
+  rows per section (`LEGACY_LIMITS` in `legacy-builder-adapter.js`), and
+  exactly one `DRAWER_BANK` per section (the legacy renderer only has one
+  drawer stack per bay). A canonical wardrobe outside these bounds is valid
+  by the kernel/validator but is rejected by the adapter with a typed
+  `LegacyBuilderAdapterError`, surfaced to the customer as a generic "that
+  wardrobe cannot be represented safely in this builder" message — never
+  silently clamped or partially rendered.
+- **Per-section shelves/drawers now render faithfully.** Unlike the
+  original uniform-per-wardrobe `wall()` loop, `buildWardrobe()` now accepts
+  an optional `sectionLayouts` array (one `{shelves, drawers}` entry per
+  section) and, when present, overrides the old uniform `opts.shelves`/
+  `opts.drawers` per section — so "four drawers in the middle, shelves on
+  the right" renders as asked, not as a lossy wardrobe-wide average. The
+  `sections`/`drawers`/`shelves` scalar fields are still populated (as the
+  max across sections) for the slider UI and for any code path that only
+  reads the old uniform shape.
+- **`app.js` (the standalone root copy, not the deployed `index.html`) got
+  the `applyConfiguration`/`applyWardrobeModel`/`sectionLayouts` changes for
+  parity, but has no AI drawer UI to call them from** — that UI
+  (`aiFab`/`aiDrawer`/`wardrobeAiSendMessage`) exists only in `index.html`.
+  `app.js` is not currently `<script>`-loaded by `index.html` (that file
+  inlines its own copy of the builder instead) and is not the file real
+  visitors execute; see the Vercel deployment notes for the existing,
+  independent gap this reflects.
+- **Session-only continuity, same as Phase 1.** The client holds
+  `wardrobeAiModel`/`wardrobeAiConversation` in page memory and resends them
+  each turn; a page reload starts a fresh wardrobe. No new persistence was
+  added.
+- **Provider resilience matches whatever `route.js` currently does.**
+  `api/wardrobe/chat.js` delegates entirely to
+  `src/app/api/wardrobe/chat/route.js`, which today constructs a single
+  Anthropic-only client (`createAnthropicWardrobeClient`). The
+  Anthropic/OpenAI failover work (PR #4) is a separate, still-under-review
+  branch; once it lands in `route.js`, this bridge inherits it automatically
+  with no changes of its own — it was written to depend on the route's
+  behavior, not reimplement it.
 
 ## Evaluation
 
