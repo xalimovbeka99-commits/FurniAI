@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,400..600&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="/legacy-builder-adapter.js"></script>
 <style>
 :root{
   --paper:#FAF9F5; --paper-2:#F4F2EB; --paper-3:#EAE5D9;
@@ -1012,9 +1013,10 @@ const Builder={
     this.box(P,ih,D,mc,-W/2+P/2,bb+ih/2,0,m.rough);this.box(P,ih,D,mc,W/2-P/2,bb+ih/2,0,m.rough);this.box(W-P*2,ih-P,P,dk(mc,.7),0,bb+ih/2,-D/2+P/2,.85);
     for(let i=0;i<N;i++){const x=-W/2+P+sw/2+i*(sw+P);if(i<N-1)this.box(P,ih,D,mc,x+sw/2+P/2,bb+ih/2,0,m.rough);
       const isCorner=(skip==='left'&&i===0)||(skip==='right'&&i===N-1)||(skip==='both'&&(i===0||i===N-1));
-      const nd=isCorner?0:(opts.drawers||0);                 // no drawers in a blind corner cell
+      const sectionLayout=opts.sectionLayouts&&opts.sectionLayouts[i];
+      const nd=isCorner?0:(sectionLayout?sectionLayout.drawers:(opts.drawers||0)); // no drawers in a blind corner cell
       const dzb=bb+nd*dh,dzh=(H/2-P)-dzb;                    // door zone above any drawers (full height in corner)
-      const sh=opts.shelves||0;for(let s=0;s<sh;s++)this.box(sw,P*.7,D-.05,dk(mc,.92),x,dzb+dzh*(s+1)/(sh+1),.005,m.rough);
+      const sh=sectionLayout?sectionLayout.shelves:(opts.shelves||0);for(let s=0;s<sh;s++)this.box(sw,P*.7,D-.05,dk(mc,.92),x,dzb+dzh*(s+1)/(sh+1),.005,m.rough);
       if(opts.hasRod&&!isCorner){const rod=new THREE.Mesh(new THREE.CylinderGeometry(.012,.012,sw*.9,12),new THREE.MeshStandardMaterial({color:0xbfc2c7,roughness:.3,metalness:.8}));rod.rotation.z=Math.PI/2;rod.position.set(x,dzb+dzh*.92,.04);rod.castShadow=true;this.attach(rod)}
       if(opts.hasLed&&this.cfg.led!=='off'){const ledC=this.cfg.led==='warm'?0xffd9a0:0xcfe6ff;const led=this.box(sw*.78,P*.25,.008,ledC,x,H/2-P-.01,D/2-.03,.4,0);led.material.emissive=new THREE.Color(ledC);led.material.emissiveIntensity=.9}
       this.makeDoor(sw-.006,dzh-.006,x,dzb+dzh/2,D/2,opts.doorType,null,(i%2===0)?'left':'right'); // single door per cell
@@ -1053,7 +1055,7 @@ const Builder={
     if(this.cfg.led!=='off'){const lc=this.cfg.led==='warm'?0xffd9a0:0xcfe6ff;const l=this.box(D*.6,P*.25,.008,lc,cx,upBot-.015,upZ+upD/2-.02,.4,0);l.material.emissive=new THREE.Color(lc);l.material.emissiveIntensity=.9}},
 
   buildWardrobe(){const W=this.cfg.w/100,H=this.cfg.h/100,D=this.cfg.d/100;
-    this.wall({length:W,H,D,sections:this.cfg.sections,drawers:this.cfg.drawers,shelves:this.cfg.shelves,doorType:this.cfg.doorType,hasLed:true,hasRod:true})},
+    this.wall({length:W,H,D,sections:this.cfg.sections,drawers:this.cfg.drawers,shelves:this.cfg.shelves,sectionLayouts:this.cfg.sectionLayouts,doorType:this.cfg.doorType,hasLed:true,hasRod:true})},
 
   buildBookshelf(){const W=this.cfg.w/100,H=this.cfg.h/100,D=this.cfg.d/100;
     this.wall({length:W,H,D,sections:this.cfg.sections,drawers:0,shelves:Math.max(4,this.cfg.shelves),doorType:'open',hasLed:true,hasRod:false})},
@@ -1285,6 +1287,24 @@ const Builder={
   updateDimsTag(){const c=this.cfg;
     document.getElementById('bDimsTag').innerHTML=`${c.w*10} × ${c.h*10} × ${c.d*10} <b>mm</b>`},
 
+  applyConfiguration(configuration){
+    if(!configuration||typeof configuration!=='object'||Array.isArray(configuration))throw new TypeError('Builder configuration must be an object.');
+    this.cfg=Object.assign({},this.cfg||{},configuration);
+    const c=this.cfg;const set=(id,v,lab)=>{const el=document.getElementById(id);if(el)el.value=v;const label=lab&&document.getElementById(lab);if(label)label.textContent=v};
+    set('sections',c.sections,'sec-val');set('drawers',c.drawers,'drw-val');set('shelves',c.shelves,'sh-val');
+    set('width',c.w,'w-val');set('height',c.h,'h-val');set('depth',c.d,'d-val');
+    set('door-type',c.doorType);set('handle-type',c.handle);set('led',c.led);
+    const name=document.getElementById('bName');if(name)name.textContent=c.name;
+    const type=document.getElementById('bType');if(type)type.textContent=c.type.replace(/_/g,' ');
+    document.querySelectorAll('.b-sw').forEach(s=>s.classList.toggle('active',s.dataset.mat===c.mat));
+    this.build();return this.cfg;
+  },
+
+  applyWardrobeModel(model){
+    if(!globalThis.LegacyBuilderAdapter)throw new Error('Legacy Builder adapter is unavailable.');
+    return globalThis.LegacyBuilderAdapter.applyWardrobeModelToBuilder(this,model);
+  },
+
   currentIdx:0,
   prevDesign(){const i=(this.currentIdx-1+DESIGNS.length)%DESIGNS.length;go('#/build/'+i)},
   nextDesign(){const i=(this.currentIdx+1)%DESIGNS.length;go('#/build/'+i)},
@@ -1351,7 +1371,7 @@ const Builder={
     document.getElementById('bNext').addEventListener('click',()=>self.nextDesign());
     document.addEventListener('keydown',e=>{if(!builderActive)return;if(e.key==='ArrowLeft'){e.preventDefault();self.prevDesign()}else if(e.key==='ArrowRight'){e.preventDefault();self.nextDesign()}});
     // sliders
-    const bind=(id,key,lab)=>{document.getElementById(id).addEventListener('input',e=>{self.cfg[key]=parseInt(e.target.value);if(lab)document.getElementById(lab).textContent=e.target.value;self.build()})};
+    const bind=(id,key,lab)=>{document.getElementById(id).addEventListener('input',e=>{self.cfg[key]=parseInt(e.target.value);if(key==='sections'||key==='drawers'||key==='shelves')delete self.cfg.sectionLayouts;if(lab)document.getElementById(lab).textContent=e.target.value;self.build()})};
     bind('sections','sections','sec-val');bind('drawers','drawers','drw-val');bind('shelves','shelves','sh-val');
     bind('width','w','w-val');bind('height','h','h-val');bind('depth','d','d-val');
     document.getElementById('door-type').addEventListener('change',e=>{self.cfg.doorType=e.target.value;self.build()});
@@ -1695,6 +1715,10 @@ function openOrderModal(cfg){
 
 /* ===== AI Designer ===== */
 let aiHistory=[],aiBusy=false;
+// The canonical wardrobe and tool conversation stay together across turns.
+// They are never converted back from Builder.cfg: the deterministic backend
+// remains the source of truth and the legacy adapter is one-way only.
+let wardrobeAiModel=null,wardrobeAiConversation=[];
 let currentConversationId=null,recentDesignsCache=null;
 let aiPendingImage=null,aiDrawerPendingImage=null; // {mediaType,dataUrl,base64} or null
 function startAIDesigner(){
@@ -1756,6 +1780,7 @@ function bindImageAttach(attachBtnId,fileInputId,previewId,thumbId,removeId,setP
   if(removeBtn)removeBtn.addEventListener('click',()=>{setPending(null);if(preview)preview.hidden=true});
 }
 async function aiSendMessage(text,targetMsgsId,isDrawer,image){
+  if(isDrawer&&!image)return wardrobeAiSendMessage(text,targetMsgsId);
   if((!text&&!image)||aiBusy)return;
   aiBusy=true;
   const sendId=isDrawer?'aiDrawerSend':'aiSend';
@@ -1812,6 +1837,35 @@ async function aiSendMessage(text,targetMsgsId,isDrawer,image){
   }
   aiBusy=false;
   if(sendBtn)sendBtn.disabled=false;
+}
+async function wardrobeAiSendMessage(text,targetMsgsId){
+  if(!text||aiBusy)return;
+  aiBusy=true;
+  const sendBtn=document.getElementById('aiDrawerSend');if(sendBtn)sendBtn.disabled=true;
+  renderAiMsg(targetMsgsId,'user',text);
+  const thinking=renderAiMsg(targetMsgsId,'thinking','Thinking…');
+  try{
+    const res=await fetch('/api/wardrobe/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      message:text,model:wardrobeAiModel,conversation:wardrobeAiConversation
+    })});
+    const data=await res.json();
+    if(thinking)thinking.remove();
+    if(!res.ok||!data.ok)throw new Error(data.error||'Wardrobe AI request failed.');
+    // Apply only the validated canonical model returned by the deterministic
+    // Wardrobe tools. Provider prose/tool inputs never reach Builder.
+    Builder.applyWardrobeModel(data.model);
+    wardrobeAiModel=data.model;
+    wardrobeAiConversation=Array.isArray(data.conversation)?data.conversation:wardrobeAiConversation;
+    renderAiMsg(targetMsgsId,'assistant',data.assistantMessage||`Wardrobe updated · revision ${data.revision}`);
+  }catch(error){
+    if(thinking)thinking.remove();
+    const safeMessage=error&&error.name==='LegacyBuilderAdapterError'
+      ? 'That wardrobe cannot be represented safely in this builder.'
+      : 'Wardrobe AI could not apply that change. Please try again.';
+    renderAiMsg(targetMsgsId,'assistant',safeMessage);
+  }finally{
+    aiBusy=false;if(sendBtn)sendBtn.disabled=false;
+  }
 }
 // Similar Design Finder (Skill #4): attribute-overlap scoring against the
 // existing catalog — no embeddings/vision model needed, just the same

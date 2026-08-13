@@ -1,5 +1,5 @@
 {
-  "fixtureVersion": "phase1-protected-surfaces/1",
+  "fixtureVersion": "phase1-protected-surfaces/2",
   "algorithm": "sha256-normalized-lf",
   "capturedFromCommit": "54fe328b4165374df171cb60678e69da0009d34a",
   "files": {
@@ -10,6 +10,13 @@
     "src/lib/wardrobe-agent/runWardrobeAgent.js": "abe6586371cefd176eb19640ca1d26bd4f4afe05dd832d9e4ba0426d92015a7a",
     "src/components/builder/FurnitureModel.jsx": "fab83a33f866d61e7a1ff28187239689fc90781463abbd064e2dc56a00025537",
     "src/app/builder/page.jsx": "fc14fcb672f85b9b700839049441f8977319c66c95aa00a1b4918e43637d8876",
-    "vercel.json": "d44f5072f523796be2e9aa28aa24692d1dcf1d955f6f10e50e151d34863fffaf"
-  }
+    "vercel.json": "4ce7855409a9cc11c9be68001ef224aa2deaa29f62a0b5d02acbbebbf631e634"
+  },
+  "justifiedBaselineUpdates": [
+    {
+      "file": "vercel.json",
+      "reason": "M1 legacy-builder AI bridge: the protected framework-null deployment must copy legacy-builder-adapter.js into dist so the accepted static Builder can consume validated canonical Wardrobe Models. Framework, output directory, static homepage, Three.js renderer, and production routing are unchanged.",
+      "diffSummary": "Added legacy-builder-adapter.js to the existing static cp build command; no other deployment setting changed."
+    }
+  ]
 }
