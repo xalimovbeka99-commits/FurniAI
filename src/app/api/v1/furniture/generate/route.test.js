@@ -2,7 +2,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const generateFurnitureSpecification = vi.fn();
 vi.mock("@/lib/services/furnitureGenerationService", () => ({ generateFurnitureSpecification }));
-vi.mock("@/lib/ai-provider", () => ({ createAnthropicProvider: vi.fn(() => ({})) }));
+
+// Real redactErrorForLogging/ProviderError come through unmocked (via
+// importOriginal) so this file exercises the ACTUAL security-relevant
+// redaction logic, not a hand-rolled stand-in that could silently drift
+// from it. Only provider construction is mocked.
+const { ProviderError: RealProviderError } = await vi.importActual("@/lib/ai-provider");
+vi.mock("@/lib/ai-provider", async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, createExtractionAiProvider: vi.fn(() => ({})) };
+});
 
 const { POST } = await import("./route.js");
 
@@ -92,5 +101,38 @@ describe("POST /api/v1/furniture/generate — route-level request validation", (
     const { status, body } = await post({ message: "a wardrobe", attachments: "nope" });
     expect(status).toBe(400);
     expect(body.errors[0].field).toBe("attachments");
+  });
+
+  it("REGRESSION (Codex finding #2): logs a redacted error, never the raw error/cause, on an unexpected service failure", async () => {
+    const logSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const secret = "sk-openai-should-never-be-logged";
+      const err = new RealProviderError("UNKNOWN", "safe redacted message", { cause: new Error(`key=${secret}`) });
+      generateFurnitureSpecification.mockRejectedValueOnce(err);
+
+      await post({ message: "a modern white wardrobe, 2400mm wide" });
+
+      expect(logSpy).toHaveBeenCalledWith("furniture generation route error:", { name: "ProviderError", code: "UNKNOWN", message: "safe redacted message" });
+      expect(JSON.stringify(logSpy.mock.calls)).not.toContain(secret);
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it("FINAL SECURITY FIX (Codex) — untrusted-message regression: a raw/unrecognized error with the secret DIRECTLY in .message is never logged or returned", async () => {
+    const MARKER = "SECRET_SHOULD_NEVER_APPEAR";
+    const logSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const rawSdkError = new Error(`Authorization: Bearer ${MARKER}`);
+      generateFurnitureSpecification.mockRejectedValueOnce(rawSdkError);
+
+      const { body } = await post({ message: "a modern white wardrobe, 2400mm wide" });
+
+      expect(logSpy).toHaveBeenCalledWith("furniture generation route error:", { name: "Error", code: "UNKNOWN_ERROR", message: "An internal AI provider error occurred." });
+      expect(JSON.stringify(logSpy.mock.calls)).not.toContain(MARKER);
+      expect(JSON.stringify(body)).not.toContain(MARKER);
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 });

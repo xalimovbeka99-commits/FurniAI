@@ -21,6 +21,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { FslError, ERROR_CODES } from "../fsl/errors.js";
 import { extractionToolSchema, EXTRACT_TOOL_NAME } from "./extractionSchema.js";
 import { buildSystemPrompt } from "./promptTemplate.js";
+import { toFslProviderError } from "./errors.js";
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
 const DEFAULT_TIMEOUT_MS = 20000;
@@ -107,10 +108,12 @@ export function createAnthropicProvider({ apiKey = process.env.ANTHROPIC_API_KEY
         { signal: controller.signal }
       );
     } catch (err) {
-      if (err?.name === "AbortError") {
-        throw new FslError(ERROR_CODES.AI_PROVIDER_TIMEOUT, "The AI provider did not respond in time.");
-      }
-      throw new FslError(ERROR_CODES.AI_PROVIDER_ERROR, "The AI provider request failed.");
+      // Classifies via the same taxonomy the chat router uses, so a real
+      // integration defect (e.g. a 400 from a malformed request) surfaces
+      // as the non-retriable AI_PROVIDER_REQUEST_ERROR instead of being
+      // silently retried on the other provider as if it were a transient
+      // availability problem — see errors.js's toFslProviderError.
+      throw toFslProviderError(err, "anthropic");
     } finally {
       clearTimeout(timeout);
     }

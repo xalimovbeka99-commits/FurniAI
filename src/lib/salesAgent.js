@@ -8,12 +8,14 @@
  * No pricing: this agent never quotes a number. Send the customer to the
  * live 3D builder (`/builder`) to see and configure the piece itself.
  *
- * Requires env: ANTHROPIC_API_KEY  (already in your stack via @anthropic-ai/sdk)
+ * Provider-independent (Step 8): routed through the same
+ * createChatProviderRouter used by the Wardrobe AI agent loop, so this
+ * agent also fails over from Anthropic to OpenAI (or vice-versa, per
+ * AI_PROVIDER_ORDER) on a provider-level problem, with no code change
+ * needed here if a provider's priority is changed in Vercel env vars.
  */
-import Anthropic from "@anthropic-ai/sdk";
 import { KNOWN } from "./knowledgeBase.js";
-
-const MODEL = "claude-sonnet-4-6";
+import { createChatProviderRouter, AllProvidersUnavailableError } from "./ai-provider/index.js";
 
 const SYSTEM_PROMPT = `You are the design assistant for FurniAI, a UAE-based custom furniture company.
 You help customers think through furniture ideas — type, rough size, material, layout, doors, drawers, lighting — in plain conversation.
@@ -32,32 +34,44 @@ Known options you can map customer language onto:
 - Handle styles: ${KNOWN.handleStyles.join(", ")}
 - LED modes: ${KNOWN.ledModes.join(", ")}`;
 
+function replyFromResponse(resp) {
+  return resp.content
+    .filter((b) => b.type === "text")
+    .map((b) => b.text)
+    .join("\n")
+    .trim();
+}
+
+async function callOnce(client, apiMessages) {
+  const resp = await client.messages.create({ max_tokens: 1024, system: SYSTEM_PROMPT, messages: apiMessages });
+  return replyFromResponse(resp);
+}
+
 /**
  * Run one turn of the sales agent.
  *
  * @param {object} args
  * @param {Array<{role:'user'|'assistant', content:string}>} args.messages
  *        Prior conversation (plain text turns). The newest user message is last.
- * @param {Anthropic} [args.client] optional injected client (for testing).
- * @returns {Promise<{ reply: string }>}
+ * @param {{ messages: { create: Function } }} [args.client] optional injected
+ *        client (for testing) — bypasses the provider router entirely.
+ * @returns {Promise<{ reply: string, provider?: string, fallback?: boolean }>}
  */
 export async function runSalesAgent({ messages, client }) {
-  const anthropic = client || new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
   const apiMessages = messages.map((m) => ({ role: m.role, content: m.content }));
 
-  const resp = await anthropic.messages.create({
-    model: MODEL,
-    max_tokens: 1024,
-    system: SYSTEM_PROMPT,
-    messages: apiMessages,
-  });
+  if (client) {
+    return { reply: await callOnce(client, apiMessages) };
+  }
 
-  const reply = resp.content
-    .filter((b) => b.type === "text")
-    .map((b) => b.text)
-    .join("\n")
-    .trim();
-
-  return { reply };
+  const router = createChatProviderRouter({ operation: "sales_agent_chat" });
+  try {
+    const { result, provider } = await router.run((routedClient) => callOnce(routedClient, apiMessages));
+    return { reply: result, provider };
+  } catch (err) {
+    if (err instanceof AllProvidersUnavailableError) {
+      throw new Error("AI_PROVIDER_UNAVAILABLE");
+    }
+    throw err;
+  }
 }

@@ -11,6 +11,7 @@
 import { NextResponse } from "next/server";
 import { parseInbound, sendText, verifyWebhook } from "@/lib/whatsapp";
 import { runSalesAgent } from "@/lib/salesAgent";
+import { redactErrorForLogging } from "@/lib/ai-provider";
 
 // --- minimal in-memory conversation store ---------------------------------
 const conversations = new Map(); // phone -> [{role, content}, ...]
@@ -45,7 +46,7 @@ export async function POST(req) {
   if (!inbound) return NextResponse.json({ ok: true });
 
   // Respond to Meta immediately; do the slow work without blocking the ack.
-  handleMessage(inbound).catch((err) => console.error("whatsapp handler:", err));
+  handleMessage(inbound).catch((err) => console.error("whatsapp handler:", redactErrorForLogging(err)));
   return NextResponse.json({ ok: true });
 }
 
@@ -56,7 +57,7 @@ async function handleMessage({ from, text }) {
     pushTurn(from, "assistant", reply);
     await sendText(from, reply);
   } catch (err) {
-    console.error("sales agent / send error:", err);
+    console.error("sales agent / send error:", redactErrorForLogging(err));
     await sendText(from, "Sorry — something went wrong on our side. Please try again in a moment.").catch(() => {});
   }
 }

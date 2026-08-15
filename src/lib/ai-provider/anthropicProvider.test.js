@@ -59,12 +59,26 @@ describe("createAnthropicProvider", () => {
     await expect(provider.extractRequirements("a wardrobe")).rejects.toMatchObject({ code: "AI_PROVIDER_TIMEOUT" });
   });
 
-  it("maps any other provider failure to a generic AI_PROVIDER_ERROR without leaking the raw error", async () => {
+  it("maps a genuinely unrecognized/unclassifiable failure to the NON-retriable AI_PROVIDER_REQUEST_ERROR, not AI_PROVIDER_ERROR — never leaks the raw error", async () => {
     createMock.mockRejectedValue(new Error("connection reset by peer at 10.0.0.5:443"));
     const provider = createAnthropicProvider({ apiKey: "test-key" });
     const rejection = await provider.extractRequirements("a wardrobe").catch((e) => e);
-    expect(rejection.code).toBe("AI_PROVIDER_ERROR");
+    expect(rejection.code).toBe("AI_PROVIDER_REQUEST_ERROR");
     expect(rejection.message).not.toContain("10.0.0.5");
+  });
+
+  it("maps a transient provider-availability failure (HTTP 5xx) to the retriable AI_PROVIDER_ERROR — the router fails over on this", async () => {
+    createMock.mockRejectedValue({ status: 503, message: "service unavailable" });
+    const provider = createAnthropicProvider({ apiKey: "test-key" });
+    const rejection = await provider.extractRequirements("a wardrobe").catch((e) => e);
+    expect(rejection.code).toBe("AI_PROVIDER_ERROR");
+  });
+
+  it("maps a client-error-style failure (HTTP 400 — a malformed request WE built) to the NON-retriable AI_PROVIDER_REQUEST_ERROR — never silently failed over to the other provider", async () => {
+    createMock.mockRejectedValue({ status: 400, message: "invalid request: unknown parameter" });
+    const provider = createAnthropicProvider({ apiKey: "test-key" });
+    const rejection = await provider.extractRequirements("a wardrobe").catch((e) => e);
+    expect(rejection.code).toBe("AI_PROVIDER_REQUEST_ERROR");
   });
 
   it("sends attachments as image/document content blocks alongside a trailing text block", async () => {

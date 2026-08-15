@@ -13,8 +13,8 @@
  */
 import { NextResponse } from "next/server";
 import { generateFurnitureSpecification } from "@/lib/services/furnitureGenerationService";
-import { createAnthropicProvider } from "@/lib/ai-provider";
-import { ERROR_CODES, FslError, httpStatusForCode } from "@/lib/fsl/errors";
+import { createExtractionAiProvider, redactErrorForLogging } from "@/lib/ai-provider";
+import { ERROR_CODES, httpStatusForCode } from "@/lib/fsl/errors";
 import { GENERATION_TARGETS } from "@/lib/fsl/enums";
 
 const MESSAGE_MIN_LENGTH = 3;
@@ -177,21 +177,20 @@ export async function POST(req) {
     return errorResponse(error.code, error.message, { field: error.field, details: error.details });
   }
 
-  let aiProvider;
-  try {
-    aiProvider = createAnthropicProvider();
-  } catch (err) {
-    if (err instanceof FslError) {
-      return errorResponse(err.code, err.message);
-    }
-    return errorResponse(ERROR_CODES.INTERNAL_ERROR, "Furniture generation is not available right now.");
-  }
+  // Provider-independent by construction (Steps 2-5): tries every provider
+  // named in AI_PROVIDER_ORDER, in order, and only fails over on
+  // provider-level availability problems (missing/invalid key, rate limit,
+  // quota, timeout, transient server error) — never on a real FurniAI
+  // error. Construction never throws; a fully unconfigured server surfaces
+  // as AI_PROVIDER_UNAVAILABLE from generateFurnitureSpecification below,
+  // same as any other FslError.
+  const aiProvider = createExtractionAiProvider();
 
   try {
     const { httpStatus, body } = await generateFurnitureSpecification(request, { aiProvider });
     return NextResponse.json(body, { status: httpStatus });
   } catch (err) {
-    console.error("furniture generation route error:", err);
+    console.error("furniture generation route error:", redactErrorForLogging(err));
     return errorResponse(ERROR_CODES.INTERNAL_ERROR, "Something went wrong generating the furniture specification.");
   }
 }
