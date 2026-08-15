@@ -248,16 +248,17 @@ const Builder={
     this.box(P,ih,D,mc,-W/2+P/2,bb+ih/2,0,m.rough);this.box(P,ih,D,mc,W/2-P/2,bb+ih/2,0,m.rough);this.box(W-P*2,ih-P,P,dk(mc,.7),0,bb+ih/2,-D/2+P/2,.85);
     for(let i=0;i<N;i++){const x=-W/2+P+sw/2+i*(sw+P);if(i<N-1)this.box(P,ih,D,mc,x+sw/2+P/2,bb+ih/2,0,m.rough);
       const isCorner=(skip==='left'&&i===0)||(skip==='right'&&i===N-1)||(skip==='both'&&(i===0||i===N-1));
-      const nd=isCorner?0:(opts.drawers||0);                 // no drawers in a blind corner cell
+      const sectionLayout=opts.sectionLayouts&&opts.sectionLayouts[i];
+      const nd=isCorner?0:(sectionLayout?sectionLayout.drawers:(opts.drawers||0)); // no drawers in a blind corner cell
       const dzb=bb+nd*dh,dzh=(H/2-P)-dzb;                    // door zone above any drawers (full height in corner)
-      const sh=opts.shelves||0;for(let s=0;s<sh;s++)this.box(sw,P*.7,D-.05,dk(mc,.92),x,dzb+dzh*(s+1)/(sh+1),.005,m.rough);
+      const sh=sectionLayout?sectionLayout.shelves:(opts.shelves||0);for(let s=0;s<sh;s++)this.box(sw,P*.7,D-.05,dk(mc,.92),x,dzb+dzh*(s+1)/(sh+1),.005,m.rough);
       if(opts.hasRod&&!isCorner){const rod=new THREE.Mesh(new THREE.CylinderGeometry(.012,.012,sw*.9,12),new THREE.MeshStandardMaterial({color:0xbfc2c7,roughness:.3,metalness:.8}));rod.rotation.z=Math.PI/2;rod.position.set(x,dzb+dzh*.92,.04);rod.castShadow=true;this.attach(rod)}
       if(opts.hasLed&&this.cfg.led!=='off'){const ledC=this.cfg.led==='warm'?0xffd9a0:0xcfe6ff;const led=this.box(sw*.78,P*.25,.008,ledC,x,H/2-P-.01,D/2-.03,.4,0);led.material.emissive=new THREE.Color(ledC);led.material.emissiveIntensity=.9}
       this.makeDoor(sw-.006,dzh-.006,x,dzb+dzh/2,D/2,isCorner?'open':opts.doorType,null,(i%2===0)?'left':'right'); // single door per cell (corner cell has no door)
       for(let dd=0;dd<nd;dd++){const dy=bb+dh/2+dd*dh;this.makeDrawer(sw-.008,dh-.008,D-.03,x,dy,D/2)}}},
 
   buildWardrobe(){const W=this.cfg.w/100,H=this.cfg.h/100,D=this.cfg.d/100;
-    this.wall({length:W,H,D,sections:this.cfg.sections,drawers:this.cfg.drawers,shelves:this.cfg.shelves,doorType:this.cfg.doorType,hasLed:true,hasRod:true})},
+    this.wall({length:W,H,D,sections:this.cfg.sections,drawers:this.cfg.drawers,shelves:this.cfg.shelves,sectionLayouts:this.cfg.sectionLayouts,doorType:this.cfg.doorType,hasLed:true,hasRod:true})},
 
   buildWalkinL(){const H=this.cfg.h/100,D=this.cfg.d/100,backLen=this.cfg.w/100,sideLen=Math.min(backLen*.65,2.6);
     let g=new THREE.Group();g.position.set(0,0,-sideLen/2);this.attach(g);this.currentParent=g;
@@ -436,6 +437,24 @@ const Builder={
     const str='AED '+p.toLocaleString();document.getElementById('bPriceVal').textContent=str;
     document.getElementById('bDimsTag').innerHTML=`${c.w*10} × ${c.h*10} × ${c.d*10} <b>mm</b>`},
 
+  applyConfiguration(configuration){
+    if(!configuration||typeof configuration!=='object'||Array.isArray(configuration))throw new TypeError('Builder configuration must be an object.');
+    this.cfg=Object.assign({},this.cfg||{},configuration);
+    const c=this.cfg;const set=(id,v,lab)=>{const el=document.getElementById(id);if(el)el.value=v;const label=lab&&document.getElementById(lab);if(label)label.textContent=v};
+    set('sections',c.sections,'sec-val');set('drawers',c.drawers,'drw-val');set('shelves',c.shelves,'sh-val');
+    set('width',c.w,'w-val');set('height',c.h,'h-val');set('depth',c.d,'d-val');
+    set('door-type',c.doorType);set('handle-type',c.handle);set('led',c.led);
+    const name=document.getElementById('bName');if(name)name.textContent=c.name;
+    const type=document.getElementById('bType');if(type)type.textContent=c.type.replace(/_/g,' ');
+    document.querySelectorAll('.b-sw').forEach(s=>s.classList.toggle('active',s.dataset.mat===c.mat));
+    this.build();return this.cfg;
+  },
+
+  applyWardrobeModel(model){
+    if(!globalThis.LegacyBuilderAdapter)throw new Error('Legacy Builder adapter is unavailable.');
+    return globalThis.LegacyBuilderAdapter.applyWardrobeModelToBuilder(this,model);
+  },
+
   load(idx){this.cfg=Object.assign({},DESIGNS[idx]);const c=this.cfg;
     this.lookAtZ=0;
     if(c.type==='walkin_u'){this.camDist=6.8;this.rotY=.45}else if(c.type==='walkin_l'){this.camDist=5.6;this.rotY=.55}
@@ -483,7 +502,7 @@ const Builder={
     const bs=document.getElementById('bSwitch');
     DESIGNS.forEach((g,i)=>{const c=document.createElement('div');c.className='b-chip';c.textContent=g.name;c.addEventListener('click',()=>go('#/build/'+i));bs.appendChild(c)});
     // sliders
-    const bind=(id,key,lab)=>{document.getElementById(id).addEventListener('input',e=>{self.cfg[key]=parseInt(e.target.value);if(lab)document.getElementById(lab).textContent=e.target.value;self.build()})};
+    const bind=(id,key,lab)=>{document.getElementById(id).addEventListener('input',e=>{self.cfg[key]=parseInt(e.target.value);if(key==='sections'||key==='drawers'||key==='shelves')delete self.cfg.sectionLayouts;if(lab)document.getElementById(lab).textContent=e.target.value;self.build()})};
     bind('sections','sections','sec-val');bind('drawers','drawers','drw-val');bind('shelves','shelves','sh-val');
     bind('width','w','w-val');bind('height','h','h-val');bind('depth','d','d-val');
     document.getElementById('door-type').addEventListener('change',e=>{self.cfg.doorType=e.target.value;self.build()});

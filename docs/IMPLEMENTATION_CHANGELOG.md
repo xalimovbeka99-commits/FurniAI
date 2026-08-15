@@ -81,14 +81,15 @@ Both frozen-surface diffs are reproducible with:
 git diff -- src/app/builder/page.jsx src/components/builder/FurnitureModel.jsx
 ```
 
-## What was NOT touched
+## What was NOT touched (Phase 1 only — see M1 section below)
 
 `src/store/furnitureStore.js`, `src/lib/buildGeometry.js`,
-`src/lib/configSchema.js`, `src/lib/configurator-adapter/adapter.js`,
-`index.html`, `app.js`, `api/chat.js`, `vercel.json` — zero diff. The
-Wardrobe AI is a new, parallel system with its own store and its own
-geometry function that happens to produce the same part shape
-`FurnitureModel.jsx` already renders.
+`src/lib/configSchema.js`, `src/lib/configurator-adapter/adapter.js` — zero
+diff, still. `index.html`, `app.js`, `api/chat.js`, and `vercel.json` were
+untouched **by Phase 1** but are touched by the M1 milestone below — Phase
+1's "new, parallel system" framing still holds for the canonical model
+itself (`src/lib/wardrobe-model`, `wardrobe-tools`, `runWardrobeAgent.js`
+are unmodified by M1 too), just not for the legacy site as a whole anymore.
 
 ## Verification run
 
@@ -100,3 +101,118 @@ npm run build
 
 See [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) for what this phase
 deliberately does not cover.
+
+---
+
+# M1 — Legacy Builder AI Bridge (2026-08-13)
+
+Connects the existing, unmodified canonical Wardrobe AI (kernel + tools +
+`runWardrobeAgent.js`) to the founder-preferred static builder, without
+rebuilding or replacing its Three.js renderer. See
+[KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md)'s "M1 — Legacy Builder AI
+Bridge" section for exactly what this does and does not cover yet.
+
+## New files
+
+```
+legacy-builder-adapter.js
+  Canonical WardrobeModel -> legacy Builder.cfg. UMD (works as a browser
+  <script> global AND as a CommonJS require() for tests). Validates the
+  model, converts integer mm -> cm in one place (mmToCm), derives
+  sections/shelves/drawers/sectionLayouts, rejects anything the legacy
+  renderer cannot represent (LegacyBuilderAdapterError) instead of
+  clamping or guessing. Preserves mat/doorType/handle/led/every other
+  existing Builder.cfg field untouched (spread from `current`) since the
+  canonical model has no finish concept in M1.
+
+src/lib/legacy-builder-adapter/adapter.test.js
+  Contract tests: mm->cm conversion, dimension/section/shelf/drawer
+  mapping (including a non-uniform middle section, proving no lossy
+  flattening), applying through Builder.applyConfiguration, successive
+  revisions preserving wardrobe id + unrelated appearance state, a full
+  deterministic create->edit->resize sequence run through the real
+  wardrobe-tools registry, invalid/out-of-range/unsupported-component/
+  multiple-drawer-bank rejection, and a source-scan proving the bridge
+  never touches Three.js/coordinates directly. Also covers the
+  framework-null transport (method/validation delegation).
+
+api/wardrobe/chat.js
+  The Vercel serverless entry point the static site actually calls
+  (POST /api/wardrobe/chat). Deliberately thin: constructs a standard
+  Request from the classic (req,res) Vercel body and calls
+  src/app/api/wardrobe/chat/route.js's POST directly, rather than
+  creating a second provider/agent implementation. No API key handling
+  of its own — the route it delegates to owns that. When the pending
+  provider-failover work lands in that route, this transport inherits it
+  with zero changes.
+```
+
+## Modified files
+
+- **`src/app/api/wardrobe/chat/route.js`** — switched from `next/server`'s
+  `NextResponse` + the `@/` path alias to a plain `Response` constructor and
+  relative imports. Fixes a real defect (verified by direct Node import,
+  not assumed): Next 14's `package.json` declares no `./server` export
+  subpath for consumers outside its own build, so `api/wardrobe/chat.js`
+  loading this route directly — exactly what M1 needs — threw
+  `ERR_MODULE_NOT_FOUND` before this change. `@/` aliases are a
+  webpack/SWC/Next-specific resolution feature with the same problem under
+  Vercel's plain Node function bundler. Behavior for the Next.js app itself
+  is unchanged: Route Handlers only need to return a standard `Response`,
+  and `NextResponse.json(...)` was the only feature used.
+
+- **`index.html` / `app.js`** (both, kept in parity) —
+  - `wall()`'s per-section loop: reads an optional `opts.sectionLayouts[i]`
+    override for that section's drawer/shelf count, falling back to the old
+    uniform `opts.drawers`/`opts.shelves` when absent. `buildWardrobe()`
+    passes `this.cfg.sectionLayouts` through. This is the one change to
+    protected rendering logic, and it's additive/backward-compatible: a
+    config with no `sectionLayouts` renders exactly as before.
+  - New `Builder.applyConfiguration(configuration)` — merges a partial
+    config into `Builder.cfg`, syncs every slider/label/material-swatch DOM
+    element, calls the existing `build()`, returns the merged `cfg`. This is
+    the "one clean boundary" the M1 spec asked for; it does not duplicate
+    `build()` or any geometry function.
+  - New `Builder.applyWardrobeModel(model)` — thin call to
+    `globalThis.LegacyBuilderAdapter.applyWardrobeModelToBuilder(this,
+    model)`.
+  - Manual slider input now clears any stale `cfg.sectionLayouts` before
+    rebuilding, so a manual uniform edit after an AI per-section edit
+    doesn't silently keep overriding it.
+  - `index.html` only: `wardrobeAiSendMessage()` (new) posts to
+    `/api/wardrobe/chat` with `{message, model, conversation}`, applies the
+    returned canonical model via `Builder.applyWardrobeModel`, and keeps
+    `wardrobeAiModel`/`wardrobeAiConversation` in page memory for
+    continuity. `aiSendMessage()` routes to it only when
+    `isDrawer && !image && Builder.cfg.type === 'wardrobe'` — every other
+    type/entry point is byte-for-byte unchanged.
+  - `<script src="/legacy-builder-adapter.js"></script>` added to
+    `index.html`'s `<head>`.
+
+- **`vercel.json`** — `buildCommand` now also copies
+  `legacy-builder-adapter.js` into `dist/` alongside the existing
+  `index.html styles.css app.js`. Framework, output directory, and
+  `api/production.py` config: unchanged.
+
+- **`tests/wardrobe-production/fixtures/phase1-protected-surfaces.json`** —
+  `vercel.json`'s hash updated with a `justifiedBaselineUpdates` entry
+  explaining the one-line reason above.
+
+## What was NOT touched by M1
+
+`src/lib/wardrobe-model/`, `src/lib/wardrobe-tools/`,
+`src/lib/wardrobe-agent/runWardrobeAgent.js`, `src/lib/wardrobe-agent/
+client.js`, `src/lib/wardrobe-agent/systemPrompt.js` — zero diff. The
+canonical kernel, tools, and agent loop are exactly Phase 1's. `api/chat.js`,
+`api/constructionValidator.js`, and every non-wardrobe furniture type's
+in-drawer AI flow — zero diff, zero behavior change.
+
+## Verification run
+
+```
+npx vitest run          # 373 passed, 3 skipped (live API), 20 todo
+npm run lint             # clean
+npm run docs:check       # clean
+npm run build             # clean (next build)
+npm run test:validator    # 21 passed, 3 todo
+```

@@ -10,13 +10,18 @@
     "src/lib/wardrobe-agent/runWardrobeAgent.js": "173010c1851cf80679379be36d8eca1d64d65b16c8310765973e51e4a2b63c70",
     "src/components/builder/FurnitureModel.jsx": "fab83a33f866d61e7a1ff28187239689fc90781463abbd064e2dc56a00025537",
     "src/app/builder/page.jsx": "fc14fcb672f85b9b700839049441f8977319c66c95aa00a1b4918e43637d8876",
-    "vercel.json": "d44f5072f523796be2e9aa28aa24692d1dcf1d955f6f10e50e151d34863fffaf"
+    "vercel.json": "4ce7855409a9cc11c9be68001ef224aa2deaa29f62a0b5d02acbbebbf631e634"
   },
   "justifiedBaselineUpdates": [
     {
       "file": "src/lib/wardrobe-agent/runWardrobeAgent.js",
-      "reason": "PR #4 (provider-independent AI with Anthropic/OpenAI failover) Codex review finding #3: runWardrobeAgent.js previously defaulted `modelName` to a hardcoded Claude model string and always forwarded it as `params.model`, which permanently shadowed the chat client's own configured model — making ANTHROPIC_MODEL/OPENAI_MODEL env vars silently ineffective for Wardrobe AI. Fix: `modelName` now has no default (left undefined when the caller omits it), so the chat client's own configured default applies; an explicit `modelName` still overrides it, same precedence as before. The tool-calling loop itself, the eight deterministic tools it drives, and every other line of behavior are unchanged — verified via `git diff` and the full existing runWardrobeAgent test suite plus new regression tests in src/lib/ai-provider/anthropicChatClient.test.js.",
-      "diffSummary": "Removed the DEFAULT_MODEL_NAME constant and its use as the `modelName` parameter default; updated doc comments to explain the new model-resolution precedence. No change to the tool-calling loop, message construction, or tool execution."
+      "reason": "PR #4 provider-independent routing: omitting modelName lets the configured Anthropic/OpenAI client model apply instead of silently forcing a hardcoded Claude model.",
+      "diffSummary": "Removed the hardcoded modelName default without changing deterministic tool execution."
+    },
+    {
+      "file": "vercel.json",
+      "reason": "M1 legacy-builder AI bridge: the protected framework-null deployment must copy legacy-builder-adapter.js into dist so the accepted static Builder can consume validated canonical Wardrobe Models. Framework, output directory, static homepage, Three.js renderer, and production routing are unchanged.",
+      "diffSummary": "Added legacy-builder-adapter.js to the existing static cp build command; no other deployment setting changed."
     }
   ]
 }

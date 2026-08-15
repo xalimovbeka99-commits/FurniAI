@@ -1,7 +1,7 @@
 {
   "cleanUrls": true,
   "framework": null,
-  "buildCommand": "mkdir -p dist && cp index.html styles.css app.js dist/",
+  "buildCommand": "mkdir -p dist && cp index.html styles.css app.js legacy-builder-adapter.js dist/",
   "outputDirectory": "dist",
   "functions": {
     "api/production.py": {
