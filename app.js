@@ -1,3 +1,8 @@
+/**
+ * WARNING: ORPHANED STALE SOURCE FILE.
+ * This standalone app.js is NOT executed by Vercel or index.html (which embeds browser script inline).
+ * Do NOT use app.js as runtime authority.
+ */
 /* ======================= ROUTER ======================= */
 let landingActive=true, builderActive=false;
 function go(hash){ if(location.hash===hash){route();} else location.hash=hash; }

@@ -378,7 +378,7 @@ function sanitizeMessages(raw){
 
 module.exports = async (req,res)=>{
   if(req.method!=='POST'){res.status(405).json({error:'Method not allowed'});return}
-  if(!process.env.ANTHROPIC_API_KEY){res.status(500).json({error:'ANTHROPIC_API_KEY is not set on the server'});return}
+  if(!process.env.ANTHROPIC_API_KEY){res.status(500).json({error:'AI service is temporarily unavailable.'});return}
 
   let body=req.body;
   if(!body||typeof body==='string'){
@@ -438,7 +438,23 @@ module.exports = async (req,res)=>{
       correction,
     });
   }catch(err){
-    console.error('chat agent error:',err);
+    safeLogError(err);
     res.status(500).json({error:'Agent failed'});
   }
 };
+
+function safeLogError(err){
+  const safeInfo = {
+    name: err && err.name ? String(err.name) : 'Error',
+    status: err && err.status ? Number(err.status) : 500,
+    code: err && err.code ? String(err.code) : 'UNKNOWN_ERROR',
+  };
+  console.error('chat agent error:', JSON.stringify(safeInfo));
+}
+
+// `module.exports` was reassigned to the handler function above, so the
+// export must be attached there (not on `module` itself) — a property on
+// `module` is invisible to `require("./chat.js").safeLogError`, which is
+// exactly how the regression test below reaches this function.
+module.exports.safeLogError = safeLogError;
+

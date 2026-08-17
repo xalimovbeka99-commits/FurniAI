@@ -11,7 +11,8 @@
     "test": "npm run test:unit && npm run test:validator",
     "test:unit": "vitest run",
     "test:watch": "vitest",
-    "test:validator": "node --test tests/validator.test.js"
+    "test:validator": "node --test tests/validator.test.js",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.28.0",
@@ -25,6 +26,7 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "autoprefixer": "^10.4.20",
     "eslint": "9.39.5",
     "eslint-config-next": "16.3.0",
