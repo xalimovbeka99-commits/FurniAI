@@ -912,11 +912,50 @@ DESIGNS.forEach((g,i)=>{
   grid.appendChild(card);io.observe(card);
 });
 
-function disposeMaterial(mat){
-  if(!mat)return;
-  if(mat.map&&mat.map!==_grainTex&&mat.map!==_mirrorEnv)mat.map.dispose();
-  if(mat.bumpMap&&mat.bumpMap!==_grainTex&&mat.bumpMap!==_mirrorEnv)mat.bumpMap.dispose();
-  mat.dispose();
+// Shared, ownership-aware disposal for any Three.js Object3D subtree —
+// used by both the gallery's temporary thumbnail scenes and Builder.clear()
+// (see below), so there is exactly one implementation to keep correct
+// instead of two that can silently drift apart. A `Set` per dispose-call
+// guarantees each geometry/material/texture is disposed AT MOST ONCE even
+// when multiple meshes reference the same one (e.g. makeDrawer()'s shared
+// `cmat` across a drawer box's bottom/left/right/back panels) — calling
+// dispose() twice on the same resource is the exact class of bug this
+// exists to prevent. `_grainTex`/`_mirrorEnv` are the two global, cached,
+// cross-scene-lifetime assets (see grainTexture()/mirrorEnvMap()) and must
+// never be disposed here regardless of how many materials reference them.
+const SHARED_TEXTURE_SLOTS=['map','bumpMap','envMap','normalMap','roughnessMap','metalnessMap','emissiveMap','alphaMap','aoMap','displacementMap','lightMap','specularMap'];
+function disposeObject3DTree(roots){
+  const seenObjects=new Set(),seenGeometries=new Set(),seenMaterials=new Set(),seenTextures=new Set();
+  const disposeTex=(tex)=>{
+    if(!tex||seenTextures.has(tex))return;
+    if(typeof _grainTex!=='undefined'&&tex===_grainTex)return;
+    if(typeof _mirrorEnv!=='undefined'&&tex===_mirrorEnv)return;
+    seenTextures.add(tex);
+    if(typeof tex.dispose==='function')tex.dispose();
+  };
+  const disposeMat=(mat)=>{
+    if(!mat||seenMaterials.has(mat))return;
+    seenMaterials.add(mat);
+    SHARED_TEXTURE_SLOTS.forEach(slot=>{if(mat[slot])disposeTex(mat[slot])});
+    if(typeof mat.dispose==='function')mat.dispose();
+  };
+  const disposeObj=(obj)=>{
+    if(!obj||seenObjects.has(obj))return;
+    seenObjects.add(obj);
+    if(obj.geometry&&!seenGeometries.has(obj.geometry)){
+      seenGeometries.add(obj.geometry);
+      if(typeof obj.geometry.dispose==='function')obj.geometry.dispose();
+    }
+    if(obj.material){
+      if(Array.isArray(obj.material))obj.material.forEach(m=>disposeMat(m));
+      else disposeMat(obj.material);
+    }
+  };
+  const list=Array.isArray(roots)?roots:[roots];
+  list.forEach(root=>{
+    if(root&&typeof root.traverse==='function')root.traverse(c=>disposeObj(c));
+    disposeObj(root);
+  });
 }
 
 function validateCatalogItem(g){
@@ -1000,13 +1039,7 @@ function initGalleryThumbnails(){
     const ctx2d=cv.getContext('2d');
     if(ctx2d)ctx2d.drawImage(tempCv,0,0);
 
-    scene.traverse(obj=>{
-      if(obj.geometry)obj.geometry.dispose();
-      if(obj.material){
-        if(Array.isArray(obj.material))obj.material.forEach(m=>disposeMaterial(m));
-        else disposeMaterial(obj.material);
-      }
-    });
+    disposeObject3DTree(scene);
   });
 
   ren.dispose();
@@ -1129,54 +1162,9 @@ const Builder={
   frontPanel(w,h,depth,color,rough,metal){const shape=this.roundedShape(w,h,Math.min(w,h)*.04);const geo=new THREE.ExtrudeGeometry(shape,{depth,bevelEnabled:true,bevelThickness:.004,bevelSize:.004,bevelSegments:2});geo.center();return new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color,roughness:rough,metalness:metal,bumpMap:grainTexture(),bumpScale:.0018}))},
 
   clear(){
-    const seenObjects = new Set();
-    const seenGeometries = new Set();
-    const seenMaterials = new Set();
-    const seenTextures = new Set();
-
-    const disposeTex = (tex) => {
-      if (!tex || seenTextures.has(tex)) return;
-      if (typeof _grainTex !== 'undefined' && tex === _grainTex) return;
-      if (typeof _mirrorEnv !== 'undefined' && tex === _mirrorEnv) return;
-      seenTextures.add(tex);
-      if (typeof tex.dispose === 'function') tex.dispose();
-    };
-
-    const disposeMat = (mat) => {
-      if (!mat || seenMaterials.has(mat)) return;
-      seenMaterials.add(mat);
-      if (mat.map) disposeTex(mat.map);
-      if (mat.bumpMap) disposeTex(mat.bumpMap);
-      if (mat.envMap) disposeTex(mat.envMap);
-      if (typeof mat.dispose === 'function') mat.dispose();
-    };
-
-    const disposeObj = (obj) => {
-      if (!obj || seenObjects.has(obj)) return;
-      seenObjects.add(obj);
-
-      if (obj.geometry && !seenGeometries.has(obj.geometry)) {
-        seenGeometries.add(obj.geometry);
-        if (typeof obj.geometry.dispose === 'function') obj.geometry.dispose();
-      }
-
-      if (obj.material) {
-        if (Array.isArray(obj.material)) {
-          obj.material.forEach(m => disposeMat(m));
-        } else {
-          disposeMat(obj.material);
-        }
-      }
-    };
-
     const targets = [...this.parts, ...this.doorObjs, ...this.drawerObjs];
-    targets.forEach(p => {
-      if (p && p.parent) p.parent.remove(p);
-      if (p && p.traverse) {
-        p.traverse(c => disposeObj(c));
-      }
-      disposeObj(p);
-    });
+    targets.forEach(p => { if (p && p.parent) p.parent.remove(p); });
+    disposeObject3DTree(targets);
 
     this.parts = []; this.doorObjs = []; this.drawerObjs = [];
     this.doorsOpen = false; this.drawersOpen = false; this.currentParent = null;

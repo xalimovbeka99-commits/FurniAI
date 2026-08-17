@@ -443,11 +443,48 @@ module.exports = async (req,res)=>{
   }
 };
 
+// Allowlist, not blocklist: `err.name`/`err.code` are attacker/provider-
+// controlled strings (an Anthropic SDK error, a network error, or anything
+// thrown by code this handler doesn't own) — logging them verbatim lets
+// whoever controls the error object choose what appears in server logs.
+// Only a fixed, hand-written set of known-safe classification values is
+// ever passed through; anything else — including a value crafted to look
+// like a real one — collapses to a generic fallback. Same principle as
+// redactErrorForLogging() in src/lib/ai-provider/errors.js (PR #4): trust
+// by exact allowlisted value, never by shape or by default.
+const SAFE_ERROR_NAMES = new Set([
+  'Error', 'TypeError', 'RangeError', 'SyntaxError',
+  'AbortError', 'APIError', 'APIConnectionError', 'APIConnectionTimeoutError',
+  'APIUserAbortError', 'AuthenticationError', 'PermissionDeniedError',
+  'NotFoundError', 'ConflictError', 'UnprocessableEntityError',
+  'RateLimitError', 'InternalServerError', 'BadRequestError',
+]);
+const SAFE_ERROR_CODES = new Set([
+  'UNKNOWN_ERROR',
+  'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'EPIPE',
+  'invalid_request_error', 'authentication_error', 'permission_error',
+  'not_found_error', 'rate_limit_error', 'api_error', 'overloaded_error',
+  'invalid_api_key',
+]);
+
+function safeErrorName(err){
+  const raw = err && err.name;
+  return typeof raw === 'string' && SAFE_ERROR_NAMES.has(raw) ? raw : 'Error';
+}
+function safeErrorCode(err){
+  const raw = err && (err.code || (err.error && err.error.type));
+  return typeof raw === 'string' && SAFE_ERROR_CODES.has(raw) ? raw : 'UNKNOWN_ERROR';
+}
+function safeErrorStatus(err){
+  const raw = err && err.status;
+  return Number.isInteger(raw) && raw >= 100 && raw <= 599 ? raw : 500;
+}
+
 function safeLogError(err){
   const safeInfo = {
-    name: err && err.name ? String(err.name) : 'Error',
-    status: err && err.status ? Number(err.status) : 500,
-    code: err && err.code ? String(err.code) : 'UNKNOWN_ERROR',
+    name: safeErrorName(err),
+    status: safeErrorStatus(err),
+    code: safeErrorCode(err),
   };
   console.error('chat agent error:', JSON.stringify(safeInfo));
 }

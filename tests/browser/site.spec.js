@@ -1,11 +1,23 @@
 /**
  * Real browser tests (Codex Blocker 3) — an actual headless Chromium
  * instance driven by Playwright, not a string/regex assertion pretending to
- * be one. Runs against tests/static-server.js serving the exact flat files
+ * be one. Runs against scripts/static-server.js serving the exact flat files
  * Vercel deploys (index.html/styles.css/legacy-builder-adapter.js/app.js),
  * so a pass here means the real DOM + real Three.js WebGL context + real
  * navigation lifecycle actually worked, not that the source text merely
  * contains an expected substring.
+ *
+ * Deterministic CDN loading (Codex re-review, round 2): index.html's own
+ * <script src="https://cdnjs.../three.min.js"> tag is untouched — production
+ * still fetches Three.js r128 from the CDN exactly as before. Only this
+ * TEST's page context intercepts that one URL and fulfills it from a pinned
+ * local copy (tests/browser/vendor/three.r128.min.js, downloaded from the
+ * exact same CDN path and verified to report THREE.REVISION === "128"), so
+ * the suite no longer depends on live public-network CDN availability —
+ * see "loads the real THREE.js r128 build deterministically" below for the
+ * revision check. Supabase's CDN script is pinned the same way, since an
+ * unavailable `window.supabase` throws inside initAuth() and would fail
+ * every test's uncaught-pageerror guard for an unrelated reason.
  *
  * Scope: this proves the app survives real navigation without throwing and
  * without leaving stray WebGL contexts/RAF loops running — it does not
@@ -13,13 +25,29 @@
  * use, which needs a real GPU and a human watching a real tab. That kind of
  * endurance check is out of scope here — see docs/STABILITY.md.
  */
+const path = require("path");
 const { test, expect } = require("@playwright/test");
+
+const THREE_VENDOR_PATH = path.resolve(__dirname, "vendor/three.r128.min.js");
+const SUPABASE_VENDOR_PATH = path.resolve(__dirname, "vendor/supabase.min.js");
 
 test.describe("FurniAI static site — real browser lifecycle", () => {
   test.beforeEach(async ({ page }) => {
+    await page.route("**://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js", (route) =>
+      route.fulfill({ path: THREE_VENDOR_PATH, contentType: "text/javascript" })
+    );
+    await page.route("**://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js", (route) =>
+      route.fulfill({ path: SUPABASE_VENDOR_PATH, contentType: "text/javascript" })
+    );
     page.on("pageerror", (err) => {
       throw new Error(`Uncaught page error: ${err.message}`);
     });
+  });
+
+  test("loads the real THREE.js r128 build deterministically, not a substitute version", async ({ page }) => {
+    await page.goto("/");
+    const revision = await page.evaluate(() => (typeof THREE !== "undefined" ? THREE.REVISION : null));
+    expect(revision).toBe("128");
   });
 
   test("homepage loads with the hero canvas present", async ({ page }) => {
@@ -33,6 +61,23 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
     await page.waitForFunction(() => document.querySelectorAll("#galleryGrid .card").length > 0);
     const cardCount = await page.locator("#galleryGrid .card").count();
     expect(cardCount).toBe(30);
+  });
+
+  test("gallery thumbnails are actually produced (non-blank canvas pixels) for every card", async ({ page }) => {
+    await page.goto("/");
+    await page.waitForFunction(() => document.querySelectorAll("#galleryGrid .card").length > 0);
+    // initGalleryThumbnails() runs once, 300ms after boot() — give it room.
+    await page.waitForTimeout(600);
+    const blankCards = await page.evaluate(() => {
+      const canvases = Array.from(document.querySelectorAll("#galleryGrid .card canvas"));
+      return canvases.filter((cv) => {
+        const ctx = cv.getContext("2d");
+        if (!ctx || cv.width === 0 || cv.height === 0) return true;
+        const { data } = ctx.getImageData(0, 0, cv.width, cv.height);
+        return !data.some((channel) => channel !== 0);
+      }).length;
+    });
+    expect(blankCards).toBe(0);
   });
 
   test("Builder opens from a gallery card and renders the 3D canvas", async ({ page }) => {
@@ -49,23 +94,15 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
 
   async function openDesignOfType(page, type) {
     await page.goto("/");
-    const index = await page.evaluate((t) => window.DESIGNS ? window.DESIGNS.findIndex((d) => d.type === t) : -1, type);
-    // DESIGNS is a page-local const, not on window — fall back to reading it
-    // from the gallery cards' click handlers via direct hash navigation once
-    // the index is known from the server-rendered card order instead.
-    if (index === -1) {
-      const foundIndex = await page.evaluate((t) => {
-        const script = Array.from(document.scripts).map((s) => s.textContent).join("\n");
-        const m = script.match(/const DESIGNS=(\[[\s\S]*?\]);/);
-        if (!m) return -1;
-        const designs = new Function(`return ${m[1]}`)();
-        return designs.findIndex((d) => d.type === t);
-      }, type);
-      expect(foundIndex).toBeGreaterThanOrEqual(0);
-      await page.evaluate((i) => window.location.hash = "#/build/" + i, foundIndex);
-    } else {
-      await page.evaluate((i) => window.location.hash = "#/build/" + i, index);
-    }
+    const foundIndex = await page.evaluate((t) => {
+      const script = Array.from(document.scripts).map((s) => s.textContent).join("\n");
+      const m = script.match(/const DESIGNS=(\[[\s\S]*?\]);/);
+      if (!m) return -1;
+      const designs = new Function(`return ${m[1]}`)();
+      return designs.findIndex((d) => d.type === t);
+    }, type);
+    expect(foundIndex).toBeGreaterThanOrEqual(0);
+    await page.evaluate((i) => { window.location.hash = "#/build/" + i; }, foundIndex);
     await expect(page.locator("#view-builder")).toBeVisible();
     await expect(page.locator("#bld3d")).toBeAttached();
   }
