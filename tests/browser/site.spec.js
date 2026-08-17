@@ -114,4 +114,45 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
     }));
     expect(rafState.builder).toBe(false);
   });
+
+  test("Builder WebGL context loss stops the loop, and a real restore rebuilds without throwing", async ({ page }) => {
+    await page.goto("/#/build/0");
+    await expect(page.locator("#bld3d")).toBeAttached();
+    await page.waitForFunction(() => typeof bldRafId !== "undefined" && bldRafId !== null);
+
+    const result = await page.evaluate(() => {
+      return new Promise((resolve) => {
+        const cv = document.getElementById("bld3d");
+        const gl = Builder.ren.getContext();
+        const ext = gl.getExtension("WEBGL_lose_context");
+        if (!ext) { resolve({ supported: false }); return; }
+
+        let lostFired = false;
+        let restoredFired = false;
+        cv.addEventListener("webglcontextlost", () => { lostFired = true; }, { once: true });
+        cv.addEventListener("webglcontextrestored", () => { restoredFired = true; }, { once: true });
+
+        ext.loseContext();
+        setTimeout(() => {
+          const bldRafIdAfterLoss = bldRafId;
+          ext.restoreContext();
+          setTimeout(() => {
+            resolve({
+              supported: true,
+              lostFired,
+              restoredFired,
+              rafStoppedOnLoss: bldRafIdAfterLoss === null,
+              rafResumedAfterRestore: bldRafId !== null,
+            });
+          }, 1500);
+        }, 200);
+      });
+    });
+
+    test.skip(result.supported === false, "WEBGL_lose_context extension not available in this environment");
+    expect(result.lostFired).toBe(true);
+    expect(result.rafStoppedOnLoss).toBe(true);
+    expect(result.restoredFired).toBe(true);
+    expect(result.rafResumedAfterRestore).toBe(true);
+  });
 });

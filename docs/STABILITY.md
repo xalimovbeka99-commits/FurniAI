@@ -60,9 +60,13 @@
    from `scripts/static-server.js` over real WebGL: homepage + hero canvas,
    all 30 catalog cards, opening the Builder from a card, opening a
    wardrobe/kitchen/vanity design specifically, a dimension slider actually
-   changing rendered state, and 5 rounds of landing↔builder navigation with
+   changing rendered state, 5 rounds of landing↔builder navigation with
    zero uncaught JS errors and the Builder RAF loop provably stopped on
-   return to landing. This is real browser automation, not a string/regex
+   return to landing, and a **real, simulated** `WEBGL_lose_context`
+   loss/restore cycle on the live Builder canvas — confirming
+   `bldRafId` actually goes `null` on loss and a new RAF is actually armed
+   after `webglcontextrestored` fires, not just that both event listeners
+   are registered. This is real browser automation, not a string/regex
    assertion — see the file's own doc comment for exactly what it does and
    does not prove.
    **Scope boundary, stated plainly:** this proves the app survives real
