@@ -18,19 +18,33 @@
    happens before the main script defines boot() or anything else, so a
    try/catch *inside* that same script cannot catch it. A separate,
    earlier global error listener is the only mechanism that can. */
-window.addEventListener('error', function(e){
-  if (window.__furniaiBootOk) return; // app already started; a later runtime error is not a boot failure
+/* Single shared entry point for any FATAL 3D-initialization failure — both
+   this file's own top-level-statement guard (below) and Builder.init()'s
+   catch block (see the protected Builder object further down) call this
+   SAME function, so there is exactly one failure-panel implementation, not
+   two that can drift. Hero/gallery WebGL failures are deliberately NOT
+   fatal (a missing hero animation or missing thumbnails still leaves a
+   usable landing page) and do not call this — they keep their existing
+   console.warn()-and-degrade behavior. Only a failure that prevents the
+   specifically-requested experience (the Builder the user opened) shows
+   this UI. Never includes a stack trace in the DOM; the real error is only
+   ever in the console. */
+window.showFurniAiFatalFailure = function(userMessage, err){
   if (document.getElementById('furniai-boot-error')) return;
   var el = document.createElement('div');
   el.id = 'furniai-boot-error';
   el.setAttribute('style', 'position:fixed;inset:0;z-index:99999;background:#FAF9F5;color:#211E19;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif;text-align:center;padding:24px;');
-  el.innerHTML = '<div><h2 style="margin:0 0 8px;font-size:20px;">3D Builder could not start.</h2>'
+  el.innerHTML = '<div><h2 style="margin:0 0 8px;font-size:20px;">' + userMessage + '</h2>'
     + '<p style="margin:0 0 16px;opacity:.7;font-size:14px;">Please reload the page.</p>'
     + '<button id="furniai-boot-retry" style="padding:10px 20px;border-radius:8px;border:1px solid #211E19;background:transparent;cursor:pointer;font:inherit;">Reload</button></div>';
   document.body.appendChild(el);
   var retryBtn = document.getElementById('furniai-boot-retry');
   if (retryBtn) retryBtn.addEventListener('click', function(){ location.reload(); });
-  if (window.console && console.error) console.error('FurniAI boot error:', e && (e.message || e.error));
+  if (window.console && console.error) console.error('FurniAI fatal error:', err && (err.message || err.error || err));
+};
+window.addEventListener('error', function(e){
+  if (window.__furniaiBootOk) return; // app already started; a later runtime error is not a boot failure
+  window.showFurniAiFatalFailure('3D Builder could not start.', e);
 });
 </script>
 <script src="/vendor-three-r128.min.js"></script>
@@ -1098,7 +1112,12 @@ const Builder={
       this.ren.outputEncoding=THREE.sRGBEncoding;this.ren.toneMapping=THREE.ACESFilmicToneMapping;
       this.ren.toneMappingExposure=1.05;
     }catch(err){
-      console.warn('Builder WebGL initialization failed:',err);
+      // Fatal: the user specifically opened the Builder and it cannot
+      // start — unlike Hero/gallery WebGL failures (cosmetic, degrade
+      // silently), this one must be visible rather than leave a blank
+      // canvas with only a console warning nobody but a developer sees.
+      console.error('Builder WebGL initialization failed:',err);
+      if(window.showFurniAiFatalFailure)window.showFurniAiFatalFailure('3D Builder could not start.',err);
       return;
     }
 

@@ -335,4 +335,57 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
     expect(result.timedOut).toBe(false);
     expect(result.nonBlankFraction).toBeGreaterThan(0.05);
   });
+
+  test("a real WebGLRenderer construction failure on the Builder canvas shows the visible failure panel, not a blank screen", async ({ page }) => {
+    // Denies a real WebGL context specifically on #bld3d (returning null,
+    // exactly what a browser with WebGL genuinely unavailable/exhausted
+    // would do) so THREE.WebGLRenderer's own constructor throws for real —
+    // this is not mocking THREE itself, just the browser API it depends on.
+    // #hero3d and gallery canvases are untouched, matching the real-world
+    // case where only the Builder's specific canvas/context creation fails.
+    await page.addInitScript(() => {
+      const orig = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (type, ...args) {
+        if (this.id === "bld3d" && /webgl/i.test(type)) return null;
+        return orig.call(this, type, ...args);
+      };
+    });
+
+    const consoleErrors = [];
+    page.on("console", (msg) => { if (msg.type() === "error") consoleErrors.push(msg.text()); });
+    // This test's whole point is the uncaught-pageerror guard from
+    // beforeEach must NOT fire here — Builder.init()'s catch is expected
+    // to consume the exception and route it through the visible failure
+    // panel instead of letting it become an uncaught page error. No
+    // additional pageerror listener is added; the shared beforeEach guard
+    // already asserts this implicitly by failing the test if one occurs.
+
+    await page.goto("/#/build/0");
+    await page.waitForFunction(() => !!document.getElementById("furniai-boot-error"));
+
+    const panel = await page.evaluate(() => {
+      const el = document.getElementById("furniai-boot-error");
+      const retry = document.getElementById("furniai-boot-retry");
+      return {
+        panelText: el ? el.innerText : null,
+        retryVisible: !!retry && retry.offsetParent !== null,
+        builderReady: typeof Builder !== "undefined" ? Builder.ready : null,
+      };
+    });
+
+    expect(panel.panelText).toContain("3D Builder could not start.");
+    expect(panel.retryVisible, "retry/reload control must be visible").toBe(true);
+    // The safe, fixed panel text must never include exception internals —
+    // constructor names, "at ", file paths, or the word "Error" as raised
+    // by the engine (as opposed to appearing in this test's own strings).
+    expect(panel.panelText).not.toMatch(/at\s+\S+:\d+|\.js:\d+|WebGLRenderer|TypeError|ReferenceError/);
+    // Builder.init() returns before setting ready=true on this path — a
+    // failed boot must never be reported as a successful one.
+    expect(panel.builderReady, "Builder.ready must not be falsely set true after a failed init").not.toBe(true);
+
+    // The technical detail must still reach the console for debugging —
+    // "do not expose to the user" is not the same as "log nothing at all."
+    const hasTechnicalLog = consoleErrors.some((t) => /Builder WebGL initialization failed|FurniAI fatal error/.test(t));
+    expect(hasTechnicalLog, `expected a technical console.error; got: ${JSON.stringify(consoleErrors)}`).toBe(true);
+  });
 });
