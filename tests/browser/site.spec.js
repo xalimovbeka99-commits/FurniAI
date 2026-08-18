@@ -1,23 +1,29 @@
 /**
- * Real browser tests (Codex Blocker 3) — an actual headless Chromium
- * instance driven by Playwright, not a string/regex assertion pretending to
- * be one. Runs against scripts/static-server.js serving the exact flat files
- * Vercel deploys (index.html/styles.css/legacy-builder-adapter.js/app.js),
- * so a pass here means the real DOM + real Three.js WebGL context + real
- * navigation lifecycle actually worked, not that the source text merely
- * contains an expected substring.
+ * Real browser tests — an actual headless Chromium instance driven by
+ * Playwright, not a string/regex assertion pretending to be one. Runs
+ * against scripts/static-server.js serving the exact flat files Vercel
+ * deploys (index.html/styles.css/legacy-builder-adapter.js/app.js/
+ * vendor-three-r128.min.js/vendor-supabase.min.js), so a pass here means
+ * the real DOM + real Three.js WebGL context + real navigation lifecycle
+ * actually worked, not that the source text merely contains an expected
+ * substring.
  *
- * Deterministic CDN loading (Codex re-review, round 2): index.html's own
- * <script src="https://cdnjs.../three.min.js"> tag is untouched — production
- * still fetches Three.js r128 from the CDN exactly as before. Only this
- * TEST's page context intercepts that one URL and fulfills it from a pinned
- * local copy (tests/browser/vendor/three.r128.min.js, downloaded from the
- * exact same CDN path and verified to report THREE.REVISION === "128"), so
- * the suite no longer depends on live public-network CDN availability —
- * see "loads the real THREE.js r128 build deterministically" below for the
- * revision check. Supabase's CDN script is pinned the same way, since an
- * unavailable `window.supabase` throws inside initAuth() and would fail
- * every test's uncaught-pageerror guard for an unrelated reason.
+ * M1.1 — no CDN dependency, no interception needed for the standard suite:
+ * Three.js r128 and Supabase are same-origin vendored files (see
+ * index.html's <script src="/vendor-*.min.js"> tags), so every test below
+ * loads them exactly the way production does — nothing here fulfills or
+ * substitutes a third-party request. The dedicated resilience test further
+ * down actively BLOCKS the old CDN domains (and Google Fonts) to prove the
+ * app no longer depends on them at all, which is the actual regression
+ * guard against this ever regressing back to a runtime CDN dependency.
+ *
+ * Every custom async page.evaluate() Promise below races against an
+ * explicit manual timeout (HANG_GUARD_MS) rather than relying solely on
+ * Playwright's own test timeout. A previous round of this suite was
+ * reported to hang indefinitely in one environment after all tests
+ * appeared to pass — the most defensible fix, without being able to
+ * reproduce that exact hang here, is to make every custom in-page Promise
+ * provably unable to wait forever, whatever the cause.
  *
  * Scope: this proves the app survives real navigation without throwing and
  * without leaving stray WebGL contexts/RAF loops running — it does not
@@ -25,29 +31,27 @@
  * use, which needs a real GPU and a human watching a real tab. That kind of
  * endurance check is out of scope here — see docs/STABILITY.md.
  */
-const path = require("path");
 const { test, expect } = require("@playwright/test");
 
-const THREE_VENDOR_PATH = path.resolve(__dirname, "vendor/three.r128.min.js");
-const SUPABASE_VENDOR_PATH = path.resolve(__dirname, "vendor/supabase.min.js");
+const HANG_GUARD_MS = 8000;
 
 test.describe("FurniAI static site — real browser lifecycle", () => {
   test.beforeEach(async ({ page }) => {
-    await page.route("**://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js", (route) =>
-      route.fulfill({ path: THREE_VENDOR_PATH, contentType: "text/javascript" })
-    );
-    await page.route("**://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js", (route) =>
-      route.fulfill({ path: SUPABASE_VENDOR_PATH, contentType: "text/javascript" })
-    );
     page.on("pageerror", (err) => {
       throw new Error(`Uncaught page error: ${err.message}`);
     });
   });
 
-  test("loads the real THREE.js r128 build deterministically, not a substitute version", async ({ page }) => {
+  test("loads the real THREE.js r128 build locally, with zero requests to the old CDN domains", async ({ page }) => {
+    const cdnRequests = [];
+    page.on("request", (req) => {
+      const url = req.url();
+      if (/cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net/.test(url)) cdnRequests.push(url);
+    });
     await page.goto("/");
     const revision = await page.evaluate(() => (typeof THREE !== "undefined" ? THREE.REVISION : null));
     expect(revision).toBe("128");
+    expect(cdnRequests, `unexpected third-party CDN request(s): ${cdnRequests.join(", ")}`).toEqual([]);
   });
 
   test("homepage loads with the hero canvas present", async ({ page }) => {
@@ -128,21 +132,26 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
   // from an arbitrary later point (a plain page.evaluate with no RAF)
   // would be unreliable and could read a cleared buffer even while
   // rendering is genuinely working — that's the "weak/fake assertion"
-  // this file's own review explicitly warns against.
+  // this file's own review explicitly warns against. Races against
+  // HANG_GUARD_MS so a RAF that never fires (for any reason, in any
+  // environment) fails fast with a clear message instead of hanging.
   async function readBuilderCanvasPixels(page) {
-    return page.evaluate(() => new Promise((resolve) => {
-      requestAnimationFrame(() => {
-        const gl = Builder.ren.getContext();
-        const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
-        const pixels = new Uint8Array(w * h * 4);
-        gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-        let nonBlank = 0;
-        for (let i = 0; i < pixels.length; i += 4) {
-          if (pixels[i] !== 0 || pixels[i + 1] !== 0 || pixels[i + 2] !== 0) nonBlank++;
-        }
-        resolve({ width: w, height: h, nonBlankFraction: nonBlank / (w * h) });
-      });
-    }));
+    return page.evaluate((guardMs) => Promise.race([
+      new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          const gl = Builder.ren.getContext();
+          const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+          const pixels = new Uint8Array(w * h * 4);
+          gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+          let nonBlank = 0;
+          for (let i = 0; i < pixels.length; i += 4) {
+            if (pixels[i] !== 0 || pixels[i + 1] !== 0 || pixels[i + 2] !== 0) nonBlank++;
+          }
+          resolve({ width: w, height: h, nonBlankFraction: nonBlank / (w * h), timedOut: false });
+        });
+      }),
+      new Promise((resolve) => setTimeout(() => resolve({ timedOut: true }), guardMs)),
+    ]), HANG_GUARD_MS);
   }
 
   test("all 30 designs individually load a real, correctly-mapped Three.js scene into the Builder", async ({ page }) => {
@@ -176,11 +185,10 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
     }
 
     // Same-origin failures (index.html, styles.css, legacy-builder-adapter.js,
-    // app.js) would mean a real broken asset path; the pinned CDN routes are
-    // fulfilled locally so they never legitimately fail either. External
-    // failures unrelated to the app (e.g. Google Fonts) are not this test's
-    // concern and are excluded.
-    const relevantFailures = failedRequests.filter((f) => /127\.0\.0\.1:4173|three\.min\.js|supabase.*\.js/.test(f));
+    // app.js, the two vendor-*.min.js files) would mean a real broken asset
+    // path. External failures unrelated to the app (e.g. Google Fonts) are
+    // not this test's concern and are excluded.
+    const relevantFailures = failedRequests.filter((f) => /127\.0\.0\.1:4173/.test(f));
     expect(relevantFailures, `unexpected asset/network failures: ${relevantFailures.join("; ")}`).toEqual([]);
   });
 
@@ -198,8 +206,9 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
       await expect(page.locator("#bld3d")).toBeAttached();
       await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.parts && Builder.parts.length > 0);
       await page.waitForTimeout(200); // let a few real frames render past the initial one
-      const { nonBlankFraction } = await readBuilderCanvasPixels(page);
-      expect(nonBlankFraction, `design[${i}] Builder canvas is visually blank (${(nonBlankFraction * 100).toFixed(1)}% non-black pixels)`).toBeGreaterThan(0.05);
+      const result = await readBuilderCanvasPixels(page);
+      expect(result.timedOut, `design[${i}] pixel readback never completed within ${HANG_GUARD_MS}ms`).toBe(false);
+      expect(result.nonBlankFraction, `design[${i}] Builder canvas is visually blank (${(result.nonBlankFraction * 100).toFixed(1)}% non-black pixels)`).toBeGreaterThan(0.05);
     }
   });
 
@@ -211,6 +220,7 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
     await page.waitForTimeout(200);
     const before = await readBuilderCanvasPixels(page);
     const expectedType = await page.evaluate(() => Builder.cfg.type);
+    expect(before.timedOut).toBe(false);
     expect(before.nonBlankFraction).toBeGreaterThan(0.05);
 
     await page.evaluate(() => { window.location.hash = "#/"; });
@@ -221,6 +231,7 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
     await page.waitForTimeout(200);
     const after = await readBuilderCanvasPixels(page);
 
+    expect(after.timedOut).toBe(false);
     expect(after.nonBlankFraction, "restored scene is blank after navigating away and back").toBeGreaterThan(0.05);
     const restoredType = await page.evaluate(() => Builder.cfg.type);
     expect(restoredType).toBe(expectedType);
@@ -264,12 +275,12 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
     await expect(page.locator("#bld3d")).toBeAttached();
     await page.waitForFunction(() => typeof bldRafId !== "undefined" && bldRafId !== null);
 
-    const result = await page.evaluate(() => {
-      return new Promise((resolve) => {
+    const result = await page.evaluate((guardMs) => Promise.race([
+      new Promise((resolve) => {
         const cv = document.getElementById("bld3d");
         const gl = Builder.ren.getContext();
         const ext = gl.getExtension("WEBGL_lose_context");
-        if (!ext) { resolve({ supported: false }); return; }
+        if (!ext) { resolve({ supported: false, timedOut: false }); return; }
 
         let lostFired = false;
         let restoredFired = false;
@@ -283,6 +294,7 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
           setTimeout(() => {
             resolve({
               supported: true,
+              timedOut: false,
               lostFired,
               restoredFired,
               rafStoppedOnLoss: bldRafIdAfterLoss === null,
@@ -290,13 +302,37 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
             });
           }, 1500);
         }, 200);
-      });
-    });
+      }),
+      new Promise((resolve) => setTimeout(() => resolve({ supported: true, timedOut: true }), guardMs)),
+    ]), HANG_GUARD_MS);
 
     test.skip(result.supported === false, "WEBGL_lose_context extension not available in this environment");
+    expect(result.timedOut, `context-loss/restore cycle never completed within ${HANG_GUARD_MS}ms`).toBe(false);
     expect(result.lostFired).toBe(true);
     expect(result.rafStoppedOnLoss).toBe(true);
     expect(result.restoredFired).toBe(true);
     expect(result.rafResumedAfterRestore).toBe(true);
+  });
+
+  test("blocking the old CDN domains (cdnjs, jsDelivr) and Google Fonts does not break the Builder", async ({ page }) => {
+    await page.route("**://cdnjs.cloudflare.com/**", (route) => route.abort());
+    await page.route("**://cdn.jsdelivr.net/**", (route) => route.abort());
+    await page.route("**://fonts.googleapis.com/**", (route) => route.abort());
+    await page.route("**://fonts.gstatic.com/**", (route) => route.abort());
+
+    await page.goto("/#/build/0");
+    await expect(page.locator("#bld3d")).toBeAttached();
+    await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.parts && Builder.parts.length > 0);
+
+    const revision = await page.evaluate(() => (typeof THREE !== "undefined" ? THREE.REVISION : null));
+    expect(revision).toBe("128");
+
+    const bootErrorShown = await page.evaluate(() => !!document.getElementById("furniai-boot-error"));
+    expect(bootErrorShown, "boot-error fallback should not appear — the app never needed the blocked domains").toBe(false);
+
+    await page.waitForTimeout(200);
+    const result = await readBuilderCanvasPixels(page);
+    expect(result.timedOut).toBe(false);
+    expect(result.nonBlankFraction).toBeGreaterThan(0.05);
   });
 });

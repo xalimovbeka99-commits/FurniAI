@@ -10,7 +10,7 @@
     "src/lib/wardrobe-agent/runWardrobeAgent.js": "173010c1851cf80679379be36d8eca1d64d65b16c8310765973e51e4a2b63c70",
     "src/components/builder/FurnitureModel.jsx": "fab83a33f866d61e7a1ff28187239689fc90781463abbd064e2dc56a00025537",
     "src/app/builder/page.jsx": "fc14fcb672f85b9b700839049441f8977319c66c95aa00a1b4918e43637d8876",
-    "vercel.json": "4ce7855409a9cc11c9be68001ef224aa2deaa29f62a0b5d02acbbebbf631e634"
+    "vercel.json": "3bc331bc97195b1996ca04989b32db4f3d34e2cf1614d8f5dfafaed80ff967db"
   },
   "justifiedBaselineUpdates": [
     {
@@ -22,6 +22,11 @@
       "file": "vercel.json",
       "reason": "M1 legacy-builder AI bridge: the protected framework-null deployment must copy legacy-builder-adapter.js into dist so the accepted static Builder can consume validated canonical Wardrobe Models. Framework, output directory, static homepage, Three.js renderer, and production routing are unchanged.",
       "diffSummary": "Added legacy-builder-adapter.js to the existing static cp build command; no other deployment setting changed."
+    },
+    {
+      "file": "vercel.json",
+      "reason": "M1.1 production reliability: Three.js r128 and Supabase are now same-origin vendored files instead of third-party CDN scripts, so the protected static build must also copy those two files into dist. No routing, framework, or output-directory change.",
+      "diffSummary": "Added vendor-three-r128.min.js and vendor-supabase.min.js to the existing static cp build command; no other deployment setting changed."
     }
   ]
 }

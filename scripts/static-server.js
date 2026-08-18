@@ -52,6 +52,32 @@ server.on("error", (err) => {
   console.error("static-server fatal error:", err && err.message);
 });
 
+// Track open sockets so shutdown can actually terminate promptly.
+// http.Server#close() alone only stops accepting NEW connections and waits
+// for every EXISTING one to end on its own — a well-known Node gotcha: a
+// browser holding one idle keep-alive socket open can make close() hang
+// indefinitely, which would look exactly like "the whole test run finished
+// but the process never exits." Destroying tracked sockets on shutdown
+// avoids that regardless of whether it was ever the actual cause here.
+const openSockets = new Set();
+server.on("connection", (socket) => {
+  openSockets.add(socket);
+  socket.on("close", () => openSockets.delete(socket));
+});
+
+let shuttingDown = false;
+function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  server.close(() => process.exit(0));
+  for (const socket of openSockets) socket.destroy();
+  // Absolute backstop — .unref() so this timer's mere existence can never
+  // itself be the reason the process doesn't exit naturally.
+  setTimeout(() => process.exit(0), 2000).unref();
+}
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
+
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`static-server listening on http://127.0.0.1:${PORT}`);
 });
