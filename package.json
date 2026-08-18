@@ -12,7 +12,7 @@
     "test:unit": "vitest run",
     "test:watch": "vitest",
     "test:validator": "node --test tests/validator.test.js",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test tests/browser/site.spec.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.28.0",

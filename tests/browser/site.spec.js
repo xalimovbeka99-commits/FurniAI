@@ -119,6 +119,113 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
     await openDesignOfType(page, "vanity_freestanding");
   });
 
+  // Reading GPU pixels back from a WebGLRenderer created WITHOUT
+  // preserveDrawingBuffer (Builder's is not) is only reliable if the read
+  // happens inside a requestAnimationFrame callback registered AFTER
+  // Builder's own render call for that frame — RAF callbacks run in
+  // registration order within a frame, and the browser only clears/swaps
+  // the drawing buffer after all of a frame's callbacks finish. Reading
+  // from an arbitrary later point (a plain page.evaluate with no RAF)
+  // would be unreliable and could read a cleared buffer even while
+  // rendering is genuinely working — that's the "weak/fake assertion"
+  // this file's own review explicitly warns against.
+  async function readBuilderCanvasPixels(page) {
+    return page.evaluate(() => new Promise((resolve) => {
+      requestAnimationFrame(() => {
+        const gl = Builder.ren.getContext();
+        const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+        const pixels = new Uint8Array(w * h * 4);
+        gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+        let nonBlank = 0;
+        for (let i = 0; i < pixels.length; i += 4) {
+          if (pixels[i] !== 0 || pixels[i + 1] !== 0 || pixels[i + 2] !== 0) nonBlank++;
+        }
+        resolve({ width: w, height: h, nonBlankFraction: nonBlank / (w * h) });
+      });
+    }));
+  }
+
+  test("all 30 designs individually load a real, correctly-mapped Three.js scene into the Builder", async ({ page }) => {
+    test.setTimeout(120000); // 30 real navigations x Builder init; default 30s is too tight for this test's legitimate scope
+    const failedRequests = [];
+    page.on("requestfailed", (req) => failedRequests.push(`${req.url()} — ${req.failure()?.errorText}`));
+
+    await page.goto("/");
+    const designs = await page.evaluate(() => {
+      const script = Array.from(document.scripts).map((s) => s.textContent).join("\n");
+      const m = script.match(/const DESIGNS=(\[[\s\S]*?\]);/);
+      return new Function(`return ${m[1]}`)();
+    });
+    expect(designs.length).toBe(30);
+
+    for (let i = 0; i < designs.length; i++) {
+      await page.evaluate((idx) => { window.location.hash = "#/build/" + idx; }, i);
+      await expect(page.locator("#bld3d")).toBeAttached();
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.cfg && Builder.parts && Builder.parts.length > 0);
+      const state = await page.evaluate(() => ({
+        type: Builder.cfg.type,
+        partCount: Builder.parts.length,
+        sceneChildren: Builder.scene ? Builder.scene.children.length : 0,
+      }));
+      expect(state.type, `design[${i}] (${designs[i].name}) cfg.type mismatch`).toBe(designs[i].type);
+      expect(state.partCount, `design[${i}] (${designs[i].name}) rendered zero parts`).toBeGreaterThan(0);
+      // 3 fixed scene members always exist (hemisphere light, key light, fill
+      // light) plus the floor plane — any real design adds panels/doors/etc.
+      // on top of that baseline.
+      expect(state.sceneChildren, `design[${i}] (${designs[i].name}) scene has no real content beyond lighting/floor`).toBeGreaterThan(4);
+    }
+
+    // Same-origin failures (index.html, styles.css, legacy-builder-adapter.js,
+    // app.js) would mean a real broken asset path; the pinned CDN routes are
+    // fulfilled locally so they never legitimately fail either. External
+    // failures unrelated to the app (e.g. Google Fonts) are not this test's
+    // concern and are excluded.
+    const relevantFailures = failedRequests.filter((f) => /127\.0\.0\.1:4173|three\.min\.js|supabase.*\.js/.test(f));
+    expect(relevantFailures, `unexpected asset/network failures: ${relevantFailures.join("; ")}`).toEqual([]);
+  });
+
+  test("representative designs (first, middle, last, #30) render non-blank GPU pixels, not just scene-graph objects", async ({ page }) => {
+    // Scene-graph presence (previous test) proves Three.js objects exist;
+    // it does NOT prove they're actually visible on screen — a mesh could
+    // exist off-camera, behind the near/far clip planes, or with zero-size
+    // geometry and still pass a "parts.length > 0" check while the canvas
+    // stays genuinely blank. This is the actual pixel-level proof for a
+    // representative spread: first two, two from the middle, and the last
+    // two (covering "thumbnail 30" explicitly).
+    const sampleIndices = [0, 1, 14, 15, 28, 29];
+    for (const i of sampleIndices) {
+      await page.goto(`/#/build/${i}`);
+      await expect(page.locator("#bld3d")).toBeAttached();
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.parts && Builder.parts.length > 0);
+      await page.waitForTimeout(200); // let a few real frames render past the initial one
+      const { nonBlankFraction } = await readBuilderCanvasPixels(page);
+      expect(nonBlankFraction, `design[${i}] Builder canvas is visually blank (${(nonBlankFraction * 100).toFixed(1)}% non-black pixels)`).toBeGreaterThan(0.05);
+    }
+  });
+
+  test("navigating away and back to the same design restores a real, non-blank scene (not corrupted or empty)", async ({ page }) => {
+    const targetIndex = 5;
+    await page.goto(`/#/build/${targetIndex}`);
+    await expect(page.locator("#bld3d")).toBeAttached();
+    await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.parts && Builder.parts.length > 0);
+    await page.waitForTimeout(200);
+    const before = await readBuilderCanvasPixels(page);
+    const expectedType = await page.evaluate(() => Builder.cfg.type);
+    expect(before.nonBlankFraction).toBeGreaterThan(0.05);
+
+    await page.evaluate(() => { window.location.hash = "#/"; });
+    await expect(page.locator("#view-landing")).toBeVisible();
+    await page.evaluate((idx) => { window.location.hash = "#/build/" + idx; }, targetIndex);
+    await expect(page.locator("#bld3d")).toBeAttached();
+    await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.parts && Builder.parts.length > 0);
+    await page.waitForTimeout(200);
+    const after = await readBuilderCanvasPixels(page);
+
+    expect(after.nonBlankFraction, "restored scene is blank after navigating away and back").toBeGreaterThan(0.05);
+    const restoredType = await page.evaluate(() => Builder.cfg.type);
+    expect(restoredType).toBe(expectedType);
+  });
+
   test("dimension control changes update the visible model", async ({ page }) => {
     await page.goto("/#/build/0");
     await expect(page.locator("#bld3d")).toBeAttached();

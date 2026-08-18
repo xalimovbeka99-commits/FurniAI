@@ -20,23 +20,36 @@ const MIME = {
 };
 
 const server = http.createServer((req, res) => {
-  const urlPath = decodeURIComponent(req.url.split("?")[0]);
-  const filePath = path.join(ROOT, urlPath === "/" ? "/index.html" : urlPath);
-  if (!filePath.startsWith(ROOT)) {
-    res.writeHead(403);
-    res.end("Forbidden");
-    return;
-  }
-  fs.readFile(filePath, (err, data) => {
-    if (err) {
-      res.writeHead(404);
-      res.end("Not found");
+  try {
+    const urlPath = decodeURIComponent(req.url.split("?")[0]);
+    const filePath = path.join(ROOT, urlPath === "/" ? "/index.html" : urlPath);
+    if (!filePath.startsWith(ROOT)) {
+      res.writeHead(403);
+      res.end("Forbidden");
       return;
     }
-    const ext = path.extname(filePath);
-    res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream" });
-    res.end(data);
-  });
+    fs.readFile(filePath, (err, data) => {
+      if (err) {
+        res.writeHead(404);
+        res.end("Not found");
+        return;
+      }
+      const ext = path.extname(filePath);
+      res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream" });
+      res.end(data);
+    });
+  } catch (err) {
+    // Test-only tooling, not shipped code — but an uncaught synchronous
+    // throw here (e.g. decodeURIComponent on a malformed request) would
+    // otherwise crash the whole process mid-suite, taking down every test
+    // after it with a confusing ECONNREFUSED instead of a clear cause.
+    console.error("static-server request error:", err && err.message);
+    if (!res.headersSent) { res.writeHead(500); res.end("Internal error"); }
+  }
+});
+
+server.on("error", (err) => {
+  console.error("static-server fatal error:", err && err.message);
 });
 
 server.listen(PORT, "127.0.0.1", () => {
