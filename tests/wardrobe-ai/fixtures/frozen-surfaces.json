@@ -3,7 +3,7 @@
   "capturedAt": "2026-08-11",
   "algorithm": "sha256",
   "files": {
-    "src/app/builder/page.jsx": "eb340f6e0b4ce7948001fc2e4b02567c5df760c6a5e758e944313d7f7793ead3",
+    "src/app/builder/page.jsx": "674b0399e6498e9862f4e5bd310a87ee9b442b6996a02571adffcf61032f12ba",
     "src/components/builder/FurnitureModel.jsx": "a70c5a5dfbc6a2086d240aee1337484a471e3462a7ea6c1dfec456c24a0a3dbe",
     "src/store/furnitureStore.js": "e8edf73aa7141d38171681c2074b7e470ada4a7f2304c314ef58c6c07d731c33",
     "src/lib/furnitureConfig.js": "0e5b7966e6d3b5d9f10e2ead5e3dcb6432917b63ed29dd876ac278c1cc16efec",
@@ -25,6 +25,11 @@
       "file": "src/components/builder/FurnitureModel.jsx",
       "reason": "Reproducibility fix, not a content change: the hash above was originally captured from a working-tree copy with LF line endings; core.autocrlf=true (no .gitattributes override) means a genuinely clean `git clone`/`git worktree add` checkout of this exact commit materializes this file with CRLF line endings instead, hashing differently even though the byte content of every line is identical. Re-captured from `git worktree add --detach <dir> <commit>` so the recorded hash matches what any clean checkout on this platform actually produces.",
       "diffSummary": "Hash only; no source change. Same root cause could recur for any frozen file if it is ever git-added while its working-tree copy has LF endings — verify frozen-surface hashes from a clean worktree checkout, not the authoring working tree."
+    },
+    {
+      "file": "src/app/builder/page.jsx",
+      "reason": "M1.1.3 (Codex-verified): <Environment preset=\"apartment\"> fetched lebombo_1k.hdr from a remote CDN (raw.githack.com/pmndrs/drei-assets); a failed/blocked fetch rejected past Suspense into no error boundary, taking down the whole /builder route with Next.js's fatal page-load error. Fix removes the remote dependency at its root: swaps the drei Environment import/element for a new local, procedurally-generated environment (src/components/builder/LocalEnvironment.jsx, using three's bundled RoomEnvironment + PMREMGenerator, zero network calls) wrapped in a new defensive error boundary (src/components/builder/SceneEnhancementBoundary.jsx) so any future non-essential scene enhancement failure can't take the configurator down either. No layout, panel, camera, base lighting, or existing behavior changed. Full diff verified via `git diff -- src/app/builder/page.jsx` before updating this hash.",
+      "diffSummary": "+5/-2 lines: Environment import replaced by LocalEnvironment + SceneEnhancementBoundary imports; <Environment preset=\"apartment\" /> replaced by <SceneEnhancementBoundary><LocalEnvironment /></SceneEnhancementBoundary>."
     }
   ],
   "defaultWardrobeSemanticBaseline": {

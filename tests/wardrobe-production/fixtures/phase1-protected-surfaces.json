@@ -9,7 +9,7 @@
     "src/lib/wardrobe-tools/tools.js": "d3c697525fa38c87acb40537badb3d594ded6be6fc255d6e7de754628e073248",
     "src/lib/wardrobe-agent/runWardrobeAgent.js": "173010c1851cf80679379be36d8eca1d64d65b16c8310765973e51e4a2b63c70",
     "src/components/builder/FurnitureModel.jsx": "fab83a33f866d61e7a1ff28187239689fc90781463abbd064e2dc56a00025537",
-    "src/app/builder/page.jsx": "fc14fcb672f85b9b700839049441f8977319c66c95aa00a1b4918e43637d8876",
+    "src/app/builder/page.jsx": "a62763f26155ed85c282d5e600f69c32083b1c851e6129e8fd0e13caf984ba00",
     "vercel.json": "3bc331bc97195b1996ca04989b32db4f3d34e2cf1614d8f5dfafaed80ff967db"
   },
   "justifiedBaselineUpdates": [
@@ -27,6 +27,11 @@
       "file": "vercel.json",
       "reason": "M1.1 production reliability: Three.js r128 and Supabase are now same-origin vendored files instead of third-party CDN scripts, so the protected static build must also copy those two files into dist. No routing, framework, or output-directory change.",
       "diffSummary": "Added vendor-three-r128.min.js and vendor-supabase.min.js to the existing static cp build command; no other deployment setting changed."
+    },
+    {
+      "file": "src/app/builder/page.jsx",
+      "reason": "M1.1.3 (Codex-verified): <Environment preset=\"apartment\"> fetched lebombo_1k.hdr from a remote CDN (raw.githack.com/pmndrs/drei-assets); a failed/blocked fetch rejected past Suspense into no error boundary, taking down the whole /builder route with Next.js's fatal page-load error. Fix removes the remote dependency at its root: swaps the drei Environment import/element for a new local, procedurally-generated environment (src/components/builder/LocalEnvironment.jsx, using three's bundled RoomEnvironment + PMREMGenerator, zero network calls) wrapped in a new defensive error boundary (src/components/builder/SceneEnhancementBoundary.jsx). No layout, panel, camera, base lighting, or existing behavior changed.",
+      "diffSummary": "+5/-2 lines: Environment import replaced by LocalEnvironment + SceneEnhancementBoundary imports; <Environment preset=\"apartment\" /> replaced by <SceneEnhancementBoundary><LocalEnvironment /></SceneEnhancementBoundary>."
     }
   ]
 }

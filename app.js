@@ -188,7 +188,6 @@ function initThumb(th){
   let tt=Math.random()*6;
   (function loop(){requestAnimationFrame(loop);if(!landingActive||!th.visible||!ren)return;tt+=.005;grp.rotation.y=Math.sin(tt*.5)*.45+.3;cam.position.set(0,.35,3.0);cam.lookAt(0,0,0);ren.render(sc,cam)})();
 }
-}
 
 /* ============================================================
    BUILDER — full parametric configurator (corner shapes, drawer boxes)

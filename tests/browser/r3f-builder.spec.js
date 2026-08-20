@@ -138,3 +138,83 @@ test.describe("Next.js /builder (React Three Fiber) — real browser lifecycle",
     expect(result.nonBlankFraction).toBeGreaterThan(0.1);
   });
 });
+
+test.describe("Next.js /builder — survives a blocked HDR/environment request (M1.1.3)", () => {
+  // Codex found <Environment preset="apartment"> fetching lebombo_1k.hdr
+  // from a remote CDN (raw.githack.com/pmndrs/drei-assets); a failed fetch
+  // rejected past Suspense into no error boundary and took down the whole
+  // route. The fix (src/components/builder/LocalEnvironment.jsx) replaces
+  // that remote fetch with a procedurally-generated local environment, so
+  // there should be nothing left for a blocked/offline network to break.
+  // This suite proves that adversarially: it blocks every request that
+  // looks like the old CDN/HDR fetch and confirms the Builder is
+  // unaffected, then blocks ALL cross-origin requests outright to prove no
+  // hidden remote dependency remains.
+  test.beforeEach(async ({ page }) => {
+    page.on("pageerror", (err) => {
+      throw new Error(`Uncaught page error: ${err.message}`);
+    });
+  });
+
+  test("blocking HDR/environment CDN requests does not break the Builder", async ({ page }) => {
+    const blockedRequests = [];
+    await page.route("**/*", (route) => {
+      const url = route.request().url();
+      if (/githack\.com|drei-assets|\.hdr(\?|$)/i.test(url)) {
+        blockedRequests.push(url);
+        return route.abort("failed");
+      }
+      return route.continue();
+    });
+
+    await page.goto("/builder", { waitUntil: "load" });
+    const result = await waitForRealPixels(page);
+
+    expect(result.timedOut, "no real pixels ever rendered while HDR/CDN requests were blocked").toBeFalsy();
+    expect(result.nonBlankFraction).toBeGreaterThan(0.1);
+
+    // The real assertion: the fix means this route is never even attempted,
+    // not merely that a failure is tolerated.
+    expect(blockedRequests, "expected zero HDR/CDN requests after removing the remote environment dependency").toHaveLength(0);
+
+    const canvasBox = await page.locator("canvas").boundingBox();
+    expect(canvasBox.width).toBeGreaterThan(0);
+    expect(canvasBox.height).toBeGreaterThan(0);
+
+    // Interaction must still work under the blocked network condition.
+    const before = await readPixels(page);
+    const slider = page.locator('input[type="range"]').first();
+    const beforeValue = await slider.inputValue();
+    const box = await slider.boundingBox();
+    await page.mouse.move(box.x + box.width * 0.15, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.9, box.y + box.height / 2, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+    const afterValue = await slider.inputValue();
+    const after = await readPixels(page);
+
+    expect(afterValue).not.toBe(beforeValue);
+    expect(Math.abs(after.nonBlankFraction - before.nonBlankFraction)).toBeGreaterThan(0.001);
+  });
+
+  test("blocking ALL cross-origin requests does not break the Builder", async ({ page, baseURL }) => {
+    const baseOrigin = new URL(baseURL).origin;
+    const blockedRequests = [];
+    await page.route("**/*", (route) => {
+      const url = route.request().url();
+      if (!url.startsWith(baseOrigin)) {
+        blockedRequests.push(url);
+        return route.abort("failed");
+      }
+      return route.continue();
+    });
+
+    await page.goto("/builder", { waitUntil: "load" });
+    const result = await waitForRealPixels(page);
+
+    expect(result.timedOut, "no real pixels ever rendered with every cross-origin request blocked").toBeFalsy();
+    expect(result.nonBlankFraction).toBeGreaterThan(0.1);
+    expect(blockedRequests, "expected zero cross-origin requests — the Builder should be fully self-contained").toHaveLength(0);
+  });
+});

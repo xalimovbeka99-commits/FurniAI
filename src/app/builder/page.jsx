@@ -9,11 +9,13 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, Environment, Grid } from "@react-three/drei";
+import { OrbitControls, Grid } from "@react-three/drei";
 import StructurePanel from "@/components/builder/StructurePanel";
 import AppearancePanel from "@/components/builder/AppearancePanel";
 import FurnitureModel from "@/components/builder/FurnitureModel";
 import WardrobeAIPanel from "@/components/builder/WardrobeAIPanel";
+import LocalEnvironment from "@/components/builder/LocalEnvironment";
+import SceneEnhancementBoundary from "@/components/builder/SceneEnhancementBoundary";
 import { useFurnitureStore } from "@/store/furnitureStore";
 import { getDesign } from "@/lib/designs";
 
@@ -72,7 +74,9 @@ function BuilderContent() {
         >
           <ambientLight intensity={0.6} />
           <directionalLight position={[5, 8, 5]} intensity={1.1} castShadow />
-          <Environment preset="apartment" />
+          <SceneEnhancementBoundary>
+            <LocalEnvironment />
+          </SceneEnhancementBoundary>
           <Grid args={[20, 20]} cellColor="#ddd" sectionColor="#bbb" infiniteGrid fadeDistance={18} position={[0, 0, 0]} />
 
           {/* recenter vertically so the piece sits nicely in frame */}
