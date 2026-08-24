@@ -3,10 +3,12 @@
 import { useState, useEffect, useRef, useMemo, Suspense, useCallback } from "react";
 import Link from "next/link";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls, Environment, Grid } from "@react-three/drei";
+import { OrbitControls, Grid } from "@react-three/drei";
 import { DESIGNS } from "@/lib/designs";
 import { MATERIALS } from "@/lib/knowledgeBase";
 import FurnitureModel from "@/components/builder/FurnitureModel";
+import LocalEnvironment from "@/components/builder/LocalEnvironment";
+import SceneEnhancementBoundary from "@/components/builder/SceneEnhancementBoundary";
 
 // Slow rotation for the hero 3D model
 function RotatingModel({ config }) {
@@ -181,7 +183,9 @@ export default function Home() {
             <Canvas shadows camera={{ position: [2.5, 1.6, 2.5], fov: 45 }}>
               <ambientLight intensity={0.6} />
               <directionalLight position={[4, 6, 3]} intensity={1.2} castShadow />
-              <Environment preset="apartment" />
+              <SceneEnhancementBoundary>
+                <LocalEnvironment />
+              </SceneEnhancementBoundary>
               <Grid args={[10, 10]} cellColor="#dcd4c6" sectionColor="#c5bca9" infiniteGrid fadeDistance={8} position={[0, -0.01, 0]} />
               <Suspense fallback={null}>
                 <RotatingModel config={heroDesign.config} />
