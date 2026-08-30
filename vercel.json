@@ -1,9 +1,5 @@
 {
-  "name": "furniai",
   "cleanUrls": true,
-  "framework": null,
-  "buildCommand": "mkdir -p dist && cp index.html styles.css app.js legacy-builder-adapter.js vendor-three-r128.min.js vendor-supabase.min.js dist/",
-  "outputDirectory": "dist",
   "functions": {
     "api/production.py": {
       "maxDuration": 60,
