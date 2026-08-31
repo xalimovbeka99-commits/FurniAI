@@ -1,7 +1,8 @@
 {
-  "framework": "nextjs",
-  "buildCommand": "npm run build",
   "cleanUrls": true,
+  "framework": null,
+  "buildCommand": "npm run build:legacy",
+  "outputDirectory": "dist",
   "functions": {
     "api/production.py": {
       "maxDuration": 60,

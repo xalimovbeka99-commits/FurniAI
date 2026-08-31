@@ -23,7 +23,9 @@ module.exports = defineConfig({
   webServer: {
     command: 'node scripts/static-server.js',
     url: 'http://127.0.0.1:4173/index.html',
-    reuseExistingServer: false,
+    // Developers commonly keep the legacy Builder open while running its
+    // acceptance suite. Reuse that exact local endpoint when available.
+    reuseExistingServer: true,
     timeout: 15000,
     stdout: 'pipe',
     stderr: 'pipe',
