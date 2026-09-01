@@ -10,13 +10,18 @@
     "src/lib/wardrobe-agent/runWardrobeAgent.js": "173010c1851cf80679379be36d8eca1d64d65b16c8310765973e51e4a2b63c70",
     "src/components/builder/FurnitureModel.jsx": "fab83a33f866d61e7a1ff28187239689fc90781463abbd064e2dc56a00025537",
     "src/app/builder/page.jsx": "a62763f26155ed85c282d5e600f69c32083b1c851e6129e8fd0e13caf984ba00",
-    "vercel.json": "3bc331bc97195b1996ca04989b32db4f3d34e2cf1614d8f5dfafaed80ff967db"
+    "vercel.json": "6d1a714a153965a32d4510a3c8b125b66ee0c0d49e1bf4a21d5e5338fcd7ff16"
   },
   "justifiedBaselineUpdates": [
     {
       "file": "src/lib/wardrobe-agent/runWardrobeAgent.js",
       "reason": "PR #4 provider-independent routing: omitting modelName lets the configured Anthropic/OpenAI client model apply instead of silently forcing a hardcoded Claude model.",
       "diffSummary": "Removed the hardcoded modelName default without changing deterministic tool execution."
+    },
+    {
+      "file": "vercel.json",
+      "reason": "L0 baseline freeze: buildCommand delegates cleanly to npm run build:legacy which executes scripts/build-static.mjs.",
+      "diffSummary": "Simplified buildCommand to npm run build:legacy; framework null and outputDirectory dist preserved."
     },
     {
       "file": "vercel.json",
