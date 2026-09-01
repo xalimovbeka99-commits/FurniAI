@@ -2,36 +2,41 @@
  * FurniSpec v0.1 — Normalizer & Canonical Serializer
  * ---------------------------------------------------------------------
  * Normalizes FurniSpec v0.1 documents into deterministic, byte-stable
- * canonical data structures.
+ * canonical data structures with strict 0.1mm (deci-mm) precision.
  */
+
+import { toDeciMm, fromDeciMm } from "./units.js";
 
 /**
  * Recursively sorts all keys in an object alphabetically and normalizes
  * float dimensions to exact tenths of a millimeter (0.1 mm precision).
+ * Throws DimensionPrecisionError if precision is finer than 0.1mm.
  *
  * @param {any} val
+ * @param {string} [path="root"]
  * @returns {any}
  */
-export function normalizeValue(val) {
+export function normalizeValue(val, path = "root") {
   if (val === null || val === undefined) {
     return val;
   }
 
   if (typeof val === "number") {
     if (!Number.isFinite(val)) return val;
-    // Standardize to tenths of a millimeter without binary floating-point drift
-    return Math.round(val * 10) / 10;
+    // Check and normalize to exact tenths of a millimeter
+    const dmm = toDeciMm(val, path);
+    return fromDeciMm(dmm);
   }
 
   if (Array.isArray(val)) {
-    return val.map((item) => normalizeValue(item));
+    return val.map((item, idx) => normalizeValue(item, `${path}[${idx}]`));
   }
 
   if (typeof val === "object") {
     const sortedKeys = Object.keys(val).sort();
     const result = {};
     for (const key of sortedKeys) {
-      result[key] = normalizeValue(val[key]);
+      result[key] = normalizeValue(val[key], `${path}.${key}`);
     }
     return result;
   }
@@ -45,7 +50,7 @@ export function normalizeValue(val) {
  * @returns {object}
  */
 export function normalizeFurniSpec(spec) {
-  return normalizeValue(spec);
+  return normalizeValue(spec, "spec");
 }
 
 /**

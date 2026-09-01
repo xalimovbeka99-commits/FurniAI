@@ -1,8 +1,9 @@
 /**
- * FurniSpec v0.1 — Validator
+ * FurniSpec v0.1 — Validator (G2.2 Enhanced)
  * ---------------------------------------------------------------------
  * Validates canonical FurniSpec v0.1 documents against structural,
- * mathematical, geometric, and safety invariants.
+ * mathematical, geometric, and safety invariants with strict deci-mm
+ * integer precision checking (0.1 mm resolution).
  */
 
 import {
@@ -15,8 +16,10 @@ import {
   QUALIFICATION_STATUS,
   HARDWARE_APPROVAL_STATUS,
   MACHINING_POLICY,
+  COMPONENT_TYPES,
   SIDE_INSET_STATUS,
 } from "./schema.js";
+import { toDeciMm } from "./units.js";
 
 /**
  * Validates a FurniSpec object.
@@ -81,38 +84,75 @@ export function validateFurniSpec(spec) {
     addError("UNSUPPORTED_QUALIFICATION_STATUS", `Invalid qualificationStatus "${spec.qualificationStatus}".`, "qualificationStatus");
   }
 
-  // Helper for finite positive numbers
-  const checkPositiveNumber = (val, path, name) => {
-    if (typeof val !== "number" || !Number.isFinite(val) || val <= 0) {
-      addError("INVALID_DIMENSION", `${name} must be a strictly positive finite number. Got ${val}.`, path);
-      return false;
+  // Helper for strictly positive numbers with exact deci-mm precision
+  const checkPositiveDeciMm = (val, path, name) => {
+    if (typeof val !== "number" || !Number.isFinite(val)) {
+      addError("INVALID_DIMENSION", `${name} must be a finite number. Got ${val}.`, path);
+      return null;
     }
-    return true;
+    try {
+      const dmm = toDeciMm(val, path);
+      if (dmm <= 0) {
+        addError("INVALID_DIMENSION", `${name} must be strictly positive (> 0). Got ${val}.`, path);
+        return null;
+      }
+      return dmm;
+    } catch (err) {
+      if (err.code === "UNSUPPORTED_DIMENSION_PRECISION") {
+        addError("UNSUPPORTED_DIMENSION_PRECISION", err.message, path);
+      } else {
+        addError("INVALID_DIMENSION", err.message, path);
+      }
+      return null;
+    }
+  };
+
+  // Helper for non-negative numbers with exact deci-mm precision
+  const checkNonNegativeDeciMm = (val, path, name) => {
+    if (typeof val !== "number" || !Number.isFinite(val)) {
+      addError("INVALID_DIMENSION", `${name} must be a finite number. Got ${val}.`, path);
+      return null;
+    }
+    try {
+      const dmm = toDeciMm(val, path);
+      if (dmm < 0) {
+        addError("INVALID_DIMENSION", `${name} must be non-negative (>= 0). Got ${val}.`, path);
+        return null;
+      }
+      return dmm;
+    } catch (err) {
+      if (err.code === "UNSUPPORTED_DIMENSION_PRECISION") {
+        addError("UNSUPPORTED_DIMENSION_PRECISION", err.message, path);
+      } else {
+        addError("INVALID_DIMENSION", err.message, path);
+      }
+      return null;
+    }
   };
 
   // 2. Envelope validation
   const env = spec.envelope;
+  let envWDmm = null;
+  let envHDmm = null;
+  let envDDmm = null;
   if (!env || typeof env !== "object") {
     addError("MISSING_ENVELOPE", "envelope object is required.", "envelope");
   } else {
-    checkPositiveNumber(env.widthMm, "envelope.widthMm", "envelope.widthMm");
-    checkPositiveNumber(env.heightMm, "envelope.heightMm", "envelope.heightMm");
-    checkPositiveNumber(env.depthMm, "envelope.depthMm", "envelope.depthMm");
+    envWDmm = checkPositiveDeciMm(env.widthMm, "envelope.widthMm", "envelope.widthMm");
+    envHDmm = checkPositiveDeciMm(env.heightMm, "envelope.heightMm", "envelope.heightMm");
+    envDDmm = checkPositiveDeciMm(env.depthMm, "envelope.depthMm", "envelope.depthMm");
   }
 
   // 3. Plinth validation
   const plinth = spec.plinth;
+  let plinthHDmm = null;
   if (!plinth || typeof plinth !== "object") {
     addError("MISSING_PLINTH", "plinth object is required.", "plinth");
   } else {
-    checkPositiveNumber(plinth.heightMm, "plinth.heightMm", "plinth.heightMm");
-    if (typeof plinth.frontRecessMm !== "number" || !Number.isFinite(plinth.frontRecessMm) || plinth.frontRecessMm < 0) {
-      addError("INVALID_DIMENSION", "plinth.frontRecessMm must be a non-negative finite number.", "plinth.frontRecessMm");
-    }
+    plinthHDmm = checkPositiveDeciMm(plinth.heightMm, "plinth.heightMm", "plinth.heightMm");
+    checkNonNegativeDeciMm(plinth.frontRecessMm, "plinth.frontRecessMm", "plinth.frontRecessMm");
     if (plinth.sideInsetMm !== undefined) {
-      if (typeof plinth.sideInsetMm !== "number" || !Number.isFinite(plinth.sideInsetMm) || plinth.sideInsetMm < 0) {
-        addError("INVALID_DIMENSION", "plinth.sideInsetMm must be a non-negative finite number.", "plinth.sideInsetMm");
-      }
+      checkNonNegativeDeciMm(plinth.sideInsetMm, "plinth.sideInsetMm", "plinth.sideInsetMm");
       if (!Object.values(SIDE_INSET_STATUS).includes(plinth.sideInsetStatus)) {
         addError("INVALID_SIDE_INSET_STATUS", `plinth.sideInsetStatus must be one of [${Object.values(SIDE_INSET_STATUS).join(", ")}].`, "plinth.sideInsetStatus");
       }
@@ -121,22 +161,25 @@ export function validateFurniSpec(spec) {
 
   // 4. Carcass validation
   const carcass = spec.carcass;
+  let carcassHDmm = null;
+  let carcassDDmm = null;
+  let carcassTDmm = null;
   if (!carcass || typeof carcass !== "object") {
     addError("MISSING_CARCASS", "carcass object is required.", "carcass");
   } else {
-    checkPositiveNumber(carcass.heightMm, "carcass.heightMm", "carcass.heightMm");
-    checkPositiveNumber(carcass.depthMm, "carcass.depthMm", "carcass.depthMm");
-    checkPositiveNumber(carcass.panelThicknessMm, "carcass.panelThicknessMm", "carcass.panelThicknessMm");
-    checkPositiveNumber(carcass.backThicknessMm, "carcass.backThicknessMm", "carcass.backThicknessMm");
-    checkPositiveNumber(carcass.grooveWidthMm, "carcass.grooveWidthMm", "carcass.grooveWidthMm");
-    checkPositiveNumber(carcass.grooveDepthMm, "carcass.grooveDepthMm", "carcass.grooveDepthMm");
-    checkPositiveNumber(carcass.grooveRearDatumMm, "carcass.grooveRearDatumMm", "carcass.grooveRearDatumMm");
+    carcassHDmm = checkPositiveDeciMm(carcass.heightMm, "carcass.heightMm", "carcass.heightMm");
+    carcassDDmm = checkPositiveDeciMm(carcass.depthMm, "carcass.depthMm", "carcass.depthMm");
+    carcassTDmm = checkPositiveDeciMm(carcass.panelThicknessMm, "carcass.panelThicknessMm", "carcass.panelThicknessMm");
+    checkPositiveDeciMm(carcass.backThicknessMm, "carcass.backThicknessMm", "carcass.backThicknessMm");
+    checkPositiveDeciMm(carcass.grooveWidthMm, "carcass.grooveWidthMm", "carcass.grooveWidthMm");
+    checkPositiveDeciMm(carcass.grooveDepthMm, "carcass.grooveDepthMm", "carcass.grooveDepthMm");
+    checkPositiveDeciMm(carcass.grooveRearDatumMm, "carcass.grooveRearDatumMm", "carcass.grooveRearDatumMm");
   }
 
   // 5. Height Closure Check
-  if (env && plinth && carcass && env.heightMm && plinth.heightMm && carcass.heightMm) {
-    const expectedHeight = plinth.heightMm + carcass.heightMm;
-    if (Math.abs(env.heightMm - expectedHeight) > 0.001) {
+  if (envHDmm !== null && plinthHDmm !== null && carcassHDmm !== null) {
+    const expectedHDmm = plinthHDmm + carcassHDmm;
+    if (envHDmm !== expectedHDmm) {
       addError("HEIGHT_MISMATCH", `Overall height (${env.heightMm}mm) does not equal plinth (${plinth.heightMm}mm) + carcass (${carcass.heightMm}mm).`, "envelope.heightMm");
     }
   }
@@ -147,10 +190,10 @@ export function validateFurniSpec(spec) {
 
   if (!Array.isArray(spec.bays) || spec.bays.length === 0) {
     addError("MISSING_BAYS", "bays must be a non-empty array.", "bays");
-  } else if (env && carcass && env.widthMm && carcass.panelThicknessMm) {
-    let sumBayWidths = 0;
+  } else if (envWDmm !== null && carcassTDmm !== null) {
+    let sumBayWidthsDmm = 0;
     const dividerCount = spec.bays.length - 1;
-    const requiredSidesWidth = 2 * carcass.panelThicknessMm + dividerCount * carcass.panelThicknessMm;
+    const requiredSidesWidthDmm = 2 * carcassTDmm + dividerCount * carcassTDmm;
 
     spec.bays.forEach((bay, index) => {
       const bayPath = `bays[${index}]`;
@@ -167,8 +210,9 @@ export function validateFurniSpec(spec) {
         seenIds.add(bay.id);
       }
 
-      if (checkPositiveNumber(bay.clearWidthMm, `${bayPath}.clearWidthMm`, "clearWidthMm")) {
-        sumBayWidths += bay.clearWidthMm;
+      const bayWDmm = checkPositiveDeciMm(bay.clearWidthMm, `${bayPath}.clearWidthMm`, "clearWidthMm");
+      if (bayWDmm !== null) {
+        sumBayWidthsDmm += bayWDmm;
       }
 
       if (Array.isArray(bay.components)) {
@@ -185,70 +229,134 @@ export function validateFurniSpec(spec) {
           } else {
             seenIds.add(comp.id);
           }
+
+          if (!Object.values(COMPONENT_TYPES).includes(comp.type)) {
+            addError("UNSUPPORTED_COMPONENT_TYPE", `Unknown component type "${comp.type}".`, `${compPath}.type`);
+          }
+
+          if (comp.clearOpeningAboveMm !== undefined) {
+            checkPositiveDeciMm(comp.clearOpeningAboveMm, `${compPath}.clearOpeningAboveMm`, "clearOpeningAboveMm");
+          }
+          if (comp.clearDropAboveMm !== undefined) {
+            checkPositiveDeciMm(comp.clearDropAboveMm, `${compPath}.clearDropAboveMm`, "clearDropAboveMm");
+          }
+          if (comp.thicknessMm !== undefined) {
+            checkPositiveDeciMm(comp.thicknessMm, `${compPath}.thicknessMm`, "thicknessMm");
+          }
+          if (comp.depthMm !== undefined) {
+            checkPositiveDeciMm(comp.depthMm, `${compPath}.depthMm`, "depthMm");
+          }
         });
       }
     });
 
-    const calculatedTotalWidth = requiredSidesWidth + sumBayWidths;
-    if (Math.abs(env.widthMm - calculatedTotalWidth) > 0.001) {
-      addError("WIDTH_MISMATCH", `Overall width (${env.widthMm}mm) does not equal outer sides + dividers (${requiredSidesWidth}mm) + bays sum (${sumBayWidths}mm = ${calculatedTotalWidth}mm).`, "envelope.widthMm");
+    const calculatedTotalWidthDmm = requiredSidesWidthDmm + sumBayWidthsDmm;
+    if (envWDmm !== calculatedTotalWidthDmm) {
+      addError(
+        "WIDTH_MISMATCH",
+        `Overall width (${env.widthMm}mm) does not equal outer sides + dividers (${requiredSidesWidthDmm / 10}mm) + bays sum (${sumBayWidthsDmm / 10}mm = ${calculatedTotalWidthDmm / 10}mm).`,
+        "envelope.widthMm"
+      );
     }
   }
 
   // 7. Doors validation & Door Closure Check
   const doors = spec.doors;
+  let doorTDmm = null;
+  let doorWDmm = null;
+  let doorHDmm = null;
+  let bumperGapDmm = null;
+
   if (!doors || typeof doors !== "object") {
     addError("MISSING_DOORS", "doors object is required.", "doors");
   } else {
     if (typeof doors.count !== "number" || !Number.isInteger(doors.count) || doors.count < 1) {
       addError("INVALID_DOOR_COUNT", "doors.count must be a positive integer (>= 1).", "doors.count");
     }
-    checkPositiveNumber(doors.thicknessMm, "doors.thicknessMm", "doors.thicknessMm");
-    checkPositiveNumber(doors.finishedWidthMm, "doors.finishedWidthMm", "doors.finishedWidthMm");
-    checkPositiveNumber(doors.finishedHeightMm, "doors.finishedHeightMm", "doors.finishedHeightMm");
+    doorTDmm = checkPositiveDeciMm(doors.thicknessMm, "doors.thicknessMm", "doors.thicknessMm");
+    bumperGapDmm = checkNonNegativeDeciMm(doors.bumperGapMm, "doors.bumperGapMm", "doors.bumperGapMm");
+    doorWDmm = checkPositiveDeciMm(doors.finishedWidthMm, "doors.finishedWidthMm", "doors.finishedWidthMm");
+    doorHDmm = checkPositiveDeciMm(doors.finishedHeightMm, "doors.finishedHeightMm", "doors.finishedHeightMm");
 
     const rev = doors.reveals;
     if (!rev || typeof rev !== "object") {
       addError("MISSING_DOOR_REVEALS", "doors.reveals object is required.", "doors.reveals");
     } else {
-      ["topMm", "bottomMm", "leftMm", "rightMm", "interDoorMm"].forEach((key) => {
-        if (typeof rev[key] !== "number" || !Number.isFinite(rev[key]) || rev[key] < 0) {
-          addError("INVALID_DIMENSION", `doors.reveals.${key} must be a non-negative finite number.`, `doors.reveals.${key}`);
-        }
-      });
+      const topRevDmm = checkNonNegativeDeciMm(rev.topMm, "doors.reveals.topMm", "doors.reveals.topMm");
+      const botRevDmm = checkNonNegativeDeciMm(rev.bottomMm, "doors.reveals.bottomMm", "doors.reveals.bottomMm");
+      const leftRevDmm = checkNonNegativeDeciMm(rev.leftMm, "doors.reveals.leftMm", "doors.reveals.leftMm");
+      const rightRevDmm = checkNonNegativeDeciMm(rev.rightMm, "doors.reveals.rightMm", "doors.reveals.rightMm");
+      const interRevDmm = checkNonNegativeDeciMm(rev.interDoorMm, "doors.reveals.interDoorMm", "doors.reveals.interDoorMm");
 
       // Door width closure check
-      if (env && env.widthMm && doors.count && doors.finishedWidthMm) {
-        const gapCount = doors.count + 1; // Left reveal + (count - 1) inter-door + Right reveal
-        const totalGapsWidth = rev.leftMm + rev.rightMm + (doors.count - 1) * rev.interDoorMm;
-        const totalDoorsWidth = doors.count * doors.finishedWidthMm;
-        const totalFrontWidth = totalGapsWidth + totalDoorsWidth;
+      if (envWDmm !== null && doors.count && doorWDmm !== null && leftRevDmm !== null && rightRevDmm !== null && interRevDmm !== null) {
+        const totalGapsWidthDmm = leftRevDmm + rightRevDmm + (doors.count - 1) * interRevDmm;
+        const totalDoorsWidthDmm = doors.count * doorWDmm;
+        const totalFrontWidthDmm = totalGapsWidthDmm + totalDoorsWidthDmm;
 
-        if (Math.abs(env.widthMm - totalFrontWidth) > 0.001) {
-          addError("DOOR_WIDTH_MISMATCH", `Total front width (${totalFrontWidth}mm = ${doors.count} doors * ${doors.finishedWidthMm}mm + ${gapCount} gaps) does not equal envelope width (${env.widthMm}mm).`, "doors.finishedWidthMm");
+        if (envWDmm !== totalFrontWidthDmm) {
+          addError(
+            "DOOR_WIDTH_MISMATCH",
+            `Total front width (${totalFrontWidthDmm / 10}mm = ${doors.count} doors * ${doors.finishedWidthMm}mm + gaps) does not equal envelope width (${env.widthMm}mm).`,
+            "doors.finishedWidthMm"
+          );
         }
       }
 
       // Door height closure check
-      if (carcass && carcass.heightMm && doors.finishedHeightMm) {
-        const totalDoorHeightZone = rev.topMm + rev.bottomMm + doors.finishedHeightMm;
-        if (Math.abs(carcass.heightMm - totalDoorHeightZone) > 0.001) {
-          addError("DOOR_HEIGHT_MISMATCH", `Total door height zone (${totalDoorHeightZone}mm = top gap ${rev.topMm}mm + door ${doors.finishedHeightMm}mm + bottom gap ${rev.bottomMm}mm) does not equal carcass height (${carcass.heightMm}mm).`, "doors.finishedHeightMm");
+      if (carcassHDmm !== null && doorHDmm !== null && topRevDmm !== null && botRevDmm !== null) {
+        const totalDoorHeightZoneDmm = topRevDmm + botRevDmm + doorHDmm;
+        if (carcassHDmm !== totalDoorHeightZoneDmm) {
+          addError(
+            "DOOR_HEIGHT_MISMATCH",
+            `Total door height zone (${totalDoorHeightZoneDmm / 10}mm = top gap ${rev.topMm}mm + door ${doors.finishedHeightMm}mm + bottom gap ${rev.bottomMm}mm) does not equal carcass height (${carcass.heightMm}mm).`,
+            "doors.finishedHeightMm"
+          );
         }
       }
     }
   }
 
   // 8. Depth Closure Check
-  if (env && carcass && doors && env.depthMm && carcass.depthMm && doors.thicknessMm) {
-    const bumperGapMm = 2.0; // Standard operating air gap
-    const expectedDepth = carcass.depthMm + doors.thicknessMm + bumperGapMm;
-    if (Math.abs(env.depthMm - expectedDepth) > 0.001) {
-      addError("DEPTH_MISMATCH", `Overall depth (${env.depthMm}mm) does not equal carcass depth (${carcass.depthMm}mm) + door thickness (${doors.thicknessMm}mm) + bumper gap (${bumperGapMm}mm).`, "envelope.depthMm");
+  if (envDDmm !== null && carcassDDmm !== null && doorTDmm !== null && bumperGapDmm !== null) {
+    const expectedDepthDmm = carcassDDmm + doorTDmm + bumperGapDmm;
+    if (envDDmm !== expectedDepthDmm) {
+      addError(
+        "DEPTH_MISMATCH",
+        `Overall depth (${env.depthMm}mm) does not equal carcass depth (${carcass.depthMm}mm) + door thickness (${doors.thicknessMm}mm) + bumper gap (${doors.bumperGapMm}mm).`,
+        "envelope.depthMm"
+      );
     }
   }
 
-  // 9. Hardware & Machining Policy Check
+  // 9. Materials & Edge-Banding Validation
+  const mats = spec.materials;
+  if (!mats || typeof mats !== "object") {
+    addError("MISSING_MATERIALS", "materials object is required.", "materials");
+  } else {
+    ["carcass", "backPanel", "fronts"].forEach((mKey) => {
+      const m = mats[mKey];
+      const mPath = `materials.${mKey}`;
+      if (!m || typeof m !== "object") {
+        addError("INVALID_MATERIAL_SPEC", `Material specification for "${mKey}" is required.`, mPath);
+      } else {
+        if (!m.code || typeof m.code !== "string") addError("MISSING_MATERIAL_CODE", `Material "${mKey}" requires string code.`, `${mPath}.code`);
+        if (!m.name || typeof m.name !== "string") addError("MISSING_MATERIAL_NAME", `Material "${mKey}" requires string name.`, `${mPath}.name`);
+        checkPositiveDeciMm(m.thicknessMm, `${mPath}.thicknessMm`, "thicknessMm");
+      }
+    });
+  }
+
+  const eb = spec.edgeBanding;
+  if (!eb || typeof eb !== "object") {
+    addError("MISSING_EDGE_BANDING", "edgeBanding object is required.", "edgeBanding");
+  } else {
+    checkNonNegativeDeciMm(eb.frontVisibleMm, "edgeBanding.frontVisibleMm", "frontVisibleMm");
+    checkNonNegativeDeciMm(eb.rearUnbandedMm, "edgeBanding.rearUnbandedMm", "rearUnbandedMm");
+    checkNonNegativeDeciMm(eb.doorPerimeterMm, "edgeBanding.doorPerimeterMm", "doorPerimeterMm");
+  }
+
+  // 10. Hardware & Machining Policy Check
   const hw = spec.hardware;
   const mach = spec.machiningPolicy;
   if (!hw || typeof hw !== "object") {
@@ -256,14 +364,24 @@ export function validateFurniSpec(spec) {
   } else if (!mach || typeof mach !== "object") {
     addError("MISSING_MACHINING_POLICY", "machiningPolicy object is required.", "machiningPolicy");
   } else {
-    // If drilling hardware is unapproved/blocked, machiningPolicy.drilling MUST NOT be APPROVED
+    if (!Object.values(MACHINING_POLICY).includes(mach.backGroove)) {
+      addError("INVALID_MACHINING_POLICY", `Invalid machiningPolicy.backGroove "${mach.backGroove}".`, "machiningPolicy.backGroove");
+    }
+    if (!Object.values(MACHINING_POLICY).includes(mach.drilling)) {
+      addError("INVALID_MACHINING_POLICY", `Invalid machiningPolicy.drilling "${mach.drilling}".`, "machiningPolicy.drilling");
+    }
+
     const isHardwareBlocked =
       hw.hinges?.status === HARDWARE_APPROVAL_STATUS.BLOCKED_PENDING_HARDWARE_APPROVAL ||
       hw.shelfPins?.status === HARDWARE_APPROVAL_STATUS.BLOCKED_PENDING_HARDWARE_APPROVAL ||
       hw.joinery?.status === HARDWARE_APPROVAL_STATUS.BLOCKED_PENDING_HARDWARE_APPROVAL;
 
     if (isHardwareBlocked && mach.drilling === MACHINING_POLICY.APPROVED) {
-      addError("ILLEGAL_DRILLING_APPROVAL", "machiningPolicy.drilling cannot be APPROVED while hardware specifications are BLOCKED_PENDING_HARDWARE_APPROVAL.", "machiningPolicy.drilling");
+      addError(
+        "ILLEGAL_DRILLING_APPROVAL",
+        "machiningPolicy.drilling cannot be APPROVED while hardware specifications are BLOCKED_PENDING_HARDWARE_APPROVAL.",
+        "machiningPolicy.drilling"
+      );
     }
   }
 

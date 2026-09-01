@@ -88,6 +88,7 @@
   "doors": {
     "count": 4,
     "thicknessMm": 18.0,
+    "bumperGapMm": 2.0,
     "finishedWidthMm": 447.5,
     "finishedHeightMm": 2296.0,
     "reveals": {

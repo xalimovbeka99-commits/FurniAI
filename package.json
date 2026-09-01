@@ -16,7 +16,8 @@
     "test:browser": "playwright test tests/browser/site.spec.js",
     "test:browser:r3f": "playwright test --config=playwright.r3f.config.js",
     "verify:production": "node scripts/verify-legacy-production.mjs",
-    "demo:golden-wardrobe": "node scripts/demo-golden-wardrobe.mjs"
+    "demo:golden-wardrobe": "node scripts/demo-golden-wardrobe.mjs",
+    "demo:golden-partgraph": "node scripts/demo-golden-partgraph.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.28.0",

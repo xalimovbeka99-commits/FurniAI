@@ -42,7 +42,7 @@ export function formatGoldenReport(spec) {
   const totalDoorHeightZone = (rev.topMm || 0) + (rev.bottomMm || 0) + (doors.finishedHeightMm || 0);
   const doorHeightPass = Math.abs((carcass.heightMm || 0) - totalDoorHeightZone) < 0.001;
 
-  const bumperGapMm = 2.0;
+  const bumperGapMm = doors.bumperGapMm ?? 2.0;
   const calcDepth = (carcass.depthMm || 0) + (doors.thicknessMm || 0) + bumperGapMm;
   const depthPass = Math.abs((env.depthMm || 0) - calcDepth) < 0.001;
 
