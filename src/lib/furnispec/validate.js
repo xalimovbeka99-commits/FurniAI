@@ -151,7 +151,9 @@ export function validateFurniSpec(spec) {
   } else {
     plinthHDmm = checkPositiveDeciMm(plinth.heightMm, "plinth.heightMm", "plinth.heightMm");
     checkNonNegativeDeciMm(plinth.frontRecessMm, "plinth.frontRecessMm", "plinth.frontRecessMm");
-    if (plinth.sideInsetMm !== undefined) {
+    if (plinth.sideInsetMm === undefined) {
+      addError("MISSING_PLINTH_SIDE_INSET", "plinth.sideInsetMm is required.", "plinth.sideInsetMm");
+    } else {
       checkNonNegativeDeciMm(plinth.sideInsetMm, "plinth.sideInsetMm", "plinth.sideInsetMm");
       if (!Object.values(SIDE_INSET_STATUS).includes(plinth.sideInsetStatus)) {
         addError("INVALID_SIDE_INSET_STATUS", `plinth.sideInsetStatus must be one of [${Object.values(SIDE_INSET_STATUS).join(", ")}].`, "plinth.sideInsetStatus");
@@ -234,6 +236,24 @@ export function validateFurniSpec(spec) {
             addError("UNSUPPORTED_COMPONENT_TYPE", `Unknown component type "${comp.type}".`, `${compPath}.type`);
           }
 
+          if (comp.type === "SHELF_FIXED") {
+            const hasPos = comp.clearOpeningAboveMm !== undefined || comp.elevationMm !== undefined || comp.offsetFromBottomMm !== undefined;
+            if (!hasPos) {
+              addError("MISSING_COMPONENT_POSITION", `Component "${comp.id}" must specify clearOpeningAboveMm, elevationMm, or offsetFromBottomMm.`, compPath);
+            }
+          } else if (comp.type === "SHELF_ADJUSTABLE") {
+            const hasPos = comp.clearDropAboveMm !== undefined || comp.clearOpeningAboveMm !== undefined || comp.elevationMm !== undefined || comp.offsetFromBottomMm !== undefined;
+            if (!hasPos) {
+              addError("MISSING_COMPONENT_POSITION", `Component "${comp.id}" must specify clearDropAboveMm, clearOpeningAboveMm, elevationMm, or offsetFromBottomMm.`, compPath);
+            }
+          } else if (comp.type.startsWith("HANGING_RAIL")) {
+            if (comp.offsetBelowShelfMm === undefined) {
+              addError("MISSING_RAIL_OFFSET", `Hanging rail "${comp.id}" requires offsetBelowShelfMm.`, `${compPath}.offsetBelowShelfMm`);
+            } else {
+              checkPositiveDeciMm(comp.offsetBelowShelfMm, `${compPath}.offsetBelowShelfMm`, "offsetBelowShelfMm");
+            }
+          }
+
           const internalCarcassHDmm = (carcassHDmm !== null && carcassTDmm !== null) ? carcassHDmm - 2 * carcassTDmm : null;
 
           if (comp.clearOpeningAboveMm !== undefined) {
@@ -291,7 +311,11 @@ export function validateFurniSpec(spec) {
       addError("INVALID_DOOR_COUNT", "doors.count must be a positive integer (>= 1).", "doors.count");
     }
     doorTDmm = checkPositiveDeciMm(doors.thicknessMm, "doors.thicknessMm", "doors.thicknessMm");
-    bumperGapDmm = checkNonNegativeDeciMm(doors.bumperGapMm, "doors.bumperGapMm", "doors.bumperGapMm");
+    if (doors.bumperGapMm === undefined) {
+      addError("MISSING_BUMPER_GAP", "doors.bumperGapMm is required.", "doors.bumperGapMm");
+    } else {
+      bumperGapDmm = checkNonNegativeDeciMm(doors.bumperGapMm, "doors.bumperGapMm", "doors.bumperGapMm");
+    }
     doorWDmm = checkPositiveDeciMm(doors.finishedWidthMm, "doors.finishedWidthMm", "doors.finishedWidthMm");
     doorHDmm = checkPositiveDeciMm(doors.finishedHeightMm, "doors.finishedHeightMm", "doors.finishedHeightMm");
 
@@ -398,6 +422,48 @@ export function validateFurniSpec(spec) {
         "ILLEGAL_DRILLING_APPROVAL",
         "machiningPolicy.drilling cannot be APPROVED while hardware specifications are BLOCKED_PENDING_HARDWARE_APPROVAL.",
         "machiningPolicy.drilling"
+      );
+    }
+  }
+
+  // 11. Clearance & Tolerance Policy Check
+  const rootAllowance = spec.clearancePolicy?.backPanel?.grooveRootAllowanceMm ?? spec.carcass?.grooveRootAllowanceMm;
+  if (rootAllowance === undefined) {
+    addError(
+      "MISSING_BACK_PANEL_TOLERANCE_POLICY",
+      "Back-panel tolerance policy (grooveRootAllowanceMm) is required.",
+      "clearancePolicy.backPanel.grooveRootAllowanceMm"
+    );
+  } else {
+    checkPositiveDeciMm(rootAllowance, "clearancePolicy.backPanel.grooveRootAllowanceMm", "grooveRootAllowanceMm");
+  }
+
+  const hasAdjShelf = Array.isArray(spec.bays) && spec.bays.some((b) => Array.isArray(b.components) && b.components.some((c) => c.type === "SHELF_ADJUSTABLE"));
+  if (hasAdjShelf) {
+    const adjPolicy = spec.clearancePolicy?.adjustableShelf;
+    let missingPolicy = false;
+    if (!adjPolicy) {
+      for (const bay of spec.bays) {
+        for (const comp of bay.components || []) {
+          if (comp.type === "SHELF_ADJUSTABLE" && (comp.sideClearanceMm === undefined || comp.frontSetbackMm === undefined)) {
+            missingPolicy = true;
+            break;
+          }
+        }
+      }
+    } else {
+      if (adjPolicy.sideClearanceMm === undefined || adjPolicy.frontSetbackMm === undefined) {
+        missingPolicy = true;
+      } else {
+        checkPositiveDeciMm(adjPolicy.sideClearanceMm, "clearancePolicy.adjustableShelf.sideClearanceMm", "sideClearanceMm");
+        checkPositiveDeciMm(adjPolicy.frontSetbackMm, "clearancePolicy.adjustableShelf.frontSetbackMm", "frontSetbackMm");
+      }
+    }
+    if (missingPolicy) {
+      addError(
+        "MISSING_ADJUSTABLE_SHELF_CLEARANCE_POLICY",
+        "Adjustable-shelf clearance policy (sideClearanceMm and frontSetbackMm) is required.",
+        "clearancePolicy.adjustableShelf"
       );
     }
   }

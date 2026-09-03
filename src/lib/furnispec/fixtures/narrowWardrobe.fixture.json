@@ -87,6 +87,11 @@
     "rearUnbandedMm": 0.0,
     "doorPerimeterMm": 1.0
   },
+  "clearancePolicy": {
+    "backPanel": {
+      "grooveRootAllowanceMm": 1.0
+    }
+  },
   "hardware": {
     "hinges": {
       "brand": "Blum",

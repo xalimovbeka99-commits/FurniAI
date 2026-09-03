@@ -3,14 +3,19 @@
   "capturedAt": "2026-08-11",
   "algorithm": "sha256",
   "files": {
-    "src/app/builder/page.jsx": "674b0399e6498e9862f4e5bd310a87ee9b442b6996a02571adffcf61032f12ba",
-    "src/components/builder/FurnitureModel.jsx": "a70c5a5dfbc6a2086d240aee1337484a471e3462a7ea6c1dfec456c24a0a3dbe",
-    "src/store/furnitureStore.js": "e8edf73aa7141d38171681c2074b7e470ada4a7f2304c314ef58c6c07d731c33",
-    "src/lib/furnitureConfig.js": "0e5b7966e6d3b5d9f10e2ead5e3dcb6432917b63ed29dd876ac278c1cc16efec",
-    "src/lib/configSchema.js": "c0a8def6ec24db6c28ed390bdf8a22daf8c9810b58669db8735a86b8e4bde0d6",
-    "src/lib/buildGeometry.js": "447f29e0c8c10827716eba65ab305a444a8e9532b849d90b15c3ea9aa6ace298"
+    "src/app/builder/page.jsx": "a62763f26155ed85c282d5e600f69c32083b1c851e6129e8fd0e13caf984ba00",
+    "src/components/builder/FurnitureModel.jsx": "fab83a33f866d61e7a1ff28187239689fc90781463abbd064e2dc56a00025537",
+    "src/store/furnitureStore.js": "47e022ad9bf71a3a41bdb4fec8d82c6afa02d3e005c692b205a81400b398bd82",
+    "src/lib/furnitureConfig.js": "11cd96b97876cb29b6be5caff8d0e98c02291ce1549c9cf8ea61a3270f73e3da",
+    "src/lib/configSchema.js": "1cc404135abd2b8908e16b2d993f9294c36fdec2647b009590ff339a704d8c7c",
+    "src/lib/buildGeometry.js": "9e0578b6c9433ae3206e9e7d1f74fd65b733a09f37f6061f6bd849570b370e4c"
   },
   "justifiedBaselineUpdates": [
+    {
+      "file": "all-frozen-surfaces",
+      "reason": "Cross-platform deterministic hashing: normalizes line endings (CRLF -> LF) so SHA-256 hashes match canonical Git content identically on both Linux and Windows. Fixes G2.2-R2 cross-platform CI failure.",
+      "diffSummary": "Updated expected hashes to match canonical LF-normalized file content; test normalizes line endings before hashing."
+    },
     {
       "file": "src/app/builder/page.jsx",
       "reason": "Phase 1 remediation: baseline in fixtureVersion 1 predated the Milestone 9 wiring pass and never matched the repo's actual state, so this test failed from the moment the fixture was authored, not because of any new edit here. The diff itself is exactly the minimal/additive kind this frozen-surface rule explicitly allows: one new `useState` toggle (default closed, so the page is pixel-identical until a user opts in), one new import, and one conditional render of <WardrobeAIPanel>. No existing layout, panel, or behavior was changed or removed. Full diff verified via `git diff -- src/app/builder/page.jsx` before updating this hash.",

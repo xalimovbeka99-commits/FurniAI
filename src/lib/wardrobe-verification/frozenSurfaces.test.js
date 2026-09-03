@@ -6,11 +6,16 @@ import { buildGeometry } from "../buildGeometry.js";
 import { createDefaultConfig } from "../furnitureConfig.js";
 import frozen from "../../../tests/wardrobe-ai/fixtures/frozen-surfaces.json";
 
+function normalizedSha256(content) {
+  const text = typeof content === "string" ? content : content.toString("utf8");
+  return createHash("sha256").update(text.replace(/\r\n/g, "\n"), "utf8").digest("hex");
+}
+
 describe("frozen builder/viewer/configurator surfaces", () => {
   for (const [relativePath, expectedHash] of Object.entries(frozen.files)) {
     it(`preserves ${relativePath}`, async () => {
-      const content = await readFile(path.resolve(process.cwd(), relativePath));
-      const actualHash = createHash("sha256").update(content).digest("hex");
+      const content = await readFile(path.resolve(process.cwd(), relativePath), "utf8");
+      const actualHash = normalizedSha256(content);
       expect(actualHash).toBe(expectedHash);
     });
   }
@@ -26,7 +31,7 @@ describe("frozen builder/viewer/configurator surfaces", () => {
       shelfCount: parts.filter((part) => part.role === "shelf").length,
       drawerFrontCount: parts.filter((part) => part.role === "drawerFront").length,
       doorCount: parts.filter((part) => part.role === "door").length,
-      dividerCount: parts.filter((part) => part.role === "divider").length
+      dividerCount: parts.filter((part) => part.role === "divider").length,
     };
     expect(actual).toEqual(frozen.defaultWardrobeSemanticBaseline);
   });

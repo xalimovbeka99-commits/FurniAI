@@ -38,7 +38,7 @@ export function buildStructuralPartGraph(furniSpec) {
 
   const plinthHDmm = assertDeciMm(furniSpec.plinth.heightMm, "plinth.heightMm");
   const plinthRecessDmm = toDeciMm(furniSpec.plinth.frontRecessMm, "plinth.frontRecessMm");
-  const plinthSideInsetDmm = toDeciMm(furniSpec.plinth.sideInsetMm ?? 50.0, "plinth.sideInsetMm");
+  const plinthSideInsetDmm = assertDeciMm(furniSpec.plinth.sideInsetMm, "plinth.sideInsetMm");
 
   const carcassHDmm = assertDeciMm(furniSpec.carcass.heightMm, "carcass.heightMm");
   const carcassDDmm = assertDeciMm(furniSpec.carcass.depthMm, "carcass.depthMm");
@@ -49,7 +49,7 @@ export function buildStructuralPartGraph(furniSpec) {
   const grvRearDatumDmm = assertDeciMm(furniSpec.carcass.grooveRearDatumMm, "carcass.grooveRearDatumMm");
 
   const doorTDmm = assertDeciMm(furniSpec.doors.thicknessMm, "doors.thicknessMm");
-  const bumperGapDmm = toDeciMm(furniSpec.doors.bumperGapMm ?? 2.0, "doors.bumperGapMm");
+  const bumperGapDmm = assertDeciMm(furniSpec.doors.bumperGapMm, "doors.bumperGapMm");
   const doorCount = furniSpec.doors.count;
   const doorWDmm = assertDeciMm(furniSpec.doors.finishedWidthMm, "doors.finishedWidthMm");
   const doorHDmm = assertDeciMm(furniSpec.doors.finishedHeightMm, "doors.finishedHeightMm");
@@ -346,10 +346,7 @@ export function buildStructuralPartGraph(furniSpec) {
           minYDmm = yBotTopDmm + toDeciMm(comp.offsetFromBottomMm, `${comp.id}.offsetFromBottomMm`);
           maxYDmm = minYDmm + thicknessDmm;
         } else {
-          // Default: 350.0 mm clear opening
-          const defaultOpeningDmm = 3500;
-          maxYDmm = currentBottomFaceY - defaultOpeningDmm;
-          minYDmm = maxYDmm - thicknessDmm;
+          throw new Error(`Component "${comp.id}" missing vertical positioning.`);
         }
 
         currentBottomFaceY = minYDmm;
@@ -379,7 +376,7 @@ export function buildStructuralPartGraph(furniSpec) {
           sourceRuleIds: ["WR-003", "WR-008", "WR-013"],
         });
       } else if (comp.type.startsWith("HANGING_RAIL")) {
-        const offsetBelowDmm = comp.offsetBelowShelfMm !== undefined ? toDeciMm(comp.offsetBelowShelfMm, `${comp.id}.offsetBelowShelfMm`) : 1000;
+        const offsetBelowDmm = assertDeciMm(comp.offsetBelowShelfMm, `${comp.id}.offsetBelowShelfMm`);
         currentRailCenterY = currentBottomFaceY - offsetBelowDmm;
       } else if (comp.type === "SHELF_ADJUSTABLE") {
         let minYDmm;
@@ -400,15 +397,19 @@ export function buildStructuralPartGraph(furniSpec) {
           minYDmm = yBotTopDmm + toDeciMm(comp.offsetFromBottomMm, `${comp.id}.offsetFromBottomMm`);
           maxYDmm = minYDmm + thicknessDmm;
         } else {
-          const defaultOpeningDmm = 3500;
-          maxYDmm = currentBottomFaceY - defaultOpeningDmm;
-          minYDmm = maxYDmm - thicknessDmm;
+          throw new Error(`Component "${comp.id}" missing vertical positioning.`);
         }
 
         currentBottomFaceY = minYDmm;
 
         const partId = comp.partId || comp.id.toUpperCase().replace(/-/g, "_");
-        const adjLengthDmm = bay.clearWidthDmm - 20; // 1mm operating clearance per side
+
+        const sideClearanceMm = comp.sideClearanceMm ?? furniSpec.clearancePolicy?.adjustableShelf?.sideClearanceMm;
+        const frontSetbackMm = comp.frontSetbackMm ?? furniSpec.clearancePolicy?.adjustableShelf?.frontSetbackMm;
+        const sideClearanceDmm = assertDeciMm(sideClearanceMm, `${comp.id}.sideClearanceMm`);
+        const frontSetbackDmm = assertDeciMm(frontSetbackMm, `${comp.id}.frontSetbackMm`);
+
+        const adjLengthDmm = bay.clearWidthDmm - 2 * sideClearanceDmm;
 
         adjShelves.push({
           id: partId,
@@ -418,12 +419,12 @@ export function buildStructuralPartGraph(furniSpec) {
           lengthDmm: adjLengthDmm,
           widthDmm: compDepthDmm,
           thicknessDmm,
-          minXDmm: bay.minXDmm + 10,
-          maxXDmm: bay.maxXDmm - 10,
+          minXDmm: bay.minXDmm + sideClearanceDmm,
+          maxXDmm: bay.maxXDmm - sideClearanceDmm,
           minYDmm,
           maxYDmm,
-          minZDmm: zCarcassFrontDmm + 50,
-          maxZDmm: zCarcassFrontDmm + 50 + compDepthDmm,
+          minZDmm: zCarcassFrontDmm + frontSetbackDmm,
+          maxZDmm: zCarcassFrontDmm + frontSetbackDmm + compDepthDmm,
           orientation: ORIENTATIONS.HORIZONTAL_XZ,
           edges: {
             LENGTH_EDGE_1: edgeFrontDmm,
@@ -450,8 +451,10 @@ export function buildStructuralPartGraph(furniSpec) {
   }
 
   // 7. BACK_PANEL_01 (Back Panel)
-  // Engages into groove on all 4 sides with 1.0mm expansion gap at groove root
-  const engagementDmm = grvDepthDmm - 10;
+  // Engages into groove on all 4 sides with explicit expansion gap at groove root
+  const rootAllowanceMm = furniSpec.clearancePolicy?.backPanel?.grooveRootAllowanceMm ?? furniSpec.carcass?.grooveRootAllowanceMm;
+  const rootAllowanceDmm = assertDeciMm(rootAllowanceMm, "clearancePolicy.backPanel.grooveRootAllowanceMm");
+  const engagementDmm = grvDepthDmm - rootAllowanceDmm;
   const backPanelWDmm = internalCarcassWDmm + 2 * engagementDmm;
   const backPanelHDmm = internalCarcassHDmm + 2 * engagementDmm;
 

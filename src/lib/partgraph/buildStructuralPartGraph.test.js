@@ -275,5 +275,94 @@ describe("Gate G2.2-R1 — Generalized Deterministic PartGraph Kernel Suite", ()
     const resE = validateFurniSpec(badDoorH);
     expect(resE.valid).toBe(false);
     expect(resE.errors.some((e) => e.code === "DOOR_HEIGHT_MISMATCH")).toBe(true);
+
+    // F. Missing plinth side inset
+    const badPlinth = JSON.parse(JSON.stringify(fixture));
+    delete badPlinth.plinth.sideInsetMm;
+    const resF = validateFurniSpec(badPlinth);
+    expect(resF.valid).toBe(false);
+    expect(resF.errors.some((e) => e.code === "MISSING_PLINTH_SIDE_INSET")).toBe(true);
+    expect(() => buildStructuralPartGraph(badPlinth)).toThrow();
+
+    // G. Missing bumper gap
+    const badBumper = JSON.parse(JSON.stringify(fixture));
+    delete badBumper.doors.bumperGapMm;
+    const resG = validateFurniSpec(badBumper);
+    expect(resG.valid).toBe(false);
+    expect(resG.errors.some((e) => e.code === "MISSING_BUMPER_GAP")).toBe(true);
+    expect(() => buildStructuralPartGraph(badBumper)).toThrow();
+
+    // H. Missing component positioning
+    const badPos = JSON.parse(JSON.stringify(fixture));
+    delete badPos.bays[0].components[0].clearOpeningAboveMm;
+    const resH = validateFurniSpec(badPos);
+    expect(resH.valid).toBe(false);
+    expect(resH.errors.some((e) => e.code === "MISSING_COMPONENT_POSITION")).toBe(true);
+    expect(() => buildStructuralPartGraph(badPos)).toThrow();
+
+    // I. Missing rail offset
+    const badRail = JSON.parse(JSON.stringify(fixture));
+    delete badRail.bays[0].components[1].offsetBelowShelfMm;
+    const resI = validateFurniSpec(badRail);
+    expect(resI.valid).toBe(false);
+    expect(resI.errors.some((e) => e.code === "MISSING_RAIL_OFFSET")).toBe(true);
+    expect(() => buildStructuralPartGraph(badRail)).toThrow();
+
+    // J. Missing back-panel tolerance policy
+    const badBackPanel = JSON.parse(JSON.stringify(fixture));
+    delete badBackPanel.clearancePolicy.backPanel.grooveRootAllowanceMm;
+    const resJ = validateFurniSpec(badBackPanel);
+    expect(resJ.valid).toBe(false);
+    expect(resJ.errors.some((e) => e.code === "MISSING_BACK_PANEL_TOLERANCE_POLICY")).toBe(true);
+    expect(() => buildStructuralPartGraph(badBackPanel)).toThrow();
+
+    // K. Missing adjustable-shelf clearance policy
+    const badAdjClearance = JSON.parse(JSON.stringify(fixture));
+    delete badAdjClearance.clearancePolicy.adjustableShelf;
+    const resK = validateFurniSpec(badAdjClearance);
+    expect(resK.valid).toBe(false);
+    expect(resK.errors.some((e) => e.code === "MISSING_ADJUSTABLE_SHELF_CLEARANCE_POLICY")).toBe(true);
+    expect(() => buildStructuralPartGraph(badAdjClearance)).toThrow();
+  });
+
+  it("24. mutation tests: proves configurable clearances change only the intended geometry", () => {
+    // 1. Mutate adjustable shelf side clearance (1.0mm -> 3.0mm)
+    const sideClearSpec = JSON.parse(JSON.stringify(fixture));
+    sideClearSpec.clearancePolicy.adjustableShelf.sideClearanceMm = 3.0; // 3mm per side
+    const graphSide = buildStructuralPartGraph(sideClearSpec);
+    const adj2Side = graphSide.parts.find((p) => p.id === "SHELF_ADJ_R2");
+    // Length was 8710 dmm (8730 - 20). Now should be 8730 - 60 = 8670 dmm.
+    expect(adj2Side.finished.lengthDmm).toBe(8670);
+    expect(adj2Side.placement.minXDmm).toBe(9090 + 30); // 9120 dmm
+    expect(adj2Side.placement.maxXDmm).toBe(17820 - 30); // 17790 dmm
+
+    // 2. Mutate adjustable shelf front setback (5.0mm -> 15.0mm)
+    const setbackSpec = JSON.parse(JSON.stringify(fixture));
+    setbackSpec.clearancePolicy.adjustableShelf.frontSetbackMm = 15.0; // 15mm setback
+    const graphSetback = buildStructuralPartGraph(setbackSpec);
+    const adj2Setback = graphSetback.parts.find((p) => p.id === "SHELF_ADJ_R2");
+    // minZ was 200 + 50 = 250 dmm (25mm). Now should be 200 + 150 = 350 dmm (35mm).
+    expect(adj2Setback.placement.minZDmm).toBe(350);
+
+    // 3. Mutate back panel groove root allowance (1.0mm -> 2.0mm)
+    const backPanelSpec = JSON.parse(JSON.stringify(fixture));
+    backPanelSpec.clearancePolicy.backPanel.grooveRootAllowanceMm = 2.0; // 2mm expansion gap
+    const graphBack = buildStructuralPartGraph(backPanelSpec);
+    const backPanel = graphBack.parts.find((p) => p.id === "BACK_PANEL_01");
+    // Engagement was 70 - 10 = 60 dmm. Now is 70 - 20 = 50 dmm.
+    // Length was 22640 + 120 = 22760. Now is 22640 + 100 = 22740 dmm.
+    expect(backPanel.finished.lengthDmm).toBe(22740);
+    // Width was 17640 + 120 = 17760. Now is 17640 + 100 = 17740 dmm.
+    expect(backPanel.finished.widthDmm).toBe(17740);
+
+    // 4. Mutate plinth side inset (50.0mm -> 30.0mm)
+    const plinthSpec = JSON.parse(JSON.stringify(fixture));
+    plinthSpec.plinth.sideInsetMm = 30.0;
+    const graphPlinth = buildStructuralPartGraph(plinthSpec);
+    const plinthFront = graphPlinth.parts.find((p) => p.id === "PLINTH_FRONT");
+    // Width was 18000 - 1000 = 17000 dmm. Now is 18000 - 600 = 17400 dmm.
+    expect(plinthFront.finished.lengthDmm).toBe(17400);
+    expect(plinthFront.placement.minXDmm).toBe(300);
+    expect(plinthFront.placement.maxXDmm).toBe(17700);
   });
 });

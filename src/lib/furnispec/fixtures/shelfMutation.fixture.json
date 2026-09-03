@@ -121,6 +121,15 @@
     "rearUnbandedMm": 0.0,
     "doorPerimeterMm": 1.0
   },
+  "clearancePolicy": {
+    "adjustableShelf": {
+      "sideClearanceMm": 1.0,
+      "frontSetbackMm": 5.0
+    },
+    "backPanel": {
+      "grooveRootAllowanceMm": 1.0
+    }
+  },
   "hardware": {
     "hinges": {
       "brand": "Blum",
