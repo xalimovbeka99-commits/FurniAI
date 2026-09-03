@@ -50,6 +50,7 @@ window.addEventListener('error', function(e){
 <script src="/vendor-three-r128.min.js"></script>
 <script src="/vendor-supabase.min.js"></script>
 <script src="/legacy-builder-adapter.js"></script>
+<script src="/partgraph-runtime-bridge.js"></script>
 <style>
 :root{
   --paper:#FAF9F5; --paper-2:#F4F2EB; --paper-3:#EAE5D9;
@@ -242,6 +243,11 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 .b-cta-row{margin-top:8px}
 .b-finish{width:100%;font-family:'Space Mono',monospace;font-size:12.5px;padding:13px;border-radius:10px;border:1px solid var(--brass);background:var(--brass);color:var(--paper);cursor:pointer;transition:all .18s}
 .b-finish:hover{background:var(--brass-bright);border-color:var(--brass-bright)}
+.parametric-badge{display:flex;align-items:center;gap:10px;padding:6px 12px;background:rgba(0,180,216,.08);border:1px solid var(--brass);border-radius:8px;font-family:'Space Mono',monospace;font-size:11px;color:var(--ink);flex-wrap:wrap}
+.p-tag{font-weight:700;color:var(--brass);letter-spacing:.08em}
+.p-spec,.p-dims,.p-parts{color:var(--ink-soft);padding:0 6px;border-left:1px solid var(--line)}
+.p-pill{padding:2px 7px;border-radius:4px;background:var(--paper-3);font-size:10px;font-weight:700;letter-spacing:.04em}
+.p-pill.alert{background:#fde8e8;color:#c53030;border:1px solid #f8b4b4}
 
 /* responsive */
 @media(max-width:1000px){
@@ -596,6 +602,14 @@ footer ul a:hover{opacity:1;color:var(--brass)}
       <div class="b-back" onclick="go('#/')">← <span>Gallery</span></div>
       <div class="b-title"><span class="t" id="bType">wardrobe</span><span id="bName">Glass Wardrobe</span></div>
     </div>
+    <div id="parametricBadge" class="parametric-badge" hidden>
+      <span class="p-tag">PARAMETRIC PARTGRAPH</span>
+      <span class="p-spec" id="pSpecId">furnispec-golden-wardrobe-01</span>
+      <span class="p-dims" id="pDims">1800 × 2400 × 600 mm</span>
+      <span class="p-parts" id="pParts">19 structural panels</span>
+      <span class="p-pill">WORKSHOP REVIEW</span>
+      <span class="p-pill alert">CNC: NOT QUALIFIED</span>
+    </div>
     <div class="b-nav"><button class="b-nav-btn" id="bPrev">◁</button><span class="b-nav-pos" id="bPos">1 / 10</span><button class="b-nav-btn" id="bNext">▷</button></div>
   </div>
   <div class="b-main show-left">
@@ -669,7 +683,9 @@ function go(hash){ if(location.hash===hash){route();} else location.hash=hash; }
 function route(){
   const h=location.hash;
   const m=h.match(/^#\/build(?:\/(\d+))?/);
-  if(h.startsWith('#/ai')){
+  if(h==='#/build/golden-parametric'){
+    showBuilder('golden-parametric');
+  }else if(h.startsWith('#/ai')){
     showAI();
   }else if(h.startsWith('#/projects')){
     showProjects();
@@ -1218,7 +1234,14 @@ const Builder={
     const tdr = document.getElementById('toggle-drawers'); if (tdr) tdr.classList.remove('on');
   },
 
-  build(){this.clear();const T=this.cfg.type;
+  build(){
+    if(this.isParametric){
+      if(globalThis.PartGraphBridge&&typeof globalThis.PartGraphBridge.loadGoldenWardrobe==='function'){
+        globalThis.PartGraphBridge.loadGoldenWardrobe(this);
+      }
+      return;
+    }
+    this.clear();const T=this.cfg.type;
     if(T==='kitchen'||T==='kitchen_l'||T==='kitchen_island'||T==='kitchen_u')this.buildKitchen();
     else if(T==='walkin_l')this.buildWalkinL();
     else if(T==='walkin_u')this.buildWalkinU();
@@ -1526,7 +1549,27 @@ const Builder={
   nextDesign(){const i=(this.currentIdx+1)%DESIGNS.length;go('#/build/'+i)},
   updateNav(){document.getElementById('bPos').textContent=(this.currentIdx+1)+' / '+DESIGNS.length},
 
-  load(idx){this.cfg=Object.assign({},DESIGNS[idx]);const c=this.cfg;
+  load(idx){
+    const badge=document.getElementById('parametricBadge');
+    if(idx==='golden-parametric'){
+      this.isParametric=true;
+      if(badge)badge.hidden=false;
+      document.getElementById('bName').textContent='Golden Wardrobe';
+      document.getElementById('bType').textContent='parametric';
+      document.getElementById('bPos').textContent='ORACLE';
+      document.getElementById('bDimsTag').innerHTML='1800 × 2400 × 600 <b>mm</b>';
+      document.querySelector('.b-main').classList.add('custom-type');
+      if(globalThis.PartGraphBridge&&typeof globalThis.PartGraphBridge.loadGoldenWardrobe==='function'){
+        globalThis.PartGraphBridge.loadGoldenWardrobe(this);
+      }else{
+        console.error('PartGraphBridge is unavailable.');
+      }
+      return;
+    }
+    this.isParametric=false;
+    if(badge)badge.hidden=true;
+    this.currentIdx=idx;this.updateNav();
+    this.cfg=Object.assign({},DESIGNS[idx]);const c=this.cfg;
     this.lookAtZ=0;
     if(c.type==='walkin_u'){this.camDist=6.8;this.rotY=.45}else if(c.type==='walkin_l'){this.camDist=5.6;this.rotY=.55}
     else if(c.type==='kitchen_island'){this.camDist=6.6;this.rotY=.6}else if(c.type==='kitchen_l'){this.camDist=6.6;this.rotY=.6}else if(c.type==='kitchen_u'){this.camDist=7.4;this.rotY=.6}
@@ -1631,6 +1674,7 @@ const Builder={
     }
   }
 };
+window.Builder=Builder;
 
 addEventListener('resize',()=>{if(builderActive)Builder.resize()});
 

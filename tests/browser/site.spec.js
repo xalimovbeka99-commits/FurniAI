@@ -388,4 +388,134 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
     const hasTechnicalLog = consoleErrors.some((t) => /Builder WebGL initialization failed|FurniAI fatal error/.test(t));
     expect(hasTechnicalLog, `expected a technical console.error; got: ${JSON.stringify(consoleErrors)}`).toBe(true);
   });
+
+  test.describe("G3.1 Golden Parametric Builder in existing 3D Builder", () => {
+    test("opens #/build/golden-parametric and renders 19 meshes in existing #bld3d canvas", async ({ page }) => {
+      await page.goto("/#/build/golden-parametric");
+      await expect(page.locator("#view-builder")).toBeVisible();
+      await expect(page.locator("#bld3d")).toBeAttached();
+
+      const badge = page.locator("#parametricBadge");
+      await expect(badge).toBeVisible();
+      await expect(badge).toContainText("PARAMETRIC PARTGRAPH");
+      await expect(badge).toContainText("furnispec-golden-wardrobe-01");
+      await expect(badge).toContainText("1800 × 2400 × 600 mm");
+      await expect(badge).toContainText("19 structural panels");
+      await expect(badge).toContainText("WORKSHOP REVIEW");
+      await expect(badge).toContainText("CNC: NOT QUALIFIED");
+
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.parts && Builder.parts.length > 0);
+
+      const state = await page.evaluate(() => {
+        const rootGroup = Builder.parts[0];
+        const meshes = (rootGroup && rootGroup.children) || [];
+        const partIds = meshes.map((m) => m.userData.partId);
+        return {
+          isParametric: Builder.isParametric,
+          hasRenderer: !!Builder.ren,
+          meshCount: meshes.length,
+          partIds,
+        };
+      });
+
+      expect(state.isParametric).toBe(true);
+      expect(state.hasRenderer).toBe(true);
+      expect(state.meshCount).toBe(19);
+      expect(new Set(state.partIds).size).toBe(19);
+
+      // Verify non-blank GPU pixels
+      await page.waitForTimeout(200);
+      const pixelResult = await readBuilderCanvasPixels(page);
+      expect(pixelResult.timedOut).toBe(false);
+      expect(pixelResult.nonBlankFraction, "parametric model must produce non-blank pixels").toBeGreaterThan(0.05);
+    });
+
+    test("navigates between parametric route and catalog #/build/0 without leaking contexts or breaking state", async ({ page }) => {
+      await page.goto("/#/build/golden-parametric");
+      await expect(page.locator("#parametricBadge")).toBeVisible();
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.parts && Builder.parts.length > 0);
+
+      // Navigate to catalog #/build/0
+      await page.evaluate(() => { window.location.hash = "#/build/0"; });
+      await expect(page.locator("#parametricBadge")).toBeHidden();
+      await page.waitForFunction(() => typeof Builder !== "undefined" && !Builder.isParametric && Builder.cfg && Builder.cfg.type === "wardrobe");
+
+      const state0 = await page.evaluate(() => ({
+        isParametric: Builder.isParametric,
+        type: Builder.cfg.type,
+        partCount: Builder.parts.length,
+      }));
+      expect(state0.isParametric).toBe(false);
+      expect(state0.type).toBe("wardrobe");
+      expect(state0.partCount).toBeGreaterThan(0);
+
+      // Return to parametric route
+      await page.evaluate(() => { window.location.hash = "#/build/golden-parametric"; });
+      await expect(page.locator("#parametricBadge")).toBeVisible();
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.isParametric && Builder.parts && Builder.parts.length > 0);
+
+      const stateParametric = await page.evaluate(() => {
+        const rootGroup = Builder.parts[0];
+        return {
+          isParametric: Builder.isParametric,
+          meshCount: (rootGroup && rootGroup.children.length) || 0,
+        };
+      });
+      expect(stateParametric.isParametric).toBe(true);
+      expect(stateParametric.meshCount).toBe(19);
+    });
+
+    test("survives WebGL context loss and restore on #/build/golden-parametric", async ({ page }) => {
+      await page.goto("/#/build/golden-parametric");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.parts && Builder.parts.length > 0);
+
+      const restoreResult = await page.evaluate(() => {
+        const cv = document.getElementById("bld3d");
+        const ctx = cv.getContext("webgl") || cv.getContext("webgl2") || cv.getContext("experimental-webgl");
+        const ext = ctx && ctx.getExtension("WEBGL_lose_context");
+        if (!ext) return { supported: false };
+
+        ext.loseContext();
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            ext.restoreContext();
+            setTimeout(() => {
+              const rootGroup = Builder.parts[0];
+              resolve({
+                supported: true,
+                isParametric: Builder.isParametric,
+                meshCount: (rootGroup && rootGroup.children.length) || 0,
+              });
+            }, 100);
+          }, 50);
+        });
+      });
+
+      if (restoreResult.supported) {
+        expect(restoreResult.isParametric).toBe(true);
+        expect(restoreResult.meshCount).toBe(19);
+      }
+    });
+
+    test("loads correctly on #/build/golden-parametric with external CDNs blocked", async ({ page }) => {
+      await page.route("**/*", (route) => {
+        const url = route.request().url();
+        if (/cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|fonts\.googleapis\.com|fonts\.gstatic\.com/.test(url)) {
+          return route.abort();
+        }
+        return route.continue();
+      });
+
+      await page.goto("/#/build/golden-parametric");
+      await expect(page.locator("#bld3d")).toBeAttached();
+      await expect(page.locator("#parametricBadge")).toBeVisible();
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.parts && Builder.parts.length > 0);
+
+      const meshCount = await page.evaluate(() => {
+        const rootGroup = Builder.parts[0];
+        return (rootGroup && rootGroup.children.length) || 0;
+      });
+      expect(meshCount).toBe(19);
+    });
+  });
 });
