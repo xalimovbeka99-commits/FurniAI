@@ -1,5 +1,5 @@
 /**
- * PartGraph v0.1 — Pure Deterministic Rectangular Kernel
+ * PartGraph v0.1 — Pure Deterministic Rectangular Kernel (Generalized)
  * ---------------------------------------------------------------------
  * Generates canonical structural PartGraph data structures from a validated
  * FurniSpec v0.1 specification.
@@ -7,7 +7,8 @@
  * Guaranteed invariants:
  * - Pure deterministic execution: zero I/O, randomness, dates, or UI dependencies.
  * - All internal math performed in exact integer deci-millimetres (0.1 mm).
- * - Generates exactly 19 structural parts for the 2-bay Golden Wardrobe.
+ * - Fully parametric: derives all panel quantities, dimensions, and placements
+ *   exclusively from the input FurniSpec without hardcoded fixture values.
  * - Hardware drilling machining is explicitly excluded/blocked.
  */
 
@@ -56,7 +57,6 @@ export function buildStructuralPartGraph(furniSpec) {
   const revTopDmm = toDeciMm(furniSpec.doors.reveals.topMm, "doors.reveals.topMm");
   const revBotDmm = toDeciMm(furniSpec.doors.reveals.bottomMm, "doors.reveals.bottomMm");
   const revLeftDmm = toDeciMm(furniSpec.doors.reveals.leftMm, "doors.reveals.leftMm");
-  const revRightDmm = toDeciMm(furniSpec.doors.reveals.rightMm, "doors.reveals.rightMm");
   const revInterDmm = toDeciMm(furniSpec.doors.reveals.interDoorMm, "doors.reveals.interDoorMm");
 
   const edgeFrontDmm = toDeciMm(furniSpec.edgeBanding.frontVisibleMm, "edgeBanding.frontVisibleMm");
@@ -79,14 +79,13 @@ export function buildStructuralPartGraph(furniSpec) {
   const yBotTopDmm = yPlinthTopDmm + panelTDmm;
   const yTopBottomDmm = yFloorDmm + envHDmm - panelTDmm;
   const yTopTopDmm = yFloorDmm + envHDmm;
-  const internalCarcassHDmm = yTopBottomDmm - yBotTopDmm; // 2264.0 mm
+  const internalCarcassHDmm = yTopBottomDmm - yBotTopDmm;
 
   // Compute primary global X datums
-  const internalCarcassWDmm = envWDmm - 2 * panelTDmm; // 1764.0 mm
+  const internalCarcassWDmm = envWDmm - 2 * panelTDmm;
 
-  // Divider and shelf depth (set back 20.0mm before carcass rear)
-  const dividerDepthDmm = carcassDDmm - 200; // 5600 dmm (560.0 mm)
-  const adjShelfDepthDmm = dividerDepthDmm - 100; // 5500 dmm (550.0 mm)
+  // Divider and shelf depth (set back behind carcass rear by groove rear datum)
+  const dividerDepthDmm = carcassDDmm - grvRearDatumDmm;
 
   const parts = [];
 
@@ -254,157 +253,212 @@ export function buildStructuralPartGraph(furniSpec) {
     })
   );
 
-  // 5. CARC_DIV_01 (Center Vertical Divider)
-  const leftBayClearWDmm = assertDeciMm(furniSpec.bays[0].clearWidthMm, "bays[0].clearWidthMm");
-  const divMinXDmm = panelTDmm + leftBayClearWDmm;
-  const divMaxXDmm = divMinXDmm + panelTDmm;
+  // 5. Divider and Bay geometry calculation
+  const baySpans = [];
+  const dividers = [];
+  let xCursor = panelTDmm;
 
-  parts.push(
-    createPanel({
-      id: "CARC_DIV_01",
-      role: PART_ROLES.DIVIDER_PANEL,
-      materialCode: matCarcass,
-      lengthDmm: internalCarcassHDmm,
-      widthDmm: dividerDepthDmm,
-      thicknessDmm: panelTDmm,
-      minXDmm: divMinXDmm,
-      maxXDmm: divMaxXDmm,
-      minYDmm: yBotTopDmm,
-      maxYDmm: yTopBottomDmm,
-      minZDmm: zCarcassFrontDmm,
-      maxZDmm: zCarcassFrontDmm + dividerDepthDmm,
-      orientation: ORIENTATIONS.VERTICAL_YZ,
-      edges: {
-        LENGTH_EDGE_1: edgeFrontDmm,
-        LENGTH_EDGE_2: edgeRearDmm,
-        WIDTH_EDGE_1: 0,
-        WIDTH_EDGE_2: 0,
-      },
-      sourceRuleIds: ["WR-002", "WR-003", "WR-013"],
-    })
-  );
+  for (let b = 0; b < furniSpec.bays.length; b++) {
+    const bay = furniSpec.bays[b];
+    const clearWDmm = assertDeciMm(bay.clearWidthMm, `bays[${b}].clearWidthMm`);
+    const bayMinX = xCursor;
+    const bayMaxX = bayMinX + clearWDmm;
 
-  // 6. SHELF_FIX_L1 (Left Bay Fixed Top Shelf)
-  const topShelfClearOpeningDmm = 3500; // 350.0 mm
-  const fixShelfYDmm = yTopBottomDmm - topShelfClearOpeningDmm - panelTDmm; // 20140 dmm
+    baySpans.push({
+      index: b,
+      id: bay.id,
+      minXDmm: bayMinX,
+      maxXDmm: bayMaxX,
+      clearWidthDmm: clearWDmm,
+      components: bay.components || [],
+    });
 
-  parts.push(
-    createPanel({
-      id: "SHELF_FIX_L1",
-      role: PART_ROLES.FIXED_SHELF,
-      materialCode: matCarcass,
-      lengthDmm: leftBayClearWDmm,
-      widthDmm: dividerDepthDmm,
-      thicknessDmm: panelTDmm,
-      minXDmm: panelTDmm,
-      maxXDmm: divMinXDmm,
-      minYDmm: fixShelfYDmm,
-      maxYDmm: fixShelfYDmm + panelTDmm,
-      minZDmm: zCarcassFrontDmm,
-      maxZDmm: zCarcassFrontDmm + dividerDepthDmm,
-      orientation: ORIENTATIONS.HORIZONTAL_XZ,
-      edges: {
-        LENGTH_EDGE_1: edgeFrontDmm,
-        LENGTH_EDGE_2: edgeRearDmm,
-        WIDTH_EDGE_1: 0,
-        WIDTH_EDGE_2: 0,
-      },
-      sourceRuleIds: ["WR-003", "WR-008", "WR-013"],
-    })
-  );
+    xCursor = bayMaxX;
 
-  // 7. SHELF_FIX_R1 (Right Bay Fixed Top Shelf)
-  const rightBayClearWDmm = assertDeciMm(furniSpec.bays[1].clearWidthMm, "bays[1].clearWidthMm");
-  parts.push(
-    createPanel({
-      id: "SHELF_FIX_R1",
-      role: PART_ROLES.FIXED_SHELF,
-      materialCode: matCarcass,
-      lengthDmm: rightBayClearWDmm,
-      widthDmm: dividerDepthDmm,
-      thicknessDmm: panelTDmm,
-      minXDmm: divMaxXDmm,
-      maxXDmm: envWDmm - panelTDmm,
-      minYDmm: fixShelfYDmm,
-      maxYDmm: fixShelfYDmm + panelTDmm,
-      minZDmm: zCarcassFrontDmm,
-      maxZDmm: zCarcassFrontDmm + dividerDepthDmm,
-      orientation: ORIENTATIONS.HORIZONTAL_XZ,
-      edges: {
-        LENGTH_EDGE_1: edgeFrontDmm,
-        LENGTH_EDGE_2: edgeRearDmm,
-        WIDTH_EDGE_1: 0,
-        WIDTH_EDGE_2: 0,
-      },
-      sourceRuleIds: ["WR-003", "WR-008", "WR-013"],
-    })
-  );
+    if (b < furniSpec.bays.length - 1) {
+      const divIndex = b + 1;
+      const divId = `CARC_DIV_${String(divIndex).padStart(2, "0")}`;
+      const divMinX = xCursor;
+      const divMaxX = divMinX + panelTDmm;
 
-  // 8 & 9. SHELF_ADJ_R2 & SHELF_ADJ_R3 (Right Bay Adjustable Shelves)
-  // Short hanging drop = 900.0 mm from hanging rail center (rail at fixShelfYDmm - 1000 = 19140)
-  // Adj Shelf 3 Upper Face = 19140 - 9000 = 10140 dmm (Lower Face = 9960 dmm)
-  // Adj Shelf 2 Upper Face = 9960 - 3500 = 6460 dmm (Lower Face = 6280 dmm)
-  const adjShelfWDmm = rightBayClearWDmm - 20; // 8710 dmm (leaves 1mm gap per side)
-  const adjShelf3MinYDmm = 9960;
-  const adjShelf2MinYDmm = 6280;
+      dividers.push({
+        id: divId,
+        minXDmm: divMinX,
+        maxXDmm: divMaxX,
+      });
 
-  parts.push(
-    createPanel({
-      id: "SHELF_ADJ_R2",
-      role: PART_ROLES.ADJUSTABLE_SHELF,
-      materialCode: matCarcass,
-      lengthDmm: adjShelfWDmm,
-      widthDmm: adjShelfDepthDmm,
-      thicknessDmm: panelTDmm,
-      minXDmm: divMaxXDmm + 10,
-      maxXDmm: envWDmm - panelTDmm - 10,
-      minYDmm: adjShelf2MinYDmm,
-      maxYDmm: adjShelf2MinYDmm + panelTDmm,
-      minZDmm: zCarcassFrontDmm + 50,
-      maxZDmm: zCarcassFrontDmm + 50 + adjShelfDepthDmm,
-      orientation: ORIENTATIONS.HORIZONTAL_XZ,
-      edges: {
-        LENGTH_EDGE_1: edgeFrontDmm,
-        LENGTH_EDGE_2: edgeRearDmm,
-        WIDTH_EDGE_1: edgeFrontDmm,
-        WIDTH_EDGE_2: edgeFrontDmm,
-      },
-      sourceRuleIds: ["WR-003", "WR-008", "WR-013"],
-    })
-  );
+      xCursor = divMaxX;
+    }
+  }
 
-  parts.push(
-    createPanel({
-      id: "SHELF_ADJ_R3",
-      role: PART_ROLES.ADJUSTABLE_SHELF,
-      materialCode: matCarcass,
-      lengthDmm: adjShelfWDmm,
-      widthDmm: adjShelfDepthDmm,
-      thicknessDmm: panelTDmm,
-      minXDmm: divMaxXDmm + 10,
-      maxXDmm: envWDmm - panelTDmm - 10,
-      minYDmm: adjShelf3MinYDmm,
-      maxYDmm: adjShelf3MinYDmm + panelTDmm,
-      minZDmm: zCarcassFrontDmm + 50,
-      maxZDmm: zCarcassFrontDmm + 50 + adjShelfDepthDmm,
-      orientation: ORIENTATIONS.HORIZONTAL_XZ,
-      edges: {
-        LENGTH_EDGE_1: edgeFrontDmm,
-        LENGTH_EDGE_2: edgeRearDmm,
-        WIDTH_EDGE_1: edgeFrontDmm,
-        WIDTH_EDGE_2: edgeFrontDmm,
-      },
-      sourceRuleIds: ["WR-003", "WR-008", "WR-013"],
-    })
-  );
+  // Push dividers into parts
+  for (const div of dividers) {
+    parts.push(
+      createPanel({
+        id: div.id,
+        role: PART_ROLES.DIVIDER_PANEL,
+        materialCode: matCarcass,
+        lengthDmm: internalCarcassHDmm,
+        widthDmm: dividerDepthDmm,
+        thicknessDmm: panelTDmm,
+        minXDmm: div.minXDmm,
+        maxXDmm: div.maxXDmm,
+        minYDmm: yBotTopDmm,
+        maxYDmm: yTopBottomDmm,
+        minZDmm: zCarcassFrontDmm,
+        maxZDmm: zCarcassFrontDmm + dividerDepthDmm,
+        orientation: ORIENTATIONS.VERTICAL_YZ,
+        edges: {
+          LENGTH_EDGE_1: edgeFrontDmm,
+          LENGTH_EDGE_2: edgeRearDmm,
+          WIDTH_EDGE_1: 0,
+          WIDTH_EDGE_2: 0,
+        },
+        sourceRuleIds: ["WR-002", "WR-003", "WR-013"],
+      })
+    );
+  }
 
-  // 10. BACK_PANEL_01 (Back Panel)
-  // Engages 6.0 mm (60 dmm) into 7.0 mm groove on all 4 sides
-  const backPanelWDmm = internalCarcassWDmm + 2 * (grvDepthDmm - 10); // 17760 dmm
-  const backPanelHDmm = internalCarcassHDmm + 2 * (grvDepthDmm - 10); // 22760 dmm
-  // Groove channel occupies Z in [5860, 5930] dmm (586.0mm to 593.0mm)
-  const zBackGrooveChannelMinDmm = zCarcassRearDmm - grvRearDatumDmm + 60; // 6000 - 200 + 60 = 5860 dmm
-  const zBackPanelMinDmm = zBackGrooveChannelMinDmm + 5; // 5865 dmm (centered in 70 dmm groove)
+  // 6. Shelves Calculation (Fixed and Adjustable)
+  const fixedShelves = [];
+  const adjShelves = [];
+
+  for (const bay of baySpans) {
+    let currentBottomFaceY = yTopBottomDmm;
+    let currentRailCenterY = null;
+
+    for (const comp of bay.components) {
+      const thicknessDmm = comp.thicknessMm ? toDeciMm(comp.thicknessMm, `${comp.id}.thicknessMm`) : panelTDmm;
+      const compDepthDmm = comp.depthMm ? toDeciMm(comp.depthMm, `${comp.id}.depthMm`) : dividerDepthDmm;
+
+      if (comp.type === "SHELF_FIXED") {
+        let minYDmm;
+        let maxYDmm;
+
+        if (comp.clearOpeningAboveMm !== undefined) {
+          const openingDmm = toDeciMm(comp.clearOpeningAboveMm, `${comp.id}.clearOpeningAboveMm`);
+          maxYDmm = currentBottomFaceY - openingDmm;
+          minYDmm = maxYDmm - thicknessDmm;
+        } else if (comp.elevationMm !== undefined) {
+          minYDmm = toDeciMm(comp.elevationMm, `${comp.id}.elevationMm`);
+          maxYDmm = minYDmm + thicknessDmm;
+        } else if (comp.offsetFromBottomMm !== undefined) {
+          minYDmm = yBotTopDmm + toDeciMm(comp.offsetFromBottomMm, `${comp.id}.offsetFromBottomMm`);
+          maxYDmm = minYDmm + thicknessDmm;
+        } else {
+          // Default: 350.0 mm clear opening
+          const defaultOpeningDmm = 3500;
+          maxYDmm = currentBottomFaceY - defaultOpeningDmm;
+          minYDmm = maxYDmm - thicknessDmm;
+        }
+
+        currentBottomFaceY = minYDmm;
+
+        const partId = comp.partId || comp.id.toUpperCase().replace(/-/g, "_");
+        fixedShelves.push({
+          id: partId,
+          bayIndex: bay.index,
+          role: PART_ROLES.FIXED_SHELF,
+          materialCode: matCarcass,
+          lengthDmm: bay.clearWidthDmm,
+          widthDmm: compDepthDmm,
+          thicknessDmm,
+          minXDmm: bay.minXDmm,
+          maxXDmm: bay.maxXDmm,
+          minYDmm,
+          maxYDmm,
+          minZDmm: zCarcassFrontDmm,
+          maxZDmm: zCarcassFrontDmm + compDepthDmm,
+          orientation: ORIENTATIONS.HORIZONTAL_XZ,
+          edges: {
+            LENGTH_EDGE_1: edgeFrontDmm,
+            LENGTH_EDGE_2: edgeRearDmm,
+            WIDTH_EDGE_1: 0,
+            WIDTH_EDGE_2: 0,
+          },
+          sourceRuleIds: ["WR-003", "WR-008", "WR-013"],
+        });
+      } else if (comp.type.startsWith("HANGING_RAIL")) {
+        const offsetBelowDmm = comp.offsetBelowShelfMm !== undefined ? toDeciMm(comp.offsetBelowShelfMm, `${comp.id}.offsetBelowShelfMm`) : 1000;
+        currentRailCenterY = currentBottomFaceY - offsetBelowDmm;
+      } else if (comp.type === "SHELF_ADJUSTABLE") {
+        let minYDmm;
+        let maxYDmm;
+
+        if (comp.clearDropAboveMm !== undefined && currentRailCenterY !== null) {
+          const dropDmm = toDeciMm(comp.clearDropAboveMm, `${comp.id}.clearDropAboveMm`);
+          maxYDmm = currentRailCenterY - dropDmm;
+          minYDmm = maxYDmm - thicknessDmm;
+        } else if (comp.clearOpeningAboveMm !== undefined) {
+          const openingDmm = toDeciMm(comp.clearOpeningAboveMm, `${comp.id}.clearOpeningAboveMm`);
+          maxYDmm = currentBottomFaceY - openingDmm;
+          minYDmm = maxYDmm - thicknessDmm;
+        } else if (comp.elevationMm !== undefined) {
+          minYDmm = toDeciMm(comp.elevationMm, `${comp.id}.elevationMm`);
+          maxYDmm = minYDmm + thicknessDmm;
+        } else if (comp.offsetFromBottomMm !== undefined) {
+          minYDmm = yBotTopDmm + toDeciMm(comp.offsetFromBottomMm, `${comp.id}.offsetFromBottomMm`);
+          maxYDmm = minYDmm + thicknessDmm;
+        } else {
+          const defaultOpeningDmm = 3500;
+          maxYDmm = currentBottomFaceY - defaultOpeningDmm;
+          minYDmm = maxYDmm - thicknessDmm;
+        }
+
+        currentBottomFaceY = minYDmm;
+
+        const partId = comp.partId || comp.id.toUpperCase().replace(/-/g, "_");
+        const adjLengthDmm = bay.clearWidthDmm - 20; // 1mm operating clearance per side
+
+        adjShelves.push({
+          id: partId,
+          bayIndex: bay.index,
+          role: PART_ROLES.ADJUSTABLE_SHELF,
+          materialCode: matCarcass,
+          lengthDmm: adjLengthDmm,
+          widthDmm: compDepthDmm,
+          thicknessDmm,
+          minXDmm: bay.minXDmm + 10,
+          maxXDmm: bay.maxXDmm - 10,
+          minYDmm,
+          maxYDmm,
+          minZDmm: zCarcassFrontDmm + 50,
+          maxZDmm: zCarcassFrontDmm + 50 + compDepthDmm,
+          orientation: ORIENTATIONS.HORIZONTAL_XZ,
+          edges: {
+            LENGTH_EDGE_1: edgeFrontDmm,
+            LENGTH_EDGE_2: edgeRearDmm,
+            WIDTH_EDGE_1: edgeFrontDmm,
+            WIDTH_EDGE_2: edgeFrontDmm,
+          },
+          sourceRuleIds: ["WR-003", "WR-008", "WR-013"],
+        });
+      }
+    }
+  }
+
+  // Push fixed shelves (ordered by bayIndex, then by Y descending)
+  fixedShelves.sort((a, b) => a.bayIndex - b.bayIndex || b.minYDmm - a.minYDmm);
+  for (const s of fixedShelves) {
+    parts.push(createPanel(s));
+  }
+
+  // Push adjustable shelves (ordered by bayIndex, then by Y ascending from bottom up)
+  adjShelves.sort((a, b) => a.bayIndex - b.bayIndex || a.minYDmm - b.minYDmm);
+  for (const s of adjShelves) {
+    parts.push(createPanel(s));
+  }
+
+  // 7. BACK_PANEL_01 (Back Panel)
+  // Engages into groove on all 4 sides with 1.0mm expansion gap at groove root
+  const engagementDmm = grvDepthDmm - 10;
+  const backPanelWDmm = internalCarcassWDmm + 2 * engagementDmm;
+  const backPanelHDmm = internalCarcassHDmm + 2 * engagementDmm;
+
+  // Groove channel runs along rear lip of thickness (grvDepthDmm)
+  const zBackGrooveChannelMinDmm = zCarcassRearDmm - grvDepthDmm - grvWidthDmm;
+  const backPanelAirGapDmm = Math.floor((grvWidthDmm - backTDmm) / 2);
+  const zBackPanelMinDmm = zBackGrooveChannelMinDmm + backPanelAirGapDmm;
 
   parts.push(
     createPanel({
@@ -414,10 +468,10 @@ export function buildStructuralPartGraph(furniSpec) {
       lengthDmm: backPanelHDmm,
       widthDmm: backPanelWDmm,
       thicknessDmm: backTDmm,
-      minXDmm: panelTDmm - 60,
-      maxXDmm: envWDmm - panelTDmm + 60,
-      minYDmm: yBotTopDmm - 60,
-      maxYDmm: yTopBottomDmm + 60,
+      minXDmm: panelTDmm - engagementDmm,
+      maxXDmm: envWDmm - panelTDmm + engagementDmm,
+      minYDmm: yBotTopDmm - engagementDmm,
+      maxYDmm: yTopBottomDmm + engagementDmm,
       minZDmm: zBackPanelMinDmm,
       maxZDmm: zBackPanelMinDmm + backTDmm,
       orientation: ORIENTATIONS.VERTICAL_XY,
@@ -432,13 +486,13 @@ export function buildStructuralPartGraph(furniSpec) {
     })
   );
 
-  // 11-14. DOOR_01 .. DOOR_04 (Hinged Doors)
+  // 8. DOOR_01 .. DOOR_N (Hinged Doors)
   let doorXCursorDmm = revLeftDmm;
   const doorMinYDmm = yPlinthTopDmm + revBotDmm;
   const doorMaxYDmm = doorMinYDmm + doorHDmm;
 
   for (let d = 1; d <= doorCount; d++) {
-    const doorId = `DOOR_0${d}`;
+    const doorId = `DOOR_${String(d).padStart(2, "0")}`;
     const minXDmm = doorXCursorDmm;
     const maxXDmm = minXDmm + doorWDmm;
 
@@ -471,17 +525,15 @@ export function buildStructuralPartGraph(furniSpec) {
     doorXCursorDmm = maxXDmm + revInterDmm;
   }
 
-  // 15-19. PLINTH STRUCTURE (5 parts)
-  const plinthWidthDmm = envWDmm - 2 * plinthSideInsetDmm; // 17000 dmm
-  const zPlinthFrontMinDmm = zCarcassFrontDmm + plinthRecessDmm; // 700 dmm
-  const zPlinthFrontMaxDmm = zPlinthFrontMinDmm + panelTDmm; // 880 dmm
-  const zPlinthRearMaxDmm = zCarcassRearDmm - plinthRecessDmm; // 5500 dmm (or 5800 - 200 = 5800-180) -> 5800 - 200 = 5600
-  // Standardized rear plinth rail sits at [5620, 5800]
-  const zPlinthRearMinDmm = 5620;
-  const zPlinthRearMaxDmmFixed = 5800;
-  const plinthSideLengthDmm = zPlinthRearMinDmm - zPlinthFrontMaxDmm; // 4740 dmm (474.0 mm)
+  // 9. PLINTH STRUCTURE
+  const plinthWidthDmm = envWDmm - 2 * plinthSideInsetDmm;
+  const zPlinthFrontMinDmm = zCarcassFrontDmm + plinthRecessDmm;
+  const zPlinthFrontMaxDmm = zPlinthFrontMinDmm + panelTDmm;
+  const zPlinthRearMaxDmm = zCarcassRearDmm - grvRearDatumDmm;
+  const zPlinthRearMinDmm = zPlinthRearMaxDmm - panelTDmm;
+  const plinthSideLengthDmm = zPlinthRearMinDmm - zPlinthFrontMaxDmm;
 
-  // 15. PLINTH_FRONT
+  // Plinth Front Fascia
   parts.push(
     createPanel({
       id: "PLINTH_FRONT",
@@ -507,7 +559,7 @@ export function buildStructuralPartGraph(furniSpec) {
     })
   );
 
-  // 16. PLINTH_REAR
+  // Plinth Rear Rail
   parts.push(
     createPanel({
       id: "PLINTH_REAR",
@@ -521,7 +573,7 @@ export function buildStructuralPartGraph(furniSpec) {
       minYDmm: yFloorDmm,
       maxYDmm: yPlinthTopDmm,
       minZDmm: zPlinthRearMinDmm,
-      maxZDmm: zPlinthRearMaxDmmFixed,
+      maxZDmm: zPlinthRearMaxDmm,
       orientation: ORIENTATIONS.VERTICAL_XY,
       edges: {
         LENGTH_EDGE_1: 0,
@@ -533,7 +585,7 @@ export function buildStructuralPartGraph(furniSpec) {
     })
   );
 
-  // 17. PLINTH_SIDE_L
+  // Plinth Left Side Return
   parts.push(
     createPanel({
       id: "PLINTH_SIDE_L",
@@ -559,7 +611,7 @@ export function buildStructuralPartGraph(furniSpec) {
     })
   );
 
-  // 18. PLINTH_SIDE_R
+  // Plinth Right Side Return
   parts.push(
     createPanel({
       id: "PLINTH_SIDE_R",
@@ -585,31 +637,61 @@ export function buildStructuralPartGraph(furniSpec) {
     })
   );
 
-  // 19. PLINTH_CROSS_C
-  parts.push(
-    createPanel({
-      id: "PLINTH_CROSS_C",
-      role: PART_ROLES.PLINTH_CROSS_STRETCHER,
-      materialCode: matCarcass,
-      lengthDmm: plinthSideLengthDmm,
-      widthDmm: plinthHDmm,
-      thicknessDmm: panelTDmm,
-      minXDmm: divMinXDmm,
-      maxXDmm: divMaxXDmm,
-      minYDmm: yFloorDmm,
-      maxYDmm: yPlinthTopDmm,
-      minZDmm: zPlinthFrontMaxDmm,
-      maxZDmm: zPlinthRearMinDmm,
-      orientation: ORIENTATIONS.VERTICAL_YZ,
-      edges: {
-        LENGTH_EDGE_1: 0,
-        LENGTH_EDGE_2: 0,
-        WIDTH_EDGE_1: 0,
-        WIDTH_EDGE_2: 0,
-      },
-      sourceRuleIds: ["WR-005", "WR-007"],
-    })
-  );
+  // Plinth Cross Stretchers (under each vertical divider)
+  if (dividers.length === 1) {
+    parts.push(
+      createPanel({
+        id: "PLINTH_CROSS_C",
+        role: PART_ROLES.PLINTH_CROSS_STRETCHER,
+        materialCode: matCarcass,
+        lengthDmm: plinthSideLengthDmm,
+        widthDmm: plinthHDmm,
+        thicknessDmm: panelTDmm,
+        minXDmm: dividers[0].minXDmm,
+        maxXDmm: dividers[0].maxXDmm,
+        minYDmm: yFloorDmm,
+        maxYDmm: yPlinthTopDmm,
+        minZDmm: zPlinthFrontMaxDmm,
+        maxZDmm: zPlinthRearMinDmm,
+        orientation: ORIENTATIONS.VERTICAL_YZ,
+        edges: {
+          LENGTH_EDGE_1: 0,
+          LENGTH_EDGE_2: 0,
+          WIDTH_EDGE_1: 0,
+          WIDTH_EDGE_2: 0,
+        },
+        sourceRuleIds: ["WR-005", "WR-007"],
+      })
+    );
+  } else if (dividers.length > 1) {
+    dividers.forEach((div, idx) => {
+      const stretcherId = `PLINTH_CROSS_${String(idx + 1).padStart(2, "0")}`;
+      parts.push(
+        createPanel({
+          id: stretcherId,
+          role: PART_ROLES.PLINTH_CROSS_STRETCHER,
+          materialCode: matCarcass,
+          lengthDmm: plinthSideLengthDmm,
+          widthDmm: plinthHDmm,
+          thicknessDmm: panelTDmm,
+          minXDmm: div.minXDmm,
+          maxXDmm: div.maxXDmm,
+          minYDmm: yFloorDmm,
+          maxYDmm: yPlinthTopDmm,
+          minZDmm: zPlinthFrontMaxDmm,
+          maxZDmm: zPlinthRearMinDmm,
+          orientation: ORIENTATIONS.VERTICAL_YZ,
+          edges: {
+            LENGTH_EDGE_1: 0,
+            LENGTH_EDGE_2: 0,
+            WIDTH_EDGE_1: 0,
+            WIDTH_EDGE_2: 0,
+          },
+          sourceRuleIds: ["WR-005", "WR-007"],
+        })
+      );
+    });
+  }
 
   // Four Approved Back Groove Operations
   const operations = [

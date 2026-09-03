@@ -1,0 +1,144 @@
+{
+  "schemaVersion": "furnispec/0.1",
+  "specId": "furnispec-shelf-mutation-01",
+  "revision": 1,
+  "status": "APPROVED",
+  "unit": "mm",
+  "furnitureType": "wardrobe",
+  "wardrobeType": "straight_hinged",
+  "constructionStyle": "CAP_STYLE",
+  "finishType": "melamine",
+  "qualificationStatus": "WORKSHOP_REVIEW_NOT_CNC_QUALIFIED",
+  "envelope": {
+    "widthMm": 1800.0,
+    "heightMm": 2400.0,
+    "depthMm": 600.0
+  },
+  "plinth": {
+    "heightMm": 100.0,
+    "frontRecessMm": 50.0,
+    "sideInsetMm": 50.0,
+    "sideInsetStatus": "ASSUMPTION_PENDING_BEKZOD_APPROVAL"
+  },
+  "carcass": {
+    "heightMm": 2300.0,
+    "depthMm": 580.0,
+    "panelThicknessMm": 18.0,
+    "backThicknessMm": 6.0,
+    "grooveWidthMm": 7.0,
+    "grooveDepthMm": 7.0,
+    "grooveRearDatumMm": 20.0
+  },
+  "bays": [
+    {
+      "id": "bay-01",
+      "index": 0,
+      "clearWidthMm": 873.0,
+      "components": [
+        {
+          "id": "shelf-fix-l1",
+          "type": "SHELF_FIXED",
+          "clearOpeningAboveMm": 350.0,
+          "thicknessMm": 18.0,
+          "depthMm": 560.0
+        },
+        {
+          "id": "rail-long-l1",
+          "type": "HANGING_RAIL_LONG",
+          "offsetBelowShelfMm": 100.0,
+          "targetClearDropMm": 1400.0
+        }
+      ]
+    },
+    {
+      "id": "bay-02",
+      "index": 1,
+      "clearWidthMm": 873.0,
+      "components": [
+        {
+          "id": "shelf-fix-r1",
+          "type": "SHELF_FIXED",
+          "clearOpeningAboveMm": 350.0,
+          "thicknessMm": 18.0,
+          "depthMm": 560.0
+        },
+        {
+          "id": "rail-short-r1",
+          "type": "HANGING_RAIL_SHORT",
+          "offsetBelowShelfMm": 100.0,
+          "targetClearDropMm": 900.0
+        },
+        {
+          "id": "shelf-adj-r3",
+          "type": "SHELF_ADJUSTABLE",
+          "clearDropAboveMm": 900.0,
+          "thicknessMm": 18.0,
+          "depthMm": 550.0
+        },
+        {
+          "id": "shelf-adj-r2",
+          "type": "SHELF_ADJUSTABLE",
+          "clearOpeningAboveMm": 400.0,
+          "thicknessMm": 18.0,
+          "depthMm": 550.0
+        }
+      ]
+    }
+  ],
+  "doors": {
+    "count": 4,
+    "thicknessMm": 18.0,
+    "bumperGapMm": 2.0,
+    "finishedWidthMm": 447.5,
+    "finishedHeightMm": 2296.0,
+    "reveals": {
+      "topMm": 2.0,
+      "bottomMm": 2.0,
+      "leftMm": 2.0,
+      "rightMm": 2.0,
+      "interDoorMm": 2.0
+    }
+  },
+  "materials": {
+    "carcass": {
+      "code": "MEL_WHITE_18",
+      "name": "18mm White Melamine Particleboard",
+      "thicknessMm": 18.0
+    },
+    "backPanel": {
+      "code": "HDF_WHITE_6",
+      "name": "6mm White HDF Backer",
+      "thicknessMm": 6.0
+    },
+    "fronts": {
+      "code": "MEL_WHITE_18",
+      "name": "18mm White Melamine Particleboard",
+      "thicknessMm": 18.0
+    }
+  },
+  "edgeBanding": {
+    "frontVisibleMm": 1.0,
+    "rearUnbandedMm": 0.0,
+    "doorPerimeterMm": 1.0
+  },
+  "hardware": {
+    "hinges": {
+      "brand": "Blum",
+      "series": "CLIP top BLUMOTION 110",
+      "status": "BLOCKED_PENDING_HARDWARE_APPROVAL"
+    },
+    "shelfPins": {
+      "system": "System 32",
+      "pinDiameterMm": 5.0,
+      "status": "BLOCKED_PENDING_HARDWARE_APPROVAL"
+    },
+    "joinery": {
+      "type": "Confirmat + Dowel",
+      "status": "BLOCKED_PENDING_HARDWARE_APPROVAL"
+    }
+  },
+  "machiningPolicy": {
+    "backGroove": "APPROVED",
+    "drilling": "BLOCKED_PENDING_HARDWARE_APPROVAL"
+  }
+}

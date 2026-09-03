@@ -234,17 +234,34 @@ export function validateFurniSpec(spec) {
             addError("UNSUPPORTED_COMPONENT_TYPE", `Unknown component type "${comp.type}".`, `${compPath}.type`);
           }
 
+          const internalCarcassHDmm = (carcassHDmm !== null && carcassTDmm !== null) ? carcassHDmm - 2 * carcassTDmm : null;
+
           if (comp.clearOpeningAboveMm !== undefined) {
-            checkPositiveDeciMm(comp.clearOpeningAboveMm, `${compPath}.clearOpeningAboveMm`, "clearOpeningAboveMm");
+            const opDmm = checkPositiveDeciMm(comp.clearOpeningAboveMm, `${compPath}.clearOpeningAboveMm`, "clearOpeningAboveMm");
+            if (opDmm !== null && internalCarcassHDmm !== null && opDmm >= internalCarcassHDmm) {
+              addError("COMPONENT_OUTSIDE_BAY", `clearOpeningAboveMm (${comp.clearOpeningAboveMm}mm) exceeds internal carcass height (${internalCarcassHDmm / 10}mm).`, `${compPath}.clearOpeningAboveMm`);
+            }
           }
           if (comp.clearDropAboveMm !== undefined) {
-            checkPositiveDeciMm(comp.clearDropAboveMm, `${compPath}.clearDropAboveMm`, "clearDropAboveMm");
+            const dropDmm = checkPositiveDeciMm(comp.clearDropAboveMm, `${compPath}.clearDropAboveMm`, "clearDropAboveMm");
+            if (dropDmm !== null && internalCarcassHDmm !== null && dropDmm >= internalCarcassHDmm) {
+              addError("COMPONENT_OUTSIDE_BAY", `clearDropAboveMm (${comp.clearDropAboveMm}mm) exceeds internal carcass height (${internalCarcassHDmm / 10}mm).`, `${compPath}.clearDropAboveMm`);
+            }
           }
           if (comp.thicknessMm !== undefined) {
             checkPositiveDeciMm(comp.thicknessMm, `${compPath}.thicknessMm`, "thicknessMm");
           }
           if (comp.depthMm !== undefined) {
-            checkPositiveDeciMm(comp.depthMm, `${compPath}.depthMm`, "depthMm");
+            const cDepthDmm = checkPositiveDeciMm(comp.depthMm, `${compPath}.depthMm`, "depthMm");
+            if (cDepthDmm !== null && carcassDDmm !== null && cDepthDmm > carcassDDmm) {
+              addError("SHELF_DEPTH_EXCEEDS_CARCASS", `Component depth (${comp.depthMm}mm) exceeds carcass depth (${carcass.depthMm}mm).`, `${compPath}.depthMm`);
+            }
+          }
+          if (comp.widthMm !== undefined && bayWDmm !== null) {
+            const cWidthDmm = checkPositiveDeciMm(comp.widthMm, `${compPath}.widthMm`, "widthMm");
+            if (cWidthDmm !== null && cWidthDmm > bayWDmm) {
+              addError("SHELF_WIDTH_EXCEEDS_BAY", `Component width (${comp.widthMm}mm) exceeds bay clear width (${bay.clearWidthMm}mm).`, `${compPath}.widthMm`);
+            }
           }
         });
       }

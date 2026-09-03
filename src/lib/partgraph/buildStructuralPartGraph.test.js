@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import fixture from "../furnispec/goldenWardrobe.fixture.json";
+import narrowFixture from "../furnispec/fixtures/narrowWardrobe.fixture.json";
+import wideFixture from "../furnispec/fixtures/wideWardrobe.fixture.json";
+import heightFixture from "../furnispec/fixtures/heightMutation.fixture.json";
+import shelfFixture from "../furnispec/fixtures/shelfMutation.fixture.json";
+
 import { buildStructuralPartGraph } from "./buildStructuralPartGraph.js";
 import { serializeCanonicalPartGraph } from "./serializePartGraph.js";
 import { validatePartGraph } from "./validatePartGraph.js";
+import { validateFurniSpec } from "../furnispec/validate.js";
 
-describe("Gate G2.2 — Deterministic Structural PartGraph Kernel Suite", () => {
+describe("Gate G2.2-R1 — Generalized Deterministic PartGraph Kernel Suite", () => {
   it("1. proves the Golden FurniSpec produces exactly 19 structural parts", () => {
     const partGraph = buildStructuralPartGraph(fixture);
     expect(partGraph.parts).toHaveLength(19);
@@ -58,7 +64,7 @@ describe("Gate G2.2 — Deterministic Structural PartGraph Kernel Suite", () => 
     expect(clone).toEqual(fixture);
   });
 
-  it("7. proves output part ordering is strictly stable", () => {
+  it("7. proves output part ordering is strictly stable and matches Golden Wardrobe IDs", () => {
     const expectedPartIds = [
       "CARC_TOP",
       "CARC_BOT",
@@ -172,62 +178,102 @@ describe("Gate G2.2 — Deterministic Structural PartGraph Kernel Suite", () => 
     expect(partGraph.qualificationStatus).not.toBe("CNC_QUALIFIED");
   });
 
-  it("18. proves invalid FurniSpec generates no PartGraph and throws an error", () => {
-    const badSpec = { ...fixture, envelope: { ...fixture.envelope, widthMm: 9999 } };
-    expect(() => buildStructuralPartGraph(badSpec)).toThrow();
+  it("18. proves narrow 1-bay 2-door wardrobe generates 0 dividers and 12 parts", () => {
+    const partGraph = buildStructuralPartGraph(narrowFixture);
+    expect(partGraph.parts).toHaveLength(12);
+    expect(partGraph.parts.filter((p) => p.role === "DIVIDER_PANEL")).toHaveLength(0);
+    expect(partGraph.parts.filter((p) => p.role === "DOOR_PANEL")).toHaveLength(2);
+    const val = validatePartGraph(partGraph);
+    expect(val.valid).toBe(true);
   });
 
-  it("19. proves unsupported decimal precision is rejected", () => {
-    const badPrecisionSpec = JSON.parse(JSON.stringify(fixture));
-    badPrecisionSpec.envelope.widthMm = 1800.55; // 2 decimal places
-    expect(() => buildStructuralPartGraph(badPrecisionSpec)).toThrow();
+  it("19. proves wide 3-bay 6-door wardrobe generates 2 dividers, 6 doors, and 2 plinth stretchers", () => {
+    const partGraph = buildStructuralPartGraph(wideFixture);
+    expect(partGraph.parts).toHaveLength(23);
+    expect(partGraph.parts.filter((p) => p.role === "DIVIDER_PANEL")).toHaveLength(2);
+    expect(partGraph.parts.filter((p) => p.role === "DOOR_PANEL")).toHaveLength(6);
+    expect(partGraph.parts.filter((p) => p.role === "PLINTH_CROSS_STRETCHER")).toHaveLength(2);
+    const val = validatePartGraph(partGraph);
+    expect(val.valid).toBe(true);
   });
 
-  it("20. proves alternative supported width (1200mm) recalculates parts without Golden-ID hardcoding", () => {
-    // 1200mm 2-bay wardrobe: 2 bays of (1200 - 3*18)/2 = 573mm, 2 doors of (1200 - 3*2)/2 = 597mm
-    const altSpec = {
+  it("20. proves height mutation (2100mm) recalculates all dependent Y coordinates", () => {
+    const partGraph = buildStructuralPartGraph(heightFixture);
+    const top = partGraph.parts.find((p) => p.id === "CARC_TOP");
+    expect(top.placement.maxYDmm).toBe(21000);
+    const sideL = partGraph.parts.find((p) => p.id === "CARC_SIDE_L");
+    expect(sideL.finished.lengthDmm).toBe(19640); // 2000 - 36 = 1964mm
+    const doors = partGraph.parts.filter((p) => p.role === "DOOR_PANEL");
+    for (const d of doors) {
+      expect(d.finished.lengthDmm).toBe(19960); // 2000 - 4 = 1996mm
+    }
+  });
+
+  it("21. proves moving one shelf (shelf mutation) changes only that shelf", () => {
+    const baseline = buildStructuralPartGraph(fixture);
+    const mutated = buildStructuralPartGraph(shelfFixture);
+
+    const baseAdj2 = baseline.parts.find((p) => p.id === "SHELF_ADJ_R2");
+    const mutAdj2 = mutated.parts.find((p) => p.id === "SHELF_ADJ_R2");
+
+    // In mutated, clearOpeningAboveMm is 400.0 instead of 350.0 (50mm lower: 6280 -> 5780)
+    expect(mutAdj2.placement.minYDmm).toBe(baseAdj2.placement.minYDmm - 500);
+
+    // Verify all other parts remain identical in placement and dimensions
+    for (const p of baseline.parts) {
+      if (p.id !== "SHELF_ADJ_R2") {
+        const mutPart = mutated.parts.find((mp) => mp.id === p.id);
+        expect(mutPart.placement).toEqual(p.placement);
+        expect(mutPart.finished).toEqual(p.finished);
+      }
+    }
+  });
+
+  it("22. proves changing depth changes dependent Z coordinates correctly", () => {
+    const depthSpec = {
       ...JSON.parse(JSON.stringify(fixture)),
-      specId: "furnispec-custom-1200",
-      envelope: {
-        widthMm: 1200.0,
-        heightMm: 2400.0,
-        depthMm: 600.0,
-      },
-      bays: [
-        {
-          id: "bay-01",
-          index: 0,
-          clearWidthMm: 573.0,
-          components: [],
-        },
-        {
-          id: "bay-02",
-          index: 1,
-          clearWidthMm: 573.0,
-          components: [],
-        },
-      ],
-      doors: {
-        count: 2,
-        thicknessMm: 18.0,
-        bumperGapMm: 2.0,
-        finishedWidthMm: 597.0,
-        finishedHeightMm: 2296.0,
-        reveals: {
-          topMm: 2.0,
-          bottomMm: 2.0,
-          leftMm: 2.0,
-          rightMm: 2.0,
-          interDoorMm: 2.0,
-        },
-      },
+      envelope: { ...fixture.envelope, depthMm: 700.0 },
+      carcass: { ...fixture.carcass, depthMm: 680.0 },
     };
+    const partGraph = buildStructuralPartGraph(depthSpec);
+    const top = partGraph.parts.find((p) => p.id === "CARC_TOP");
+    expect(top.placement.maxZDmm).toBe(7000);
+    const sideL = partGraph.parts.find((p) => p.id === "CARC_SIDE_L");
+    expect(sideL.finished.widthDmm).toBe(6800);
+  });
 
-    const altPartGraph = buildStructuralPartGraph(altSpec);
-    expect(altPartGraph.parts).toHaveLength(17); // 2 fewer doors
-    const top = altPartGraph.parts.find((p) => p.id === "CARC_TOP");
-    expect(top.finished.lengthDmm).toBe(12000); // 1200.0 mm
-    const d1 = altPartGraph.parts.find((p) => p.id === "DOOR_01");
-    expect(d1.finished.widthDmm).toBe(5970); // 597.0 mm
+  it("23. proves invalid inputs fail with structured errors containing { code, message, path }", () => {
+    // A. Width mismatch
+    const badWidth = { ...JSON.parse(JSON.stringify(fixture)), envelope: { ...fixture.envelope, widthMm: 1900.0 } };
+    const resA = validateFurniSpec(badWidth);
+    expect(resA.valid).toBe(false);
+    expect(resA.errors.some((e) => e.code === "WIDTH_MISMATCH" && e.path === "envelope.widthMm")).toBe(true);
+
+    // B. Sub-0.1-mm precision
+    const badPrec = { ...JSON.parse(JSON.stringify(fixture)), envelope: { ...fixture.envelope, widthMm: 1800.25 } };
+    const resB = validateFurniSpec(badPrec);
+    expect(resB.valid).toBe(false);
+    expect(resB.errors.some((e) => e.code === "UNSUPPORTED_DIMENSION_PRECISION")).toBe(true);
+
+    // C. Shelf depth exceeds carcass
+    const badShelfDepth = JSON.parse(JSON.stringify(fixture));
+    badShelfDepth.bays[0].components[0].depthMm = 900.0;
+    const resC = validateFurniSpec(badShelfDepth);
+    expect(resC.valid).toBe(false);
+    expect(resC.errors.some((e) => e.code === "SHELF_DEPTH_EXCEEDS_CARCASS")).toBe(true);
+
+    // D. Duplicate component ID
+    const dupComp = JSON.parse(JSON.stringify(fixture));
+    dupComp.bays[1].components[0].id = dupComp.bays[0].components[0].id;
+    const resD = validateFurniSpec(dupComp);
+    expect(resD.valid).toBe(false);
+    expect(resD.errors.some((e) => e.code === "DUPLICATE_ID")).toBe(true);
+
+    // E. Door height mismatch
+    const badDoorH = JSON.parse(JSON.stringify(fixture));
+    badDoorH.doors.finishedHeightMm = 2200.0;
+    const resE = validateFurniSpec(badDoorH);
+    expect(resE.valid).toBe(false);
+    expect(resE.errors.some((e) => e.code === "DOOR_HEIGHT_MISMATCH")).toBe(true);
   });
 });
