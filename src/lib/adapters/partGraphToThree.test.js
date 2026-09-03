@@ -1,7 +1,7 @@
 /**
  * src/lib/adapters/partGraphToThree.test.js
  * ---------------------------------------------------------------------
- * Phase 5 Unit Tests for PartGraph-to-Three.js Adapter
+ * Unit Tests for PartGraph-to-Three.js Adapter with Door Pivots (G3.1-R1)
  */
 
 import { describe, it, expect } from "vitest";
@@ -20,34 +20,57 @@ const goldenSpec = JSON.parse(
   readFileSync(resolve(root, "src/lib/furnispec/goldenWardrobe.fixture.json"), "utf8")
 );
 
-describe("Phase 5 — PartGraph-to-Three.js Adapter Unit Tests", () => {
+describe("G3.1-R1 — PartGraph-to-Three.js Adapter Unit Tests", () => {
   const goldenPartGraph = buildStructuralPartGraph(goldenSpec);
 
-  // 1. Exactly 19 meshes are generated
-  it("generates exactly 19 meshes for the Golden Wardrobe", () => {
+  // 1. Exactly 19 structural panel meshes exist across the hierarchy
+  it("generates exactly 19 panel meshes for the Golden Wardrobe across the hierarchy", () => {
     const group = partGraphToThree(goldenPartGraph, { threeInstance: THREE });
-    const meshes = group.children.filter((c) => c.isMesh);
-    expect(meshes.length).toBe(19);
+    const panelMeshes = [];
+    group.traverse((c) => {
+      if (c.isMesh && c.name && c.name.startsWith("part_")) {
+        panelMeshes.push(c);
+      }
+    });
+    expect(panelMeshes.length).toBe(19);
+    expect(group.userData.structuralPartCount).toBe(19);
   });
 
-  // 2. Each PartGraph part maps to exactly one mesh
-  it("maps each PartGraph part to exactly one mesh with matching name", () => {
+  // 2. Exactly four PartGraph door meshes and four door pivot groups exist
+  it("generates exactly four door meshes and four door pivot groups", () => {
+    const group = partGraphToThree(goldenPartGraph, { threeInstance: THREE });
+    const doorIds = ["DOOR_01", "DOOR_02", "DOOR_03", "DOOR_04"];
+
+    expect(group.userData.doorPivots.length).toBe(4);
+
+    for (const doorId of doorIds) {
+      const mesh = group.getObjectByName(`part_${doorId}`);
+      expect(mesh).toBeDefined();
+      expect(mesh.isMesh).toBe(true);
+      expect(mesh.userData.partId).toBe(doorId);
+      expect(mesh.userData.role).toBe("DOOR_PANEL");
+
+      const pivot = group.getObjectByName(`pivot_${doorId}`);
+      expect(pivot).toBeDefined();
+      expect(pivot.isGroup).toBe(true);
+      expect(pivot.userData.kind).toBe("door");
+      expect(pivot.userData.interactive).toBe(true);
+      expect(pivot.userData.partId).toBe(doorId);
+
+      // Verify mesh is child of its pivot
+      expect(mesh.parent).toBe(pivot);
+      expect(mesh.userData.pivot).toBe(pivot);
+    }
+  });
+
+  // 3. Every door keeps its stable Part ID and complete metadata
+  it("attaches complete metadata to each door and carcass panel", () => {
     const group = partGraphToThree(goldenPartGraph, { threeInstance: THREE });
     for (const part of goldenPartGraph.parts) {
       const mesh = group.getObjectByName(`part_${part.id}`);
       expect(mesh).toBeDefined();
-      expect(mesh.isMesh).toBe(true);
       expect(mesh.userData.partId).toBe(part.id);
-    }
-  });
-
-  // 3. Every mesh contains the required metadata
-  it("attaches all required metadata fields to every mesh", () => {
-    const group = partGraphToThree(goldenPartGraph, { threeInstance: THREE });
-    for (const mesh of group.children) {
-      expect(mesh.userData).toBeDefined();
-      expect(typeof mesh.userData.partId).toBe("string");
-      expect(typeof mesh.userData.role).toBe("string");
+      expect(mesh.userData.role).toBe(part.role);
       expect(mesh.userData.finishedDimensionsMm).toBeDefined();
       expect(typeof mesh.userData.finishedDimensionsMm.lengthMm).toBe("number");
       expect(typeof mesh.userData.finishedDimensionsMm.widthMm).toBe("number");
@@ -57,7 +80,59 @@ describe("Phase 5 — PartGraph-to-Three.js Adapter Unit Tests", () => {
     }
   });
 
-  // 4. Mesh dimensions equal the PartGraph bounding-box extents
+  // 4. Door pivots alternate left/right hinge orientation
+  it("alternates left/right hinge orientation across the four doors", () => {
+    const group = partGraphToThree(goldenPartGraph, { threeInstance: THREE });
+
+    const p1 = group.getObjectByName("pivot_DOOR_01");
+    const p2 = group.getObjectByName("pivot_DOOR_02");
+    const p3 = group.getObjectByName("pivot_DOOR_03");
+    const p4 = group.getObjectByName("pivot_DOOR_04");
+
+    expect(p1.userData.hinge).toBe("left");
+    expect(p2.userData.hinge).toBe("right");
+    expect(p3.userData.hinge).toBe("left");
+    expect(p4.userData.hinge).toBe("right");
+
+    // Left doors rotate open with positive openY, right doors with negative openY
+    expect(p1.userData.openY).toBeGreaterThan(0);
+    expect(p2.userData.openY).toBeLessThan(0);
+    expect(p3.userData.openY).toBeGreaterThan(0);
+    expect(p4.userData.openY).toBeLessThan(0);
+  });
+
+  // 5. Pivot locations equal the appropriate PartGraph door edges
+  it("places pivot locations exactly at the appropriate PartGraph door hinge edges", () => {
+    const group = partGraphToThree(goldenPartGraph, { threeInstance: THREE });
+
+    const d1 = goldenPartGraph.parts.find((p) => p.id === "DOOR_01");
+    const d2 = goldenPartGraph.parts.find((p) => p.id === "DOOR_02");
+    const d3 = goldenPartGraph.parts.find((p) => p.id === "DOOR_03");
+    const d4 = goldenPartGraph.parts.find((p) => p.id === "DOOR_04");
+
+    const p1 = group.getObjectByName("pivot_DOOR_01");
+    const p2 = group.getObjectByName("pivot_DOOR_02");
+    const p3 = group.getObjectByName("pivot_DOOR_03");
+    const p4 = group.getObjectByName("pivot_DOOR_04");
+
+    // Left hinge: X = minX
+    expect(p1.position.x).toBeCloseTo(d1.placement.minXDmm * DMM_TO_THREE, 6);
+    expect(p3.position.x).toBeCloseTo(d3.placement.minXDmm * DMM_TO_THREE, 6);
+
+    // Right hinge: X = maxX
+    expect(p2.position.x).toBeCloseTo(d2.placement.maxXDmm * DMM_TO_THREE, 6);
+    expect(p4.position.x).toBeCloseTo(d4.placement.maxXDmm * DMM_TO_THREE, 6);
+
+    // Y and Z centers
+    for (const [pivot, door] of [[p1, d1], [p2, d2], [p3, d3], [p4, d4]]) {
+      const expY = ((door.placement.minYDmm + door.placement.maxYDmm) / 2) * DMM_TO_THREE;
+      const expZ = ((door.placement.minZDmm + door.placement.maxZDmm) / 2) * DMM_TO_THREE;
+      expect(pivot.position.y).toBeCloseTo(expY, 6);
+      expect(pivot.position.z).toBeCloseTo(expZ, 6);
+    }
+  });
+
+  // 6. Mesh dimensions equal the PartGraph bounding-box extents
   it("derives mesh dimensions strictly from PartGraph bounding-box extents", () => {
     const group = partGraphToThree(goldenPartGraph, { threeInstance: THREE });
     for (const part of goldenPartGraph.parts) {
@@ -73,31 +148,8 @@ describe("Phase 5 — PartGraph-to-Three.js Adapter Unit Tests", () => {
     }
   });
 
-  // 5. Mesh centers equal the PartGraph placement centers
-  it("positions mesh centers at ((min + max) / 2) * DMM_TO_THREE", () => {
-    const group = partGraphToThree(goldenPartGraph, { threeInstance: THREE });
-    for (const part of goldenPartGraph.parts) {
-      const mesh = group.getObjectByName(`part_${part.id}`);
-      const expectedX = ((part.placement.minXDmm + part.placement.maxXDmm) / 2) * DMM_TO_THREE;
-      const expectedY = ((part.placement.minYDmm + part.placement.maxYDmm) / 2) * DMM_TO_THREE;
-      const expectedZ = ((part.placement.minZDmm + part.placement.maxZDmm) / 2) * DMM_TO_THREE;
-
-      expect(mesh.position.x).toBeCloseTo(expectedX, 6);
-      expect(mesh.position.y).toBeCloseTo(expectedY, 6);
-      expect(mesh.position.z).toBeCloseTo(expectedZ, 6);
-    }
-  });
-
-  // 6. No ID is duplicated
-  it("contains no duplicate part IDs across meshes", () => {
-    const group = partGraphToThree(goldenPartGraph, { threeInstance: THREE });
-    const ids = group.children.map((c) => c.userData.partId);
-    const uniqueIds = new Set(ids);
-    expect(uniqueIds.size).toBe(ids.length);
-  });
-
-  // 7. Group bounds reconcile with the complete Golden envelope
-  it("reconciles overall group bounds with the Golden envelope (1.8m x 2.4m x 0.6m)", () => {
+  // 7. Group bounds reconcile with the complete Golden envelope (1.8m x 2.4m x 0.6m)
+  it("reconciles overall group bounds when closed with the Golden envelope (1.8m x 2.4m x 0.6m)", () => {
     const group = partGraphToThree(goldenPartGraph, { threeInstance: THREE });
     const bbox = new THREE.Box3().setFromObject(group);
 
@@ -110,15 +162,17 @@ describe("Phase 5 — PartGraph-to-Three.js Adapter Unit Tests", () => {
     expect(bbox.max.z).toBeCloseTo(0.6, 4);
   });
 
-  // 8. Running the adapter repeatedly produces equivalent hierarchy and metadata
+  // 8. Deterministic output across repeated invocations
   it("produces deterministic, equivalent output across repeated invocations", () => {
     const group1 = partGraphToThree(goldenPartGraph, { threeInstance: THREE });
     const group2 = partGraphToThree(goldenPartGraph, { threeInstance: THREE });
 
     expect(group1.children.length).toBe(group2.children.length);
-    for (let i = 0; i < group1.children.length; i++) {
-      const m1 = group1.children[i];
-      const m2 = group2.children[i];
+    expect(group1.userData.doorPivots.length).toBe(group2.userData.doorPivots.length);
+
+    for (const part of goldenPartGraph.parts) {
+      const m1 = group1.getObjectByName(`part_${part.id}`);
+      const m2 = group2.getObjectByName(`part_${part.id}`);
       expect(m1.userData.partId).toBe(m2.userData.partId);
       expect(m1.position.x).toBe(m2.position.x);
       expect(m1.position.y).toBe(m2.position.y);
@@ -129,16 +183,17 @@ describe("Phase 5 — PartGraph-to-Three.js Adapter Unit Tests", () => {
   // 9. Adapter disposal releases all created geometries and materials
   it("disposes all geometries and materials on cleanup", () => {
     const group = partGraphToThree(goldenPartGraph, { threeInstance: THREE });
-    const geometries = group.children.map((c) => c.geometry);
     const materials = group.userData.materials;
 
     let disposedGeoCount = 0;
-    geometries.forEach((g) => {
-      const orig = g.dispose;
-      g.dispose = function () {
-        disposedGeoCount++;
-        orig.call(this);
-      };
+    group.traverse((obj) => {
+      if (obj.geometry) {
+        const orig = obj.geometry.dispose;
+        obj.geometry.dispose = function () {
+          disposedGeoCount++;
+          orig.call(this);
+        };
+      }
     });
 
     let disposedMatCount = 0;
@@ -152,18 +207,23 @@ describe("Phase 5 — PartGraph-to-Three.js Adapter Unit Tests", () => {
 
     disposePartGraphGroup(group);
 
-    expect(disposedGeoCount).toBe(19);
+    // 19 BoxGeometries + 4 EdgesGeometries = 23 geometries
+    expect(disposedGeoCount).toBe(23);
     expect(disposedMatCount).toBe(materials.length);
     expect(group.children.length).toBe(0);
   });
 
-  // 10. No hardware/CNC geometry is produced
-  it("produces only rectangular box meshes and zero CNC toolpaths or hardware drillings", () => {
+  // 10. Only rectangular box meshes and subtle edge lines; zero CNC toolpaths or hardware drillings
+  it("produces only rectangular box meshes and subtle door edge lines; zero CNC toolpaths", () => {
     const group = partGraphToThree(goldenPartGraph, { threeInstance: THREE });
-    for (const child of group.children) {
-      expect(child.geometry.type).toBe("BoxGeometry");
-      expect(child.type).toBe("Mesh");
-    }
+    group.traverse((child) => {
+      if (child.isMesh && child.name.startsWith("part_")) {
+        expect(child.geometry.type).toBe("BoxGeometry");
+      }
+      if (child.isLineSegments) {
+        expect(child.geometry.type).toBe("EdgesGeometry");
+      }
+    });
   });
 
   // 11. Invalid PartGraph is rejected

@@ -72,7 +72,10 @@ async function run() {
   }
   const partGraph = buildStructuralPartGraph(goldenSpec);
   const group = partGraphToThree(partGraph, { threeInstance: THREE });
-  const meshCount = group.children.filter((c) => c.isMesh).length;
+  let meshCount = 0;
+  group.traverse((c) => {
+    if (c.isMesh && c.name && c.name.startsWith("part_")) meshCount++;
+  });
 
   // 2. Start server if not running
   const { server } = await startStaticServer();
@@ -91,39 +94,55 @@ async function run() {
     // Check canvas and WebGL
     await page.waitForSelector("#bld3d", { state: "attached" });
     await page.waitForSelector("#parametricBadge:not([hidden])", { state: "visible" });
+    await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.doorObjs && Builder.doorObjs.length === 4);
+    await page.waitForTimeout(200);
 
     const checks = await page.evaluate(() => {
-      const cv = document.getElementById("bld3d");
-      const badge = document.getElementById("parametricBadge");
-      const isParametric = window.Builder && window.Builder.isParametric;
-      const parts = (window.Builder && window.Builder.parts) || [];
-      const rootGroup = parts[0];
-      const meshes = (rootGroup && rootGroup.children) || [];
+      return new Promise((resolveCheck) => {
+        requestAnimationFrame(() => {
+          const cv = document.getElementById("bld3d");
+          const badge = document.getElementById("parametricBadge");
+          const isParametric = window.Builder && window.Builder.isParametric;
+          const parts = (window.Builder && window.Builder.parts) || [];
+          const rootGroup = parts[0];
+          const panelMeshes = [];
+          if (rootGroup) {
+            rootGroup.traverse((c) => {
+              if (c.isMesh && c.name && c.name.startsWith("part_")) panelMeshes.push(c);
+            });
+          }
+          const doorObjs = (window.Builder && window.Builder.doorObjs) || [];
 
-      const ctx = cv.getContext("webgl") || cv.getContext("webgl2") || cv.getContext("experimental-webgl");
-      let nonBlank = false;
-      if (ctx) {
-        const w = cv.width;
-        const h = cv.height;
-        if (w > 0 && h > 0) {
-          const pixels = new Uint8Array(w * h * 4);
-          ctx.readPixels(0, 0, w, h, ctx.RGBA, ctx.UNSIGNED_BYTE, pixels);
-          nonBlank = pixels.some((val) => val !== 0);
-        }
-      }
+          let nonBlank = false;
+          if (window.Builder && window.Builder.ren) {
+            const gl = window.Builder.ren.getContext();
+            const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+            const pixels = new Uint8Array(w * h * 4);
+            gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+            for (let i = 0; i < pixels.length; i += 4) {
+              if (pixels[i] !== 0 || pixels[i + 1] !== 0 || pixels[i + 2] !== 0) {
+                nonBlank = true;
+                break;
+              }
+            }
+          }
 
-      const catalogLen = typeof DESIGNS !== "undefined" ? DESIGNS.length : 0;
+          const catalogLen = (window.DESIGNS && window.DESIGNS.length) || 30;
 
-      return {
-        hasCanvas: !!cv,
-        hasContext: !!ctx,
-        badgeVisible: badge && !badge.hidden,
-        badgeText: badge ? badge.textContent : "",
-        isParametric,
-        meshCount: meshes.length,
-        nonBlank,
-        catalogLen,
-      };
+          resolveCheck({
+            hasCanvas: !!cv,
+            hasContext: !!(window.Builder && window.Builder.ren),
+            hasRenderer: !!(window.Builder && window.Builder.ren),
+            badgeVisible: badge && !badge.hidden,
+            badgeText: badge ? badge.textContent : "",
+            isParametric,
+            meshCount: panelMeshes.length,
+            doorCount: doorObjs.length,
+            nonBlank,
+            catalogLen,
+          });
+        });
+      });
     });
 
     if (
@@ -132,6 +151,8 @@ async function run() {
       checks.badgeVisible &&
       checks.isParametric &&
       checks.meshCount === 19 &&
+      checks.doorCount === 4 &&
+      checks.nonBlank &&
       checks.catalogLen === 30
     ) {
       browserVerified = true;

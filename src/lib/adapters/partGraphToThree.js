@@ -62,6 +62,12 @@ export function createPartGraphMaterials(threeInstance = THREE) {
       metalness: 0.1,
       name: "mat_plinth_fascia",
     }),
+    EDGE: new threeInstance.LineBasicMaterial({
+      color: 0x24221f,
+      transparent: true,
+      opacity: 0.35,
+      name: "mat_door_edge",
+    }),
     DEFAULT: new threeInstance.MeshStandardMaterial({
       color: 0xd9d5cb,
       roughness: 0.5,
@@ -129,6 +135,11 @@ export function partGraphToThree(partGraph, options = {}) {
   // Track created materials for recursive disposal
   const allocatedMaterials = Object.values(materials);
 
+  const doorParts = partGraph.parts.filter(
+    (p) => p.role === "DOOR_PANEL" || (typeof p.id === "string" && p.id.startsWith("DOOR_"))
+  );
+  const doorPivots = [];
+
   for (const part of partGraph.parts) {
     const { placement, finished, id, role } = part;
     if (!placement) {
@@ -154,46 +165,122 @@ export function partGraphToThree(partGraph, options = {}) {
     const mesh = new T.Mesh(geometry, material);
 
     mesh.name = `part_${id}`;
-    mesh.position.set(
-      centerXDmm * DMM_TO_THREE,
-      centerYDmm * DMM_TO_THREE,
-      centerZDmm * DMM_TO_THREE
-    );
     mesh.castShadow = true;
     mesh.receiveShadow = true;
 
-    // Attach required metadata
-    mesh.userData = {
-      partId: id,
-      role,
-      finishedDimensionsMm: finished
-        ? {
-            lengthMm: finished.lengthDmm / 10,
-            widthMm: finished.widthDmm / 10,
-            thicknessMm: finished.thicknessDmm / 10,
-          }
-        : null,
-      placementDmm: {
-        minXDmm: placement.minXDmm,
-        maxXDmm: placement.maxXDmm,
-        minYDmm: placement.minYDmm,
-        maxYDmm: placement.maxYDmm,
-        minZDmm: placement.minZDmm,
-        maxZDmm: placement.maxZDmm,
-      },
-      sourceSpecId: partGraph.sourceSpecId || null,
-      interactive: true,
-    };
+    const isDoor = role === "DOOR_PANEL" || (typeof id === "string" && id.startsWith("DOOR_"));
 
-    rootGroup.add(mesh);
+    if (isDoor) {
+      // Add subtle edge definition to make door leaf boundaries clearly distinct
+      const edgeGeometry = new T.EdgesGeometry(geometry);
+      const edgeLine = new T.LineSegments(edgeGeometry, materials.EDGE);
+      edgeLine.name = `edges_${id}`;
+      mesh.add(edgeLine);
+
+      const doorIdx = doorParts.indexOf(part);
+      const isLeftHinged = doorIdx % 2 === 0;
+      const hinge = isLeftHinged ? "left" : "right";
+
+      // Hinge position derived strictly from bounding box edge
+      const pivotX = isLeftHinged
+        ? placement.minXDmm * DMM_TO_THREE
+        : placement.maxXDmm * DMM_TO_THREE;
+      const pivotY = centerYDmm * DMM_TO_THREE;
+      const pivotZ = centerZDmm * DMM_TO_THREE;
+
+      // In PartGraph space (+Z rearward), front is towards -Z;
+      // left door opens outward towards -Z with +openY,
+      // right door opens outward towards -Z with -openY.
+      const openY = isLeftHinged ? Math.PI * 0.55 : -Math.PI * 0.55;
+
+      const pivot = new T.Group();
+      pivot.name = `pivot_${id}`;
+      pivot.position.set(pivotX, pivotY, pivotZ);
+      pivot.userData = {
+        interactive: true,
+        kind: "door",
+        openY,
+        cur: 0,
+        base: 0,
+        hover: 0,
+        suppress: 0,
+        partId: id,
+        hinge,
+      };
+
+      // Door mesh relative to its hinge pivot
+      const meshRelX = isLeftHinged ? widthThree / 2 : -widthThree / 2;
+      mesh.position.set(meshRelX, 0, 0);
+
+      // Attach required metadata to mesh
+      mesh.userData = {
+        partId: id,
+        role,
+        finishedDimensionsMm: finished
+          ? {
+              lengthMm: finished.lengthDmm / 10,
+              widthMm: finished.widthDmm / 10,
+              thicknessMm: finished.thicknessDmm / 10,
+            }
+          : null,
+        placementDmm: {
+          minXDmm: placement.minXDmm,
+          maxXDmm: placement.maxXDmm,
+          minYDmm: placement.minYDmm,
+          maxYDmm: placement.maxYDmm,
+          minZDmm: placement.minZDmm,
+          maxZDmm: placement.maxZDmm,
+        },
+        sourceSpecId: partGraph.sourceSpecId || null,
+        interactive: true,
+        pivot,
+        hinge,
+      };
+
+      pivot.add(mesh);
+      rootGroup.add(pivot);
+      doorPivots.push(pivot);
+    } else {
+      mesh.position.set(
+        centerXDmm * DMM_TO_THREE,
+        centerYDmm * DMM_TO_THREE,
+        centerZDmm * DMM_TO_THREE
+      );
+
+      mesh.userData = {
+        partId: id,
+        role,
+        finishedDimensionsMm: finished
+          ? {
+              lengthMm: finished.lengthDmm / 10,
+              widthMm: finished.widthDmm / 10,
+              thicknessMm: finished.thicknessDmm / 10,
+            }
+          : null,
+        placementDmm: {
+          minXDmm: placement.minXDmm,
+          maxXDmm: placement.maxXDmm,
+          minYDmm: placement.minYDmm,
+          maxYDmm: placement.maxYDmm,
+          minZDmm: placement.minZDmm,
+          maxZDmm: placement.maxZDmm,
+        },
+        sourceSpecId: partGraph.sourceSpecId || null,
+        interactive: true,
+      };
+
+      rootGroup.add(mesh);
+    }
   }
 
-  // Attach disposal helper directly to group
+  // Attach disposal helper and door pivots directly to group
   rootGroup.userData = {
     sourceSpecId: partGraph.sourceSpecId,
     partGraphVersion: partGraph.partGraphVersion,
     structuralPartCount: partGraph.parts.length,
     materials: allocatedMaterials,
+    materialMap: materials,
+    doorPivots,
     dispose: () => disposePartGraphGroup(rootGroup),
   };
 
@@ -221,16 +308,14 @@ export function disposePartGraphGroup(group) {
   const materialsToDispose = new Set();
 
   group.traverse((obj) => {
-    if (obj.isMesh) {
-      if (obj.geometry && typeof obj.geometry.dispose === "function") {
-        obj.geometry.dispose();
-      }
-      if (obj.material) {
-        if (Array.isArray(obj.material)) {
-          obj.material.forEach((m) => m && materialsToDispose.add(m));
-        } else {
-          materialsToDispose.add(obj.material);
-        }
+    if (obj.geometry && typeof obj.geometry.dispose === "function") {
+      obj.geometry.dispose();
+    }
+    if (obj.material) {
+      if (Array.isArray(obj.material)) {
+        obj.material.forEach((m) => m && materialsToDispose.add(m));
+      } else {
+        materialsToDispose.add(obj.material);
       }
     }
   });

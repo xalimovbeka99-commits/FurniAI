@@ -389,8 +389,8 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
     expect(hasTechnicalLog, `expected a technical console.error; got: ${JSON.stringify(consoleErrors)}`).toBe(true);
   });
 
-  test.describe("G3.1 Golden Parametric Builder in existing 3D Builder", () => {
-    test("opens #/build/golden-parametric and renders 19 meshes in existing #bld3d canvas", async ({ page }) => {
+  test.describe("G3.1-R1 Golden Parametric Builder — Visibly Functional", () => {
+    test("opens #/build/golden-parametric, renders 19 panel meshes, 4 door pivots, and non-blank GPU pixels", async ({ page }) => {
       await page.goto("/#/build/golden-parametric");
       await expect(page.locator("#view-builder")).toBeVisible();
       await expect(page.locator("#bld3d")).toBeAttached();
@@ -408,13 +408,28 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
 
       const state = await page.evaluate(() => {
         const rootGroup = Builder.parts[0];
-        const meshes = (rootGroup && rootGroup.children) || [];
-        const partIds = meshes.map((m) => m.userData.partId);
+        const panelMeshes = [];
+        rootGroup.traverse((c) => {
+          if (c.isMesh && c.name && c.name.startsWith("part_")) {
+            panelMeshes.push(c);
+          }
+        });
+        const partIds = panelMeshes.map((m) => m.userData.partId);
+        const doorPivots = (Builder.doorObjs || []).map((p) => ({
+          name: p.name,
+          kind: p.userData.kind,
+          hinge: p.userData.hinge,
+          partId: p.userData.partId,
+          openY: p.userData.openY,
+          base: p.userData.base,
+        }));
+
         return {
           isParametric: Builder.isParametric,
           hasRenderer: !!Builder.ren,
-          meshCount: meshes.length,
+          meshCount: panelMeshes.length,
           partIds,
+          doorPivots,
         };
       });
 
@@ -423,11 +438,136 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
       expect(state.meshCount).toBe(19);
       expect(new Set(state.partIds).size).toBe(19);
 
+      // Exactly 4 door pivots with alternating hinge orientation
+      expect(state.doorPivots.length).toBe(4);
+      expect(state.doorPivots[0].partId).toBe("DOOR_01");
+      expect(state.doorPivots[0].hinge).toBe("left");
+      expect(state.doorPivots[1].partId).toBe("DOOR_02");
+      expect(state.doorPivots[1].hinge).toBe("right");
+      expect(state.doorPivots[2].partId).toBe("DOOR_03");
+      expect(state.doorPivots[2].hinge).toBe("left");
+      expect(state.doorPivots[3].partId).toBe("DOOR_04");
+      expect(state.doorPivots[3].hinge).toBe("right");
+
       // Verify non-blank GPU pixels
       await page.waitForTimeout(200);
       const pixelResult = await readBuilderCanvasPixels(page);
       expect(pixelResult.timedOut).toBe(false);
       expect(pixelResult.nonBlankFraction, "parametric model must produce non-blank pixels").toBeGreaterThan(0.05);
+    });
+
+    test("clicking an individual door toggles only that door and animates its rotation", async ({ page }) => {
+      await page.goto("/#/build/golden-parametric");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.doorObjs && Builder.doorObjs.length === 4);
+
+      // Toggle DOOR_01 directly via clickPick target logic
+      await page.evaluate(() => {
+        const door1Mesh = Builder.scene.getObjectByName("part_DOOR_01");
+        const target = door1Mesh.userData.pivot || door1Mesh;
+        target.userData.base = target.userData.base ? 0 : 1;
+      });
+
+      // Allow frames to animate
+      await page.waitForTimeout(300);
+
+      const doorStates = await page.evaluate(() => {
+        return Builder.doorObjs.map((p) => ({
+          partId: p.userData.partId,
+          base: p.userData.base,
+          cur: p.userData.cur,
+          rotY: p.rotation.y,
+        }));
+      });
+
+      // DOOR_01 must be open/animating, others must remain closed at base=0
+      expect(doorStates[0].base).toBe(1);
+      expect(doorStates[0].cur).toBeGreaterThan(0.5);
+      expect(Math.abs(doorStates[0].rotY)).toBeGreaterThan(0.5);
+
+      expect(doorStates[1].base).toBe(0);
+      expect(doorStates[1].cur).toBe(0);
+      expect(doorStates[2].base).toBe(0);
+      expect(doorStates[2].cur).toBe(0);
+      expect(doorStates[3].base).toBe(0);
+      expect(doorStates[3].cur).toBe(0);
+    });
+
+    test("global Open / close doors button opens and closes all four doors", async ({ page }) => {
+      await page.goto("/#/build/golden-parametric");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.doorObjs && Builder.doorObjs.length === 4);
+
+      // Click the global toggle button
+      await page.locator("#toggle-doors").click();
+      await page.waitForTimeout(400);
+
+      let states = await page.evaluate(() =>
+        Builder.doorObjs.map((p) => ({ base: p.userData.base, cur: p.userData.cur, rotY: p.rotation.y }))
+      );
+
+      // All 4 doors must have base=1 and non-zero rotation
+      for (let i = 0; i < 4; i++) {
+        expect(states[i].base).toBe(1);
+        expect(states[i].cur).toBeGreaterThan(0.8);
+        expect(Math.abs(states[i].rotY)).toBeGreaterThan(0.8);
+      }
+
+      // Click again to close all doors
+      await page.locator("#toggle-doors").click();
+      await page.waitForTimeout(400);
+
+      states = await page.evaluate(() =>
+        Builder.doorObjs.map((p) => ({ base: p.userData.base, cur: p.userData.cur, rotY: p.rotation.y }))
+      );
+
+      for (let i = 0; i < 4; i++) {
+        expect(states[i].base).toBe(0);
+        expect(states[i].cur).toBeLessThan(0.2);
+      }
+    });
+
+    test("material swatch change updates PartGraph materials in place without replacing geometry", async ({ page }) => {
+      await page.goto("/#/build/golden-parametric");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.parts && Builder.parts.length > 0);
+
+      // Initial color
+      const initialColor = await page.evaluate(() => {
+        const rootGroup = Builder.parts[0];
+        const doorMesh = rootGroup.getObjectByName("part_DOOR_01");
+        return doorMesh.material.color.getHexString();
+      });
+
+      // Click the 'walnut' swatch
+      const walnutSwatch = page.locator(".b-sw[data-mat='walnut']");
+      await expect(walnutSwatch).toBeVisible();
+      await walnutSwatch.click();
+
+      // Check updated color and that PartGraph was NOT replaced with legacy geometry
+      const updatedState = await page.evaluate(() => {
+        const rootGroup = Builder.parts[0];
+        const panelMeshes = [];
+        rootGroup.traverse((c) => {
+          if (c.isMesh && c.name && c.name.startsWith("part_")) {
+            panelMeshes.push(c);
+          }
+        });
+        const doorMesh = rootGroup.getObjectByName("part_DOOR_01");
+        const carcassMesh = rootGroup.getObjectByName("part_CARC_SIDE_L");
+
+        return {
+          isParametric: Builder.isParametric,
+          partCount: panelMeshes.length,
+          doorColor: doorMesh.material.color.getHexString(),
+          carcassColor: carcassMesh.material.color.getHexString(),
+          doorObjsCount: Builder.doorObjs.length,
+        };
+      });
+
+      expect(updatedState.isParametric).toBe(true);
+      expect(updatedState.partCount).toBe(19);
+      expect(updatedState.doorObjsCount).toBe(4);
+      expect(updatedState.doorColor).not.toBe(initialColor);
+      expect(updatedState.doorColor).toBe("6e5236"); // MAT.walnut color hex 0x6e5236
+      expect(updatedState.carcassColor).toBe("6e5236");
     });
 
     test("navigates between parametric route and catalog #/build/0 without leaking contexts or breaking state", async ({ page }) => {
@@ -456,13 +596,21 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
 
       const stateParametric = await page.evaluate(() => {
         const rootGroup = Builder.parts[0];
+        const panelMeshes = [];
+        rootGroup.traverse((c) => {
+          if (c.isMesh && c.name && c.name.startsWith("part_")) {
+            panelMeshes.push(c);
+          }
+        });
         return {
           isParametric: Builder.isParametric,
-          meshCount: (rootGroup && rootGroup.children.length) || 0,
+          meshCount: panelMeshes.length,
+          doorObjsCount: Builder.doorObjs.length,
         };
       });
       expect(stateParametric.isParametric).toBe(true);
       expect(stateParametric.meshCount).toBe(19);
+      expect(stateParametric.doorObjsCount).toBe(4);
     });
 
     test("survives WebGL context loss and restore on #/build/golden-parametric", async ({ page }) => {
@@ -481,10 +629,19 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
             ext.restoreContext();
             setTimeout(() => {
               const rootGroup = Builder.parts[0];
+              const panelMeshes = [];
+              if (rootGroup) {
+                rootGroup.traverse((c) => {
+                  if (c.isMesh && c.name && c.name.startsWith("part_")) {
+                    panelMeshes.push(c);
+                  }
+                });
+              }
               resolve({
                 supported: true,
                 isParametric: Builder.isParametric,
-                meshCount: (rootGroup && rootGroup.children.length) || 0,
+                meshCount: panelMeshes.length,
+                doorCount: Builder.doorObjs.length,
               });
             }, 100);
           }, 50);
@@ -494,6 +651,7 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
       if (restoreResult.supported) {
         expect(restoreResult.isParametric).toBe(true);
         expect(restoreResult.meshCount).toBe(19);
+        expect(restoreResult.doorCount).toBe(4);
       }
     });
 
@@ -513,7 +671,13 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
 
       const meshCount = await page.evaluate(() => {
         const rootGroup = Builder.parts[0];
-        return (rootGroup && rootGroup.children.length) || 0;
+        const panelMeshes = [];
+        rootGroup.traverse((c) => {
+          if (c.isMesh && c.name && c.name.startsWith("part_")) {
+            panelMeshes.push(c);
+          }
+        });
+        return panelMeshes.length;
       });
       expect(meshCount).toBe(19);
     });

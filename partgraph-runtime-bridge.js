@@ -46,6 +46,7 @@ var PartGraphBridge = (() => {
     goldenSpec: () => goldenWardrobe_fixture_default,
     loadGoldenWardrobe: () => loadGoldenWardrobe,
     partGraphToThree: () => partGraphToThree,
+    updateParametricMaterial: () => updateParametricMaterial,
     validateFurniSpec: () => validateFurniSpec
   });
 
@@ -1409,6 +1410,12 @@ var PartGraphBridge = (() => {
         metalness: 0.1,
         name: "mat_plinth_fascia"
       }),
+      EDGE: new threeInstance.LineBasicMaterial({
+        color: 2368031,
+        transparent: true,
+        opacity: 0.35,
+        name: "mat_door_edge"
+      }),
       DEFAULT: new threeInstance.MeshStandardMaterial({
         color: 14276043,
         roughness: 0.5,
@@ -1453,6 +1460,10 @@ var PartGraphBridge = (() => {
     rootGroup.name = `furniture_${partGraph.sourceSpecId || "partgraph"}`;
     const materials = createPartGraphMaterials(T);
     const allocatedMaterials = Object.values(materials);
+    const doorParts = partGraph.parts.filter(
+      (p) => p.role === "DOOR_PANEL" || typeof p.id === "string" && p.id.startsWith("DOOR_")
+    );
+    const doorPivots = [];
     for (const part of partGraph.parts) {
       const { placement, finished, id, role } = part;
       if (!placement) {
@@ -1471,39 +1482,96 @@ var PartGraphBridge = (() => {
       const material = getMaterialForRole(role, materials);
       const mesh = new T.Mesh(geometry, material);
       mesh.name = `part_${id}`;
-      mesh.position.set(
-        centerXDmm * DMM_TO_THREE,
-        centerYDmm * DMM_TO_THREE,
-        centerZDmm * DMM_TO_THREE
-      );
       mesh.castShadow = true;
       mesh.receiveShadow = true;
-      mesh.userData = {
-        partId: id,
-        role,
-        finishedDimensionsMm: finished ? {
-          lengthMm: finished.lengthDmm / 10,
-          widthMm: finished.widthDmm / 10,
-          thicknessMm: finished.thicknessDmm / 10
-        } : null,
-        placementDmm: {
-          minXDmm: placement.minXDmm,
-          maxXDmm: placement.maxXDmm,
-          minYDmm: placement.minYDmm,
-          maxYDmm: placement.maxYDmm,
-          minZDmm: placement.minZDmm,
-          maxZDmm: placement.maxZDmm
-        },
-        sourceSpecId: partGraph.sourceSpecId || null,
-        interactive: true
-      };
-      rootGroup.add(mesh);
+      const isDoor = role === "DOOR_PANEL" || typeof id === "string" && id.startsWith("DOOR_");
+      if (isDoor) {
+        const edgeGeometry = new T.EdgesGeometry(geometry);
+        const edgeLine = new T.LineSegments(edgeGeometry, materials.EDGE);
+        edgeLine.name = `edges_${id}`;
+        mesh.add(edgeLine);
+        const doorIdx = doorParts.indexOf(part);
+        const isLeftHinged = doorIdx % 2 === 0;
+        const hinge = isLeftHinged ? "left" : "right";
+        const pivotX = isLeftHinged ? placement.minXDmm * DMM_TO_THREE : placement.maxXDmm * DMM_TO_THREE;
+        const pivotY = centerYDmm * DMM_TO_THREE;
+        const pivotZ = centerZDmm * DMM_TO_THREE;
+        const openY = isLeftHinged ? Math.PI * 0.55 : -Math.PI * 0.55;
+        const pivot = new T.Group();
+        pivot.name = `pivot_${id}`;
+        pivot.position.set(pivotX, pivotY, pivotZ);
+        pivot.userData = {
+          interactive: true,
+          kind: "door",
+          openY,
+          cur: 0,
+          base: 0,
+          hover: 0,
+          suppress: 0,
+          partId: id,
+          hinge
+        };
+        const meshRelX = isLeftHinged ? widthThree / 2 : -widthThree / 2;
+        mesh.position.set(meshRelX, 0, 0);
+        mesh.userData = {
+          partId: id,
+          role,
+          finishedDimensionsMm: finished ? {
+            lengthMm: finished.lengthDmm / 10,
+            widthMm: finished.widthDmm / 10,
+            thicknessMm: finished.thicknessDmm / 10
+          } : null,
+          placementDmm: {
+            minXDmm: placement.minXDmm,
+            maxXDmm: placement.maxXDmm,
+            minYDmm: placement.minYDmm,
+            maxYDmm: placement.maxYDmm,
+            minZDmm: placement.minZDmm,
+            maxZDmm: placement.maxZDmm
+          },
+          sourceSpecId: partGraph.sourceSpecId || null,
+          interactive: true,
+          pivot,
+          hinge
+        };
+        pivot.add(mesh);
+        rootGroup.add(pivot);
+        doorPivots.push(pivot);
+      } else {
+        mesh.position.set(
+          centerXDmm * DMM_TO_THREE,
+          centerYDmm * DMM_TO_THREE,
+          centerZDmm * DMM_TO_THREE
+        );
+        mesh.userData = {
+          partId: id,
+          role,
+          finishedDimensionsMm: finished ? {
+            lengthMm: finished.lengthDmm / 10,
+            widthMm: finished.widthDmm / 10,
+            thicknessMm: finished.thicknessDmm / 10
+          } : null,
+          placementDmm: {
+            minXDmm: placement.minXDmm,
+            maxXDmm: placement.maxXDmm,
+            minYDmm: placement.minYDmm,
+            maxYDmm: placement.maxYDmm,
+            minZDmm: placement.minZDmm,
+            maxZDmm: placement.maxZDmm
+          },
+          sourceSpecId: partGraph.sourceSpecId || null,
+          interactive: true
+        };
+        rootGroup.add(mesh);
+      }
     }
     rootGroup.userData = {
       sourceSpecId: partGraph.sourceSpecId,
       partGraphVersion: partGraph.partGraphVersion,
       structuralPartCount: partGraph.parts.length,
       materials: allocatedMaterials,
+      materialMap: materials,
+      doorPivots,
       dispose: () => disposePartGraphGroup(rootGroup)
     };
     if (options.centerOrigin && partGraph.summary?.envelope) {
@@ -1520,16 +1588,14 @@ var PartGraphBridge = (() => {
     if (!group) return;
     const materialsToDispose = /* @__PURE__ */ new Set();
     group.traverse((obj) => {
-      if (obj.isMesh) {
-        if (obj.geometry && typeof obj.geometry.dispose === "function") {
-          obj.geometry.dispose();
-        }
-        if (obj.material) {
-          if (Array.isArray(obj.material)) {
-            obj.material.forEach((m) => m && materialsToDispose.add(m));
-          } else {
-            materialsToDispose.add(obj.material);
-          }
+      if (obj.geometry && typeof obj.geometry.dispose === "function") {
+        obj.geometry.dispose();
+      }
+      if (obj.material) {
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach((m) => m && materialsToDispose.add(m));
+        } else {
+          materialsToDispose.add(obj.material);
         }
       }
     });
@@ -1547,6 +1613,63 @@ var PartGraphBridge = (() => {
   }
 
   // src/lib/adapters/browserBridge.js
+  var FALLBACK_MAT = {
+    oak: { color: 13150330, rough: 0.75, metal: 0 },
+    walnut: { color: 7230006, rough: 0.7, metal: 0 },
+    white: { color: 15921644, rough: 0.45, metal: 0 },
+    grey: { color: 5132114, rough: 0.5, metal: 0 },
+    taupe: { color: 11575956, rough: 0.55, metal: 0 },
+    cream: { color: 15130061, rough: 0.5, metal: 0 },
+    black: { color: 1842204, rough: 0.4, metal: 0 },
+    navy: { color: 2899536, rough: 0.55, metal: 0 },
+    sage: { color: 10268552, rough: 0.55, metal: 0 },
+    terracotta: { color: 11887901, rough: 0.6, metal: 0 },
+    mahogany: { color: 7287593, rough: 0.68, metal: 0 },
+    ash: { color: 14274752, rough: 0.72, metal: 0 },
+    ivory: { color: 16117990, rough: 0.42, metal: 0 }
+  };
+  function updateParametricMaterial(builder, matKey) {
+    if (!builder || !builder.scene) return;
+    const MAT = typeof window !== "undefined" && window.MAT || typeof globalThis !== "undefined" && globalThis.MAT || FALLBACK_MAT;
+    const matDef = MAT && MAT[matKey] || FALLBACK_MAT[matKey] || { color: 15262940, rough: 0.6, metal: 0 };
+    const furnitureGroup = builder.parts.find(
+      (p) => p && p.userData && p.userData.materialMap
+    ) || builder.scene.getObjectByName("furniture_furnispec-golden-wardrobe-01");
+    if (!furnitureGroup || !furnitureGroup.userData?.materialMap) {
+      return;
+    }
+    const materials = furnitureGroup.userData.materialMap;
+    const color = matDef.color;
+    const rough = matDef.rough !== void 0 ? matDef.rough : 0.6;
+    const metal = matDef.metal !== void 0 ? matDef.metal : 0.02;
+    if (materials.CARCASS) {
+      materials.CARCASS.color.setHex(color);
+      materials.CARCASS.roughness = rough;
+      materials.CARCASS.metalness = metal;
+      materials.CARCASS.needsUpdate = true;
+    }
+    if (materials.DOOR) {
+      materials.DOOR.color.setHex(color);
+      materials.DOOR.roughness = Math.max(0.25, rough * 0.9);
+      materials.DOOR.metalness = metal;
+      materials.DOOR.needsUpdate = true;
+    }
+    if (materials.PLINTH) {
+      const dkFn = typeof window !== "undefined" && typeof window.dk === "function" ? window.dk : null;
+      const plinthColor = dkFn ? dkFn(color, 0.75) : color;
+      materials.PLINTH.color.setHex(plinthColor);
+      materials.PLINTH.roughness = Math.max(0.7, rough);
+      materials.PLINTH.metalness = metal;
+      materials.PLINTH.needsUpdate = true;
+    }
+    builder.parametricMat = matKey;
+    if (typeof document !== "undefined") {
+      const swatches = document.querySelectorAll(".b-sw");
+      swatches.forEach((s) => {
+        s.classList.toggle("active", s.dataset.mat === matKey);
+      });
+    }
+  }
   function loadGoldenWardrobe(builder) {
     if (!builder || !builder.scene) {
       throw new Error("Builder and Builder.scene are required.");
@@ -1559,7 +1682,7 @@ var PartGraphBridge = (() => {
       );
     }
     const partGraph = buildStructuralPartGraph(goldenWardrobe_fixture_default);
-    const THREE2 = window.THREE;
+    const THREE2 = typeof window !== "undefined" && window.THREE || globalThis.THREE;
     const furnitureGroup = partGraphToThree(partGraph, { threeInstance: THREE2 });
     const env = partGraph.summary.envelope;
     const envW = env.widthDmm * DMM_TO_THREE;
@@ -1567,14 +1690,20 @@ var PartGraphBridge = (() => {
     const envD = env.depthDmm * DMM_TO_THREE;
     furnitureGroup.position.set(-envW / 2, -envH / 2, -envD / 2);
     builder.attach(furnitureGroup);
+    builder.doorObjs = [];
+    if (Array.isArray(furnitureGroup.userData?.doorPivots)) {
+      builder.doorObjs.push(...furnitureGroup.userData.doorPivots);
+    }
     const fl = builder.scene.getObjectByName("floor");
     if (fl) {
       fl.position.y = -envH / 2 - 1e-3;
     }
-    builder.camDist = 4.6;
-    builder.rotY = 0.5;
+    builder.camDist = 4.8;
+    builder.rotY = Math.PI - 0.42;
     builder.rotX = 0.06;
     builder.lookAtZ = 0;
+    const currentMat = builder.parametricMat || "white";
+    updateParametricMaterial(builder, currentMat);
     return {
       partGraph,
       furnitureGroup,
@@ -1583,7 +1712,8 @@ var PartGraphBridge = (() => {
         heightMm: envH * 1e3,
         depthMm: envD * 1e3
       },
-      partCount: partGraph.parts.length
+      partCount: partGraph.parts.length,
+      doorCount: builder.doorObjs.length
     };
   }
   return __toCommonJS(browserBridge_exports);

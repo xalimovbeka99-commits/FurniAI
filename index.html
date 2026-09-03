@@ -816,6 +816,7 @@ const DESIGNS=[
   {name:'Oak Sideboard',type:'sideboard',sections:4,drows:2,drawers:2,shelves:1,doorType:'solid',mat:'oak',handle:'black',led:'off',w:160,h:75,d:45},
   {name:'Grey TV Console',type:'sideboard',sections:3,drows:1,drawers:3,shelves:0,doorType:'solid',mat:'grey',handle:'chrome',led:'warm',w:200,h:55,d:42},
 ];
+window.DESIGNS=DESIGNS;
 const MAT={
   oak:{color:0xc8a87a,rough:0.75,metal:0,label:'Oak',code:'OAK-NAT',css:'linear-gradient(135deg,#d8bd92,#c19c68)'},
   walnut:{color:0x6e5236,rough:0.7,metal:0,label:'Walnut',code:'WAL-DK',css:'linear-gradient(135deg,#7d5e3c,#5d4329)'},
@@ -833,6 +834,7 @@ const MAT={
 };
 const HANDLE={gold:0xc9a248,black:0x161616,chrome:0xd8d8dc,push:null,none:null};
 const MATKEYS=['oak','walnut','white','grey','taupe','cream','black','navy','sage','terracotta','mahogany','ash','ivory'];
+window.MAT=MAT;window.MATKEYS=MATKEYS;
 
 /* ===== landing: cut list ===== */
 const CL=[['Side panel L','Oak 18mm','2382 × 582','2'],['Top / bottom','Oak 18mm','2364 × 582','2'],['Back panel','MDF 6mm','2364 × 2346','1'],['Shelf','Oak 18mm','582 × 564','4'],['Door — glass','Alu + glass','1180 × 596','4'],['Drawer front','Oak 18mm','582 × 178','3'],['Drawer box side','Birch 12mm','540 × 150','6'],['Plinth','Oak 18mm','2364 × 80','1']];
@@ -1214,7 +1216,7 @@ const Builder={
   pick(){if(!this.cam||!this.scene)return null;this.raycaster.setFromCamera(this.pointer,this.cam);const hits=this.raycaster.intersectObjects(this.scene.children,true);for(const h of hits){let o=h.object;while(o){if(o.userData&&o.userData.interactive)return o;o=o.parent}}return null;},
   hoverPick(){const H=this.pick();const cv=document.getElementById('bld3d');if(cv)cv.style.cursor=H?'pointer':'';},
   clearHover(){const cv=document.getElementById('bld3d');if(cv)cv.style.cursor='';},
-  clickPick(){const H=this.pick();if(H)H.userData.base=H.userData.base?0:1;},
+  clickPick(){const H=this.pick();if(H){const target=H.userData.pivot||H;target.userData.base=target.userData.base?0:1;}},
   resize(){if(!this.ren||!this.cam)return;const cv=document.getElementById('bld3d');if(!cv||!cv.parentElement)return;const wrap=cv.parentElement;const W=wrap.clientWidth,H=wrap.clientHeight;if(W&&H){this.ren.setSize(W,H);this.cam.aspect=W/H;this.cam.updateProjectionMatrix()}},
 
   attach(o){(this.currentParent||this.scene).add(o);this.parts.push(o);return o},
@@ -1624,7 +1626,17 @@ const Builder={
     // material swatches
     const sc=document.getElementById('bSwatches');
     MATKEYS.forEach(k=>{const d=document.createElement('div');d.className='b-sw';d.dataset.mat=k;d.style.background=MAT[k].css;d.title=MAT[k].label;
-      d.addEventListener('click',()=>{document.querySelectorAll('.b-sw').forEach(s=>s.classList.remove('active'));d.classList.add('active');self.cfg.mat=k;self.build()});sc.appendChild(d)});
+      d.addEventListener('click',()=>{
+        document.querySelectorAll('.b-sw').forEach(s=>s.classList.remove('active'));
+        d.classList.add('active');
+        if(self.isParametric){
+          if(globalThis.PartGraphBridge&&typeof globalThis.PartGraphBridge.updateParametricMaterial==='function'){
+            globalThis.PartGraphBridge.updateParametricMaterial(self,k);
+          }
+          return;
+        }
+        self.cfg.mat=k;self.build();
+      });sc.appendChild(d)});
     // prev / next navigation
     document.getElementById('bPrev').addEventListener('click',()=>self.prevDesign());
     document.getElementById('bNext').addEventListener('click',()=>self.nextDesign());
