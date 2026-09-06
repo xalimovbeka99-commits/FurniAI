@@ -15,10 +15,15 @@ import {
 import {
   proposeWardrobe,
   approveAndPreview,
+  previewDraftWardrobe,
+  applyConversationalEdit,
+  parseConversationalCommand,
+  draftPreviewSafety,
   runConversationToWardrobe,
   PIPELINE_STAGE,
   APPROVAL_STATE,
 } from "../conversation/pipeline.js";
+import { OBSERVATION_ORIGIN, BEKZOD_APPROVED_DEFAULTS } from "../conversation/intakeModel.js";
 import { createDeterministicPhraseAdapter } from "../conversation/proposalAdapter.js";
 import { createProposal, validateApproval } from "../conversation/approval.js";
 import {
@@ -36,9 +41,15 @@ export {
   DMM_TO_THREE,
   proposeWardrobe,
   approveAndPreview,
+  previewDraftWardrobe,
+  applyConversationalEdit,
+  parseConversationalCommand,
+  draftPreviewSafety,
   runConversationToWardrobe,
   PIPELINE_STAGE,
   APPROVAL_STATE,
+  OBSERVATION_ORIGIN,
+  BEKZOD_APPROVED_DEFAULTS,
   createDeterministicPhraseAdapter,
   createProposal,
   validateApproval,
@@ -269,3 +280,5 @@ export function loadApprovedPartGraph(builder, partGraph) {
     doorCount: builder.doorObjs.length,
   };
 }
+
+export const loadDraftPartGraph = loadApprovedPartGraph;

@@ -15,8 +15,27 @@ export const OBSERVATION_ORIGIN = Object.freeze({
   CUSTOMER_STATED: "CUSTOMER_STATED",
   /** The customer confirmed a value put to them in a clarification question. */
   CUSTOMER_CONFIRMED: "CUSTOMER_CONFIRMED",
+  /** Extracted or parsed from prompt chips, assistant suggestions, or conversation context. */
+  EXTRACTED: "EXTRACTED",
+  /** Supplied using Bekzod-approved Golden Wardrobe defaults for immediate draft preview. */
+  DEFAULTED: "DEFAULTED",
   /** Derived by a closure equation from approved rules and stated values. */
   RULE_DERIVED: "RULE_DERIVED",
+});
+
+/**
+ * Bekzod-approved Golden Wardrobe defaults used for immediate draft previews (Gate G4).
+ * Values originate from src/lib/furnispec/goldenWardrobe.fixture.json and Rulebook v0.1.
+ */
+export const BEKZOD_APPROVED_DEFAULTS = Object.freeze({
+  "envelope.widthMm": 1800.0,
+  "envelope.heightMm": 2400.0,
+  "envelope.depthMm": 600.0,
+  "plinth.heightMm": 100.0,
+  bayCount: 2,
+  doorCount: 4,
+  finishType: "melamine",
+  bayLayouts: Object.freeze(["LONG_HANGING", "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"]),
 });
 
 /** Why a fact is not yet usable. */

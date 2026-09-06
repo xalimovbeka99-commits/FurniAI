@@ -42,19 +42,26 @@ var PartGraphBridge = (() => {
   __export(browserBridge_exports, {
     ACCEPTED_DIMENSION_UNITS: () => ACCEPTED_DIMENSION_UNITS,
     APPROVAL_STATE: () => APPROVAL_STATE,
+    BEKZOD_APPROVED_DEFAULTS: () => BEKZOD_APPROVED_DEFAULTS,
     DMM_TO_THREE: () => DMM_TO_THREE,
+    OBSERVATION_ORIGIN: () => OBSERVATION_ORIGIN,
     PIPELINE_STAGE: () => PIPELINE_STAGE,
+    applyConversationalEdit: () => applyConversationalEdit,
     approveAndPreview: () => approveAndPreview,
     buildStructuralPartGraph: () => buildStructuralPartGraph,
     createDeterministicPhraseAdapter: () => createDeterministicPhraseAdapter,
     createProposal: () => createProposal,
     disposePartGraphGroup: () => disposePartGraphGroup,
+    draftPreviewSafety: () => draftPreviewSafety,
     goldenSpec: () => goldenWardrobe_fixture_default,
     loadApprovedPartGraph: () => loadApprovedPartGraph,
+    loadDraftPartGraph: () => loadDraftPartGraph,
     loadGoldenWardrobe: () => loadGoldenWardrobe,
     parseAndValidateClarifyInput: () => parseAndValidateClarifyInput,
+    parseConversationalCommand: () => parseConversationalCommand,
     parseDimension: () => parseDimension,
     partGraphToThree: () => partGraphToThree,
+    previewDraftWardrobe: () => previewDraftWardrobe,
     proposeWardrobe: () => proposeWardrobe,
     runConversationToWardrobe: () => runConversationToWardrobe,
     updateParametricMaterial: () => updateParametricMaterial,
@@ -1907,8 +1914,22 @@ var PartGraphBridge = (() => {
     CUSTOMER_STATED: "CUSTOMER_STATED",
     /** The customer confirmed a value put to them in a clarification question. */
     CUSTOMER_CONFIRMED: "CUSTOMER_CONFIRMED",
+    /** Extracted or parsed from prompt chips, assistant suggestions, or conversation context. */
+    EXTRACTED: "EXTRACTED",
+    /** Supplied using Bekzod-approved Golden Wardrobe defaults for immediate draft preview. */
+    DEFAULTED: "DEFAULTED",
     /** Derived by a closure equation from approved rules and stated values. */
     RULE_DERIVED: "RULE_DERIVED"
+  });
+  var BEKZOD_APPROVED_DEFAULTS = Object.freeze({
+    "envelope.widthMm": 1800,
+    "envelope.heightMm": 2400,
+    "envelope.depthMm": 600,
+    "plinth.heightMm": 100,
+    bayCount: 2,
+    doorCount: 4,
+    finishType: "melamine",
+    bayLayouts: Object.freeze(["LONG_HANGING", "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"])
   });
   var GAP_KIND = Object.freeze({
     /** The fact was never supplied. */
@@ -2877,6 +2898,7 @@ var PartGraphBridge = (() => {
     UNSUPPORTED_REQUEST: "UNSUPPORTED_REQUEST",
     VALIDATION_FAILED: "VALIDATION_FAILED",
     READY_FOR_REVIEW: "READY_FOR_REVIEW",
+    DRAFT_PREVIEW: "DRAFT_PREVIEW",
     APPROVED_FOR_PREVIEW: "APPROVED_FOR_PREVIEW"
   });
   var APPROVAL_STATE = Object.freeze({
@@ -3021,6 +3043,288 @@ var PartGraphBridge = (() => {
     }
     const previewed = approveAndPreview({ proposal: proposed.proposal, approval });
     return { ...proposed, ...previewed };
+  }
+  function previewDraftWardrobe({
+    description,
+    answers = {},
+    initialObservations = null,
+    specId,
+    revision = 1,
+    adapter = createDeterministicPhraseAdapter()
+  }) {
+    assertProposalOnly(adapter);
+    let observations = [];
+    let ambiguities = [];
+    let interpretation = null;
+    if (Array.isArray(initialObservations) && initialObservations.length > 0) {
+      observations = [...initialObservations];
+    } else {
+      const rawDescription = description ?? "";
+      interpretation = adapter.interpret(rawDescription);
+      observations = [...interpretation.observations];
+      ambiguities = [...interpretation.ambiguities];
+    }
+    const gaps = analyseGaps({ observations, ambiguities });
+    const outOfSlice = gaps.filter((g) => g.kind === GAP_KIND.OUT_OF_SLICE);
+    if (outOfSlice.length > 0) {
+      return {
+        stage: PIPELINE_STAGE.UNSUPPORTED_REQUEST,
+        interpretation,
+        observations,
+        gaps,
+        spec: null,
+        proposal: null,
+        partGraph: null,
+        safety: preApprovalSafety(null)
+      };
+    }
+    for (const [key, value] of Object.entries(answers)) {
+      observations = observations.filter((o) => o.key !== key);
+      observations.push(
+        observation(key, value, OBSERVATION_ORIGIN.CUSTOMER_CONFIRMED, {
+          sourceText: `refinement for: ${key}`
+        })
+      );
+    }
+    const existingKeys = new Set(observations.map((o) => o.key));
+    for (const requiredKey of REQUIRED_INTAKE_KEYS) {
+      if (!existingKeys.has(requiredKey)) {
+        const defaultValue = BEKZOD_APPROVED_DEFAULTS[requiredKey];
+        observations.push(
+          observation(requiredKey, defaultValue, OBSERVATION_ORIGIN.DEFAULTED, {
+            sourceText: `Bekzod-approved default for ${requiredKey}`
+          })
+        );
+      }
+    }
+    const facts = Object.fromEntries(observations.map((o) => [o.key, o.value]));
+    const origins = Object.fromEntries(observations.map((o) => [o.key, o.origin]));
+    const effectiveSpecId = specId || `furnispec-draft-${Math.floor(1e3 + Math.random() * 9e3)}`;
+    let assembled;
+    try {
+      assembled = assembleFurniSpec({
+        facts,
+        gaps: [],
+        // All facts resolved or defaulted
+        specId: effectiveSpecId,
+        revision,
+        status: SPEC_STATUS.PROPOSED
+        // STRICTLY PROPOSED
+      });
+    } catch (err) {
+      return {
+        stage: PIPELINE_STAGE.VALIDATION_FAILED,
+        error: err.message,
+        observations,
+        origins,
+        spec: null,
+        proposal: null,
+        partGraph: null,
+        safety: preApprovalSafety(null)
+      };
+    }
+    const validation = validateFurniSpec(assembled.spec);
+    if (!validation.valid) {
+      return {
+        stage: PIPELINE_STAGE.VALIDATION_FAILED,
+        spec: assembled.spec,
+        derivations: assembled.derivations,
+        validation,
+        observations,
+        origins,
+        proposal: null,
+        partGraph: null,
+        safety: preApprovalSafety(assembled.spec)
+      };
+    }
+    const proposal = createProposal(assembled.spec);
+    const partGraph = buildStructuralPartGraph(assembled.spec);
+    const partGraphValidation = validatePartGraph(partGraph);
+    return {
+      stage: PIPELINE_STAGE.DRAFT_PREVIEW,
+      previewType: "DRAFT_PREVIEW",
+      spec: assembled.spec,
+      proposal,
+      partGraph,
+      partGraphValidation,
+      observations,
+      origins,
+      facts,
+      derivations: assembled.derivations,
+      validation,
+      safety: draftPreviewSafety(assembled.spec, partGraph)
+    };
+  }
+  function parseConversationalCommand(text, currentFacts = {}) {
+    if (typeof text !== "string" || !text.trim()) return null;
+    const t = text.trim();
+    const widthMatch = t.match(/(?:make\s+(?:it\s+)?)?(\d+(?:\.\d+)?)\s*(mm|cm|m|millimetres?|centimetres?|metres?)?\s*(?:wide|width)/i) || t.match(/width\s*(?:to\s*|:\s*|=\s*)?(\d+(?:\.\d+)?)\s*(mm|cm|m|millimetres?|centimetres?|metres?)?/i);
+    if (widthMatch) {
+      const val = Number(widthMatch[1]);
+      const unit = (widthMatch[2] || "mm").toLowerCase();
+      const isMetre = /^m(etres?|eters?)?$/i.test(unit);
+      const isCm = /^c(m|entimetres?|entimeters?)$/i.test(unit);
+      const factor = isMetre ? 1e3 : isCm ? 10 : 1;
+      const widthMm = Math.round(val * factor * 10) / 10;
+      return {
+        changes: { "envelope.widthMm": widthMm },
+        assistantReply: `Updated width to ${widthMm} mm.`
+      };
+    }
+    const heightMatch = t.match(/(?:make\s+(?:it\s+)?)?(\d+(?:\.\d+)?)\s*(mm|cm|m|millimetres?|centimetres?|metres?)?\s*(?:high|tall|height)/i) || t.match(/height\s*(?:to\s*|:\s*|=\s*)?(\d+(?:\.\d+)?)\s*(mm|cm|m|millimetres?|centimetres?|metres?)?/i);
+    if (heightMatch) {
+      const val = Number(heightMatch[1]);
+      const unit = (heightMatch[2] || "mm").toLowerCase();
+      const isMetre = /^m(etres?|eters?)?$/i.test(unit);
+      const isCm = /^c(m|entimetres?|entimeters?)$/i.test(unit);
+      const factor = isMetre ? 1e3 : isCm ? 10 : 1;
+      const heightMm = Math.round(val * factor * 10) / 10;
+      return {
+        changes: { "envelope.heightMm": heightMm },
+        assistantReply: `Updated height to ${heightMm} mm.`
+      };
+    }
+    const depthMatch = t.match(/(?:make\s+(?:it\s+)?)?(\d+(?:\.\d+)?)\s*(mm|cm|m|millimetres?|centimetres?|metres?)?\s*(?:deep|depth)/i) || t.match(/depth\s*(?:to\s*|:\s*|=\s*)?(\d+(?:\.\d+)?)\s*(mm|cm|m|millimetres?|centimetres?|metres?)?/i);
+    if (depthMatch) {
+      const val = Number(depthMatch[1]);
+      const unit = (depthMatch[2] || "mm").toLowerCase();
+      const isMetre = /^m(etres?|eters?)?$/i.test(unit);
+      const isCm = /^c(m|entimetres?|entimeters?)$/i.test(unit);
+      const factor = isMetre ? 1e3 : isCm ? 10 : 1;
+      const depthMm = Math.round(val * factor * 10) / 10;
+      return {
+        changes: { "envelope.depthMm": depthMm },
+        assistantReply: `Updated depth to ${depthMm} mm.`
+      };
+    }
+    if (/add\s+(?:another\s+)?shelf|more\s+shelves|shelves\s+on\s+the\s+right|shelves\s+in\s+bay\s*2/i.test(t)) {
+      const currentBays = currentFacts.bayCount || 2;
+      const layouts = currentFacts.bayLayouts ? [...currentFacts.bayLayouts] : ["LONG_HANGING", "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"];
+      if (layouts.length >= 2) {
+        layouts[1] = "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES";
+      }
+      return {
+        changes: { bayLayouts: layouts },
+        assistantReply: "Updated interior layout: short hanging with two adjustable shelves on the right."
+      };
+    }
+    if (/all\s+shelves|shelves\s+(?:in|on)\s+both\s+(?:bays|sides)/i.test(t)) {
+      const currentBays = currentFacts.bayCount || 2;
+      const layouts = Array(currentBays).fill("SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES");
+      return {
+        changes: { bayLayouts: layouts },
+        assistantReply: `Configured all ${currentBays} bays with short hanging and two adjustable shelves.`
+      };
+    }
+    if (/all\s+hanging|hanging\s+(?:in|on)\s+both\s+(?:bays|sides)|full\s+hanging/i.test(t)) {
+      const currentBays = currentFacts.bayCount || 2;
+      const layouts = Array(currentBays).fill("LONG_HANGING");
+      return {
+        changes: { bayLayouts: layouts },
+        assistantReply: `Configured all ${currentBays} bays with full-height long hanging.`
+      };
+    }
+    const bayMatch = t.match(/(?:make\s+it\s+)?(\d+)\s*bays?/i);
+    if (bayMatch) {
+      const count = parseInt(bayMatch[1], 10);
+      if (count >= 1 && count <= 6) {
+        const layouts = Array(count).fill("SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES");
+        layouts[0] = "LONG_HANGING";
+        return {
+          changes: {
+            bayCount: count,
+            doorCount: count * 2,
+            bayLayouts: layouts
+          },
+          assistantReply: `Updated to ${count} bays with ${count * 2} hinged doors.`
+        };
+      }
+    }
+    const matMatch = t.match(/\b(oak|walnut|white|grey|taupe|cream|black|navy|sage|ash)\b/i);
+    if (matMatch && /finish|material|color|colour/i.test(t)) {
+      const mat = matMatch[1].toLowerCase();
+      return {
+        changes: { materialKey: mat },
+        assistantReply: `Changed finish to ${mat}.`
+      };
+    }
+    return null;
+  }
+  function applyConversationalEdit({
+    currentObservations = [],
+    commandText,
+    specId,
+    revision = 1,
+    adapter = createDeterministicPhraseAdapter()
+  }) {
+    const currentFacts = Object.fromEntries(currentObservations.map((o) => [o.key, o.value]));
+    const parsed = parseConversationalCommand(commandText, currentFacts);
+    if (!parsed) {
+      const interpretation = adapter.interpret(commandText);
+      if (interpretation.observations.length === 0) {
+        return {
+          ok: false,
+          error: `Could not interpret modification from "${commandText}". Try e.g. "Make it 2000 mm wide" or "Add another shelf on the right".`
+        };
+      }
+      const newKeys = new Set(interpretation.observations.map((o) => o.key));
+      const mergedObservations = [
+        ...currentObservations.filter((o) => !newKeys.has(o.key)),
+        ...interpretation.observations
+      ];
+      const draft2 = previewDraftWardrobe({
+        description: "",
+        answers: Object.fromEntries(mergedObservations.map((o) => [o.key, o.value])),
+        specId,
+        revision: revision + 1,
+        adapter
+      });
+      return {
+        ok: true,
+        assistantReply: `Updated wardrobe design (Revision ${revision + 1}).`,
+        ...draft2
+      };
+    }
+    const materialKey = parsed.changes.materialKey;
+    const changes = { ...parsed.changes };
+    delete changes.materialKey;
+    const newObservations = currentObservations.filter((o) => !Object.prototype.hasOwnProperty.call(changes, o.key)).concat(
+      Object.entries(changes).map(
+        ([k, v]) => observation(k, v, OBSERVATION_ORIGIN.CUSTOMER_STATED, { sourceText: commandText })
+      )
+    );
+    const draft = previewDraftWardrobe({
+      initialObservations: newObservations,
+      specId,
+      revision: revision + 1,
+      adapter
+    });
+    return {
+      ok: true,
+      assistantReply: `${parsed.assistantReply} (Revision ${revision + 1})`,
+      materialKey,
+      ...draft
+    };
+  }
+  function draftPreviewSafety(spec, partGraph) {
+    const drillingOperations = (partGraph?.operations ?? []).filter((op) => /DRILL|BORE|HINGE_CUP|PIN_HOLE/i.test(op.type));
+    return {
+      approvalState: APPROVAL_STATE.NOT_APPROVED,
+      previewAuthorized: true,
+      draftPreview: true,
+      workshopApproved: false,
+      geometryGenerated: true,
+      cncQualified: false,
+      specQualificationStatus: spec?.qualificationStatus ?? null,
+      partGraphQualificationStatus: partGraph?.qualificationStatus ?? null,
+      cncQualificationAsserted: false,
+      drillingPolicy: spec?.machiningPolicy?.drilling ?? null,
+      drillingOperationCount: drillingOperations.length,
+      drillingBlocked: spec?.machiningPolicy?.drilling === "BLOCKED_PENDING_HARDWARE_APPROVAL" && drillingOperations.length === 0,
+      hardwareStatuses: spec ? hardwareStatusesOf(spec) : {},
+      approvedOperationTypes: [],
+      note: "DRAFT PREVIEW ONLY \u2014 NOT APPROVED FOR WORKSHOP. Geometry rendered from Bekzod-approved defaults with status PROPOSED. Approval is required before CNC or production."
+    };
   }
   function preApprovalSafety(spec, approvalState = APPROVAL_STATE.NOT_APPROVED) {
     return {
@@ -3372,5 +3676,6 @@ var PartGraphBridge = (() => {
       doorCount: builder.doorObjs.length
     };
   }
+  var loadDraftPartGraph = loadApprovedPartGraph;
   return __toCommonJS(browserBridge_exports);
 })();

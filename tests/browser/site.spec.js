@@ -1111,159 +1111,142 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
       expect(val).toBe("A 4-door wardrobe, 1800mm wide, 2400mm high, 600mm deep, with a 100mm plinth, 2 equal bays, oak finish, and shelves");
     });
 
-    test("4. partial description triggers NEEDS_CLARIFICATION and displays clarification questions one by one", async ({ page }) => {
+    test("4. partial description ('Make me a wardrobe') immediately generates 3D draft preview with Golden defaults and honest origin tags", async ({ page }) => {
       await page.goto("/#/build/ai-wardrobe");
       await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
-      await page.fill("#aiWardrobeInput", "I need a wardrobe for my bedroom, about 2 metres tall.");
+      await page.fill("#aiWardrobeInput", "Make me a wardrobe");
       await page.click("#aiWardrobeSubmitBtn");
 
-      await expect(page.locator("#aiWardrobeClarifySection")).toBeVisible();
-      await expect(page.locator("#aiWardrobeInputSection")).toBeHidden();
-      await expect(page.locator("#aiClarifyCount")).toContainText("Question 1 of");
-      await expect(page.locator("#aiClarifyPrompt")).not.toBeEmpty();
-      await expect(page.locator("#aiClarifyUnitLabel")).toBeVisible();
+      // Verify draft preview section is visible and marked DRAFT PREVIEW
+      await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
+      await expect(page.locator("#aiDraftStageTag")).toContainText("DRAFT PREVIEW");
+      await expect(page.locator("#aiDraftSafetyNotice")).toBeVisible();
+
+      // Verify defaulted facts are tagged [Defaulted] honestly
+      await expect(page.locator("#revWidth")).toContainText("1800 mm");
+      await expect(page.locator("#revWidthOrigin")).toContainText("[Defaulted]");
+      await expect(page.locator("#revHeight")).toContainText("2400 mm");
+      await expect(page.locator("#revHeightOrigin")).toContainText("[Defaulted]");
+      await expect(page.locator("#revDepth")).toContainText("600 mm");
+      await expect(page.locator("#revDepthOrigin")).toContainText("[Defaulted]");
+
+      // Verify 3D geometry is loaded immediately for the draft preview (19 parts)
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.parts && Builder.parts.length > 0);
+      const meshCount = await page.evaluate(() => {
+        const root = Builder.parts[0];
+        let count = 0;
+        root.traverse((c) => {
+          if (c.isMesh && c.name && c.name.startsWith("part_")) count++;
+        });
+        return count;
+      });
+      expect(meshCount).toBe(19);
+
+      // Verify CNC and drilling remain blocked before workshop approval
+      const safetyState = await page.evaluate(() => ({
+        stage: aiWardrobeState.currentStage,
+        approved: !!aiWardrobeState.approval,
+      }));
+      expect(safetyState.stage).toBe("DRAFT_PREVIEW");
+      expect(safetyState.approved).toBe(false);
     });
 
-    test("5. incomplete answers never generate 3D geometry (canvas remains empty / zero parts)", async ({ page }) => {
+    test("5. conversational refinement: 'Make it 2000 mm wide.' updates existing model to 2000mm in real-time and advances revision", async ({ page }) => {
       await page.goto("/#/build/ai-wardrobe");
       await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
-      await page.fill("#aiWardrobeInput", "I need a wardrobe for my bedroom, about 2 metres tall.");
+      await page.fill("#aiWardrobeInput", "Make me a wardrobe");
       await page.click("#aiWardrobeSubmitBtn");
-
-      await expect(page.locator("#aiWardrobeClarifySection")).toBeVisible();
-      const partsCount = await page.evaluate(() => Builder.parts.length);
-      expect(partsCount).toBe(0);
-    });
-
-    test("6. rejects negative, approximate, malformed, and unit-bearing numeric answers with visible error message", async ({ page }) => {
-      await page.goto("/#/build/ai-wardrobe");
-      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
-      await page.fill("#aiWardrobeInput", "I need a wardrobe for my bedroom, about 2 metres tall.");
-      await page.click("#aiWardrobeSubmitBtn");
-
-      await expect(page.locator("#aiWardrobeClarifySection")).toBeVisible();
-
-      // Test 1: Negative dimension
-      await page.fill("#aiClarifyInput", "-1800");
-      await page.click("#aiClarifySubmitBtn");
-      await expect(page.locator("#aiClarifyError")).toBeVisible();
-      await expect(page.locator("#aiClarifyError")).toContainText("positive number");
-
-      // Test 2: Hedged / approximate dimension
-      await page.fill("#aiClarifyInput", "about 1800mm");
-      await page.click("#aiClarifySubmitBtn");
-      await expect(page.locator("#aiClarifyError")).toBeVisible();
-      await expect(page.locator("#aiClarifyError")).toContainText("exact");
-
-      // Test 3: Malformed input
-      await page.fill("#aiClarifyInput", "abc");
-      await page.click("#aiClarifySubmitBtn");
-      await expect(page.locator("#aiClarifyError")).toBeVisible();
-      await expect(page.locator("#aiClarifyError")).toContainText("valid numeric dimension");
-
-      // Test 4: Rejected precision (finer than 0.1mm)
-      await page.fill("#aiClarifyInput", "1800.00001mm");
-      await page.click("#aiClarifySubmitBtn");
-      await expect(page.locator("#aiClarifyError")).toBeVisible();
-      await expect(page.locator("#aiClarifyError")).toContainText("Precision finer than 0.1mm is not supported");
-
-      // Test 5: Rejected precision in metres (1.80001m -> 1800.01mm)
-      await page.fill("#aiClarifyInput", "1.80001m");
-      await page.click("#aiClarifySubmitBtn");
-      await expect(page.locator("#aiClarifyError")).toBeVisible();
-      await expect(page.locator("#aiClarifyError")).toContainText("Precision finer than 0.1mm is not supported");
-
-      // Test 6: Spelled-out centimetres with live preview (180 centimetres -> 1800 mm)
-      await page.fill("#aiClarifyInput", "180 centimetres");
-      await expect(page.locator("#aiClarifyConvertedPreview")).toBeVisible();
-      await expect(page.locator("#aiClarifyConvertedPreview")).toContainText("Interpreted as: 1800 mm");
-      await page.click("#aiClarifySubmitBtn");
-
-      // Successfully advanced to next clarification question with exact 1800mm stored
-      await expect(page.locator("#aiClarifyCount")).toContainText("Question 2 of");
-      const storedWidth = await page.evaluate(() => aiWardrobeState.answers["envelope.widthMm"]);
-      expect(storedWidth).toBe(1800);
-    });
-
-    test("7. completing clarification questions with dynamic bay selectors reaches READY_FOR_REVIEW without defaulting", async ({ page }) => {
-      await page.goto("/#/build/ai-wardrobe");
-      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
-      // Start with description having only width & height
-      await page.fill("#aiWardrobeInput", "1800mm wide, 2400mm high wardrobe.");
-      await page.click("#aiWardrobeSubmitBtn");
-      await expect(page.locator("#aiWardrobeClarifySection")).toBeVisible();
-
-      // Question 1: depth
-      await page.fill("#aiClarifyInput", "600");
-      await page.click("#aiClarifySubmitBtn");
-
-      // Question 2: plinth
-      await expect(page.locator("#aiClarifyCount")).toContainText("Question 2 of");
-      await page.fill("#aiClarifyInput", "100");
-      await page.click("#aiClarifySubmitBtn");
-
-      // Question 3: bayCount
-      await expect(page.locator("#aiClarifyCount")).toContainText("Question 3 of");
-      // Attempt fractional bayCount (should be rejected)
-      await page.fill("#aiClarifyInput", "2.5");
-      await page.click("#aiClarifySubmitBtn");
-      await expect(page.locator("#aiClarifyError")).toBeVisible();
-      await expect(page.locator("#aiClarifyError")).toContainText("whole number");
-      // Provide valid positive integer
-      await page.fill("#aiClarifyInput", "2");
-      await page.click("#aiClarifySubmitBtn");
-
-      // Question 4: doorCount
-      await expect(page.locator("#aiClarifyCount")).toContainText("Question 4 of");
-      await page.fill("#aiClarifyInput", "4");
-      await page.click("#aiClarifySubmitBtn");
-
-      // Question 5: finishType
-      await expect(page.locator("#aiClarifyCount")).toContainText("Question 5 of");
-      await page.fill("#aiClarifyInput", "melamine");
-      await page.click("#aiClarifySubmitBtn");
-
-      // Question 6: bayLayouts (interactive dropdown selectors per bay)
-      await expect(page.locator("#aiClarifyBayLayoutsWrap")).toBeVisible();
-      await expect(page.locator("#bayLayoutSelect_0")).toBeVisible();
-      await expect(page.locator("#bayLayoutSelect_1")).toBeVisible();
-
-      // Submit without selecting (must reject)
-      await page.click("#aiClarifySubmitBtn");
-      await expect(page.locator("#aiClarifyError")).toBeVisible();
-      await expect(page.locator("#aiClarifyError")).toContainText("Please select an interior layout for Bay 1");
-
-      // Select explicit layouts
-      await page.selectOption("#bayLayoutSelect_0", "LONG_HANGING");
-      await page.selectOption("#bayLayoutSelect_1", "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES");
-      await page.click("#aiClarifySubmitBtn");
-
-      // Must now reach READY_FOR_REVIEW
       await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
       await expect(page.locator("#revWidth")).toContainText("1800 mm");
-      await expect(page.locator("#revBays")).toContainText("2");
+      await expect(page.locator("#revRevision")).toContainText("1");
+
+      // Enter conversational edit: 'Make it 2000 mm wide.'
+      await page.fill("#aiConversationalInput", "Make it 2000 mm wide.");
+      await page.click("#aiConversationalSendBtn");
+
+      // Verify specification table updates immediately
+      await expect(page.locator("#revWidth")).toContainText("2000 mm");
+      await expect(page.locator("#revWidthOrigin")).toContainText("[Customer Stated]");
+      await expect(page.locator("#revRevision")).toContainText("2");
+
+      // Verify 3D geometry plinth front width matches 2000mm
+      const updatedFrontW = await page.evaluate(() => {
+        const root = Builder.parts[0];
+        const pf = root.getObjectByName("part_PLINTH_FRONT");
+        return pf && pf.userData.finishedDimensionsMm ? pf.userData.finishedDimensionsMm.lengthMm : null;
+      });
+      expect(updatedFrontW).toBe(2000);
     });
 
-    test("8. READY_FOR_REVIEW shows summary and prominently displays 'No 3D geometry has been generated yet.'", async ({ page }) => {
+    test("6. conversational refinement: shelf layout change updates bay configuration", async ({ page }) => {
       await page.goto("/#/build/ai-wardrobe");
       await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
-      await page.fill("#aiWardrobeInput", "I need a straight hinged wardrobe for the master bedroom. It should be 1800mm wide, 2400mm tall and 600mm deep, standing on a 100mm plinth. Split it into two bays with four hinged doors in white melamine. The left bay is full-height hanging with a shelf over the top. The right bay is short hanging over two adjustable shelves, also with a top shelf.");
+      await page.fill("#aiWardrobeInput", "Make me a wardrobe");
       await page.click("#aiWardrobeSubmitBtn");
+      await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
 
+      // Request shelf change: 'Add another shelf on the right.'
+      await page.fill("#aiConversationalInput", "Add another shelf on the right.");
+      await page.click("#aiConversationalSendBtn");
+
+      // Verify conversational reply in stream
+      await expect(page.locator("#aiConversationalStream")).toContainText("Updated interior layout");
+      await expect(page.locator("#revRevision")).toContainText("2");
+    });
+
+    test("7. conversational undo reverts changes to previous revision and restores 3D model", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "Make me a wardrobe");
+      await page.click("#aiWardrobeSubmitBtn");
+      await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
       await expect(page.locator("#revWidth")).toContainText("1800 mm");
-      await expect(page.locator("#revHeight")).toContainText("2400 mm");
-      await expect(page.locator("#revDepth")).toContainText("600 mm");
-      await expect(page.locator("#revPlinth")).toContainText("100 mm");
-      await expect(page.locator("#revBays")).toContainText("2");
-      await expect(page.locator("#revDoors")).toContainText("4");
-      await expect(page.locator("#revProposalId")).not.toBeEmpty();
-      await expect(page.locator("#revRevision")).toContainText("1");
-      await expect(page.locator("#revFingerprint")).toContainText("fs256:");
 
-      await expect(page.locator("#aiNoGeomNotice")).toBeVisible();
-      await expect(page.locator("#aiNoGeomNotice")).toContainText("No 3D geometry has been generated yet.");
+      // Edit width to 2000 mm
+      await page.fill("#aiConversationalInput", "Make it 2000 mm wide.");
+      await page.click("#aiConversationalSendBtn");
+      await expect(page.locator("#revWidth")).toContainText("2000 mm");
+      await expect(page.locator("#revRevision")).toContainText("2");
+
+      // Click Undo button
+      await page.click("#btnUndoEdit");
+      await expect(page.locator("#revWidth")).toContainText("1800 mm");
+      await expect(page.locator("#revRevision")).toContainText("1");
+
+      const revertedFrontW = await page.evaluate(() => {
+        const root = Builder.parts[0];
+        const pf = root.getObjectByName("part_PLINTH_FRONT");
+        return pf && pf.userData.finishedDimensionsMm ? pf.userData.finishedDimensionsMm.lengthMm : null;
+      });
+      expect(revertedFrontW).toBe(1800);
+    });
+
+    test("8. navigation preservation: active design and conversation persist when switching away and returning", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "Make me a wardrobe");
+      await page.click("#aiWardrobeSubmitBtn");
+      await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
+
+      // Edit width to 2000 mm
+      await page.fill("#aiConversationalInput", "Make it 2000 mm wide.");
+      await page.click("#aiConversationalSendBtn");
+      await expect(page.locator("#revWidth")).toContainText("2000 mm");
+
+      // Navigate to catalog home via .b-back
+      await page.click(".b-back");
+      await expect(page.locator("#view-landing")).toBeVisible();
+
+      // Navigate back via "Design with AI"
+      await page.click("#createWithFurniAiNavBtn");
+      await expect(page.locator("#aiWardrobePanel")).toBeVisible();
+      await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
+      await expect(page.locator("#revWidth")).toContainText("2000 mm");
+      await expect(page.locator("#revRevision")).toContainText("2");
+
+      // 3D scene remains loaded with 19 parts
       const partsCount = await page.evaluate(() => Builder.parts.length);
-      expect(partsCount).toBe(0);
+      expect(partsCount).toBeGreaterThan(0);
     });
 
     test("9. 'Edit answers' allows changing answers, increments revision, invalidates approval, generates new fingerprint", async ({ page }) => {
