@@ -110,9 +110,10 @@ try {
   await page.click("#aiClarifySubmitBtn");
   await page.waitForTimeout(100);
 
-  // Q3: bayLayouts -> shelves
-  await page.waitForSelector("#aiClarifyInput");
-  await page.fill("#aiClarifyInput", "shelves");
+  // Q3: bayLayouts -> dropdown selectors
+  await page.waitForSelector("#aiClarifyBayLayoutsWrap:not([hidden])");
+  await page.selectOption("#bayLayoutSelect_0", "LONG_HANGING");
+  await page.selectOption("#bayLayoutSelect_1", "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES");
   await page.click("#aiClarifySubmitBtn");
 
   await page.waitForSelector("#aiWardrobeReviewSection:not([hidden])");

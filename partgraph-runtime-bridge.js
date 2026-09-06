@@ -2882,9 +2882,9 @@ var PartGraphBridge = (() => {
     APPROVED: "APPROVED"
   });
   var MAX_RESOLUTION_ROUNDS = 8;
-  function proposeWardrobe({ description, text, answers = {}, specId = "furnispec-ai-wardrobe-01", revision = 1, adapter = createDeterministicPhraseAdapter() }) {
+  function proposeWardrobe({ description, answers = {}, specId, revision = 1, adapter = createDeterministicPhraseAdapter() }) {
     assertProposalOnly(adapter);
-    const rawDescription = description ?? text ?? "";
+    const rawDescription = description ?? "";
     const interpretation = adapter.interpret(rawDescription);
     let observations = [...interpretation.observations];
     let ambiguities = [...interpretation.ambiguities];

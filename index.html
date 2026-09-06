@@ -648,7 +648,18 @@ footer ul a:hover{opacity:1;color:var(--brass)}
           <div style="font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:#b45309;background:#fef3c7;padding:3px 8px;border-radius:4px;display:inline-block;margin-bottom:8px;letter-spacing:.06em;">NEEDS CLARIFICATION</div>
           <div id="aiClarifyCount" style="font-family:'Space Mono',monospace;font-size:11px;color:var(--ink-soft);margin-bottom:4px;">Question 1 of 3</div>
           <div id="aiClarifyPrompt" style="font-size:13px;font-weight:500;margin-bottom:10px;line-height:1.4;"></div>
-          <input type="text" id="aiClarifyInput" class="om-input" placeholder="Your answer...">
+          <div id="aiClarifyError" style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:600;margin-bottom:8px;" hidden></div>
+          <div id="aiClarifyInputWrap" style="margin-bottom:8px;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <input type="text" id="aiClarifyInput" class="om-input" placeholder="Your answer..." style="flex:1;">
+              <span id="aiClarifyUnitLabel" style="font-family:'Space Mono',monospace;font-size:11px;color:var(--ink-soft);font-weight:700;" hidden>mm</span>
+            </div>
+            <div id="aiClarifyConvertedPreview" style="font-size:11px;color:var(--ink-soft);margin-top:4px;font-style:italic;" hidden></div>
+          </div>
+          <div id="aiClarifyBayLayoutsWrap" style="margin-bottom:8px;" hidden>
+            <div style="font-size:11px;color:var(--ink-soft);margin-bottom:6px;">Select an interior layout for each bay:</div>
+            <div id="aiClarifyBaySelectors" style="display:flex;flex-direction:column;gap:6px;"></div>
+          </div>
           <button class="btn sm" id="aiClarifySubmitBtn" style="width:100%;margin-top:4px;justify-content:center;">Submit Answer</button>
           <button class="btn sm ghost" id="btnClarifyStartOver" style="width:100%;margin-top:6px;justify-content:center;">Start over</button>
         </div>
@@ -675,12 +686,13 @@ footer ul a:hover{opacity:1;color:var(--brass)}
             </tbody>
           </table>
           <button class="btn sm" id="btnApproveGenerate3D" style="width:100%;background:var(--brass);border-color:var(--brass);color:#fff;margin-bottom:6px;justify-content:center;">Approve and Generate 3D</button>
-          <button class="btn sm ghost" id="btnEditAnswers" style="width:100%;justify-content:center;">Edit answers</button>
+          <button class="btn sm ghost btn-edit-answers" id="btnReviewEditAnswers" style="width:100%;justify-content:center;">Edit answers</button>
         </div>
 
         <div id="aiWardrobeApprovedSection" hidden>
           <div id="aiApprovedStageTag" style="font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:#15803d;background:#dcfce7;padding:3px 8px;border-radius:4px;display:inline-block;margin-bottom:8px;letter-spacing:.06em;">APPROVED FOR PREVIEW</div>
           <p style="font-size:12px;color:var(--ink-soft);margin-bottom:12px;line-height:1.4;">3D model generated from validated 19-part PartGraph. Operable doors and material swatches are active.</p>
+          <button class="btn sm ghost btn-edit-answers" id="btnEditAnswers" style="width:100%;margin-bottom:6px;justify-content:center;">Edit answers</button>
           <button class="btn sm ghost" id="btnStartNewWardrobe" style="width:100%;justify-content:center;">Start New Wardrobe</button>
         </div>
       </div>
@@ -1803,7 +1815,18 @@ const Builder={
       document.getElementById('bType').textContent='conversation-to-3d';
       document.getElementById('bPos').textContent='AI';
       document.getElementById('bDimsTag').innerHTML='1800 × 2400 × 600 <b>mm</b>';
-      if(bm){bm.classList.add('custom-type');bm.classList.add('ai-wardrobe-mode');}
+      if(bm){
+        bm.classList.add('custom-type');
+        bm.classList.add('ai-wardrobe-mode');
+        if(window.matchMedia && window.matchMedia('(max-width:680px)').matches){
+          bm.classList.remove('show-right');
+          bm.classList.add('show-left');
+          const tL=document.getElementById('tab-left');
+          const tR=document.getElementById('tab-right');
+          if(tL)tL.classList.add('active');
+          if(tR)tR.classList.remove('active');
+        }
+      }
       if(aiPanel)aiPanel.style.display='block';
       if(inspPanel)inspPanel.style.display='block';
       if(typeof initAiWardrobePanel==='function'){
@@ -1938,11 +1961,18 @@ window.Builder=Builder;
 let aiWardrobeState = {
   text: '',
   answers: {},
+  specId: null,
+  revision: 1,
   currentStage: null,
   proposal: null,
   approval: null,
   partGraph: null,
 };
+
+function generateAiWardrobeSpecId() {
+  const rand = Math.floor(1000 + Math.random() * 9000);
+  return `furnispec-ai-wardrobe-${rand}`;
+}
 
 function initAiWardrobePanel() {
   Builder.clear();
@@ -1950,6 +1980,8 @@ function initAiWardrobePanel() {
   aiWardrobeState = {
     text: '',
     answers: {},
+    specId: generateAiWardrobeSpecId(),
+    revision: 1,
     currentStage: null,
     proposal: null,
     approval: null,
@@ -1961,6 +1993,11 @@ function initAiWardrobePanel() {
   if (clarifyInp) {
     clarifyInp.value = '';
     delete clarifyInp.dataset.gapKey;
+  }
+  const errEl = document.getElementById('aiClarifyError');
+  if (errEl) {
+    errEl.textContent = '';
+    errEl.hidden = true;
   }
   const secInput = document.getElementById('aiWardrobeInputSection');
   const secClarify = document.getElementById('aiWardrobeClarifySection');
@@ -2028,6 +2065,84 @@ function selectPartForInspection(mesh) {
   }
 }
 
+function parseAndValidateClarifyInput(gapKey, rawVal, currentBayCount) {
+  const v = rawVal.trim();
+  if (gapKey.endsWith('Mm')) {
+    // Dimension field: reject negative, empty, or hedged prefixes
+    if (v.startsWith('-')) {
+      return { ok: false, error: 'Negative dimensions are not permitted. Dimension must be a positive number.' };
+    }
+    const hedge = /\b(?:about|around|roughly|approx(?:imately)?|~|or so)\b/i;
+    if (hedge.test(v)) {
+      return { ok: false, error: 'Measurements must be exact. Approximate values are not permitted.' };
+    }
+    // Match magnitude and optional unit
+    const m = /^(\+?\d+(?:\.\d+)?)\s*(mm|millimetres?|millimeters?|cm|centimetres?|centimeters?|m|metres?|meters?)?$/i.exec(v);
+    if (!m) {
+      return { ok: false, error: 'Please enter a valid numeric dimension in millimetres (e.g. 1800 or 1.8m).' };
+    }
+    const num = parseFloat(m[1]);
+    if (!Number.isFinite(num) || num <= 0) {
+      return { ok: false, error: 'Dimension must be a positive number greater than zero.' };
+    }
+    const unit = (m[2] || 'mm').toLowerCase();
+    let mmVal = num;
+    if (unit.startsWith('cm')) {
+      mmVal = num * 10;
+    } else if (unit === 'm' || unit.startsWith('meter') || unit.startsWith('metre')) {
+      mmVal = num * 1000;
+    }
+
+    // Check 0.1mm resolution: round to 4 decimals first to avoid float artifact
+    const scaled = Math.round(mmVal * 10000) / 1000; // scaled * 10
+    if (Math.abs(scaled - Math.round(scaled)) > 1e-4) {
+      return { ok: false, error: 'Precision finer than 0.1mm is not supported.' };
+    }
+    const finalMm = Math.round(scaled) / 10;
+    return { ok: true, value: finalMm, convertedText: (unit !== 'mm' && !unit.startsWith('milli')) ? `${finalMm} mm` : null };
+  }
+
+  if (gapKey === 'bayCount' || gapKey === 'doorCount') {
+    if (/\b(?:about|around|roughly|approx)\b/i.test(v)) {
+      return { ok: false, error: 'Counts must be exact integers.' };
+    }
+    const wordNums = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+    const lower = v.toLowerCase();
+    if (wordNums[lower] !== undefined) {
+      return { ok: true, value: wordNums[lower] };
+    }
+    if (!/^\+?\d+$/.test(v)) {
+      return { ok: false, error: `${gapKey === 'bayCount' ? 'Bay' : 'Door'} count must be a positive whole number (e.g. 2, 4).` };
+    }
+    const n = parseInt(v, 10);
+    if (n <= 0) {
+      return { ok: false, error: 'Count must be at least 1.' };
+    }
+    return { ok: true, value: n };
+  }
+
+  if (gapKey === 'finishType') {
+    const lower = v.toLowerCase();
+    if (lower.includes('melamine')) return { ok: true, value: 'melamine' };
+    if (lower.includes('painted') || lower.includes('paint')) return { ok: true, value: 'painted' };
+    if (lower.includes('veneer')) return { ok: true, value: 'veneer' };
+    return { ok: true, value: lower };
+  }
+
+  if (gapKey === 'bayLayouts') {
+    // If entered via text instead of dropdowns
+    if (v.startsWith('[') && v.endsWith(']')) {
+      try {
+        const arr = JSON.parse(v);
+        if (Array.isArray(arr) && arr.length > 0) return { ok: true, value: arr };
+      } catch (_e) {}
+    }
+    return { ok: false, error: 'Please use the bay selectors below to choose each bay layout.' };
+  }
+
+  return { ok: true, value: v };
+}
+
 function runAiWardrobePropose() {
   if (!globalThis.PartGraphBridge || !globalThis.PartGraphBridge.proposeWardrobe) {
     console.error('PartGraphBridge.proposeWardrobe unavailable');
@@ -2039,11 +2154,15 @@ function runAiWardrobePropose() {
   Builder.clear();
   resetInspectionPanel();
 
+  if (!aiWardrobeState.specId) {
+    aiWardrobeState.specId = generateAiWardrobeSpecId();
+  }
+
   const result = globalThis.PartGraphBridge.proposeWardrobe({
     description: aiWardrobeState.text,
     answers: aiWardrobeState.answers,
-    specId: 'furnispec-ai-wardrobe-01',
-    revision: 1,
+    specId: aiWardrobeState.specId,
+    revision: aiWardrobeState.revision,
   });
 
   aiWardrobeState.currentStage = result.stage;
@@ -2058,6 +2177,12 @@ function runAiWardrobePropose() {
     if (secApproved) secApproved.hidden = true;
     if (secClarify) secClarify.hidden = false;
 
+    const errEl = document.getElementById('aiClarifyError');
+    if (errEl) {
+      errEl.textContent = '';
+      errEl.hidden = true;
+    }
+
     const qList = result.questions || [];
     const openGaps = (result.gaps || []).filter(g => !Object.prototype.hasOwnProperty.call(aiWardrobeState.answers, g.key));
     const currentQ = qList[0];
@@ -2071,11 +2196,56 @@ function runAiWardrobePropose() {
     if (promptEl) {
       promptEl.textContent = currentQ ? currentQ.question : 'Please clarify requirement:';
     }
+
+    const inpWrap = document.getElementById('aiClarifyInputWrap');
+    const layoutsWrap = document.getElementById('aiClarifyBayLayoutsWrap');
     const inp = document.getElementById('aiClarifyInput');
-    if (inp) {
-      inp.value = '';
-      inp.dataset.gapKey = currentQ ? currentQ.key : '';
-      inp.focus();
+    const unitLabel = document.getElementById('aiClarifyUnitLabel');
+    const previewEl = document.getElementById('aiClarifyConvertedPreview');
+
+    if (previewEl) {
+      previewEl.textContent = '';
+      previewEl.hidden = true;
+    }
+
+    if (currentQ && currentQ.key === 'bayLayouts') {
+      if (inpWrap) inpWrap.hidden = true;
+      if (layoutsWrap) layoutsWrap.hidden = false;
+      const selectorsDiv = document.getElementById('aiClarifyBaySelectors');
+      if (selectorsDiv) {
+        selectorsDiv.innerHTML = '';
+        const bayCount = (result.observations.find(o => o.key === 'bayCount') || {}).value || 2;
+        for (let i = 0; i < bayCount; i++) {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:11px;';
+          const label = document.createElement('span');
+          label.textContent = `Bay ${i + 1}:`;
+          label.style.cssText = 'width:50px;font-weight:600;';
+          const select = document.createElement('select');
+          select.className = 'om-input';
+          select.id = `bayLayoutSelect_${i}`;
+          select.style.cssText = 'flex:1;font-size:11px;padding:4px 8px;';
+          select.innerHTML = `
+            <option value="">-- Select interior layout --</option>
+            <option value="LONG_HANGING">Full-height hanging (1 top shelf)</option>
+            <option value="SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES">Short hanging + 2 adjustable shelves</option>
+          `;
+          row.appendChild(label);
+          row.appendChild(select);
+          selectorsDiv.appendChild(row);
+        }
+      }
+    } else {
+      if (layoutsWrap) layoutsWrap.hidden = true;
+      if (inpWrap) inpWrap.hidden = false;
+      if (inp) {
+        inp.value = '';
+        inp.dataset.gapKey = currentQ ? currentQ.key : '';
+        inp.focus();
+      }
+      if (unitLabel) {
+        unitLabel.hidden = !(currentQ && currentQ.key.endsWith('Mm'));
+      }
     }
   } else if (result.stage === 'READY_FOR_REVIEW') {
     aiWardrobeState.proposal = result.proposal;
@@ -2100,8 +2270,8 @@ function runAiWardrobePropose() {
     setVal('revPlinth', `${plinth.heightMm || 100} mm (frame-aligned)`);
     setVal('revBays', `${spec.bayCount || 2} equal bays`);
     setVal('revDoors', `${spec.doorCount || 4} hinged doors (${(spec.doorCount || 4) / (spec.bayCount || 2)} per bay)`);
-    setVal('revFinish', spec.finishType ? (spec.finishType.charAt(0).toUpperCase() + spec.finishType.slice(1)) : 'Oak');
-    setVal('revInterior', 'Shelves (2 per bay)');
+    setVal('revFinish', spec.finishType ? (spec.finishType.charAt(0).toUpperCase() + spec.finishType.slice(1)) : 'Melamine');
+    setVal('revInterior', `${spec.bayCount || 2} bays configured`);
     setVal('revProposalId', prop ? prop.specId : '');
     setVal('revRevision', String(prop ? prop.revision : 1));
     setVal('revFingerprint', prop ? prop.fingerprint : '');
@@ -2109,28 +2279,49 @@ function runAiWardrobePropose() {
 }
 
 function submitClarifyAnswer() {
+  const errEl = document.getElementById('aiClarifyError');
+  const showErr = (msg) => {
+    if (errEl) {
+      errEl.textContent = msg;
+      errEl.hidden = false;
+    }
+  };
+
+  const layoutsWrap = document.getElementById('aiClarifyBayLayoutsWrap');
+  if (layoutsWrap && !layoutsWrap.hidden) {
+    const selects = layoutsWrap.querySelectorAll('select');
+    const layouts = [];
+    for (let i = 0; i < selects.length; i++) {
+      const val = selects[i].value;
+      if (!val) {
+        showErr(`Please select an interior layout for Bay ${i + 1}.`);
+        return;
+      }
+      layouts.push(val);
+    }
+    if (errEl) errEl.hidden = true;
+    aiWardrobeState.answers['bayLayouts'] = layouts;
+    runAiWardrobePropose();
+    return;
+  }
+
   const inp = document.getElementById('aiClarifyInput');
   if (!inp) return;
   const gapKey = inp.dataset.gapKey;
   const rawVal = inp.value.trim();
-  if (!rawVal || !gapKey) return;
-
-  let parsed = rawVal;
-  if (gapKey.endsWith('Mm')) {
-    const n = parseFloat(rawVal.replace(/[^0-9.]/g, ''));
-    if (!isNaN(n)) parsed = n;
-  } else if (gapKey === 'bayCount' || gapKey === 'doorCount') {
-    const n = parseInt(rawVal.replace(/[^0-9]/g, ''), 10);
-    if (!isNaN(n)) parsed = n;
-  } else if (gapKey === 'bayLayouts') {
-    if (rawVal.includes('[') && rawVal.includes(']')) {
-      try { parsed = JSON.parse(rawVal); } catch (e) { parsed = ["LONG_HANGING", "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"]; }
-    } else {
-      parsed = ["LONG_HANGING", "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"];
-    }
+  if (!rawVal || !gapKey) {
+    showErr('Please enter an answer.');
+    return;
   }
 
-  aiWardrobeState.answers[gapKey] = parsed;
+  const validated = parseAndValidateClarifyInput(gapKey, rawVal);
+  if (!validated.ok) {
+    showErr(validated.error || 'Invalid answer.');
+    return;
+  }
+
+  if (errEl) errEl.hidden = true;
+  aiWardrobeState.answers[gapKey] = validated.value;
   runAiWardrobePropose();
 }
 
@@ -2168,6 +2359,7 @@ function approveAndGenerate3D() {
 function editAnswers() {
   aiWardrobeState.approval = null;
   aiWardrobeState.partGraph = null;
+  aiWardrobeState.revision = (aiWardrobeState.revision || 1) + 1;
   Builder.clear();
   resetInspectionPanel();
 
@@ -2224,10 +2416,10 @@ function bindAiWardrobeEvents() {
     approveBtn.addEventListener('click', approveAndGenerate3D);
   }
 
-  const editBtn = document.getElementById('btnEditAnswers');
-  if (editBtn) {
-    editBtn.addEventListener('click', editAnswers);
-  }
+  const editBtns = document.querySelectorAll('#btnEditAnswers, #btnReviewEditAnswers, .btn-edit-answers');
+  editBtns.forEach((btn) => {
+    btn.addEventListener('click', editAnswers);
+  });
 
   const newBtn = document.getElementById('btnStartNewWardrobe');
   if (newBtn) {
