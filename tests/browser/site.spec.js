@@ -1185,12 +1185,12 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
       await page.click("#aiWardrobeSubmitBtn");
       await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
 
-      // Request shelf change: 'Add another shelf on the right.'
-      await page.fill("#aiConversationalInput", "Add another shelf on the right.");
+      // Request supported shelf change: 'Add another shelf on the left.'
+      await page.fill("#aiConversationalInput", "Add another shelf on the left.");
       await page.click("#aiConversationalSendBtn");
 
       // Verify conversational reply in stream
-      await expect(page.locator("#aiConversationalStream")).toContainText("Updated interior layout");
+      await expect(page.locator("#aiConversationalStream")).toContainText("Added shelving to the left bay");
       await expect(page.locator("#revRevision")).toContainText("2");
     });
 
@@ -1534,6 +1534,127 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
 
       const xssExecuted = await page.evaluate(() => typeof window.__xss !== "undefined");
       expect(xssExecuted).toBe(false);
+    });
+
+    test("20. conversational edit rejects negative dimension 'Make it -2000 mm wide' and preserves model & revision", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "Make me a wardrobe");
+      await page.click("#aiWardrobeSubmitBtn");
+      await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
+      await expect(page.locator("#revRevision")).toHaveText("1");
+      await expect(page.locator("#revWidth")).toHaveText("1800 mm");
+
+      // Enter negative width
+      await page.fill("#aiConversationalInput", "Make it -2000 mm wide");
+      await page.click("#aiConversationalSendBtn");
+
+      // Verify rejection message in chat
+      const chatStream = page.locator("#aiConversationalStream");
+      await expect(chatStream).toContainText("Sorry — Negative dimensions are not permitted");
+
+      // Verify model, revision and width are strictly preserved
+      await expect(page.locator("#revRevision")).toHaveText("1");
+      await expect(page.locator("#revWidth")).toHaveText("1800 mm");
+      const rootMesh = await page.evaluate(() => Builder.parts[0]?.summary?.envelope?.widthDmm || 18000);
+      expect(rootMesh).toBe(18000);
+    });
+
+    test("21. conversational edit rejects precision finer than 0.1mm 'Make it 2000.00001 mm wide' without rounding", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "Make me a wardrobe");
+      await page.click("#aiWardrobeSubmitBtn");
+      await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
+      await expect(page.locator("#revRevision")).toHaveText("1");
+      await expect(page.locator("#revWidth")).toHaveText("1800 mm");
+
+      // Enter precision finer than 0.1mm
+      await page.fill("#aiConversationalInput", "Make it 2000.00001 mm wide");
+      await page.click("#aiConversationalSendBtn");
+
+      // Verify precision error message in chat without rounding
+      const chatStream = page.locator("#aiConversationalStream");
+      await expect(chatStream).toContainText("Sorry — Precision finer than 0.1mm is not supported");
+
+      // Revision and width must be strictly preserved
+      await expect(page.locator("#revRevision")).toHaveText("1");
+      await expect(page.locator("#revWidth")).toHaveText("1800 mm");
+    });
+
+    test("22. conversational edit honestly explains limitation on 'Add another shelf on the right'", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "Make me a wardrobe");
+      await page.click("#aiWardrobeSubmitBtn");
+      await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
+      await expect(page.locator("#revRevision")).toHaveText("1");
+
+      // Right bay is already at max supported shelves (2 adjustable shelves in G4 slice)
+      await page.fill("#aiConversationalInput", "Add another shelf on the right");
+      await page.click("#aiConversationalSendBtn");
+
+      const chatStream = page.locator("#aiConversationalStream");
+      await expect(chatStream).toContainText("Sorry — The right bay already has the maximum supported shelving");
+      await expect(chatStream).toContainText("change the left bay to shelves or switch back");
+
+      // Revision must remain 1 because no valid change occurred
+      await expect(page.locator("#revRevision")).toHaveText("1");
+    });
+
+    test("23. step-by-step edit and undo: original -> width edit -> shelf edit -> undo once -> undo again with preserved specId", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "Make me a wardrobe");
+      await page.click("#aiWardrobeSubmitBtn");
+      await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
+
+      // 1. Initial draft
+      await expect(page.locator("#revRevision")).toHaveText("1");
+      await expect(page.locator("#revWidth")).toHaveText("1800 mm");
+      const initialSpecId = await page.evaluate(() => aiWardrobeState.specId);
+      expect(initialSpecId).toBeTruthy();
+
+      // 2. Width edit: Make it 2000 mm wide
+      await page.fill("#aiConversationalInput", "Make it 2000 mm wide");
+      await page.click("#aiConversationalSendBtn");
+      await expect(page.locator("#revRevision")).toHaveText("2");
+      await expect(page.locator("#revWidth")).toHaveText("2000 mm");
+      const specIdAfterWidth = await page.evaluate(() => aiWardrobeState.specId);
+      expect(specIdAfterWidth).toBe(initialSpecId);
+
+      // 3. Shelf edit: Add another shelf on the left
+      await page.fill("#aiConversationalInput", "Add another shelf on the left");
+      await page.click("#aiConversationalSendBtn");
+      await expect(page.locator("#revRevision")).toHaveText("3");
+      await expect(page.locator("#revWidth")).toHaveText("2000 mm");
+      const specIdAfterShelf = await page.evaluate(() => aiWardrobeState.specId);
+      expect(specIdAfterShelf).toBe(initialSpecId);
+
+      // Verify left bay has adjustable shelves in 3D
+      const partsAtRev3 = await page.evaluate(() => Builder.parts[0]?.children?.length || 0);
+      expect(partsAtRev3).toBeGreaterThan(0);
+
+      // 4. Undo once -> restores Revision 2 (2000 mm wide)
+      await page.click("#btnUndoEdit");
+      await expect(page.locator("#revRevision")).toHaveText("2");
+      await expect(page.locator("#revWidth")).toHaveText("2000 mm");
+      const specIdAfterUndo1 = await page.evaluate(() => aiWardrobeState.specId);
+      expect(specIdAfterUndo1).toBe(initialSpecId);
+
+      // 5. Undo again -> restores Revision 1 (1800 mm wide)
+      await page.click("#btnUndoEdit");
+      await expect(page.locator("#revRevision")).toHaveText("1");
+      await expect(page.locator("#revWidth")).toHaveText("1800 mm");
+      const specIdAfterUndo2 = await page.evaluate(() => aiWardrobeState.specId);
+      expect(specIdAfterUndo2).toBe(initialSpecId);
+
+      // 6. Undo when empty -> reports 'Nothing to undo'
+      await page.click("#btnUndoEdit");
+      const chatStream = page.locator("#aiConversationalStream");
+      await expect(chatStream).toContainText("Nothing to undo");
+      await expect(page.locator("#revRevision")).toHaveText("1");
+      await expect(page.locator("#revWidth")).toHaveText("1800 mm");
     });
   });
 });

@@ -2892,6 +2892,171 @@ var PartGraphBridge = (() => {
     return gaps.map(questionFor);
   }
 
+  // src/lib/conversation/clarifyInput.js
+  var ACCEPTED_DIMENSION_UNITS = Object.freeze({
+    // Millimetre variants (factor to dmm = 10, factor to mm = 1)
+    "": { factorDmm: 10n, factorMm: 1, baseUnit: "mm" },
+    mm: { factorDmm: 10n, factorMm: 1, baseUnit: "mm" },
+    millimetre: { factorDmm: 10n, factorMm: 1, baseUnit: "mm" },
+    millimetres: { factorDmm: 10n, factorMm: 1, baseUnit: "mm" },
+    millimeter: { factorDmm: 10n, factorMm: 1, baseUnit: "mm" },
+    millimeters: { factorDmm: 10n, factorMm: 1, baseUnit: "mm" },
+    // Centimetre variants (factor to dmm = 100, factor to mm = 10)
+    cm: { factorDmm: 100n, factorMm: 10, baseUnit: "cm" },
+    centimetre: { factorDmm: 100n, factorMm: 10, baseUnit: "cm" },
+    centimetres: { factorDmm: 100n, factorMm: 10, baseUnit: "cm" },
+    centimeter: { factorDmm: 100n, factorMm: 10, baseUnit: "cm" },
+    centimeters: { factorDmm: 100n, factorMm: 10, baseUnit: "cm" },
+    // Metre variants (factor to dmm = 10000, factor to mm = 1000)
+    m: { factorDmm: 10000n, factorMm: 1e3, baseUnit: "m" },
+    metre: { factorDmm: 10000n, factorMm: 1e3, baseUnit: "m" },
+    metres: { factorDmm: 10000n, factorMm: 1e3, baseUnit: "m" },
+    meter: { factorDmm: 10000n, factorMm: 1e3, baseUnit: "m" },
+    meters: { factorDmm: 10000n, factorMm: 1e3, baseUnit: "m" }
+  });
+  var HEDGE_PATTERN = /(?:~|\b(?:about|around|roughly|approx(?:imately)?|or so)\b)/i;
+  var WORD_NUMS = Object.freeze({
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10
+  });
+  function parseDimension(rawVal) {
+    if (typeof rawVal !== "string") {
+      return { ok: false, error: "Dimension input must be a string." };
+    }
+    const str = rawVal.trim();
+    if (str.length === 0) {
+      return { ok: false, error: "Please enter a valid numeric dimension in millimetres (e.g. 1800 or 1.8m)." };
+    }
+    if (str.startsWith("-")) {
+      return { ok: false, error: "Negative dimensions are not permitted. Dimension must be a positive number." };
+    }
+    if (HEDGE_PATTERN.test(str)) {
+      return { ok: false, error: "Measurements must be exact. Approximate values are not permitted." };
+    }
+    const match = /^\+?(?:(\d+)(?:\.(\d+))?|\.(\d+))\s*([a-zA-Z]+)?$/i.exec(str);
+    if (!match) {
+      return { ok: false, error: "Please enter a valid numeric dimension in millimetres (e.g. 1800 or 1.8m)." };
+    }
+    const intStr = match[1] ?? "0";
+    const fracStr = match[2] ?? match[3] ?? "";
+    const unitRaw = (match[4] ?? "").toLowerCase();
+    const unitDef = ACCEPTED_DIMENSION_UNITS[unitRaw];
+    if (!unitDef) {
+      return { ok: false, error: "Please enter a valid numeric dimension in millimetres (e.g. 1800 or 1.8m)." };
+    }
+    const intPart = BigInt(intStr);
+    const fracLen = BigInt(fracStr.length);
+    const multiplier = unitDef.factorDmm;
+    let totalDmm;
+    if (fracLen === 0n) {
+      totalDmm = intPart * multiplier;
+    } else {
+      const divisor = 10n ** fracLen;
+      const fracPart = BigInt(fracStr);
+      const fracDmmScaled = fracPart * multiplier;
+      if (fracDmmScaled % divisor !== 0n) {
+        return { ok: false, error: "Precision finer than 0.1mm is not supported." };
+      }
+      totalDmm = intPart * multiplier + fracDmmScaled / divisor;
+    }
+    if (totalDmm <= 0n) {
+      return { ok: false, error: "Dimension must be a positive number greater than zero." };
+    }
+    const finalMm = Number(totalDmm) / 10;
+    const isPlainMm = unitRaw === "" || unitRaw === "mm";
+    return {
+      ok: true,
+      value: finalMm,
+      convertedText: !isPlainMm ? `${finalMm} mm` : null
+    };
+  }
+  function parseAndValidateClarifyInput(gapKey, rawVal, currentBayCount = 2) {
+    if (rawVal === void 0 || rawVal === null) {
+      return { ok: false, error: "Please enter an answer." };
+    }
+    if (typeof rawVal === "string" && rawVal.trim().length === 0) {
+      return { ok: false, error: "Please enter an answer." };
+    }
+    if (gapKey.endsWith("Mm")) {
+      return parseDimension(typeof rawVal === "string" ? rawVal : String(rawVal));
+    }
+    const v = typeof rawVal === "string" ? rawVal.trim() : rawVal;
+    if (gapKey === "bayCount" || gapKey === "doorCount") {
+      const label = gapKey === "bayCount" ? "Bay" : "Door";
+      if (typeof v === "string" && HEDGE_PATTERN.test(v)) {
+        return { ok: false, error: "Counts must be exact integers." };
+      }
+      if (typeof v === "string") {
+        const lower = v.toLowerCase();
+        if (WORD_NUMS[lower] !== void 0) {
+          return { ok: true, value: WORD_NUMS[lower] };
+        }
+        if (!/^\+?\d+$/.test(v)) {
+          return { ok: false, error: `${label} count must be a positive whole number (e.g. 2, 4).` };
+        }
+        const n = parseInt(v, 10);
+        if (n <= 0) {
+          return { ok: false, error: "Count must be at least 1." };
+        }
+        return { ok: true, value: n };
+      }
+      if (typeof v === "number") {
+        if (!Number.isInteger(v) || v <= 0) {
+          return { ok: false, error: `${label} count must be a positive whole number (e.g. 2, 4).` };
+        }
+        return { ok: true, value: v };
+      }
+      return { ok: false, error: `${label} count must be a positive whole number (e.g. 2, 4).` };
+    }
+    if (gapKey === "finishType") {
+      if (typeof v === "string") {
+        const lower = v.toLowerCase();
+        if (lower.includes("melamine")) return { ok: true, value: "melamine" };
+        if (lower.includes("painted") || lower.includes("paint")) return { ok: true, value: "painted" };
+        if (lower.includes("veneer")) return { ok: true, value: "veneer" };
+        return { ok: true, value: lower };
+      }
+      return { ok: true, value: v };
+    }
+    if (gapKey === "bayLayouts") {
+      if (Array.isArray(v)) {
+        if (v.length === 0) {
+          return { ok: false, error: "Please select an interior layout for each bay." };
+        }
+        for (let i = 0; i < v.length; i++) {
+          if (!v[i]) {
+            return { ok: false, error: `Please select an interior layout for Bay ${i + 1}.` };
+          }
+        }
+        return { ok: true, value: v };
+      }
+      if (typeof v === "string" && v.startsWith("[") && v.endsWith("]")) {
+        try {
+          const arr = JSON.parse(v);
+          if (Array.isArray(arr) && arr.length > 0) {
+            for (let i = 0; i < arr.length; i++) {
+              if (!arr[i]) {
+                return { ok: false, error: `Please select an interior layout for Bay ${i + 1}.` };
+              }
+            }
+            return { ok: true, value: arr };
+          }
+        } catch (_e) {
+        }
+      }
+      return { ok: false, error: "Please use the bay selectors below to choose each bay layout." };
+    }
+    return { ok: true, value: v };
+  }
+
   // src/lib/conversation/pipeline.js
   var PIPELINE_STAGE = Object.freeze({
     NEEDS_CLARIFICATION: "NEEDS_CLARIFICATION",
@@ -3155,74 +3320,158 @@ var PartGraphBridge = (() => {
       safety: draftPreviewSafety(assembled.spec, partGraph)
     };
   }
+  var UNIT_RE_STR = "(?:mm|millimetres?|millimeters?|cm|centimetres?|centimeters?|m|metres?|meters?)";
+  var NUM_RE_STR = "[+-]?\\s*(?:\\d+(?:\\.\\d+)?|\\.\\d+)";
+  function extractDimension(text, axis) {
+    let trailingWords;
+    let leadingWords;
+    if (axis === "width") {
+      trailingWords = "(?:wide|width)";
+      leadingWords = "width";
+    } else if (axis === "height") {
+      trailingWords = "(?:high|tall|height)";
+      leadingWords = "height";
+    } else if (axis === "depth") {
+      trailingWords = "(?:deep|depth)";
+      leadingWords = "depth";
+    }
+    const m1 = text.match(new RegExp(`(?:(?:make|set)\\s+(?:it\\s+)?)?(${NUM_RE_STR}\\s*${UNIT_RE_STR}?)\\s*${trailingWords}\\b`, "i"));
+    if (m1 && m1[1]) return m1[1].trim();
+    const m2 = text.match(new RegExp(`\\b${leadingWords}\\s*(?:to|is|of|:|=)?\\s*(${NUM_RE_STR}\\s*${UNIT_RE_STR}?)\\b`, "i"));
+    if (m2 && m2[1]) return m2[1].trim();
+    return null;
+  }
   function parseConversationalCommand(text, currentFacts = {}) {
     if (typeof text !== "string" || !text.trim()) return null;
     const t = text.trim();
-    const widthMatch = t.match(/(?:make\s+(?:it\s+)?)?(\d+(?:\.\d+)?)\s*(mm|cm|m|millimetres?|centimetres?|metres?)?\s*(?:wide|width)/i) || t.match(/width\s*(?:to\s*|:\s*|=\s*)?(\d+(?:\.\d+)?)\s*(mm|cm|m|millimetres?|centimetres?|metres?)?/i);
-    if (widthMatch) {
-      const val = Number(widthMatch[1]);
-      const unit = (widthMatch[2] || "mm").toLowerCase();
-      const isMetre = /^m(etres?|eters?)?$/i.test(unit);
-      const isCm = /^c(m|entimetres?|entimeters?)$/i.test(unit);
-      const factor = isMetre ? 1e3 : isCm ? 10 : 1;
-      const widthMm = Math.round(val * factor * 10) / 10;
+    const widthRaw = extractDimension(t, "width");
+    if (widthRaw !== null) {
+      const parsedDim = parseDimension(widthRaw);
+      if (!parsedDim.ok) {
+        return {
+          error: parsedDim.error || "Invalid width dimension."
+        };
+      }
+      const widthMm = parsedDim.value;
       return {
         changes: { "envelope.widthMm": widthMm },
         assistantReply: `Updated width to ${widthMm} mm.`
       };
     }
-    const heightMatch = t.match(/(?:make\s+(?:it\s+)?)?(\d+(?:\.\d+)?)\s*(mm|cm|m|millimetres?|centimetres?|metres?)?\s*(?:high|tall|height)/i) || t.match(/height\s*(?:to\s*|:\s*|=\s*)?(\d+(?:\.\d+)?)\s*(mm|cm|m|millimetres?|centimetres?|metres?)?/i);
-    if (heightMatch) {
-      const val = Number(heightMatch[1]);
-      const unit = (heightMatch[2] || "mm").toLowerCase();
-      const isMetre = /^m(etres?|eters?)?$/i.test(unit);
-      const isCm = /^c(m|entimetres?|entimeters?)$/i.test(unit);
-      const factor = isMetre ? 1e3 : isCm ? 10 : 1;
-      const heightMm = Math.round(val * factor * 10) / 10;
+    const heightRaw = extractDimension(t, "height");
+    if (heightRaw !== null) {
+      const parsedDim = parseDimension(heightRaw);
+      if (!parsedDim.ok) {
+        return {
+          error: parsedDim.error || "Invalid height dimension."
+        };
+      }
+      const heightMm = parsedDim.value;
       return {
         changes: { "envelope.heightMm": heightMm },
         assistantReply: `Updated height to ${heightMm} mm.`
       };
     }
-    const depthMatch = t.match(/(?:make\s+(?:it\s+)?)?(\d+(?:\.\d+)?)\s*(mm|cm|m|millimetres?|centimetres?|metres?)?\s*(?:deep|depth)/i) || t.match(/depth\s*(?:to\s*|:\s*|=\s*)?(\d+(?:\.\d+)?)\s*(mm|cm|m|millimetres?|centimetres?|metres?)?/i);
-    if (depthMatch) {
-      const val = Number(depthMatch[1]);
-      const unit = (depthMatch[2] || "mm").toLowerCase();
-      const isMetre = /^m(etres?|eters?)?$/i.test(unit);
-      const isCm = /^c(m|entimetres?|entimeters?)$/i.test(unit);
-      const factor = isMetre ? 1e3 : isCm ? 10 : 1;
-      const depthMm = Math.round(val * factor * 10) / 10;
+    const depthRaw = extractDimension(t, "depth");
+    if (depthRaw !== null) {
+      const parsedDim = parseDimension(depthRaw);
+      if (!parsedDim.ok) {
+        return {
+          error: parsedDim.error || "Invalid depth dimension."
+        };
+      }
+      const depthMm = parsedDim.value;
       return {
         changes: { "envelope.depthMm": depthMm },
         assistantReply: `Updated depth to ${depthMm} mm.`
       };
     }
-    if (/add\s+(?:another\s+)?shelf|more\s+shelves|shelves\s+on\s+the\s+right|shelves\s+in\s+bay\s*2/i.test(t)) {
+    if (/\b(?:add\s+(?:another\s+|more\s+)?shelf|more\s+shelves|add\s+shelv(?:es|ing)|shelves)\b/i.test(t)) {
+      if (/all\s+shelves|shelves\s+(?:in|on)\s+both\s+(?:bays|sides)/i.test(t)) {
+        const currentBays2 = currentFacts.bayCount || 2;
+        const currentLayouts = currentFacts.bayLayouts || [];
+        const allAlreadyShelves = currentLayouts.length === currentBays2 && currentLayouts.every((l) => l === "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES");
+        if (allAlreadyShelves) {
+          return {
+            error: `All ${currentBays2} bays are already configured with short hanging and two adjustable shelves.`
+          };
+        }
+        const layouts2 = Array(currentBays2).fill("SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES");
+        return {
+          changes: { bayLayouts: layouts2 },
+          assistantReply: `Configured all ${currentBays2} bays with short hanging and two adjustable shelves.`
+        };
+      }
       const currentBays = currentFacts.bayCount || 2;
       const layouts = currentFacts.bayLayouts ? [...currentFacts.bayLayouts] : ["LONG_HANGING", "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"];
-      if (layouts.length >= 2) {
-        layouts[1] = "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES";
+      const isLeft = /\b(?:left|bay\s*1)\b/i.test(t);
+      const isRight = /\b(?:right|bay\s*2)\b/i.test(t);
+      let targetBayIdx;
+      if (isLeft) {
+        targetBayIdx = 0;
+      } else if (isRight) {
+        targetBayIdx = 1;
+      } else {
+        targetBayIdx = layouts.findIndex((l) => l === "LONG_HANGING");
+        if (targetBayIdx === -1) {
+          return {
+            error: `All bays already have the maximum supported shelving for this manufacturing slice (2 adjustable shelves per bay + top fixed shelf). You can switch a bay to full-height long hanging if desired.`
+          };
+        }
+      }
+      if (targetBayIdx >= currentBays) {
+        return {
+          error: `Cannot modify bay ${targetBayIdx + 1} because this wardrobe only has ${currentBays} bay${currentBays > 1 ? "s" : ""}.`
+        };
+      }
+      const currentBayLayout = layouts[targetBayIdx];
+      const baySide = targetBayIdx === 0 ? "left" : "right";
+      const otherSide = targetBayIdx === 0 ? "right" : "left";
+      if (currentBayLayout === "LONG_HANGING") {
+        layouts[targetBayIdx] = "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES";
+        return {
+          changes: { bayLayouts: layouts },
+          assistantReply: `Added shelving to the ${baySide} bay (configured as short hanging with two adjustable shelves).`
+        };
       }
       return {
-        changes: { bayLayouts: layouts },
-        assistantReply: "Updated interior layout: short hanging with two adjustable shelves on the right."
+        error: `The ${baySide} bay already has the maximum supported shelving for this manufacturing slice (2 adjustable shelves + top fixed shelf). You can change the ${otherSide} bay to shelves or switch back to full-height long hanging.`
       };
     }
-    if (/all\s+shelves|shelves\s+(?:in|on)\s+both\s+(?:bays|sides)/i.test(t)) {
+    if (/\b(?:all\s+hanging|hanging\s+(?:in|on)\s+both\s+(?:bays|sides)|full\s+hanging\s+(?:in|on)\s+both)\b/i.test(t)) {
       const currentBays = currentFacts.bayCount || 2;
-      const layouts = Array(currentBays).fill("SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES");
-      return {
-        changes: { bayLayouts: layouts },
-        assistantReply: `Configured all ${currentBays} bays with short hanging and two adjustable shelves.`
-      };
-    }
-    if (/all\s+hanging|hanging\s+(?:in|on)\s+both\s+(?:bays|sides)|full\s+hanging/i.test(t)) {
-      const currentBays = currentFacts.bayCount || 2;
+      const currentLayouts = currentFacts.bayLayouts || [];
+      const allAlreadyHanging = currentLayouts.length === currentBays && currentLayouts.every((l) => l === "LONG_HANGING");
+      if (allAlreadyHanging) {
+        return {
+          error: `All ${currentBays} bays are already configured with full-height long hanging.`
+        };
+      }
       const layouts = Array(currentBays).fill("LONG_HANGING");
       return {
         changes: { bayLayouts: layouts },
         assistantReply: `Configured all ${currentBays} bays with full-height long hanging.`
       };
+    }
+    if (/\b(?:hanging|full[- ]?hanging|long\s+hanging)\b/i.test(t)) {
+      const currentBays = currentFacts.bayCount || 2;
+      const layouts = currentFacts.bayLayouts ? [...currentFacts.bayLayouts] : ["LONG_HANGING", "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"];
+      const isLeft = /\b(?:left|bay\s*1)\b/i.test(t);
+      const isRight = /\b(?:right|bay\s*2)\b/i.test(t);
+      if (isLeft || isRight) {
+        const targetBayIdx = isLeft ? 0 : 1;
+        const baySide = targetBayIdx === 0 ? "left" : "right";
+        if (layouts[targetBayIdx] === "LONG_HANGING") {
+          return {
+            error: `The ${baySide} bay is already configured for full-height long hanging.`
+          };
+        }
+        layouts[targetBayIdx] = "LONG_HANGING";
+        return {
+          changes: { bayLayouts: layouts },
+          assistantReply: `Configured the ${baySide} bay for full-height long hanging.`
+        };
+      }
     }
     const bayMatch = t.match(/(?:make\s+it\s+)?(\d+)\s*bays?/i);
     if (bayMatch) {
@@ -3259,6 +3508,12 @@ var PartGraphBridge = (() => {
   }) {
     const currentFacts = Object.fromEntries(currentObservations.map((o) => [o.key, o.value]));
     const parsed = parseConversationalCommand(commandText, currentFacts);
+    if (parsed && parsed.error) {
+      return {
+        ok: false,
+        error: parsed.error
+      };
+    }
     if (!parsed) {
       const interpretation = adapter.interpret(commandText);
       if (interpretation.observations.length === 0) {
@@ -3279,6 +3534,18 @@ var PartGraphBridge = (() => {
         revision: revision + 1,
         adapter
       });
+      if (!draft2.spec || !draft2.partGraph || draft2.validation && !draft2.validation.valid) {
+        return {
+          ok: false,
+          error: draft2.error || draft2.validation?.errors?.map((e) => e.message).join("; ") || "Failed to generate valid wardrobe geometry for this change."
+        };
+      }
+      if (draft2.partGraphValidation && !draft2.partGraphValidation.valid) {
+        return {
+          ok: false,
+          error: draft2.partGraphValidation.errors?.join("; ") || "Generated part graph validation failed."
+        };
+      }
       return {
         ok: true,
         assistantReply: `Updated wardrobe design (Revision ${revision + 1}).`,
@@ -3299,6 +3566,18 @@ var PartGraphBridge = (() => {
       revision: revision + 1,
       adapter
     });
+    if (!draft.spec || !draft.partGraph || draft.validation && !draft.validation.valid) {
+      return {
+        ok: false,
+        error: draft.error || draft.validation?.errors?.map((e) => e.message).join("; ") || "Failed to generate valid wardrobe geometry for this change."
+      };
+    }
+    if (draft.partGraphValidation && !draft.partGraphValidation.valid) {
+      return {
+        ok: false,
+        error: draft.partGraphValidation.errors?.join("; ") || "Generated part graph validation failed."
+      };
+    }
     return {
       ok: true,
       assistantReply: `${parsed.assistantReply} (Revision ${revision + 1})`,
@@ -3363,171 +3642,6 @@ var PartGraphBridge = (() => {
   }
   function hardwareStatusesOf(spec) {
     return Object.fromEntries(Object.entries(spec.hardware ?? {}).map(([k, v]) => [k, v?.status ?? "UNKNOWN"]));
-  }
-
-  // src/lib/conversation/clarifyInput.js
-  var ACCEPTED_DIMENSION_UNITS = Object.freeze({
-    // Millimetre variants (factor to dmm = 10, factor to mm = 1)
-    "": { factorDmm: 10n, factorMm: 1, baseUnit: "mm" },
-    mm: { factorDmm: 10n, factorMm: 1, baseUnit: "mm" },
-    millimetre: { factorDmm: 10n, factorMm: 1, baseUnit: "mm" },
-    millimetres: { factorDmm: 10n, factorMm: 1, baseUnit: "mm" },
-    millimeter: { factorDmm: 10n, factorMm: 1, baseUnit: "mm" },
-    millimeters: { factorDmm: 10n, factorMm: 1, baseUnit: "mm" },
-    // Centimetre variants (factor to dmm = 100, factor to mm = 10)
-    cm: { factorDmm: 100n, factorMm: 10, baseUnit: "cm" },
-    centimetre: { factorDmm: 100n, factorMm: 10, baseUnit: "cm" },
-    centimetres: { factorDmm: 100n, factorMm: 10, baseUnit: "cm" },
-    centimeter: { factorDmm: 100n, factorMm: 10, baseUnit: "cm" },
-    centimeters: { factorDmm: 100n, factorMm: 10, baseUnit: "cm" },
-    // Metre variants (factor to dmm = 10000, factor to mm = 1000)
-    m: { factorDmm: 10000n, factorMm: 1e3, baseUnit: "m" },
-    metre: { factorDmm: 10000n, factorMm: 1e3, baseUnit: "m" },
-    metres: { factorDmm: 10000n, factorMm: 1e3, baseUnit: "m" },
-    meter: { factorDmm: 10000n, factorMm: 1e3, baseUnit: "m" },
-    meters: { factorDmm: 10000n, factorMm: 1e3, baseUnit: "m" }
-  });
-  var HEDGE_PATTERN = /(?:~|\b(?:about|around|roughly|approx(?:imately)?|or so)\b)/i;
-  var WORD_NUMS = Object.freeze({
-    one: 1,
-    two: 2,
-    three: 3,
-    four: 4,
-    five: 5,
-    six: 6,
-    seven: 7,
-    eight: 8,
-    nine: 9,
-    ten: 10
-  });
-  function parseDimension(rawVal) {
-    if (typeof rawVal !== "string") {
-      return { ok: false, error: "Dimension input must be a string." };
-    }
-    const str = rawVal.trim();
-    if (str.length === 0) {
-      return { ok: false, error: "Please enter a valid numeric dimension in millimetres (e.g. 1800 or 1.8m)." };
-    }
-    if (str.startsWith("-")) {
-      return { ok: false, error: "Negative dimensions are not permitted. Dimension must be a positive number." };
-    }
-    if (HEDGE_PATTERN.test(str)) {
-      return { ok: false, error: "Measurements must be exact. Approximate values are not permitted." };
-    }
-    const match = /^\+?(?:(\d+)(?:\.(\d+))?|\.(\d+))\s*([a-zA-Z]+)?$/i.exec(str);
-    if (!match) {
-      return { ok: false, error: "Please enter a valid numeric dimension in millimetres (e.g. 1800 or 1.8m)." };
-    }
-    const intStr = match[1] ?? "0";
-    const fracStr = match[2] ?? match[3] ?? "";
-    const unitRaw = (match[4] ?? "").toLowerCase();
-    const unitDef = ACCEPTED_DIMENSION_UNITS[unitRaw];
-    if (!unitDef) {
-      return { ok: false, error: "Please enter a valid numeric dimension in millimetres (e.g. 1800 or 1.8m)." };
-    }
-    const intPart = BigInt(intStr);
-    const fracLen = BigInt(fracStr.length);
-    const multiplier = unitDef.factorDmm;
-    let totalDmm;
-    if (fracLen === 0n) {
-      totalDmm = intPart * multiplier;
-    } else {
-      const divisor = 10n ** fracLen;
-      const fracPart = BigInt(fracStr);
-      const fracDmmScaled = fracPart * multiplier;
-      if (fracDmmScaled % divisor !== 0n) {
-        return { ok: false, error: "Precision finer than 0.1mm is not supported." };
-      }
-      totalDmm = intPart * multiplier + fracDmmScaled / divisor;
-    }
-    if (totalDmm <= 0n) {
-      return { ok: false, error: "Dimension must be a positive number greater than zero." };
-    }
-    const finalMm = Number(totalDmm) / 10;
-    const isPlainMm = unitRaw === "" || unitRaw === "mm";
-    return {
-      ok: true,
-      value: finalMm,
-      convertedText: !isPlainMm ? `${finalMm} mm` : null
-    };
-  }
-  function parseAndValidateClarifyInput(gapKey, rawVal, currentBayCount = 2) {
-    if (rawVal === void 0 || rawVal === null) {
-      return { ok: false, error: "Please enter an answer." };
-    }
-    if (typeof rawVal === "string" && rawVal.trim().length === 0) {
-      return { ok: false, error: "Please enter an answer." };
-    }
-    if (gapKey.endsWith("Mm")) {
-      return parseDimension(typeof rawVal === "string" ? rawVal : String(rawVal));
-    }
-    const v = typeof rawVal === "string" ? rawVal.trim() : rawVal;
-    if (gapKey === "bayCount" || gapKey === "doorCount") {
-      const label = gapKey === "bayCount" ? "Bay" : "Door";
-      if (typeof v === "string" && HEDGE_PATTERN.test(v)) {
-        return { ok: false, error: "Counts must be exact integers." };
-      }
-      if (typeof v === "string") {
-        const lower = v.toLowerCase();
-        if (WORD_NUMS[lower] !== void 0) {
-          return { ok: true, value: WORD_NUMS[lower] };
-        }
-        if (!/^\+?\d+$/.test(v)) {
-          return { ok: false, error: `${label} count must be a positive whole number (e.g. 2, 4).` };
-        }
-        const n = parseInt(v, 10);
-        if (n <= 0) {
-          return { ok: false, error: "Count must be at least 1." };
-        }
-        return { ok: true, value: n };
-      }
-      if (typeof v === "number") {
-        if (!Number.isInteger(v) || v <= 0) {
-          return { ok: false, error: `${label} count must be a positive whole number (e.g. 2, 4).` };
-        }
-        return { ok: true, value: v };
-      }
-      return { ok: false, error: `${label} count must be a positive whole number (e.g. 2, 4).` };
-    }
-    if (gapKey === "finishType") {
-      if (typeof v === "string") {
-        const lower = v.toLowerCase();
-        if (lower.includes("melamine")) return { ok: true, value: "melamine" };
-        if (lower.includes("painted") || lower.includes("paint")) return { ok: true, value: "painted" };
-        if (lower.includes("veneer")) return { ok: true, value: "veneer" };
-        return { ok: true, value: lower };
-      }
-      return { ok: true, value: v };
-    }
-    if (gapKey === "bayLayouts") {
-      if (Array.isArray(v)) {
-        if (v.length === 0) {
-          return { ok: false, error: "Please select an interior layout for each bay." };
-        }
-        for (let i = 0; i < v.length; i++) {
-          if (!v[i]) {
-            return { ok: false, error: `Please select an interior layout for Bay ${i + 1}.` };
-          }
-        }
-        return { ok: true, value: v };
-      }
-      if (typeof v === "string" && v.startsWith("[") && v.endsWith("]")) {
-        try {
-          const arr = JSON.parse(v);
-          if (Array.isArray(arr) && arr.length > 0) {
-            for (let i = 0; i < arr.length; i++) {
-              if (!arr[i]) {
-                return { ok: false, error: `Please select an interior layout for Bay ${i + 1}.` };
-              }
-            }
-            return { ok: true, value: arr };
-          }
-        } catch (_e) {
-        }
-      }
-      return { ok: false, error: "Please use the bay selectors below to choose each bay layout." };
-    }
-    return { ok: true, value: v };
   }
 
   // src/lib/adapters/browserBridge.js

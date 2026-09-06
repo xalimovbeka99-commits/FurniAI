@@ -702,7 +702,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
             <div style="font-size:10px;color:var(--ink-soft);margin-bottom:4px;font-family:'Space Mono',monospace;text-transform:uppercase;">Refine through conversation:</div>
             <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;">
               <button type="button" class="btn sm ghost ai-refine-chip" id="chipWidth2000" data-cmd="Make it 2000 mm wide.">Make it 2000 mm wide</button>
-              <button type="button" class="btn sm ghost ai-refine-chip" id="chipAddShelf" data-cmd="Add another shelf on the right.">Add shelf on right</button>
+              <button type="button" class="btn sm ghost ai-refine-chip" id="chipAddShelf" data-cmd="Add another shelf on the left.">Add shelf on left</button>
               <button type="button" class="btn sm ghost ai-refine-chip" id="chipFinishWalnut" data-cmd="Change finish to walnut.">Walnut finish</button>
             </div>
             <div style="display:flex;gap:4px;">
@@ -2261,15 +2261,14 @@ function runAiWardrobeConversationalEdit(cmdText) {
   if (!cmdText || !aiWardrobeState.observations || !aiWardrobeState.observations.length) return;
   if (!globalThis.PartGraphBridge || !globalThis.PartGraphBridge.applyConversationalEdit) return;
 
-  // Push snapshot to undo stack
-  aiWardrobeState.undoStack.push({
+  const prevSnapshot = {
     spec: JSON.parse(JSON.stringify(aiWardrobeState.spec)),
     proposal: { ...aiWardrobeState.proposal },
     partGraph: aiWardrobeState.partGraph,
     observations: [...aiWardrobeState.observations],
     origins: { ...aiWardrobeState.origins },
     revision: aiWardrobeState.revision,
-  });
+  };
 
   const res = globalThis.PartGraphBridge.applyConversationalEdit({
     currentObservations: aiWardrobeState.observations,
@@ -2279,6 +2278,7 @@ function runAiWardrobeConversationalEdit(cmdText) {
   });
 
   if (res && res.ok && res.spec && res.partGraph) {
+    aiWardrobeState.undoStack.push(prevSnapshot);
     aiWardrobeState.spec = res.spec;
     aiWardrobeState.proposal = res.proposal;
     aiWardrobeState.partGraph = res.partGraph;
