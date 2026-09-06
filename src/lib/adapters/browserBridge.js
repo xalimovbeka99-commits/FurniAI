@@ -21,6 +21,11 @@ import {
 } from "../conversation/pipeline.js";
 import { createDeterministicPhraseAdapter } from "../conversation/proposalAdapter.js";
 import { createProposal, validateApproval } from "../conversation/approval.js";
+import {
+  parseAndValidateClarifyInput,
+  parseDimension,
+  ACCEPTED_DIMENSION_UNITS,
+} from "../conversation/clarifyInput.js";
 
 export {
   goldenSpec,
@@ -37,6 +42,9 @@ export {
   createDeterministicPhraseAdapter,
   createProposal,
   validateApproval,
+  parseAndValidateClarifyInput,
+  parseDimension,
+  ACCEPTED_DIMENSION_UNITS,
 };
 
 const FALLBACK_MAT = {

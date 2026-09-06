@@ -1161,11 +1161,28 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
       await expect(page.locator("#aiClarifyError")).toBeVisible();
       await expect(page.locator("#aiClarifyError")).toContainText("valid numeric dimension");
 
-      // Test 4: Valid unit-bearing answer (1.8m -> 1800mm)
-      await page.fill("#aiClarifyInput", "1.8m");
+      // Test 4: Rejected precision (finer than 0.1mm)
+      await page.fill("#aiClarifyInput", "1800.00001mm");
       await page.click("#aiClarifySubmitBtn");
-      // Successfully advanced to next clarification question
+      await expect(page.locator("#aiClarifyError")).toBeVisible();
+      await expect(page.locator("#aiClarifyError")).toContainText("Precision finer than 0.1mm is not supported");
+
+      // Test 5: Rejected precision in metres (1.80001m -> 1800.01mm)
+      await page.fill("#aiClarifyInput", "1.80001m");
+      await page.click("#aiClarifySubmitBtn");
+      await expect(page.locator("#aiClarifyError")).toBeVisible();
+      await expect(page.locator("#aiClarifyError")).toContainText("Precision finer than 0.1mm is not supported");
+
+      // Test 6: Spelled-out centimetres with live preview (180 centimetres -> 1800 mm)
+      await page.fill("#aiClarifyInput", "180 centimetres");
+      await expect(page.locator("#aiClarifyConvertedPreview")).toBeVisible();
+      await expect(page.locator("#aiClarifyConvertedPreview")).toContainText("Interpreted as: 1800 mm");
+      await page.click("#aiClarifySubmitBtn");
+
+      // Successfully advanced to next clarification question with exact 1800mm stored
       await expect(page.locator("#aiClarifyCount")).toContainText("Question 2 of");
+      const storedWidth = await page.evaluate(() => aiWardrobeState.answers["envelope.widthMm"]);
+      expect(storedWidth).toBe(1800);
     });
 
     test("7. completing clarification questions with dynamic bay selectors reaches READY_FOR_REVIEW without defaulting", async ({ page }) => {

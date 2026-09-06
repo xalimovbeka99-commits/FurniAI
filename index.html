@@ -2066,81 +2066,10 @@ function selectPartForInspection(mesh) {
 }
 
 function parseAndValidateClarifyInput(gapKey, rawVal, currentBayCount) {
-  const v = rawVal.trim();
-  if (gapKey.endsWith('Mm')) {
-    // Dimension field: reject negative, empty, or hedged prefixes
-    if (v.startsWith('-')) {
-      return { ok: false, error: 'Negative dimensions are not permitted. Dimension must be a positive number.' };
-    }
-    const hedge = /\b(?:about|around|roughly|approx(?:imately)?|~|or so)\b/i;
-    if (hedge.test(v)) {
-      return { ok: false, error: 'Measurements must be exact. Approximate values are not permitted.' };
-    }
-    // Match magnitude and optional unit
-    const m = /^(\+?\d+(?:\.\d+)?)\s*(mm|millimetres?|millimeters?|cm|centimetres?|centimeters?|m|metres?|meters?)?$/i.exec(v);
-    if (!m) {
-      return { ok: false, error: 'Please enter a valid numeric dimension in millimetres (e.g. 1800 or 1.8m).' };
-    }
-    const num = parseFloat(m[1]);
-    if (!Number.isFinite(num) || num <= 0) {
-      return { ok: false, error: 'Dimension must be a positive number greater than zero.' };
-    }
-    const unit = (m[2] || 'mm').toLowerCase();
-    let mmVal = num;
-    if (unit.startsWith('cm')) {
-      mmVal = num * 10;
-    } else if (unit === 'm' || unit.startsWith('meter') || unit.startsWith('metre')) {
-      mmVal = num * 1000;
-    }
-
-    // Check 0.1mm resolution: round to 4 decimals first to avoid float artifact
-    const scaled = Math.round(mmVal * 10000) / 1000; // scaled * 10
-    if (Math.abs(scaled - Math.round(scaled)) > 1e-4) {
-      return { ok: false, error: 'Precision finer than 0.1mm is not supported.' };
-    }
-    const finalMm = Math.round(scaled) / 10;
-    return { ok: true, value: finalMm, convertedText: (unit !== 'mm' && !unit.startsWith('milli')) ? `${finalMm} mm` : null };
+  if (globalThis.PartGraphBridge && typeof globalThis.PartGraphBridge.parseAndValidateClarifyInput === 'function') {
+    return globalThis.PartGraphBridge.parseAndValidateClarifyInput(gapKey, rawVal, currentBayCount);
   }
-
-  if (gapKey === 'bayCount' || gapKey === 'doorCount') {
-    if (/\b(?:about|around|roughly|approx)\b/i.test(v)) {
-      return { ok: false, error: 'Counts must be exact integers.' };
-    }
-    const wordNums = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
-    const lower = v.toLowerCase();
-    if (wordNums[lower] !== undefined) {
-      return { ok: true, value: wordNums[lower] };
-    }
-    if (!/^\+?\d+$/.test(v)) {
-      return { ok: false, error: `${gapKey === 'bayCount' ? 'Bay' : 'Door'} count must be a positive whole number (e.g. 2, 4).` };
-    }
-    const n = parseInt(v, 10);
-    if (n <= 0) {
-      return { ok: false, error: 'Count must be at least 1.' };
-    }
-    return { ok: true, value: n };
-  }
-
-  if (gapKey === 'finishType') {
-    const lower = v.toLowerCase();
-    if (lower.includes('melamine')) return { ok: true, value: 'melamine' };
-    if (lower.includes('painted') || lower.includes('paint')) return { ok: true, value: 'painted' };
-    if (lower.includes('veneer')) return { ok: true, value: 'veneer' };
-    return { ok: true, value: lower };
-  }
-
-  if (gapKey === 'bayLayouts') {
-    // If entered via text instead of dropdowns
-    if (v.startsWith('[') && v.endsWith(']')) {
-      try {
-        const arr = JSON.parse(v);
-        if (Array.isArray(arr) && arr.length > 0) return { ok: true, value: arr };
-      } catch (_e) {}
-    }
-    return { ok: false, error: 'Please use the bay selectors below to choose each bay layout.' };
-  }
-
-  return { ok: true, value: v };
+  return { ok: false, error: 'Clarification parser unavailable.' };
 }
 
 function runAiWardrobePropose() {
@@ -2403,6 +2332,23 @@ function bindAiWardrobeEvents() {
 
   const clarifyInp = document.getElementById('aiClarifyInput');
   if (clarifyInp) {
+    clarifyInp.addEventListener('input', () => {
+      const previewEl = document.getElementById('aiClarifyConvertedPreview');
+      const gapKey = clarifyInp.dataset.gapKey;
+      const rawVal = clarifyInp.value.trim();
+      if (previewEl && gapKey && gapKey.endsWith('Mm') && rawVal) {
+        const res = parseAndValidateClarifyInput(gapKey, rawVal);
+        if (res.ok && res.convertedText) {
+          previewEl.textContent = `Interpreted as: ${res.convertedText}`;
+          previewEl.hidden = false;
+          return;
+        }
+      }
+      if (previewEl) {
+        previewEl.textContent = '';
+        previewEl.hidden = true;
+      }
+    });
     clarifyInp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
