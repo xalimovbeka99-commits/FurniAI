@@ -238,6 +238,23 @@ export function partGraphToThree(partGraph, options = {}) {
         interactive: true,
         pivot,
         hinge,
+        materialCode: part.materialCode || null,
+        rawDimensionsMm: part.raw
+          ? {
+              lengthMm: part.raw.lengthDmm / 10,
+              widthMm: part.raw.widthDmm / 10,
+              thicknessMm: part.raw.thicknessDmm / 10,
+            }
+          : null,
+        edgesMm: part.edges
+          ? {
+              lengthEdge1Mm: part.edges.LENGTH_EDGE_1 / 10,
+              lengthEdge2Mm: part.edges.LENGTH_EDGE_2 / 10,
+              widthEdge1Mm: part.edges.WIDTH_EDGE_1 / 10,
+              widthEdge2Mm: part.edges.WIDTH_EDGE_2 / 10,
+            }
+          : null,
+        partData: part,
       };
 
       pivot.add(mesh);
@@ -271,6 +288,23 @@ export function partGraphToThree(partGraph, options = {}) {
         },
         sourceSpecId: partGraph.sourceSpecId || null,
         interactive: false,
+        materialCode: part.materialCode || null,
+        rawDimensionsMm: part.raw
+          ? {
+              lengthMm: part.raw.lengthDmm / 10,
+              widthMm: part.raw.widthDmm / 10,
+              thicknessMm: part.raw.thicknessDmm / 10,
+            }
+          : null,
+        edgesMm: part.edges
+          ? {
+              lengthEdge1Mm: part.edges.LENGTH_EDGE_1 / 10,
+              lengthEdge2Mm: part.edges.LENGTH_EDGE_2 / 10,
+              widthEdge1Mm: part.edges.WIDTH_EDGE_1 / 10,
+              widthEdge2Mm: part.edges.WIDTH_EDGE_2 / 10,
+            }
+          : null,
+        partData: part,
       };
 
       rootGroup.add(mesh);

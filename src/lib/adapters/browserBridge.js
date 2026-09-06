@@ -12,6 +12,15 @@ import {
   disposePartGraphGroup,
   DMM_TO_THREE,
 } from "./partGraphToThree.js";
+import {
+  proposeWardrobe,
+  approveAndPreview,
+  runConversationToWardrobe,
+  PIPELINE_STAGE,
+  APPROVAL_STATE,
+} from "../conversation/pipeline.js";
+import { createDeterministicPhraseAdapter } from "../conversation/proposalAdapter.js";
+import { createProposal, validateApproval } from "../conversation/approval.js";
 
 export {
   goldenSpec,
@@ -20,6 +29,14 @@ export {
   partGraphToThree,
   disposePartGraphGroup,
   DMM_TO_THREE,
+  proposeWardrobe,
+  approveAndPreview,
+  runConversationToWardrobe,
+  PIPELINE_STAGE,
+  APPROVAL_STATE,
+  createDeterministicPhraseAdapter,
+  createProposal,
+  validateApproval,
 };
 
 const FALLBACK_MAT = {
@@ -156,6 +173,73 @@ export function loadGoldenWardrobe(builder) {
   // Reset and align camera to front-facing perspective framing
   // rotY = Math.PI - 0.42 (~2.72 rad) places camera at +X (right), -Z (in front of wardrobe)
   // so the 4 front doors face the user and open forward into the room towards the camera.
+  builder.camDist = 4.8;
+  builder.rotY = Math.PI - 0.42;
+  builder.rotX = 0.06;
+  builder.lookAtZ = 0;
+
+  // Apply current or default material
+  const currentMat = builder.parametricMat || "white";
+  updateParametricMaterial(builder, currentMat);
+
+  return {
+    partGraph,
+    furnitureGroup,
+    envelope: {
+      widthMm: envW * 1000,
+      heightMm: envH * 1000,
+      depthMm: envD * 1000,
+    },
+    partCount: partGraph.parts.length,
+    doorCount: builder.doorObjs.length,
+  };
+}
+
+/**
+ * Loads an approved PartGraph directly into the Builder scene.
+ *
+ * @param {object} builder - The global Builder object from index.html
+ * @param {object} partGraph - The validated PartGraph from approveAndPreview()
+ * @returns {object} Summary of loaded model
+ */
+export function loadApprovedPartGraph(builder, partGraph) {
+  if (!builder || !builder.scene) {
+    throw new Error("Builder and Builder.scene are required.");
+  }
+  if (!partGraph || !Array.isArray(partGraph.parts)) {
+    throw new Error("loadApprovedPartGraph requires a valid PartGraph with parts array.");
+  }
+
+  // Clear existing parts and reset state
+  builder.clear();
+
+  // Convert via pure adapter
+  const THREE = (typeof window !== "undefined" && window.THREE) || globalThis.THREE;
+  const furnitureGroup = partGraphToThree(partGraph, { threeInstance: THREE });
+
+  const env = partGraph.summary?.envelope;
+  const envW = (env?.widthDmm ?? 18000) * DMM_TO_THREE;
+  const envH = (env?.heightDmm ?? 24000) * DMM_TO_THREE;
+  const envD = (env?.depthDmm ?? 6000) * DMM_TO_THREE;
+
+  furnitureGroup.position.set(-envW / 2, -envH / 2, -envD / 2);
+
+  // Attach to scene and builder.parts
+  builder.attach(furnitureGroup);
+
+  // Register generated door pivots with Builder.doorObjs for interactive animation
+  builder.doorObjs = [];
+  if (Array.isArray(furnitureGroup.userData?.doorPivots)) {
+    builder.doorObjs.push(...furnitureGroup.userData.doorPivots);
+  }
+
+  // Align floor to bottom of plinth
+  const fl = builder.scene.getObjectByName("floor");
+  if (fl) {
+    fl.position.y = -envH / 2 - 0.001;
+  }
+
+  // Reset and align camera to front-facing perspective framing
   builder.camDist = 4.8;
   builder.rotY = Math.PI - 0.42;
   builder.rotX = 0.06;

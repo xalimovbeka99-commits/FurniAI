@@ -249,6 +249,19 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 .p-pill{padding:2px 7px;border-radius:4px;background:var(--paper-3);font-size:10px;font-weight:700;letter-spacing:.04em}
 .p-pill.alert{background:#fde8e8;color:#c53030;border:1px solid #f8b4b4}
 
+/* AI Parametric Wardrobe & Inspection Panel (Gate G4.1) */
+.ai-wardrobe-panel{display:none;padding:2px 0 16px}
+.b-main.ai-wardrobe-mode .ai-wardrobe-panel{display:block}
+.b-main.ai-wardrobe-mode .preset-only{display:none!important}
+.b-main.ai-wardrobe-mode #partInspectionPanel{display:block}
+.part-inspection-panel{display:none}
+.ai-w-title{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;color:var(--ink);letter-spacing:.04em;margin-bottom:8px}
+.ai-w-example-chip{border:1px dashed var(--brass);background:rgba(0,180,216,.06);color:var(--ink);padding:8px 10px;border-radius:8px;font-family:'Inter',sans-serif;font-size:11.5px;line-height:1.45;text-align:left;cursor:pointer;width:100%;transition:all .18s;box-sizing:border-box}
+.ai-w-example-chip:hover{background:rgba(0,180,216,.14);border-color:var(--brass-bright)}
+.ai-w-textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-family:'Inter',sans-serif;font-size:12.5px;color:var(--ink);background:var(--paper);box-sizing:border-box}
+.ai-w-textarea:focus{outline:none;border-color:var(--brass)}
+
+
 /* responsive */
 @media(max-width:1000px){
   .hero-grid{grid-template-columns:1fr;gap:40px}
@@ -445,8 +458,9 @@ footer ul a:hover{opacity:1;color:var(--brass)}
     <a href="#built" class="lnk">Built to spec</a>
     <a href="#materials" class="lnk">Materials</a>
     <div class="nav-cta">
+      <button class="btn" id="createWithFurniAiNavBtn" onclick="go('#/build/ai-wardrobe')">Create with FurniAI <span class="arr">→</span></button>
       <a href="#gallery" class="btn ghost">Browse</a>
-      <button class="btn" onclick="go('#/build/0')">Start designing <span class="arr">→</span></button>
+      <button class="btn ghost" onclick="go('#/build/0')">Start designing</button>
       <button class="btn ghost" id="authBtn" onclick="openAuthModal()">Sign in</button>
       <div class="auth-userbar" id="authUserBar" hidden>
         <span class="auth-name" id="authUserName"></span>
@@ -465,7 +479,8 @@ footer ul a:hover{opacity:1;color:var(--brass)}
       <h1 class="reveal">Furniture you can <em>measure</em> before it exists.</h1>
       <p class="lede reveal">Pick a piece, shape it on screen — width, doors, drawers, finish — and watch the model update with it. What you approve is cut to the millimetre in our workshop. Same look, made to your measurements.</p>
       <div class="hero-actions reveal">
-        <button class="btn lg" onclick="startAIDesigner()">✦ Design with AI <span class="arr">→</span></button>
+        <button class="btn lg" id="createWithFurniAiHeroBtn" onclick="go('#/build/ai-wardrobe')">✦ Create with FurniAI <span class="arr">→</span></button>
+        <button class="btn ghost lg" onclick="startAIDesigner()">✦ Design with AI</button>
         <button class="btn ghost lg" onclick="go('#/build/0')">Browse the catalog</button>
       </div>
       <div class="spec-strip reveal">
@@ -610,10 +625,66 @@ footer ul a:hover{opacity:1;color:var(--brass)}
       <span class="p-pill">WORKSHOP REVIEW</span>
       <span class="p-pill alert">CNC: NOT QUALIFIED</span>
     </div>
-    <div class="b-nav"><button class="b-nav-btn" id="bPrev">◁</button><span class="b-nav-pos" id="bPos">1 / 10</span><button class="b-nav-btn" id="bNext">▷</button></div>
+    <div class="b-nav">
+      <button class="btn sm ghost" id="createWithFurniAiBldBtn" onclick="go('#/build/ai-wardrobe')" style="margin-right:8px">✦ Create with FurniAI</button>
+      <button class="b-nav-btn" id="bPrev">◁</button><span class="b-nav-pos" id="bPos">1 / 10</span><button class="b-nav-btn" id="bNext">▷</button>
+    </div>
   </div>
   <div class="b-main show-left">
     <aside class="b-panel left">
+      <!-- AI Wardrobe Conversation Panel (Gate G4.1) -->
+      <div id="aiWardrobePanel" class="ai-wardrobe-panel">
+        <div id="aiWardrobeInputSection">
+          <div class="ai-w-title">Describe the wardrobe you want.</div>
+          <div class="ai-w-example-box" style="margin:8px 0 10px">
+            <span style="font-size:10.5px;color:var(--ink-soft);display:block;margin-bottom:4px;font-family:'Space Mono',monospace;text-transform:uppercase;letter-spacing:.08em;">Example:</span>
+            <button type="button" class="ai-w-example-chip" id="aiGoldenExamplePrompt">A 4-door wardrobe, 1800mm wide, 2400mm high, 600mm deep, with a 100mm plinth, 2 equal bays, oak finish, and shelves</button>
+          </div>
+          <textarea id="aiWardrobeInput" class="ai-w-textarea" rows="3" placeholder="Describe the wardrobe you want..."></textarea>
+          <button class="btn sm" id="aiWardrobeSubmitBtn" style="width:100%;margin-top:8px;justify-content:center;">Submit Description</button>
+        </div>
+
+        <div id="aiWardrobeClarifySection" hidden>
+          <div style="font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:#b45309;background:#fef3c7;padding:3px 8px;border-radius:4px;display:inline-block;margin-bottom:8px;letter-spacing:.06em;">NEEDS CLARIFICATION</div>
+          <div id="aiClarifyCount" style="font-family:'Space Mono',monospace;font-size:11px;color:var(--ink-soft);margin-bottom:4px;">Question 1 of 3</div>
+          <div id="aiClarifyPrompt" style="font-size:13px;font-weight:500;margin-bottom:10px;line-height:1.4;"></div>
+          <input type="text" id="aiClarifyInput" class="om-input" placeholder="Your answer...">
+          <button class="btn sm" id="aiClarifySubmitBtn" style="width:100%;margin-top:4px;justify-content:center;">Submit Answer</button>
+          <button class="btn sm ghost" id="btnClarifyStartOver" style="width:100%;margin-top:6px;justify-content:center;">Start over</button>
+        </div>
+
+        <div id="aiWardrobeReviewSection" hidden>
+          <div style="font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:#0369a1;background:#e0f2fe;padding:3px 8px;border-radius:4px;display:inline-block;margin-bottom:8px;letter-spacing:.06em;">READY FOR REVIEW</div>
+          <div id="aiNoGeomNotice" style="background:#fffbe6;border:1px solid #ffe58f;color:#d46b08;padding:8px 10px;border-radius:6px;font-size:11.5px;font-weight:600;margin-bottom:10px;">
+            No 3D geometry has been generated yet.
+          </div>
+          <div style="font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:6px;">Proposal Summary</div>
+          <table class="om-table" id="aiReviewSummaryTable" style="margin-bottom:12px;font-size:11px;">
+            <tbody>
+              <tr><td>Width</td><td id="revWidth">1800 mm</td></tr>
+              <tr><td>Height</td><td id="revHeight">2400 mm</td></tr>
+              <tr><td>Depth</td><td id="revDepth">600 mm</td></tr>
+              <tr><td>Plinth</td><td id="revPlinth">100 mm (frame-aligned)</td></tr>
+              <tr><td>Bays</td><td id="revBays">2 equal bays</td></tr>
+              <tr><td>Doors</td><td id="revDoors">4 hinged doors (2 per bay)</td></tr>
+              <tr><td>Finish</td><td id="revFinish">Oak</td></tr>
+              <tr><td>Interior</td><td id="revInterior">Shelves (2 per bay)</td></tr>
+              <tr><td>Proposal ID</td><td id="revProposalId" class="mono" style="font-size:10px;"></td></tr>
+              <tr><td>Revision</td><td id="revRevision" class="mono">1</td></tr>
+              <tr><td>Fingerprint</td><td id="revFingerprint" class="mono" style="word-break:break-all;font-size:9px;line-height:1.2;"></td></tr>
+            </tbody>
+          </table>
+          <button class="btn sm" id="btnApproveGenerate3D" style="width:100%;background:var(--brass);border-color:var(--brass);color:#fff;margin-bottom:6px;justify-content:center;">Approve and Generate 3D</button>
+          <button class="btn sm ghost" id="btnEditAnswers" style="width:100%;justify-content:center;">Edit answers</button>
+        </div>
+
+        <div id="aiWardrobeApprovedSection" hidden>
+          <div id="aiApprovedStageTag" style="font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:#15803d;background:#dcfce7;padding:3px 8px;border-radius:4px;display:inline-block;margin-bottom:8px;letter-spacing:.06em;">APPROVED FOR PREVIEW</div>
+          <p style="font-size:12px;color:var(--ink-soft);margin-bottom:12px;line-height:1.4;">3D model generated from validated 19-part PartGraph. Operable doors and material swatches are active.</p>
+          <button class="btn sm ghost" id="btnStartNewWardrobe" style="width:100%;justify-content:center;">Start New Wardrobe</button>
+        </div>
+      </div>
+
       <div class="b-ptitle preset-only">Structure</div>
       <div class="b-row preset-only"><label>Sections <b id="sec-val">4</b></label><input type="range" id="sections" min="2" max="6" value="4" step="1"></div>
       <div class="b-row preset-only"><label>Drawer rows <b id="drw-val">3</b></label><input type="range" id="drawers" min="0" max="5" value="3" step="1"></div>
@@ -641,6 +712,29 @@ footer ul a:hover{opacity:1;color:var(--brass)}
     </div>
 
     <aside class="b-panel right">
+      <!-- Part Inspection Panel (Gate G4.1) -->
+      <div id="partInspectionPanel" class="part-inspection-panel">
+        <div class="b-ptitle" style="margin-top:0;">Panel Inspection</div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;">
+          <div class="p-pill alert" id="badgeCncSafety" style="text-align:center;padding:5px 8px;font-size:9.5px;font-weight:700;">
+            WORKSHOP REVIEW — NOT CNC QUALIFIED
+          </div>
+          <div class="p-pill alert" id="badgeDrillingBlocked" style="text-align:center;padding:5px 8px;font-size:9.5px;font-weight:700;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;">
+            HARDWARE DRILLING: BLOCKED
+          </div>
+        </div>
+        <div class="om-summary" style="padding:10px 12px;gap:6px 10px;font-size:11px;">
+          <div class="om-k">Selected Part</div><div class="om-v" id="inspectPartId">None selected</div>
+          <div class="om-k">Finished L×W×T</div><div class="om-v" id="inspectFinishedDims">—</div>
+          <div class="om-k">Raw Cut L×W×T</div><div class="om-v" id="inspectRawDims">—</div>
+          <div class="om-k">Material</div><div class="om-v" id="inspectMaterial">—</div>
+          <div class="om-k">Edge-Banding</div><div class="om-v" id="inspectEdgeBanding">—</div>
+        </div>
+        <div style="font-size:11px;color:var(--ink-soft);margin-top:8px;margin-bottom:12px;font-style:italic;">
+          Click or tap any door or structural panel in the 3D stage to inspect its cutting dimensions.
+        </div>
+      </div>
+
       <div class="b-ptitle preset-only">Dimensions</div>
       <div class="b-row preset-only"><label>Width <b><span id="w-val">240</span> cm</b></label><input type="range" id="width" min="120" max="360" value="240" step="10"></div>
       <div class="b-row preset-only"><label>Height <b><span id="h-val">240</span> cm</b></label><input type="range" id="height" min="180" max="280" value="240" step="10"></div>
@@ -685,6 +779,8 @@ function route(){
   const m=h.match(/^#\/build(?:\/(\d+))?/);
   if(h==='#/build/golden-parametric'){
     showBuilder('golden-parametric');
+  }else if(h==='#/build/ai-wardrobe'){
+    showBuilder('ai-wardrobe');
   }else if(h.startsWith('#/ai')){
     showAI();
   }else if(h.startsWith('#/projects')){
@@ -1298,8 +1394,21 @@ const Builder={
     }
     return null;
   },
+  findParametricPanelAtPointer(){
+    if(!this.cam||!this.scene)return null;
+    this.raycaster.setFromCamera(this.pointer,this.cam);
+    const allHits=this.raycaster.intersectObjects(this.scene.children,true);
+    for(const h of allHits){
+      if(h.object&&h.object.isMesh&&h.object.visible&&!h.object.isLineSegments&&!h.object.isLine){
+        if(h.object.userData&&h.object.userData.partId){
+          return {mesh:h.object,partId:h.object.userData.partId,point:h.point,distance:h.distance};
+        }
+      }
+    }
+    return null;
+  },
   hoverPick(){
-    const H=this.isParametric?this.findDoorAtPointer():this.pick();
+    const H=this.isParametric?(this.findDoorAtPointer()||this.findParametricPanelAtPointer()):this.pick();
     const cv=document.getElementById('bld3d');
     if(cv)cv.style.cursor=H?'pointer':'';
   },
@@ -1309,7 +1418,17 @@ const Builder={
       const doorHit=this.findDoorAtPointer();
       if(doorHit&&doorHit.pivot){
         doorHit.pivot.userData.base=doorHit.pivot.userData.base?0:1;
+        if(typeof selectPartForInspection==='function'){
+          selectPartForInspection(doorHit.mesh);
+        }
         return doorHit;
+      }
+      const panelHit=this.findParametricPanelAtPointer();
+      if(panelHit){
+        if(typeof selectPartForInspection==='function'){
+          selectPartForInspection(panelHit.mesh);
+        }
+        return panelHit;
       }
       return null;
     }
@@ -1657,6 +1776,9 @@ const Builder={
 
   load(idx){
     const badge=document.getElementById('parametricBadge');
+    const bm=document.querySelector('.b-main');
+    const aiPanel=document.getElementById('aiWardrobePanel');
+    const inspPanel=document.getElementById('partInspectionPanel');
     if(idx==='golden-parametric'){
       this.isParametric=true;
       if(badge)badge.hidden=false;
@@ -1664,7 +1786,9 @@ const Builder={
       document.getElementById('bType').textContent='parametric';
       document.getElementById('bPos').textContent='ORACLE';
       document.getElementById('bDimsTag').innerHTML='1800 × 2400 × 600 <b>mm</b>';
-      document.querySelector('.b-main').classList.add('custom-type');
+      if(bm){bm.classList.add('custom-type');bm.classList.remove('ai-wardrobe-mode');}
+      if(aiPanel)aiPanel.style.display='none';
+      if(inspPanel)inspPanel.style.display='block';
       if(globalThis.PartGraphBridge&&typeof globalThis.PartGraphBridge.loadGoldenWardrobe==='function'){
         globalThis.PartGraphBridge.loadGoldenWardrobe(this);
       }else{
@@ -1672,8 +1796,26 @@ const Builder={
       }
       return;
     }
+    if(idx==='ai-wardrobe'){
+      this.isParametric=true;
+      if(badge)badge.hidden=false;
+      document.getElementById('bName').textContent='AI Parametric Wardrobe';
+      document.getElementById('bType').textContent='conversation-to-3d';
+      document.getElementById('bPos').textContent='AI';
+      document.getElementById('bDimsTag').innerHTML='1800 × 2400 × 600 <b>mm</b>';
+      if(bm){bm.classList.add('custom-type');bm.classList.add('ai-wardrobe-mode');}
+      if(aiPanel)aiPanel.style.display='block';
+      if(inspPanel)inspPanel.style.display='block';
+      if(typeof initAiWardrobePanel==='function'){
+        initAiWardrobePanel();
+      }
+      return;
+    }
     this.isParametric=false;
     if(badge)badge.hidden=true;
+    if(bm){bm.classList.remove('ai-wardrobe-mode');}
+    if(aiPanel)aiPanel.style.display='none';
+    if(inspPanel)inspPanel.style.display='none';
     this.currentIdx=idx;this.updateNav();
     this.cfg=Object.assign({},DESIGNS[idx]);const c=this.cfg;
     this.lookAtZ=0;
@@ -1791,6 +1933,323 @@ const Builder={
   }
 };
 window.Builder=Builder;
+
+/* ===== Gate G4.1: Visible Conversation-to-3D AI Wardrobe ===== */
+let aiWardrobeState = {
+  text: '',
+  answers: {},
+  currentStage: null,
+  proposal: null,
+  approval: null,
+  partGraph: null,
+};
+
+function initAiWardrobePanel() {
+  Builder.clear();
+  resetInspectionPanel();
+  aiWardrobeState = {
+    text: '',
+    answers: {},
+    currentStage: null,
+    proposal: null,
+    approval: null,
+    partGraph: null,
+  };
+  const inp = document.getElementById('aiWardrobeInput');
+  if (inp) inp.value = '';
+  const clarifyInp = document.getElementById('aiClarifyInput');
+  if (clarifyInp) {
+    clarifyInp.value = '';
+    delete clarifyInp.dataset.gapKey;
+  }
+  const secInput = document.getElementById('aiWardrobeInputSection');
+  const secClarify = document.getElementById('aiWardrobeClarifySection');
+  const secReview = document.getElementById('aiWardrobeReviewSection');
+  const secApproved = document.getElementById('aiWardrobeApprovedSection');
+  if (secInput) secInput.hidden = false;
+  if (secClarify) secClarify.hidden = true;
+  if (secReview) secReview.hidden = true;
+  if (secApproved) secApproved.hidden = true;
+}
+
+function resetInspectionPanel() {
+  const elId = document.getElementById('inspectPartId');
+  if (elId) elId.textContent = 'None selected';
+  const elDims = document.getElementById('inspectFinishedDims');
+  if (elDims) elDims.textContent = '—';
+  const elRaw = document.getElementById('inspectRawDims');
+  if (elRaw) elRaw.textContent = '—';
+  const elMat = document.getElementById('inspectMaterial');
+  if (elMat) elMat.textContent = '—';
+  const elEdges = document.getElementById('inspectEdgeBanding');
+  if (elEdges) elEdges.textContent = '—';
+}
+
+function selectPartForInspection(mesh) {
+  if (!mesh || !mesh.userData) return;
+  const ud = mesh.userData;
+  const partId = ud.partId || (ud.pivot && ud.pivot.userData && ud.pivot.userData.partId) || 'UNKNOWN';
+  const elId = document.getElementById('inspectPartId');
+  if (elId) elId.textContent = partId;
+
+  const dims = ud.finishedDimensionsMm || ud.dimensionsMm;
+  const elDims = document.getElementById('inspectFinishedDims');
+  if (elDims) {
+    if (dims) {
+      elDims.textContent = `${dims.lengthMm} × ${dims.widthMm} × ${dims.thicknessMm} mm`;
+    } else {
+      elDims.textContent = '—';
+    }
+  }
+
+  const raw = ud.rawDimensionsMm;
+  const elRaw = document.getElementById('inspectRawDims');
+  if (elRaw) {
+    if (raw) {
+      elRaw.textContent = `${raw.lengthMm} × ${raw.widthMm} × ${raw.thicknessMm} mm`;
+    } else {
+      elRaw.textContent = '—';
+    }
+  }
+
+  const elMat = document.getElementById('inspectMaterial');
+  if (elMat) {
+    elMat.textContent = ud.materialCode || (Builder && Builder.parametricMat) || 'oak';
+  }
+
+  const edges = ud.edgesMm;
+  const elEdges = document.getElementById('inspectEdgeBanding');
+  if (elEdges) {
+    if (edges) {
+      elEdges.textContent = `L1: ${edges.lengthEdge1Mm}mm, L2: ${edges.lengthEdge2Mm}mm, W1: ${edges.widthEdge1Mm}mm, W2: ${edges.widthEdge2Mm}mm`;
+    } else {
+      elEdges.textContent = 'Standard 1.0mm PVC';
+    }
+  }
+}
+
+function runAiWardrobePropose() {
+  if (!globalThis.PartGraphBridge || !globalThis.PartGraphBridge.proposeWardrobe) {
+    console.error('PartGraphBridge.proposeWardrobe unavailable');
+    return;
+  }
+  // Invalidate any previous approval and geometry
+  aiWardrobeState.approval = null;
+  aiWardrobeState.partGraph = null;
+  Builder.clear();
+  resetInspectionPanel();
+
+  const result = globalThis.PartGraphBridge.proposeWardrobe({
+    description: aiWardrobeState.text,
+    answers: aiWardrobeState.answers,
+    specId: 'furnispec-ai-wardrobe-01',
+    revision: 1,
+  });
+
+  aiWardrobeState.currentStage = result.stage;
+  const secInput = document.getElementById('aiWardrobeInputSection');
+  const secClarify = document.getElementById('aiWardrobeClarifySection');
+  const secReview = document.getElementById('aiWardrobeReviewSection');
+  const secApproved = document.getElementById('aiWardrobeApprovedSection');
+
+  if (result.stage === 'NEEDS_CLARIFICATION') {
+    if (secInput) secInput.hidden = true;
+    if (secReview) secReview.hidden = true;
+    if (secApproved) secApproved.hidden = true;
+    if (secClarify) secClarify.hidden = false;
+
+    const qList = result.questions || [];
+    const openGaps = (result.gaps || []).filter(g => !Object.prototype.hasOwnProperty.call(aiWardrobeState.answers, g.key));
+    const currentQ = qList[0];
+
+    const countEl = document.getElementById('aiClarifyCount');
+    const totalQ = Object.keys(aiWardrobeState.answers).length + openGaps.length;
+    const currentNum = Object.keys(aiWardrobeState.answers).length + 1;
+    if (countEl) countEl.textContent = `Question ${currentNum} of ${Math.max(currentNum, totalQ)}`;
+
+    const promptEl = document.getElementById('aiClarifyPrompt');
+    if (promptEl) {
+      promptEl.textContent = currentQ ? currentQ.question : 'Please clarify requirement:';
+    }
+    const inp = document.getElementById('aiClarifyInput');
+    if (inp) {
+      inp.value = '';
+      inp.dataset.gapKey = currentQ ? currentQ.key : '';
+      inp.focus();
+    }
+  } else if (result.stage === 'READY_FOR_REVIEW') {
+    aiWardrobeState.proposal = result.proposal;
+    if (secInput) secInput.hidden = true;
+    if (secClarify) secClarify.hidden = true;
+    if (secApproved) secApproved.hidden = true;
+    if (secReview) secReview.hidden = false;
+
+    const prop = result.proposal;
+    const spec = prop ? prop.spec : {};
+    const env = (spec && spec.envelope) || {};
+    const plinth = (spec && spec.plinth) || {};
+
+    const setVal = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val;
+    };
+
+    setVal('revWidth', `${env.widthMm || 1800} mm`);
+    setVal('revHeight', `${env.heightMm || 2400} mm`);
+    setVal('revDepth', `${env.depthMm || 600} mm`);
+    setVal('revPlinth', `${plinth.heightMm || 100} mm (frame-aligned)`);
+    setVal('revBays', `${spec.bayCount || 2} equal bays`);
+    setVal('revDoors', `${spec.doorCount || 4} hinged doors (${(spec.doorCount || 4) / (spec.bayCount || 2)} per bay)`);
+    setVal('revFinish', spec.finishType ? (spec.finishType.charAt(0).toUpperCase() + spec.finishType.slice(1)) : 'Oak');
+    setVal('revInterior', 'Shelves (2 per bay)');
+    setVal('revProposalId', prop ? prop.specId : '');
+    setVal('revRevision', String(prop ? prop.revision : 1));
+    setVal('revFingerprint', prop ? prop.fingerprint : '');
+  }
+}
+
+function submitClarifyAnswer() {
+  const inp = document.getElementById('aiClarifyInput');
+  if (!inp) return;
+  const gapKey = inp.dataset.gapKey;
+  const rawVal = inp.value.trim();
+  if (!rawVal || !gapKey) return;
+
+  let parsed = rawVal;
+  if (gapKey.endsWith('Mm')) {
+    const n = parseFloat(rawVal.replace(/[^0-9.]/g, ''));
+    if (!isNaN(n)) parsed = n;
+  } else if (gapKey === 'bayCount' || gapKey === 'doorCount') {
+    const n = parseInt(rawVal.replace(/[^0-9]/g, ''), 10);
+    if (!isNaN(n)) parsed = n;
+  } else if (gapKey === 'bayLayouts') {
+    if (rawVal.includes('[') && rawVal.includes(']')) {
+      try { parsed = JSON.parse(rawVal); } catch (e) { parsed = ["LONG_HANGING", "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"]; }
+    } else {
+      parsed = ["LONG_HANGING", "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"];
+    }
+  }
+
+  aiWardrobeState.answers[gapKey] = parsed;
+  runAiWardrobePropose();
+}
+
+function approveAndGenerate3D() {
+  if (!aiWardrobeState.proposal) return;
+  if (!globalThis.PartGraphBridge || !globalThis.PartGraphBridge.approveAndPreview) return;
+
+  const approval = {
+    approvedBy: 'Customer',
+    proposalId: aiWardrobeState.proposal.specId,
+    proposalRevision: aiWardrobeState.proposal.revision,
+    proposalFingerprint: aiWardrobeState.proposal.fingerprint,
+  };
+
+  const previewResult = globalThis.PartGraphBridge.approveAndPreview({
+    proposal: aiWardrobeState.proposal,
+    approval,
+  });
+
+  if (previewResult.stage === 'APPROVED_FOR_PREVIEW' && previewResult.partGraph) {
+    aiWardrobeState.approval = approval;
+    aiWardrobeState.partGraph = previewResult.partGraph;
+
+    globalThis.PartGraphBridge.loadApprovedPartGraph(Builder, previewResult.partGraph);
+
+    const secReview = document.getElementById('aiWardrobeReviewSection');
+    const secApproved = document.getElementById('aiWardrobeApprovedSection');
+    if (secReview) secReview.hidden = true;
+    if (secApproved) secApproved.hidden = false;
+  } else {
+    console.error('Approval rejected:', previewResult.approvalValidation);
+  }
+}
+
+function editAnswers() {
+  aiWardrobeState.approval = null;
+  aiWardrobeState.partGraph = null;
+  Builder.clear();
+  resetInspectionPanel();
+
+  const secInput = document.getElementById('aiWardrobeInputSection');
+  const secClarify = document.getElementById('aiWardrobeClarifySection');
+  const secReview = document.getElementById('aiWardrobeReviewSection');
+  const secApproved = document.getElementById('aiWardrobeApprovedSection');
+  if (secApproved) secApproved.hidden = true;
+  if (secReview) secReview.hidden = true;
+  if (secClarify) secClarify.hidden = true;
+  if (secInput) secInput.hidden = false;
+}
+
+function bindAiWardrobeEvents() {
+  const chip = document.getElementById('aiGoldenExamplePrompt');
+  if (chip) {
+    chip.addEventListener('click', () => {
+      const inp = document.getElementById('aiWardrobeInput');
+      if (inp) {
+        inp.value = 'A 4-door wardrobe, 1800mm wide, 2400mm high, 600mm deep, with a 100mm plinth, 2 equal bays, oak finish, and shelves';
+      }
+    });
+  }
+
+  const submitBtn = document.getElementById('aiWardrobeSubmitBtn');
+  if (submitBtn) {
+    submitBtn.addEventListener('click', () => {
+      const inp = document.getElementById('aiWardrobeInput');
+      const text = inp ? inp.value.trim() : '';
+      if (!text) return;
+      aiWardrobeState.text = text;
+      aiWardrobeState.answers = {};
+      runAiWardrobePropose();
+    });
+  }
+
+  const clarifyBtn = document.getElementById('aiClarifySubmitBtn');
+  if (clarifyBtn) {
+    clarifyBtn.addEventListener('click', submitClarifyAnswer);
+  }
+
+  const clarifyInp = document.getElementById('aiClarifyInput');
+  if (clarifyInp) {
+    clarifyInp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        submitClarifyAnswer();
+      }
+    });
+  }
+
+  const approveBtn = document.getElementById('btnApproveGenerate3D');
+  if (approveBtn) {
+    approveBtn.addEventListener('click', approveAndGenerate3D);
+  }
+
+  const editBtn = document.getElementById('btnEditAnswers');
+  if (editBtn) {
+    editBtn.addEventListener('click', editAnswers);
+  }
+
+  const newBtn = document.getElementById('btnStartNewWardrobe');
+  if (newBtn) {
+    newBtn.addEventListener('click', () => {
+      initAiWardrobePanel();
+    });
+  }
+
+  const clarifyResetBtn = document.getElementById('btnClarifyStartOver');
+  if (clarifyResetBtn) {
+    clarifyResetBtn.addEventListener('click', () => {
+      initAiWardrobePanel();
+    });
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bindAiWardrobeEvents);
+} else {
+  bindAiWardrobeEvents();
+}
+
 
 addEventListener('resize',()=>{if(builderActive)Builder.resize()});
 

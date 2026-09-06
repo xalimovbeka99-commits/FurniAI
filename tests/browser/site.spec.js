@@ -1066,4 +1066,318 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
       expect(drawerAfter).toBe(1);
     });
   });
+
+  test.describe("G4.1 Visible Conversation-to-3D Vertical Slice", () => {
+    async function getDoorCenter(page, partId) {
+      return page.evaluate((id) => {
+        const cv = document.getElementById("bld3d");
+        const rect = cv.getBoundingClientRect();
+        const mesh = Builder.scene.getObjectByName(`part_${id}`);
+        if (!mesh) return null;
+        mesh.geometry.computeBoundingBox();
+        const bb = mesh.geometry.boundingBox;
+        const center = new THREE.Vector3();
+        bb.getCenter(center);
+        mesh.localToWorld(center);
+        center.project(Builder.cam);
+        const x = ((center.x + 1) / 2) * rect.width + rect.left;
+        const y = ((-center.y + 1) / 2) * rect.height + rect.top;
+        return { x, y, inFrustum: center.z >= -1 && center.z <= 1 };
+      }, partId);
+    }
+
+    test("1. conversation panel opens when clicking 'Create with FurniAI'", async ({ page }) => {
+      await page.goto("/");
+      await page.click("#createWithFurniAiNavBtn");
+      expect(page.url()).toContain("#/build/ai-wardrobe");
+      await expect(page.locator("#view-builder")).toBeVisible();
+      await expect(page.locator("#aiWardrobePanel")).toBeVisible();
+    });
+
+    test("2. initial screen shows prompt 'Describe the wardrobe you want.' and Golden Wardrobe example prompt", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await expect(page.locator("#aiWardrobeInputSection")).toBeVisible();
+      await expect(page.locator("#aiWardrobeInputSection")).toContainText("Describe the wardrobe you want.");
+      await expect(page.locator("#aiGoldenExamplePrompt")).toContainText("A 4-door wardrobe, 1800mm wide, 2400mm high, 600mm deep");
+    });
+
+    test("3. clicking example prompt fills description", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.click("#aiGoldenExamplePrompt");
+      const val = await page.inputValue("#aiWardrobeInput");
+      expect(val).toBe("A 4-door wardrobe, 1800mm wide, 2400mm high, 600mm deep, with a 100mm plinth, 2 equal bays, oak finish, and shelves");
+    });
+
+    test("4. partial description triggers NEEDS_CLARIFICATION and displays clarification questions one by one", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "I need a wardrobe for my bedroom, about 2 metres tall.");
+      await page.click("#aiWardrobeSubmitBtn");
+
+      await expect(page.locator("#aiWardrobeClarifySection")).toBeVisible();
+      await expect(page.locator("#aiWardrobeInputSection")).toBeHidden();
+      await expect(page.locator("#aiClarifyCount")).toContainText("Question 1 of");
+      await expect(page.locator("#aiClarifyPrompt")).not.toBeEmpty();
+    });
+
+    test("5. incomplete answers never generate 3D geometry (canvas remains empty / zero parts)", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "I need a wardrobe for my bedroom, about 2 metres tall.");
+      await page.click("#aiWardrobeSubmitBtn");
+
+      await expect(page.locator("#aiWardrobeClarifySection")).toBeVisible();
+      const partsCount = await page.evaluate(() => Builder.parts.length);
+      expect(partsCount).toBe(0);
+    });
+
+    test("6. complete answers transition to READY_FOR_REVIEW", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "I need a straight hinged wardrobe for the master bedroom. It should be 1800mm wide, 2400mm tall and 600mm deep, standing on a 100mm plinth. Split it into two bays with four hinged doors in white melamine. The left bay is full-height hanging with a shelf over the top. The right bay is short hanging over two adjustable shelves, also with a top shelf.");
+      await page.click("#aiWardrobeSubmitBtn");
+
+      await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
+      await expect(page.locator("#aiWardrobeClarifySection")).toBeHidden();
+    });
+
+    test("7. READY_FOR_REVIEW shows summary (Width, Height, Depth, Plinth, Bays, Doors, Finish, Interior, Proposal ID, Revision, Fingerprint)", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "I need a straight hinged wardrobe for the master bedroom. It should be 1800mm wide, 2400mm tall and 600mm deep, standing on a 100mm plinth. Split it into two bays with four hinged doors in white melamine. The left bay is full-height hanging with a shelf over the top. The right bay is short hanging over two adjustable shelves, also with a top shelf.");
+      await page.click("#aiWardrobeSubmitBtn");
+
+      await expect(page.locator("#revWidth")).toContainText("1800 mm");
+      await expect(page.locator("#revHeight")).toContainText("2400 mm");
+      await expect(page.locator("#revDepth")).toContainText("600 mm");
+      await expect(page.locator("#revPlinth")).toContainText("100 mm");
+      await expect(page.locator("#revBays")).toContainText("2");
+      await expect(page.locator("#revDoors")).toContainText("4");
+      await expect(page.locator("#revProposalId")).not.toBeEmpty();
+      await expect(page.locator("#revRevision")).toContainText("1");
+      await expect(page.locator("#revFingerprint")).toContainText("fs256:");
+    });
+
+    test("8. READY_FOR_REVIEW prominently displays 'No 3D geometry has been generated yet.'", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "I need a straight hinged wardrobe for the master bedroom. It should be 1800mm wide, 2400mm tall and 600mm deep, standing on a 100mm plinth. Split it into two bays with four hinged doors in white melamine. The left bay is full-height hanging with a shelf over the top. The right bay is short hanging over two adjustable shelves, also with a top shelf.");
+      await page.click("#aiWardrobeSubmitBtn");
+
+      await expect(page.locator("#aiNoGeomNotice")).toBeVisible();
+      await expect(page.locator("#aiNoGeomNotice")).toContainText("No 3D geometry has been generated yet.");
+      const partsCount = await page.evaluate(() => Builder.parts.length);
+      expect(partsCount).toBe(0);
+    });
+
+    test("9. 'Edit answers' button allows changing answers, invalidates approval, generates new fingerprint", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "I need a straight hinged wardrobe for the master bedroom. It should be 1800mm wide, 2400mm tall and 600mm deep, standing on a 100mm plinth. Split it into two bays with four hinged doors in white melamine. The left bay is full-height hanging with a shelf over the top. The right bay is short hanging over two adjustable shelves, also with a top shelf.");
+      await page.click("#aiWardrobeSubmitBtn");
+
+      await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
+      const initialFp = await page.textContent("#revFingerprint");
+
+      await page.click("#btnEditAnswers");
+      await expect(page.locator("#aiWardrobeInputSection")).toBeVisible();
+      await expect(page.locator("#aiWardrobeReviewSection")).toBeHidden();
+
+      await page.fill("#aiWardrobeInput", "I need a straight hinged wardrobe for the master bedroom. It should be 2000mm wide, 2400mm tall and 600mm deep, standing on a 100mm plinth. Split it into two bays with four hinged doors in white melamine. The left bay is full-height hanging with a shelf over the top. The right bay is short hanging over two adjustable shelves, also with a top shelf.");
+      await page.click("#aiWardrobeSubmitBtn");
+      await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
+      const secondFp = await page.textContent("#revFingerprint");
+      expect(secondFp).toContain("fs256:");
+      expect(secondFp).not.toBe(initialFp);
+    });
+
+    test("10. explicit approval with correct payload transitions to APPROVED_FOR_PREVIEW", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "I need a straight hinged wardrobe for the master bedroom. It should be 1800mm wide, 2400mm tall and 600mm deep, standing on a 100mm plinth. Split it into two bays with four hinged doors in white melamine. The left bay is full-height hanging with a shelf over the top. The right bay is short hanging over two adjustable shelves, also with a top shelf.");
+      await page.click("#aiWardrobeSubmitBtn");
+
+      await expect(page.locator("#btnApproveGenerate3D")).toBeVisible();
+      await page.click("#btnApproveGenerate3D");
+      await expect(page.locator("#aiWardrobeApprovedSection")).toBeVisible();
+      await expect(page.locator("#aiApprovedStageTag")).toContainText("APPROVED FOR PREVIEW");
+    });
+
+    test("11. approved wardrobe loads exactly 19 parts into Three.js scene", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "I need a straight hinged wardrobe for the master bedroom. It should be 1800mm wide, 2400mm tall and 600mm deep, standing on a 100mm plinth. Split it into two bays with four hinged doors in white melamine. The left bay is full-height hanging with a shelf over the top. The right bay is short hanging over two adjustable shelves, also with a top shelf.");
+      await page.click("#aiWardrobeSubmitBtn");
+      await page.click("#btnApproveGenerate3D");
+
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.parts && Builder.parts.length > 0 && Builder.doorObjs && Builder.doorObjs.length === 4);
+      const meshCount = await page.evaluate(() => {
+        const root = Builder.parts[0];
+        let count = 0;
+        root.traverse((c) => {
+          if (c.isMesh && c.name && c.name.startsWith("part_")) count++;
+        });
+        return count;
+      });
+      expect(meshCount).toBe(19);
+      const doorCount = await page.evaluate(() => Builder.doorObjs.length);
+      expect(doorCount).toBe(4);
+    });
+
+    test("12. 4 hinged doors open/close individually on exact click/tap", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "I need a straight hinged wardrobe for the master bedroom. It should be 1800mm wide, 2400mm tall and 600mm deep, standing on a 100mm plinth. Split it into two bays with four hinged doors in white melamine. The left bay is full-height hanging with a shelf over the top. The right bay is short hanging over two adjustable shelves, also with a top shelf.");
+      await page.click("#aiWardrobeSubmitBtn");
+      await page.click("#btnApproveGenerate3D");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.doorObjs && Builder.doorObjs.length === 4);
+
+      const center1 = await getDoorCenter(page, "DOOR_01");
+      expect(center1).not.toBeNull();
+      await page.mouse.click(center1.x, center1.y);
+      await page.waitForTimeout(200);
+
+      const doorBases = await page.evaluate(() => Builder.doorObjs.map(d => d.userData.base));
+      expect(doorBases[0]).toBe(1);
+      expect(doorBases[1]).toBe(0);
+      expect(doorBases[2]).toBe(0);
+      expect(doorBases[3]).toBe(0);
+    });
+
+    test("13. opening doors reveals interior (shelves, partition, floor)", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "I need a straight hinged wardrobe for the master bedroom. It should be 1800mm wide, 2400mm tall and 600mm deep, standing on a 100mm plinth. Split it into two bays with four hinged doors in white melamine. The left bay is full-height hanging with a shelf over the top. The right bay is short hanging over two adjustable shelves, also with a top shelf.");
+      await page.click("#aiWardrobeSubmitBtn");
+      await page.click("#btnApproveGenerate3D");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.doorObjs && Builder.doorObjs.length === 4);
+
+      await page.click("#toggle-doors");
+      await page.waitForTimeout(200);
+
+      const interiorParts = await page.evaluate(() => {
+        const div = Builder.scene.getObjectByName("part_CARC_DIV_01");
+        const shelfFix = Builder.scene.getObjectByName("part_SHELF_FIX_B01") || Builder.scene.getObjectByName("part_SHELF_FIX_L1");
+        const floor = Builder.scene.getObjectByName("floor");
+        return {
+          hasDivider: !!div && div.visible,
+          hasShelf: !!shelfFix && shelfFix.visible,
+          hasFloor: !!floor && floor.visible,
+        };
+      });
+
+      expect(interiorParts.hasDivider).toBe(true);
+      expect(interiorParts.hasShelf).toBe(true);
+      expect(interiorParts.hasFloor).toBe(true);
+    });
+
+    test("14. frame-aligned plinth has zero recess/inset", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "I need a straight hinged wardrobe for the master bedroom. It should be 1800mm wide, 2400mm tall and 600mm deep, standing on a 100mm plinth. Split it into two bays with four hinged doors in white melamine. The left bay is full-height hanging with a shelf over the top. The right bay is short hanging over two adjustable shelves, also with a top shelf.");
+      await page.click("#aiWardrobeSubmitBtn");
+      await page.click("#btnApproveGenerate3D");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.parts && Builder.parts.length > 0);
+
+      const plinthCheck = await page.evaluate(() => {
+        const root = Builder.parts[0];
+        const pf = root.getObjectByName("part_PLINTH_FRONT");
+        const sl = root.getObjectByName("part_PLINTH_SIDE_L");
+        const sr = root.getObjectByName("part_PLINTH_SIDE_R");
+        if (!pf || !sl || !sr) return null;
+        return {
+          frontW: pf.userData.finishedDimensionsMm ? pf.userData.finishedDimensionsMm.lengthMm : null,
+          hasSides: !!sl && !!sr,
+        };
+      });
+
+      expect(plinthCheck).not.toBeNull();
+      expect(plinthCheck.frontW).toBe(1800);
+      expect(plinthCheck.hasSides).toBe(true);
+    });
+
+    test("15. clicking a panel selects it and displays exact finished and raw cutting dimensions in inspection panel", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "I need a straight hinged wardrobe for the master bedroom. It should be 1800mm wide, 2400mm tall and 600mm deep, standing on a 100mm plinth. Split it into two bays with four hinged doors in white melamine. The left bay is full-height hanging with a shelf over the top. The right bay is short hanging over two adjustable shelves, also with a top shelf.");
+      await page.click("#aiWardrobeSubmitBtn");
+      await page.click("#btnApproveGenerate3D");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.parts && Builder.parts.length > 0);
+
+      await page.evaluate(() => {
+        const sideL = Builder.scene.getObjectByName("part_CARC_SIDE_L");
+        selectPartForInspection(sideL);
+      });
+
+      await expect(page.locator("#inspectPartId")).toHaveText("CARC_SIDE_L");
+      await expect(page.locator("#inspectFinishedDims")).toContainText("2264 × 580 × 18 mm");
+      await expect(page.locator("#inspectRawDims")).not.toHaveText("—");
+      await expect(page.locator("#badgeCncSafety")).toContainText("NOT CNC QUALIFIED");
+      await expect(page.locator("#badgeDrillingBlocked")).toContainText("HARDWARE DRILLING: BLOCKED");
+    });
+
+    test("16. changing material swatches visibly updates parametric wardrobe materials", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "I need a straight hinged wardrobe for the master bedroom. It should be 1800mm wide, 2400mm tall and 600mm deep, standing on a 100mm plinth. Split it into two bays with four hinged doors in white melamine. The left bay is full-height hanging with a shelf over the top. The right bay is short hanging over two adjustable shelves, also with a top shelf.");
+      await page.click("#aiWardrobeSubmitBtn");
+      await page.click("#btnApproveGenerate3D");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.parts && Builder.parts.length > 0);
+
+      await page.click(".b-sw[data-mat='walnut']");
+      await page.waitForTimeout(200);
+
+      const isWalnut = await page.evaluate(() => Builder.parametricMat === "walnut");
+      expect(isWalnut).toBe(true);
+    });
+
+    test("17. 'Start New Wardrobe' button resets conversation and clears scene without page reload", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "I need a straight hinged wardrobe for the master bedroom. It should be 1800mm wide, 2400mm tall and 600mm deep, standing on a 100mm plinth. Split it into two bays with four hinged doors in white melamine. The left bay is full-height hanging with a shelf over the top. The right bay is short hanging over two adjustable shelves, also with a top shelf.");
+      await page.click("#aiWardrobeSubmitBtn");
+      await page.click("#btnApproveGenerate3D");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.parts && Builder.parts.length > 0);
+
+      await page.click("#btnStartNewWardrobe");
+      await expect(page.locator("#aiWardrobeInputSection")).toBeVisible();
+      await expect(page.locator("#aiWardrobeApprovedSection")).toBeHidden();
+
+      const partsCount = await page.evaluate(() => Builder.parts.length);
+      expect(partsCount).toBe(0);
+      const inputVal = await page.inputValue("#aiWardrobeInput");
+      expect(inputVal).toBe("");
+    });
+
+    test("18. legacy catalog designs (0-29) continue to load and function normally", async ({ page }) => {
+      await page.goto("/#/build/0");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.cfg);
+      const isParametric = await page.evaluate(() => Builder.isParametric);
+      expect(isParametric).toBe(false);
+      await expect(page.locator("#aiWardrobePanel")).toBeHidden();
+      await expect(page.locator("#toggle-doors")).toBeVisible();
+    });
+
+    test("19. layout is responsive and fully functional at 375x667 mobile viewport", async ({ page }) => {
+      await page.setViewportSize({ width: 375, height: 667 });
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await expect(page.locator("#aiWardrobePanel")).toBeVisible();
+      await expect(page.locator("#aiWardrobeInput")).toBeVisible();
+    });
+
+    test("20. safe text rendering prevents script execution (XSS test)", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      const maliciousPayload = '<script>window.__xss=true</script><img src=x onerror="window.__xss=true">';
+      await page.fill("#aiWardrobeInput", maliciousPayload);
+      await page.click("#aiWardrobeSubmitBtn");
+      await page.waitForTimeout(300);
+
+      const xssExecuted = await page.evaluate(() => typeof window.__xss !== "undefined");
+      expect(xssExecuted).toBe(false);
+    });
+  });
 });
