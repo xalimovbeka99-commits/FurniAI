@@ -885,80 +885,185 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
       expect(bases[2].base).toBe(0);
     });
 
+    async function getLegacyObjectCenter(page, type, index) {
+      return page.evaluate(({ type, index }) => {
+        const cv = document.getElementById("bld3d");
+        const rect = cv.getBoundingClientRect();
+        const list = type === "door" ? Builder.doorObjs : Builder.drawerObjs;
+        const pivot = list && list[index];
+        if (!pivot) return null;
+        let frontMesh = null;
+        let maxZ = -Infinity;
+        pivot.traverse((c) => {
+          if (c.isMesh && c.geometry && c.visible) {
+            c.geometry.computeBoundingBox();
+            const bb = c.geometry.boundingBox;
+            const center = new THREE.Vector3();
+            bb.getCenter(center);
+            c.localToWorld(center);
+            if (center.z > maxZ) {
+              maxZ = center.z;
+              frontMesh = c;
+            }
+          }
+        });
+        if (!frontMesh) return null;
+        frontMesh.geometry.computeBoundingBox();
+        const bb = frontMesh.geometry.boundingBox;
+        const center = new THREE.Vector3();
+        bb.getCenter(center);
+        frontMesh.localToWorld(center);
+        center.project(Builder.cam);
+        const x = ((center.x + 1) / 2) * rect.width + rect.left;
+        const y = ((-center.y + 1) / 2) * rect.height + rect.top;
+        return { x, y, inFrustum: center.z >= -1 && center.z <= 1 };
+      }, { type, index });
+    }
+
     test("7. touch tap produces exactly one state transition, suppresses synthetic click, and touch drag does not toggle", async ({ page }) => {
       await page.goto("/#/build/golden-parametric");
       await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.doorObjs && Builder.doorObjs.length === 4);
 
       const center1 = await getDoorCenter(page, "DOOR_01");
 
-      // Dispatch single touch tap (touchstart + touchend with changedTouches[0]) followed immediately by synthetic click
+      // Dispatch single real touch tap (touchstart + touchend with touches/changedTouches) followed by synthetic click
       await page.evaluate((c) => {
         const cv = document.getElementById("bld3d");
-        // Simulate Builder touchend execution for a tap
-        Builder.downX = c.x;
-        Builder.downY = c.y;
-        Builder.dragMoved = false;
-        Builder.isDragging = false;
-        Builder.lastTouchTime = Date.now();
-        Builder.setPointer(c.x, c.y, cv);
-        Builder.clickPick();
+        const touch = new Touch({
+          identifier: 1,
+          target: cv,
+          clientX: c.x,
+          clientY: c.y,
+          pageX: c.x,
+          pageY: c.y,
+          screenX: c.x,
+          screenY: c.y,
+        });
 
-        // Synthetic click follows immediately (e.g. within 50ms)
-        const clickEv = new MouseEvent("click", { clientX: c.x, clientY: c.y, bubbles: true });
+        cv.dispatchEvent(new TouchEvent("touchstart", {
+          cancelable: true,
+          bubbles: true,
+          touches: [touch],
+          targetTouches: [touch],
+          changedTouches: [touch],
+        }));
+
+        cv.dispatchEvent(new TouchEvent("touchend", {
+          cancelable: true,
+          bubbles: true,
+          touches: [],
+          targetTouches: [],
+          changedTouches: [touch],
+        }));
+
+        // Browser dispatches synthetic click immediately following touchend
+        const clickEv = new MouseEvent("click", {
+          clientX: c.x,
+          clientY: c.y,
+          bubbles: true,
+          cancelable: true,
+        });
         cv.dispatchEvent(clickEv);
       }, center1);
 
       await page.waitForTimeout(200);
 
-      // Door 1 must be open (base=1), NOT toggled twice back to base=0!
+      // Door 1 must be open (base=1), exactly one transition, synthetic click suppressed
       const bases = await page.evaluate(() => Builder.doorObjs.map(d => d.userData.base));
       expect(bases[0]).toBe(1);
       expect(bases[1]).toBe(0);
+      expect(bases[2]).toBe(0);
+      expect(bases[3]).toBe(0);
 
-      // Now test touch drag followed by touchend: must produce ZERO toggles
+      // Now dispatch real touch drag: touchstart -> touchmove (>4px) -> touchend: must produce zero toggles
       await page.evaluate((c) => {
         const cv = document.getElementById("bld3d");
-        // Touch drag simulation
-        Builder.downX = c.x;
-        Builder.downY = c.y;
-        Builder.dragMoved = true;
-        // Touchend with dragMoved true should not toggle
-        if (!Builder.dragMoved) {
-          Builder.setPointer(c.x + 30, c.y, cv);
-          Builder.clickPick();
-        }
+        const t1 = new Touch({
+          identifier: 2,
+          target: cv,
+          clientX: c.x,
+          clientY: c.y,
+          pageX: c.x,
+          pageY: c.y,
+        });
+        cv.dispatchEvent(new TouchEvent("touchstart", {
+          cancelable: true,
+          bubbles: true,
+          touches: [t1],
+          targetTouches: [t1],
+          changedTouches: [t1],
+        }));
+
+        const t2 = new Touch({
+          identifier: 2,
+          target: cv,
+          clientX: c.x + 50,
+          clientY: c.y,
+          pageX: c.x + 50,
+          pageY: c.y,
+        });
+        cv.dispatchEvent(new TouchEvent("touchmove", {
+          cancelable: true,
+          bubbles: true,
+          touches: [t2],
+          targetTouches: [t2],
+          changedTouches: [t2],
+        }));
+
+        cv.dispatchEvent(new TouchEvent("touchend", {
+          cancelable: true,
+          bubbles: true,
+          touches: [],
+          targetTouches: [],
+          changedTouches: [t2],
+        }));
       }, center1);
 
       await page.waitForTimeout(200);
-      // DOOR_01 base must still be 1 (not toggled by drag)
+      // DOOR_01 base must STILL be 1 (not toggled by touch drag)
       const basesAfterDrag = await page.evaluate(() => Builder.doorObjs.map(d => d.userData.base));
       expect(basesAfterDrag[0]).toBe(1);
+      expect(basesAfterDrag[1]).toBe(0);
+      expect(basesAfterDrag[2]).toBe(0);
+      expect(basesAfterDrag[3]).toBe(0);
     });
 
     test("8. legacy catalog door selection and drawer selection still work without interference", async ({ page }) => {
-      // Legacy wardrobe (#/build/0)
+      // 1. Legacy wardrobe (#/build/0): click real projected door geometry
       await page.goto("/#/build/0");
       await page.waitForFunction(() => typeof Builder !== "undefined" && !Builder.isParametric && Builder.doorObjs && Builder.doorObjs.length > 0);
 
-      const legacyDoorBefore = await page.evaluate(() => Builder.doorObjs[0].userData.base);
-      await page.evaluate(() => {
-        Builder.doorObjs[0].userData.base = Builder.doorObjs[0].userData.base ? 0 : 1;
-      });
-      const legacyDoorAfter = await page.evaluate(() => Builder.doorObjs[0].userData.base);
-      expect(legacyDoorAfter).not.toBe(legacyDoorBefore);
+      const doorCenter = await getLegacyObjectCenter(page, "door", 0);
+      expect(doorCenter).not.toBeNull();
+      expect(doorCenter.inFrustum).toBe(true);
 
-      // Catalog design with drawers (#/build/5)
-      await page.goto("/#/build/5");
-      await page.waitForFunction(() => typeof Builder !== "undefined" && !Builder.isParametric);
-      const hasDrawers = await page.evaluate(() => Builder.drawerObjs && Builder.drawerObjs.length > 0);
-      if (hasDrawers) {
-        const beforeDrawer = await page.evaluate(() => Builder.drawerObjs[0].userData.base);
-        await page.evaluate(() => {
-          Builder.drawerObjs[0].userData.base = Builder.drawerObjs[0].userData.base ? 0 : 1;
-        });
-        const afterDrawer = await page.evaluate(() => Builder.drawerObjs[0].userData.base);
-        expect(afterDrawer).not.toBe(beforeDrawer);
-      }
+      const legacyDoorBefore = await page.evaluate(() => Builder.doorObjs[0].userData.base);
+      expect(legacyDoorBefore).toBe(0);
+
+      // Perform real canvas mouse click on the projected visible legacy door
+      await page.mouse.click(doorCenter.x, doorCenter.y);
+      await page.waitForTimeout(200);
+
+      const legacyDoorAfter = await page.evaluate(() => Builder.doorObjs[0].userData.base);
+      expect(legacyDoorAfter).toBe(1);
+
+      // 2. Catalog design with drawers (#/build/1 - Brown Kitchen): click real projected drawer geometry
+      await page.goto("/#/build/1");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && !Builder.isParametric && Builder.drawerObjs && Builder.drawerObjs.length > 0);
+
+      const drawerCenter = await getLegacyObjectCenter(page, "drawer", 0);
+      expect(drawerCenter).not.toBeNull();
+      expect(drawerCenter.inFrustum).toBe(true);
+
+      const drawerBefore = await page.evaluate(() => Builder.drawerObjs[0].userData.base);
+      expect(drawerBefore).toBe(0);
+
+      // Perform real canvas mouse click on the projected visible legacy drawer
+      await page.mouse.click(drawerCenter.x, drawerCenter.y);
+      await page.waitForTimeout(200);
+
+      const drawerAfter = await page.evaluate(() => Builder.drawerObjs[0].userData.base);
+      expect(drawerAfter).toBe(1);
     });
   });
 });
