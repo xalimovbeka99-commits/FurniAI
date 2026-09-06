@@ -69,9 +69,9 @@ var PartGraphBridge = (() => {
     },
     plinth: {
       heightMm: 100,
-      frontRecessMm: 50,
-      sideInsetMm: 50,
-      sideInsetStatus: "ASSUMPTION_PENDING_BEKZOD_APPROVAL"
+      frontRecessMm: 0,
+      sideInsetMm: 0,
+      sideInsetStatus: "BEKZOD_APPROVED"
     },
     carcass: {
       heightMm: 2300,
@@ -402,7 +402,7 @@ var PartGraphBridge = (() => {
         addError("MISSING_PLINTH_SIDE_INSET", "plinth.sideInsetMm is required.", "plinth.sideInsetMm");
       } else {
         checkNonNegativeDeciMm(plinth.sideInsetMm, "plinth.sideInsetMm", "plinth.sideInsetMm");
-        if (!Object.values(SIDE_INSET_STATUS).includes(plinth.sideInsetStatus)) {
+        if (plinth.sideInsetStatus !== void 0 && !Object.values(SIDE_INSET_STATUS).includes(plinth.sideInsetStatus)) {
           addError("INVALID_SIDE_INSET_STATUS", `plinth.sideInsetStatus must be one of [${Object.values(SIDE_INSET_STATUS).join(", ")}].`, "plinth.sideInsetStatus");
         }
       }
@@ -729,7 +729,7 @@ var PartGraphBridge = (() => {
     const envDDmm = assertDeciMm(furniSpec.envelope.depthMm, "envelope.depthMm");
     const plinthHDmm = assertDeciMm(furniSpec.plinth.heightMm, "plinth.heightMm");
     const plinthRecessDmm = toDeciMm(furniSpec.plinth.frontRecessMm, "plinth.frontRecessMm");
-    const plinthSideInsetDmm = assertDeciMm(furniSpec.plinth.sideInsetMm, "plinth.sideInsetMm");
+    const plinthSideInsetDmm = toDeciMm(furniSpec.plinth.sideInsetMm, "plinth.sideInsetMm");
     const carcassHDmm = assertDeciMm(furniSpec.carcass.heightMm, "carcass.heightMm");
     const carcassDDmm = assertDeciMm(furniSpec.carcass.depthMm, "carcass.depthMm");
     const panelTDmm = assertDeciMm(furniSpec.carcass.panelThicknessMm, "carcass.panelThicknessMm");
@@ -1156,7 +1156,7 @@ var PartGraphBridge = (() => {
     const plinthWidthDmm = envWDmm - 2 * plinthSideInsetDmm;
     const zPlinthFrontMinDmm = zCarcassFrontDmm + plinthRecessDmm;
     const zPlinthFrontMaxDmm = zPlinthFrontMinDmm + panelTDmm;
-    const zPlinthRearMaxDmm = zCarcassRearDmm - grvRearDatumDmm;
+    const zPlinthRearMaxDmm = zCarcassRearDmm;
     const zPlinthRearMinDmm = zPlinthRearMaxDmm - panelTDmm;
     const plinthSideLengthDmm = zPlinthRearMinDmm - zPlinthFrontMaxDmm;
     parts.push(
@@ -1489,6 +1489,8 @@ var PartGraphBridge = (() => {
         const edgeGeometry = new T.EdgesGeometry(geometry);
         const edgeLine = new T.LineSegments(edgeGeometry, materials.EDGE);
         edgeLine.name = `edges_${id}`;
+        edgeLine.raycast = () => {
+        };
         mesh.add(edgeLine);
         const doorIdx = doorParts.indexOf(part);
         const isLeftHinged = doorIdx % 2 === 0;
@@ -1509,13 +1511,15 @@ var PartGraphBridge = (() => {
           hover: 0,
           suppress: 0,
           partId: id,
-          hinge
+          hinge,
+          doorMesh: mesh
         };
         const meshRelX = isLeftHinged ? widthThree / 2 : -widthThree / 2;
         mesh.position.set(meshRelX, 0, 0);
         mesh.userData = {
           partId: id,
           role,
+          isDoorMesh: true,
           finishedDimensionsMm: finished ? {
             lengthMm: finished.lengthDmm / 10,
             widthMm: finished.widthDmm / 10,
@@ -1546,6 +1550,7 @@ var PartGraphBridge = (() => {
         mesh.userData = {
           partId: id,
           role,
+          isDoorMesh: false,
           finishedDimensionsMm: finished ? {
             lengthMm: finished.lengthDmm / 10,
             widthMm: finished.widthDmm / 10,
@@ -1560,7 +1565,7 @@ var PartGraphBridge = (() => {
             maxZDmm: placement.maxZDmm
           },
           sourceSpecId: partGraph.sourceSpecId || null,
-          interactive: true
+          interactive: false
         };
         rootGroup.add(mesh);
       }

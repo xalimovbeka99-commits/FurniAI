@@ -74,7 +74,7 @@ export function formatGoldenReport(spec) {
     "",
     `Envelope: ${(env.widthMm || 0).toFixed(1)} × ${(env.heightMm || 0).toFixed(1)} × ${(env.depthMm || 0).toFixed(1)} mm`,
     `Construction: ${spec.constructionStyle}`,
-    `Plinth: ${(plinth.heightMm || 0).toFixed(1)} mm (Front Recess: ${(plinth.frontRecessMm || 0).toFixed(1)} mm, Side Inset: ${(plinth.sideInsetMm || 0).toFixed(1)} mm [${plinth.sideInsetStatus}])`,
+    `Plinth: ${(plinth.heightMm || 0).toFixed(1)} mm (Frame-aligned: ${(env.widthMm || 0).toFixed(1)} × ${(carcass.depthMm || 0).toFixed(1)} mm, Front Z: 20.0 mm, Rear Z: 600.0 mm)`,
     `Carcass: ${(carcass.heightMm || 0).toFixed(1)} mm H × ${(carcass.depthMm || 0).toFixed(1)} mm D (Panel T: ${(carcass.panelThicknessMm || 0).toFixed(1)} mm, Back T: ${(carcass.backThicknessMm || 0).toFixed(1)} mm)`,
     "",
     `Bays (${bays.length}):`,

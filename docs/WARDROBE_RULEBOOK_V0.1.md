@@ -56,7 +56,7 @@ Z = 600.0\text{ mm} &: \mathbf{\text{Finished Carcass Rear Datum}} \\
 | **WR-004** | Back Groove Depth | **7.0 mm** | Machined into Top, Bottom, and both Outer Sides. Leaves $11.0\text{ mm}$ solid core on $18.0\text{ mm}$ panels. |
 | **WR-005** | Back Groove Width | **7.0 mm** | Accommodates $6.0\text{ mm}$ back panel $+ 1.0\text{ mm}$ assembly glue gap. |
 | **WR-006** | Back Groove Setback | **20.0 mm to rear face** | Measured from Carcass Rear Datum $(Z = 600.0\text{ mm})$ to the rear face of the groove $(Z = 593.0\text{ mm})$. Groove channel occupies $Z \in [586.0, 593.0]\text{ mm}$. |
-| **WR-007** | Plinth Recess & Box | **50.0 mm Recess** | Plinth fascia/front sits $50.0\text{ mm}$ behind Carcass Front Datum ($Z = 20.0 + 50.0 = 70.0\text{ mm}$). Height = $100.0\text{ mm}$. Full supporting box structure with front, rear, sides, and center stretcher. |
+| **WR-007** | Plinth Frame Alignment & Box | **Frame-Aligned Box** | Plinth structural box aligns with the carcass frame footprint ($X \in [0.0, 1800.0]\text{ mm}$, $Z \in [20.0, 600.0]\text{ mm}$, $Y \in [0.0, 100.0]\text{ mm}$). Front fascia sits at Carcass Front Datum ($Z = 20.0\text{ mm}$), rear rail at Carcass Rear Datum ($Z = 600.0\text{ mm}$). Full supporting box structure with front, rear, side returns, and center stretcher. |
 | **WR-008** | Door Gaps / Reveals | **2.0 mm** | $2.0\text{ mm}$ perimeter reveals (Top, Bottom, Left, Right) and $2.0\text{ mm}$ vertical gaps between doors. |
 | **WR-009** | System 32 Shelf Pins | **37 mm / 32 mm** | Semantic grid on 32mm pitch, 37mm edge setback. Exact drilling coordinates are `MACHINING_BLOCKED` pending Bekzod pin SKU sign-off. |
 | **WR-010** | Hinge Hardware | **110° Concealed Hinge** | Semantic specification: 110° soft-close concealed clip-on hinge, $\varnothing 35.0\text{ mm}$ cup, $12.0\text{ mm}$ depth, 5 hinges per door. Exact production drilling is `MACHINING_BLOCKED` pending Bekzod SKU approval. |
@@ -207,11 +207,11 @@ Every rectangular part defines its own right-handed local coordinate frame $(U, 
 | `DOOR_02` | Hinged Door 2 (Mid Left)| 1 | 18mm Melamine | $2296.0 \times 447.5 \times 18.0$ | $2294.0 \times 445.5 \times 18.0$ | 1.0mm / 1.0mm / 1.0mm / 1.0mm | `APPROVED` |
 | `DOOR_03` | Hinged Door 3 (Mid Right)| 1 | 18mm Melamine | $2296.0 \times 447.5 \times 18.0$ | $2294.0 \times 445.5 \times 18.0$ | 1.0mm / 1.0mm / 1.0mm / 1.0mm | `APPROVED` |
 | `DOOR_04` | Hinged Door 4 (Far Right)| 1 | 18mm Melamine | $2296.0 \times 447.5 \times 18.0$ | $2294.0 \times 445.5 \times 18.0$ | 1.0mm / 1.0mm / 1.0mm / 1.0mm | `APPROVED` |
-| `PLINTH_FRONT` | Front Plinth Fascia | 1 | 18mm Melamine | $1700.0 \times 100.0 \times 18.0$ | $1698.0 \times 99.0 \times 18.0$ | 1.0mm / 0.0mm / 1.0mm / 1.0mm | `APPROVED` |
-| `PLINTH_REAR` | Rear Plinth Rail | 1 | 18mm Melamine | $1700.0 \times 100.0 \times 18.0$ | $1700.0 \times 100.0 \times 18.0$ | 0.0mm / 0.0mm / 0.0mm / 0.0mm | `APPROVED` |
-| `PLINTH_SIDE_L`| Left Plinth Return Rail| 1 | 18mm Melamine | $492.0 \times 100.0 \times 18.0$ | $492.0 \times 99.0 \times 18.0$ | 1.0mm / 0.0mm / 0.0mm / 0.0mm | `APPROVED` |
-| `PLINTH_SIDE_R`| Right Plinth Return Rail| 1 | 18mm Melamine | $492.0 \times 100.0 \times 18.0$ | $492.0 \times 99.0 \times 18.0$ | 1.0mm / 0.0mm / 0.0mm / 0.0mm | `APPROVED` |
-| `PLINTH_CROSS_C`| Center Plinth Stretcher | 1 | 18mm Melamine | $492.0 \times 100.0 \times 18.0$ | $492.0 \times 100.0 \times 18.0$ | 0.0mm / 0.0mm / 0.0mm / 0.0mm | `APPROVED` |
+| `PLINTH_FRONT` | Front Plinth Fascia | 1 | 18mm Melamine | $1800.0 \times 100.0 \times 18.0$ | $1798.0 \times 99.0 \times 18.0$ | 1.0mm / 0.0mm / 1.0mm / 1.0mm | `APPROVED` |
+| `PLINTH_REAR` | Rear Plinth Rail | 1 | 18mm Melamine | $1800.0 \times 100.0 \times 18.0$ | $1800.0 \times 100.0 \times 18.0$ | 0.0mm / 0.0mm / 0.0mm / 0.0mm | `APPROVED` |
+| `PLINTH_SIDE_L`| Left Plinth Return Rail| 1 | 18mm Melamine | $544.0 \times 100.0 \times 18.0$ | $544.0 \times 99.0 \times 18.0$ | 1.0mm / 0.0mm / 0.0mm / 0.0mm | `APPROVED` |
+| `PLINTH_SIDE_R`| Right Plinth Return Rail| 1 | 18mm Melamine | $544.0 \times 100.0 \times 18.0$ | $544.0 \times 99.0 \times 18.0$ | 1.0mm / 0.0mm / 0.0mm / 0.0mm | `APPROVED` |
+| `PLINTH_CROSS_C`| Center Plinth Stretcher | 1 | 18mm Melamine | $544.0 \times 100.0 \times 18.0$ | $544.0 \times 100.0 \times 18.0$ | 0.0mm / 0.0mm / 0.0mm / 0.0mm | `APPROVED` |
 | `RAIL_TUBE_L` | Left Hanging Oval Rail | 1 | Chrome Steel Tube | $869.0 \times 30.0 \times 15.0$ | $869.0 \times 30.0 \times 15.0$ | Hardware profile | `APPROVED` |
 | `RAIL_TUBE_R` | Right Hanging Oval Rail| 1 | Chrome Steel Tube | $869.0 \times 30.0 \times 15.0$ | $869.0 \times 30.0 \times 15.0$ | Hardware profile | `APPROVED` |
 | `RAIL_BRACKET_L1`| Left Bay Left Bracket | 1 | Diecast Zinc Flange | $45.0 \times 20.0 \times 12.0$ | $45.0 \times 20.0 \times 12.0$ | Hardware fitting | `APPROVED` |
@@ -225,11 +225,11 @@ Every rectangular part defines its own right-handed local coordinate frame $(U, 
 
 | Part ID | $X_{\min}$ | $X_{\max}$ | $Y_{\min}$ | $Y_{\max}$ | $Z_{\min}$ | $Z_{\max}$ |
 |---|---|---|---|---|---|---|
-| `PLINTH_FRONT` | 50.0 | 1750.0 | 0.0 | 100.0 | 70.0 | 88.0 |
-| `PLINTH_REAR` | 50.0 | 1750.0 | 0.0 | 100.0 | 562.0 | 580.0 |
-| `PLINTH_SIDE_L` | 50.0 | 68.0 | 0.0 | 100.0 | 88.0 | 562.0 |
-| `PLINTH_SIDE_R` | 1732.0 | 1750.0 | 0.0 | 100.0 | 88.0 | 562.0 |
-| `PLINTH_CROSS_C` | 891.0 | 909.0 | 0.0 | 100.0 | 88.0 | 562.0 |
+| `PLINTH_FRONT` | 0.0 | 1800.0 | 0.0 | 100.0 | 20.0 | 38.0 |
+| `PLINTH_REAR` | 0.0 | 1800.0 | 0.0 | 100.0 | 582.0 | 600.0 |
+| `PLINTH_SIDE_L` | 0.0 | 18.0 | 0.0 | 100.0 | 38.0 | 582.0 |
+| `PLINTH_SIDE_R` | 1782.0 | 1800.0 | 0.0 | 100.0 | 38.0 | 582.0 |
+| `PLINTH_CROSS_C` | 891.0 | 909.0 | 0.0 | 100.0 | 38.0 | 582.0 |
 | `CARC_BOT` | 0.0 | 1800.0 | 100.0 | 118.0 | 20.0 | 600.0 |
 | `CARC_SIDE_L` | 0.0 | 18.0 | 118.0 | 2382.0 | 20.0 | 600.0 |
 | `CARC_SIDE_R` | 1782.0 | 1800.0 | 118.0 | 2382.0 | 20.0 | 600.0 |

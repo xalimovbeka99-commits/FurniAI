@@ -16,9 +16,9 @@
   },
   "plinth": {
     "heightMm": 100.0,
-    "frontRecessMm": 50.0,
-    "sideInsetMm": 50.0,
-    "sideInsetStatus": "ASSUMPTION_PENDING_BEKZOD_APPROVAL"
+    "frontRecessMm": 0.0,
+    "sideInsetMm": 0.0,
+    "sideInsetStatus": "BEKZOD_APPROVED"
   },
   "carcass": {
     "heightMm": 2000.0,

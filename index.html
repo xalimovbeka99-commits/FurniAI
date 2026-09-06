@@ -1183,40 +1183,144 @@ const Builder={
     const cv=document.getElementById('bld3d');const self=this;if(!cv)return;
     this.raycaster=new THREE.Raycaster();this.pointer=new THREE.Vector2();this.dragMoved=false;
     this.canHover=window.matchMedia&&window.matchMedia('(hover: hover)').matches;
-    cv.addEventListener('mousedown',e=>{self.isDragging=true;self.dragMoved=false;self.lastMx=e.clientX;self.lastMy=e.clientY});
-    addEventListener('mouseup',()=>self.isDragging=false);
-    addEventListener('mousemove',e=>{if(!self.isDragging)return;if(Math.abs(e.clientX-self.lastMx)+Math.abs(e.clientY-self.lastMy)>3)self.dragMoved=true;self.rotY-=(e.clientX-self.lastMx)*.008;self.rotX+=(e.clientY-self.lastMy)*.005;self.rotX=Math.max(-.35,Math.min(.55,self.rotX));self.lastMx=e.clientX;self.lastMy=e.clientY});
+    this.downX=0;this.downY=0;this.lastTouchTime=0;
+    cv.addEventListener('mousedown',e=>{self.isDragging=true;self.dragMoved=false;self.downX=e.clientX;self.downY=e.clientY;self.lastMx=e.clientX;self.lastMy=e.clientY});
+    addEventListener('mouseup',e=>{
+      self.isDragging=false;
+      if(e&&Math.hypot(e.clientX-self.downX,e.clientY-self.downY)>4)self.dragMoved=true;
+    });
+    addEventListener('mousemove',e=>{
+      if(!self.isDragging)return;
+      if(Math.hypot(e.clientX-self.downX,e.clientY-self.downY)>4)self.dragMoved=true;
+      self.rotY-=(e.clientX-self.lastMx)*.008;self.rotX+=(e.clientY-self.lastMy)*.005;
+      self.rotX=Math.max(-.35,Math.min(.55,self.rotX));
+      self.lastMx=e.clientX;self.lastMy=e.clientY;
+    });
     cv.addEventListener('wheel',e=>{self.camDist+=e.deltaY*.005;self.camDist=Math.max(1.8,Math.min(12,self.camDist));e.preventDefault()},{passive:false});
     // hover-to-open (desktop, hover-capable pointers only)
     cv.addEventListener('mousemove',e=>{if(self.isDragging||!self.canHover)return;self.setPointer(e.clientX,e.clientY,cv);self.hoverPick()});
     cv.addEventListener('mouseleave',()=>self.clearHover());
     // tap / click toggles the piece under the pointer (works on mobile + desktop)
-    cv.addEventListener('click',e=>{if(self.dragMoved)return;self.setPointer(e.clientX,e.clientY,cv);self.clickPick()});
+    cv.addEventListener('click',e=>{
+      if(Date.now()-self.lastTouchTime<600)return;
+      if(self.dragMoved)return;
+      self.setPointer(e.clientX,e.clientY,cv);
+      self.clickPick();
+    });
     // touch orbit (1 finger) + pinch-to-zoom (2 fingers)
     const touchDist=t=>{const dx=t[0].clientX-t[1].clientX,dy=t[0].clientY-t[1].clientY;return Math.sqrt(dx*dx+dy*dy)};
     cv.addEventListener('touchstart',e=>{
+      if(!e||!e.touches)return;
       if(e.touches.length===2){self.isPinching=true;self.isDragging=false;self.pinchDist=touchDist(e.touches)}
-      else{self.isPinching=false;self.isDragging=true;self.dragMoved=false;self.lastMx=e.touches[0].clientX;self.lastMy=e.touches[0].clientY}
+      else if(e.touches.length===1){
+        self.isPinching=false;self.isDragging=true;self.dragMoved=false;
+        self.downX=e.touches[0].clientX;self.downY=e.touches[0].clientY;
+        self.lastMx=e.touches[0].clientX;self.lastMy=e.touches[0].clientY;
+      }
     },{passive:true});
     cv.addEventListener('touchmove',e=>{
+      if(!e||!e.touches)return;
       if(self.isPinching&&e.touches.length===2){
         const d=touchDist(e.touches);self.camDist=Math.max(1.8,Math.min(12,self.camDist-(d-self.pinchDist)*.012));self.pinchDist=d;e.preventDefault();return;
       }
       if(!self.isDragging||e.touches.length!==1)return;
-      if(Math.abs(e.touches[0].clientX-self.lastMx)+Math.abs(e.touches[0].clientY-self.lastMy)>3)self.dragMoved=true;
+      if(Math.hypot(e.touches[0].clientX-self.downX,e.touches[0].clientY-self.downY)>4)self.dragMoved=true;
       self.rotY-=(e.touches[0].clientX-self.lastMx)*.01;self.rotX+=(e.touches[0].clientY-self.lastMy)*.006;self.rotX=Math.max(-.35,Math.min(.55,self.rotX));
       self.lastMx=e.touches[0].clientX;self.lastMy=e.touches[0].clientY;
     },{passive:false});
     cv.addEventListener('touchend',e=>{
-      if(e.touches.length===1){self.isPinching=false;self.isDragging=true;self.dragMoved=false;self.lastMx=e.touches[0].clientX;self.lastMy=e.touches[0].clientY}
-      else if(e.touches.length===0){self.isPinching=false;self.isDragging=false}
+      if(!e||!e.touches)return;
+      if(e.touches.length===1){
+        self.isPinching=false;self.isDragging=true;self.dragMoved=false;
+        self.downX=e.touches[0].clientX;self.downY=e.touches[0].clientY;
+        self.lastMx=e.touches[0].clientX;self.lastMy=e.touches[0].clientY;
+      }
+      else if(e.touches.length===0){
+        if(!self.isPinching&&!self.dragMoved&&e.changedTouches&&e.changedTouches.length===1){
+          self.lastTouchTime=Date.now();
+          const t=e.changedTouches[0];
+          self.setPointer(t.clientX,t.clientY,cv);
+          self.clickPick();
+        }
+        self.isPinching=false;self.isDragging=false;
+      }
     });
   },
   setPointer(cx,cy,cv){const r=cv.getBoundingClientRect();this.pointer.x=((cx-r.left)/r.width)*2-1;this.pointer.y=-((cy-r.top)/r.height)*2+1;},
-  pick(){if(!this.cam||!this.scene)return null;this.raycaster.setFromCamera(this.pointer,this.cam);const hits=this.raycaster.intersectObjects(this.scene.children,true);for(const h of hits){let o=h.object;while(o){if(o.userData&&o.userData.interactive)return o;o=o.parent}}return null;},
-  hoverPick(){const H=this.pick();const cv=document.getElementById('bld3d');if(cv)cv.style.cursor=H?'pointer':'';},
+  findDoorAtPointer(){
+    if(!this.cam||!this.scene)return null;
+    this.raycaster.setFromCamera(this.pointer,this.cam);
+    const doorMeshes=[];const doorPivotMap=new Map();
+    if(Array.isArray(this.doorObjs)){
+      for(const pivot of this.doorObjs){
+        if(!pivot||!pivot.visible)continue;
+        pivot.traverse(c=>{
+          if(c&&c.isMesh&&c.visible&&!c.isLineSegments&&!c.isLine){
+            doorMeshes.push(c);
+            doorPivotMap.set(c,pivot);
+          }
+        });
+      }
+    }
+    if(doorMeshes.length===0)return null;
+    const allHits=this.raycaster.intersectObjects(this.scene.children,true);
+    let firstMeshHit=null;
+    for(const h of allHits){
+      if(h.object&&h.object.isMesh&&h.object.visible&&!h.object.isLineSegments&&!h.object.isLine){
+        firstMeshHit=h;break;
+      }
+    }
+    const doorHits=this.raycaster.intersectObjects(doorMeshes,false);
+    if(doorHits.length===0)return null;
+    const closestDoorHit=doorHits[0];
+    if(firstMeshHit&&firstMeshHit.object!==closestDoorHit.object&&firstMeshHit.distance<closestDoorHit.distance-0.001){
+      if(!doorPivotMap.has(firstMeshHit.object))return null;
+    }
+    const hitMesh=closestDoorHit.object;
+    const pivot=hitMesh.userData?.pivot||doorPivotMap.get(hitMesh);
+    const partId=hitMesh.userData?.partId||(pivot&&pivot.userData?.partId)||null;
+    return {mesh:hitMesh,pivot,partId,distance:closestDoorHit.distance,point:closestDoorHit.point};
+  },
+  pick(){
+    if(this.isParametric){
+      const doorHit=this.findDoorAtPointer();
+      return doorHit?doorHit.mesh:null;
+    }
+    if(!this.cam||!this.scene)return null;
+    this.raycaster.setFromCamera(this.pointer,this.cam);
+    const hits=this.raycaster.intersectObjects(this.scene.children,true);
+    for(const h of hits){
+      let o=h.object;
+      while(o){
+        if(o.userData&&o.userData.interactive)return o;
+        o=o.parent;
+      }
+    }
+    return null;
+  },
+  hoverPick(){
+    const H=this.isParametric?this.findDoorAtPointer():this.pick();
+    const cv=document.getElementById('bld3d');
+    if(cv)cv.style.cursor=H?'pointer':'';
+  },
   clearHover(){const cv=document.getElementById('bld3d');if(cv)cv.style.cursor='';},
-  clickPick(){const H=this.pick();if(H){const target=H.userData.pivot||H;target.userData.base=target.userData.base?0:1;}},
+  clickPick(){
+    if(this.isParametric){
+      const doorHit=this.findDoorAtPointer();
+      if(doorHit&&doorHit.pivot){
+        doorHit.pivot.userData.base=doorHit.pivot.userData.base?0:1;
+        return doorHit;
+      }
+      return null;
+    }
+    const H=this.pick();
+    if(H){
+      const target=H.userData.pivot||H;
+      target.userData.base=target.userData.base?0:1;
+      return {mesh:H,pivot:target};
+    }
+    return null;
+  },
   resize(){if(!this.ren||!this.cam)return;const cv=document.getElementById('bld3d');if(!cv||!cv.parentElement)return;const wrap=cv.parentElement;const W=wrap.clientWidth,H=wrap.clientHeight;if(W&&H){this.ren.setSize(W,H);this.cam.aspect=W/H;this.cam.updateProjectionMatrix()}},
 
   attach(o){(this.currentParent||this.scene).add(o);this.parts.push(o);return o},

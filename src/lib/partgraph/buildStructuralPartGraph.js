@@ -38,7 +38,7 @@ export function buildStructuralPartGraph(furniSpec) {
 
   const plinthHDmm = assertDeciMm(furniSpec.plinth.heightMm, "plinth.heightMm");
   const plinthRecessDmm = toDeciMm(furniSpec.plinth.frontRecessMm, "plinth.frontRecessMm");
-  const plinthSideInsetDmm = assertDeciMm(furniSpec.plinth.sideInsetMm, "plinth.sideInsetMm");
+  const plinthSideInsetDmm = toDeciMm(furniSpec.plinth.sideInsetMm, "plinth.sideInsetMm");
 
   const carcassHDmm = assertDeciMm(furniSpec.carcass.heightMm, "carcass.heightMm");
   const carcassDDmm = assertDeciMm(furniSpec.carcass.depthMm, "carcass.depthMm");
@@ -528,11 +528,11 @@ export function buildStructuralPartGraph(furniSpec) {
     doorXCursorDmm = maxXDmm + revInterDmm;
   }
 
-  // 9. PLINTH STRUCTURE
+  // 9. PLINTH STRUCTURE (Aligned with Carcass Frame Footprint)
   const plinthWidthDmm = envWDmm - 2 * plinthSideInsetDmm;
   const zPlinthFrontMinDmm = zCarcassFrontDmm + plinthRecessDmm;
   const zPlinthFrontMaxDmm = zPlinthFrontMinDmm + panelTDmm;
-  const zPlinthRearMaxDmm = zCarcassRearDmm - grvRearDatumDmm;
+  const zPlinthRearMaxDmm = zCarcassRearDmm;
   const zPlinthRearMinDmm = zPlinthRearMaxDmm - panelTDmm;
   const plinthSideLengthDmm = zPlinthRearMinDmm - zPlinthFrontMaxDmm;
 

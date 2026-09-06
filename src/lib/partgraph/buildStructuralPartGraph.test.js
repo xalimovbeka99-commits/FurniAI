@@ -157,8 +157,63 @@ describe("Gate G2.2-R1 — Generalized Deterministic PartGraph Kernel Suite", ()
     }
   });
 
-  it("15. proves plinth side-inset assumption produces a warning", () => {
+  it("15. proves plinth is Bekzod-approved frame-aligned with zero warnings on Golden Wardrobe", () => {
     const partGraph = buildStructuralPartGraph(fixture);
+    expect(partGraph.warnings).toEqual([]);
+
+    const pFront = partGraph.parts.find((p) => p.id === "PLINTH_FRONT");
+    expect(pFront.finished.lengthDmm).toBe(18000);
+    expect(pFront.finished.widthDmm).toBe(1000);
+    expect(pFront.finished.thicknessDmm).toBe(180);
+    expect(pFront.placement.minXDmm).toBe(0);
+    expect(pFront.placement.maxXDmm).toBe(18000);
+    expect(pFront.placement.minYDmm).toBe(0);
+    expect(pFront.placement.maxYDmm).toBe(1000);
+    expect(pFront.placement.minZDmm).toBe(200);
+    expect(pFront.placement.maxZDmm).toBe(380);
+
+    const pRear = partGraph.parts.find((p) => p.id === "PLINTH_REAR");
+    expect(pRear.finished.lengthDmm).toBe(18000);
+    expect(pRear.finished.widthDmm).toBe(1000);
+    expect(pRear.finished.thicknessDmm).toBe(180);
+    expect(pRear.placement.minXDmm).toBe(0);
+    expect(pRear.placement.maxXDmm).toBe(18000);
+    expect(pRear.placement.minZDmm).toBe(5820);
+    expect(pRear.placement.maxZDmm).toBe(6000);
+
+    const pSideL = partGraph.parts.find((p) => p.id === "PLINTH_SIDE_L");
+    expect(pSideL.finished.lengthDmm).toBe(5440);
+    expect(pSideL.finished.widthDmm).toBe(1000);
+    expect(pSideL.finished.thicknessDmm).toBe(180);
+    expect(pSideL.placement.minXDmm).toBe(0);
+    expect(pSideL.placement.maxXDmm).toBe(180);
+    expect(pSideL.placement.minZDmm).toBe(380);
+    expect(pSideL.placement.maxZDmm).toBe(5820);
+
+    const pSideR = partGraph.parts.find((p) => p.id === "PLINTH_SIDE_R");
+    expect(pSideR.finished.lengthDmm).toBe(5440);
+    expect(pSideR.finished.widthDmm).toBe(1000);
+    expect(pSideR.finished.thicknessDmm).toBe(180);
+    expect(pSideR.placement.minXDmm).toBe(17820);
+    expect(pSideR.placement.maxXDmm).toBe(18000);
+    expect(pSideR.placement.minZDmm).toBe(380);
+    expect(pSideR.placement.maxZDmm).toBe(5820);
+
+    const pCrossC = partGraph.parts.find((p) => p.id === "PLINTH_CROSS_C");
+    expect(pCrossC.finished.lengthDmm).toBe(5440);
+    expect(pCrossC.finished.widthDmm).toBe(1000);
+    expect(pCrossC.finished.thicknessDmm).toBe(180);
+    expect(pCrossC.placement.minXDmm).toBe(8910);
+    expect(pCrossC.placement.maxXDmm).toBe(9090);
+    expect(pCrossC.placement.minZDmm).toBe(380);
+    expect(pCrossC.placement.maxZDmm).toBe(5820);
+  });
+
+  it("15b. proves pending side-inset status produces PLINTH_SIDE_INSET_ASSUMPTION warning when used in reference spec", () => {
+    const pendingSpec = JSON.parse(JSON.stringify(fixture));
+    pendingSpec.plinth.sideInsetStatus = "ASSUMPTION_PENDING_BEKZOD_APPROVAL";
+    pendingSpec.plinth.sideInsetMm = 50.0;
+    const partGraph = buildStructuralPartGraph(pendingSpec);
     expect(partGraph.warnings).toHaveLength(1);
     expect(partGraph.warnings[0].code).toBe("PLINTH_SIDE_INSET_ASSUMPTION");
   });

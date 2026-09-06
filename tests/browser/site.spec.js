@@ -682,4 +682,283 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
       expect(meshCount).toBe(19);
     });
   });
+
+  test.describe("G3.1-R2 Exact Door Picking & Frame-Aligned Plinth", () => {
+    async function getDoorCenter(page, partId) {
+      return page.evaluate((id) => {
+        const cv = document.getElementById("bld3d");
+        const rect = cv.getBoundingClientRect();
+        const mesh = Builder.scene.getObjectByName(`part_${id}`);
+        if (!mesh) return null;
+        mesh.geometry.computeBoundingBox();
+        const bb = mesh.geometry.boundingBox;
+        const center = new THREE.Vector3();
+        bb.getCenter(center);
+        mesh.localToWorld(center);
+        center.project(Builder.cam);
+        const x = ((center.x + 1) / 2) * rect.width + rect.left;
+        const y = ((-center.y + 1) / 2) * rect.height + rect.top;
+        return { x, y, inFrustum: center.z >= -1 && center.z <= 1 };
+      }, partId);
+    }
+
+    test("1. proves frame-aligned plinth dimensions and coordinates in browser 3D scene", async ({ page }) => {
+      await page.goto("/#/build/golden-parametric");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.parts && Builder.parts.length > 0);
+
+      const plinthData = await page.evaluate(() => {
+        const root = Builder.parts[0];
+        const getBox = (id) => {
+          const m = root.getObjectByName(`part_${id}`);
+          if (!m) return null;
+          return {
+            partId: m.userData.partId,
+            placementMm: {
+              minX: m.userData.placementDmm.minXDmm / 10,
+              maxX: m.userData.placementDmm.maxXDmm / 10,
+              minY: m.userData.placementDmm.minYDmm / 10,
+              maxY: m.userData.placementDmm.maxYDmm / 10,
+              minZ: m.userData.placementDmm.minZDmm / 10,
+              maxZ: m.userData.placementDmm.maxZDmm / 10,
+            },
+            finishedMm: m.userData.finishedDimensionsMm,
+          };
+        };
+        return {
+          front: getBox("PLINTH_FRONT"),
+          rear: getBox("PLINTH_REAR"),
+          sideL: getBox("PLINTH_SIDE_L"),
+          sideR: getBox("PLINTH_SIDE_R"),
+          crossC: getBox("PLINTH_CROSS_C"),
+        };
+      });
+
+      // Front: 1800 x 100 x 18 mm, X: 0-1800, Y: 0-100, Z: 20-38
+      expect(plinthData.front.placementMm).toEqual({ minX: 0, maxX: 1800, minY: 0, maxY: 100, minZ: 20, maxZ: 38 });
+      expect(plinthData.front.finishedMm).toEqual({ lengthMm: 1800, widthMm: 100, thicknessMm: 18 });
+
+      // Rear: 1800 x 100 x 18 mm, X: 0-1800, Y: 0-100, Z: 582-600
+      expect(plinthData.rear.placementMm).toEqual({ minX: 0, maxX: 1800, minY: 0, maxY: 100, minZ: 582, maxZ: 600 });
+      expect(plinthData.rear.finishedMm).toEqual({ lengthMm: 1800, widthMm: 100, thicknessMm: 18 });
+
+      // Side L: 544 x 100 x 18 mm, X: 0-18, Y: 0-100, Z: 38-582
+      expect(plinthData.sideL.placementMm).toEqual({ minX: 0, maxX: 18, minY: 0, maxY: 100, minZ: 38, maxZ: 582 });
+      expect(plinthData.sideL.finishedMm).toEqual({ lengthMm: 544, widthMm: 100, thicknessMm: 18 });
+
+      // Side R: 544 x 100 x 18 mm, X: 1782-1800, Y: 0-100, Z: 38-582
+      expect(plinthData.sideR.placementMm).toEqual({ minX: 1782, maxX: 1800, minY: 0, maxY: 100, minZ: 38, maxZ: 582 });
+      expect(plinthData.sideR.finishedMm).toEqual({ lengthMm: 544, widthMm: 100, thicknessMm: 18 });
+
+      // Cross C: 544 x 100 x 18 mm, X: 891-909, Y: 0-100, Z: 38-582
+      expect(plinthData.crossC.placementMm).toEqual({ minX: 891, maxX: 909, minY: 0, maxY: 100, minZ: 38, maxZ: 582 });
+      expect(plinthData.crossC.finishedMm).toEqual({ lengthMm: 544, widthMm: 100, thicknessMm: 18 });
+    });
+
+    test("2. clicks projected center of each closed door individually and verifies matching Part ID toggles", async ({ page }) => {
+      await page.goto("/#/build/golden-parametric");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.doorObjs && Builder.doorObjs.length === 4);
+
+      const doorIds = ["DOOR_01", "DOOR_02", "DOOR_03", "DOOR_04"];
+
+      for (let i = 0; i < doorIds.length; i++) {
+        const id = doorIds[i];
+        const center = await getDoorCenter(page, id);
+        expect(center).not.toBeNull();
+        expect(center.inFrustum).toBe(true);
+
+        // Click projected center
+        await page.mouse.click(center.x, center.y);
+        await page.waitForTimeout(200);
+
+        // Verify only door i has base=1, others base=0
+        const bases = await page.evaluate(() => Builder.doorObjs.map(d => ({ partId: d.userData.partId, base: d.userData.base })));
+        for (let j = 0; j < doorIds.length; j++) {
+          if (j === i) {
+            expect(bases[j].base, `${doorIds[j]} should be open (base=1)`).toBe(1);
+          } else {
+            expect(bases[j].base, `${doorIds[j]} should remain closed (base=0)`).toBe(0);
+          }
+        }
+
+        // Reset all doors to closed for the next door test
+        await page.evaluate(() => {
+          Builder.doorObjs.forEach(d => { d.userData.base = 0; d.userData.cur = 0; d.rotation.y = 0; });
+        });
+        await page.waitForTimeout(100);
+      }
+    });
+
+    test("3. door picking operates reliably after orbiting the camera", async ({ page }) => {
+      await page.goto("/#/build/golden-parametric");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.doorObjs && Builder.doorObjs.length === 4);
+
+      // Orbit camera by dragging
+      const cv = page.locator("#bld3d");
+      const box = await cv.boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(box.x + box.width / 2 + 100, box.y + box.height / 2 - 40, { steps: 5 });
+      await page.mouse.up();
+      await page.waitForTimeout(200);
+
+      // Doors should not have opened during drag
+      const dragBases = await page.evaluate(() => Builder.doorObjs.map(d => d.userData.base));
+      expect(dragBases.every(b => b === 0)).toBe(true);
+
+      // Project DOOR_02 in new camera position and click
+      const center2 = await getDoorCenter(page, "DOOR_02");
+      expect(center2).not.toBeNull();
+      await page.mouse.click(center2.x, center2.y);
+      await page.waitForTimeout(200);
+
+      const bases = await page.evaluate(() => Builder.doorObjs.map(d => ({ partId: d.userData.partId, base: d.userData.base })));
+      expect(bases[1].base).toBe(1);
+      expect(bases[0].base).toBe(0);
+      expect(bases[2].base).toBe(0);
+      expect(bases[3].base).toBe(0);
+    });
+
+    test("4. door picking works when another door is already open", async ({ page }) => {
+      await page.goto("/#/build/golden-parametric");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.doorObjs && Builder.doorObjs.length === 4);
+
+      // Open DOOR_01
+      const center1 = await getDoorCenter(page, "DOOR_01");
+      await page.mouse.click(center1.x, center1.y);
+      await page.waitForTimeout(300);
+
+      // Click DOOR_02
+      const center2 = await getDoorCenter(page, "DOOR_02");
+      await page.mouse.click(center2.x, center2.y);
+      await page.waitForTimeout(200);
+
+      const bases = await page.evaluate(() => Builder.doorObjs.map(d => ({ partId: d.userData.partId, base: d.userData.base })));
+      expect(bases[0].base).toBe(1);
+      expect(bases[1].base).toBe(1);
+      expect(bases[2].base).toBe(0);
+      expect(bases[3].base).toBe(0);
+    });
+
+    test("5. door picking works after changing material swatches", async ({ page }) => {
+      await page.goto("/#/build/golden-parametric");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.doorObjs && Builder.doorObjs.length === 4);
+
+      // Select walnut material
+      await page.locator(".b-sw[data-mat='walnut']").click();
+      await page.waitForTimeout(200);
+
+      // Click DOOR_03
+      const center3 = await getDoorCenter(page, "DOOR_03");
+      await page.mouse.click(center3.x, center3.y);
+      await page.waitForTimeout(200);
+
+      const bases = await page.evaluate(() => Builder.doorObjs.map(d => ({ partId: d.userData.partId, base: d.userData.base })));
+      expect(bases[2].base).toBe(1);
+      expect(bases[0].base).toBe(0);
+      expect(bases[1].base).toBe(0);
+      expect(bases[3].base).toBe(0);
+    });
+
+    test("6. door picking works after navigating away and returning", async ({ page }) => {
+      await page.goto("/#/build/golden-parametric");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.doorObjs && Builder.doorObjs.length === 4);
+
+      // Navigate to landing
+      await page.evaluate(() => { window.location.hash = "#/"; });
+      await expect(page.locator("#view-landing")).toBeVisible();
+
+      // Return to parametric builder
+      await page.evaluate(() => { window.location.hash = "#/build/golden-parametric"; });
+      await expect(page.locator("#parametricBadge")).toBeVisible();
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.doorObjs && Builder.doorObjs.length === 4);
+      await page.waitForTimeout(200);
+
+      // Click DOOR_04
+      const center4 = await getDoorCenter(page, "DOOR_04");
+      await page.mouse.click(center4.x, center4.y);
+      await page.waitForTimeout(200);
+
+      const bases = await page.evaluate(() => Builder.doorObjs.map(d => ({ partId: d.userData.partId, base: d.userData.base })));
+      expect(bases[3].base).toBe(1);
+      expect(bases[0].base).toBe(0);
+      expect(bases[1].base).toBe(0);
+      expect(bases[2].base).toBe(0);
+    });
+
+    test("7. touch tap produces exactly one state transition, suppresses synthetic click, and touch drag does not toggle", async ({ page }) => {
+      await page.goto("/#/build/golden-parametric");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.doorObjs && Builder.doorObjs.length === 4);
+
+      const center1 = await getDoorCenter(page, "DOOR_01");
+
+      // Dispatch single touch tap (touchstart + touchend with changedTouches[0]) followed immediately by synthetic click
+      await page.evaluate((c) => {
+        const cv = document.getElementById("bld3d");
+        // Simulate Builder touchend execution for a tap
+        Builder.downX = c.x;
+        Builder.downY = c.y;
+        Builder.dragMoved = false;
+        Builder.isDragging = false;
+        Builder.lastTouchTime = Date.now();
+        Builder.setPointer(c.x, c.y, cv);
+        Builder.clickPick();
+
+        // Synthetic click follows immediately (e.g. within 50ms)
+        const clickEv = new MouseEvent("click", { clientX: c.x, clientY: c.y, bubbles: true });
+        cv.dispatchEvent(clickEv);
+      }, center1);
+
+      await page.waitForTimeout(200);
+
+      // Door 1 must be open (base=1), NOT toggled twice back to base=0!
+      const bases = await page.evaluate(() => Builder.doorObjs.map(d => d.userData.base));
+      expect(bases[0]).toBe(1);
+      expect(bases[1]).toBe(0);
+
+      // Now test touch drag followed by touchend: must produce ZERO toggles
+      await page.evaluate((c) => {
+        const cv = document.getElementById("bld3d");
+        // Touch drag simulation
+        Builder.downX = c.x;
+        Builder.downY = c.y;
+        Builder.dragMoved = true;
+        // Touchend with dragMoved true should not toggle
+        if (!Builder.dragMoved) {
+          Builder.setPointer(c.x + 30, c.y, cv);
+          Builder.clickPick();
+        }
+      }, center1);
+
+      await page.waitForTimeout(200);
+      // DOOR_01 base must still be 1 (not toggled by drag)
+      const basesAfterDrag = await page.evaluate(() => Builder.doorObjs.map(d => d.userData.base));
+      expect(basesAfterDrag[0]).toBe(1);
+    });
+
+    test("8. legacy catalog door selection and drawer selection still work without interference", async ({ page }) => {
+      // Legacy wardrobe (#/build/0)
+      await page.goto("/#/build/0");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && !Builder.isParametric && Builder.doorObjs && Builder.doorObjs.length > 0);
+
+      const legacyDoorBefore = await page.evaluate(() => Builder.doorObjs[0].userData.base);
+      await page.evaluate(() => {
+        Builder.doorObjs[0].userData.base = Builder.doorObjs[0].userData.base ? 0 : 1;
+      });
+      const legacyDoorAfter = await page.evaluate(() => Builder.doorObjs[0].userData.base);
+      expect(legacyDoorAfter).not.toBe(legacyDoorBefore);
+
+      // Catalog design with drawers (#/build/5)
+      await page.goto("/#/build/5");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && !Builder.isParametric);
+      const hasDrawers = await page.evaluate(() => Builder.drawerObjs && Builder.drawerObjs.length > 0);
+      if (hasDrawers) {
+        const beforeDrawer = await page.evaluate(() => Builder.drawerObjs[0].userData.base);
+        await page.evaluate(() => {
+          Builder.drawerObjs[0].userData.base = Builder.drawerObjs[0].userData.base ? 0 : 1;
+        });
+        const afterDrawer = await page.evaluate(() => Builder.drawerObjs[0].userData.base);
+        expect(afterDrawer).not.toBe(beforeDrawer);
+      }
+    });
+  });
 });

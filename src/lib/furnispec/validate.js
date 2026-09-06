@@ -155,7 +155,7 @@ export function validateFurniSpec(spec) {
       addError("MISSING_PLINTH_SIDE_INSET", "plinth.sideInsetMm is required.", "plinth.sideInsetMm");
     } else {
       checkNonNegativeDeciMm(plinth.sideInsetMm, "plinth.sideInsetMm", "plinth.sideInsetMm");
-      if (!Object.values(SIDE_INSET_STATUS).includes(plinth.sideInsetStatus)) {
+      if (plinth.sideInsetStatus !== undefined && !Object.values(SIDE_INSET_STATUS).includes(plinth.sideInsetStatus)) {
         addError("INVALID_SIDE_INSET_STATUS", `plinth.sideInsetStatus must be one of [${Object.values(SIDE_INSET_STATUS).join(", ")}].`, "plinth.sideInsetStatus");
       }
     }

@@ -61,11 +61,11 @@ To eliminate floating-point representation anomalies (e.g. `0.1 + 0.2 !== 0.3`) 
 | `DOOR_02` | `DOOR_PANEL` | 1 | $2296.0 \times 447.5 \times 18.0$ | $2294.0 \times 445.5 \times 18.0$ | 1.0mm / 1.0mm / 1.0mm / 1.0mm | $[451.5..899, 102..2398, 0..18]$ |
 | `DOOR_03` | `DOOR_PANEL` | 1 | $2296.0 \times 447.5 \times 18.0$ | $2294.0 \times 445.5 \times 18.0$ | 1.0mm / 1.0mm / 1.0mm / 1.0mm | $[901..1348.5, 102..2398, 0..18]$ |
 | `DOOR_04` | `DOOR_PANEL` | 1 | $2296.0 \times 447.5 \times 18.0$ | $2294.0 \times 445.5 \times 18.0$ | 1.0mm / 1.0mm / 1.0mm / 1.0mm | $[1350.5..1798, 102..2398, 0..18]$ |
-| `PLINTH_FRONT` | `PLINTH_FRONT_FASCIA` | 1 | $1700.0 \times 100.0 \times 18.0$ | $1698.0 \times 99.0 \times 18.0$ | 1.0mm / 0.0mm / 1.0mm / 1.0mm | $[50..1750, 0..100, 70..88]$ |
-| `PLINTH_REAR` | `PLINTH_REAR_RAIL` | 1 | $1700.0 \times 100.0 \times 18.0$ | $1700.0 \times 100.0 \times 18.0$ | 0.0mm / 0.0mm / 0.0mm / 0.0mm | $[50..1750, 0..100, 562..580]$ |
-| `PLINTH_SIDE_L`| `PLINTH_SIDE_RETURN_LEFT` | 1 | $474.0 \times 100.0 \times 18.0$ | $474.0 \times 99.0 \times 18.0$ | 1.0mm / 0.0mm / 0.0mm / 0.0mm | $[50..68, 0..100, 88..562]$ |
-| `PLINTH_SIDE_R`| `PLINTH_SIDE_RETURN_RIGHT`| 1 | $474.0 \times 100.0 \times 18.0$ | $474.0 \times 99.0 \times 18.0$ | 1.0mm / 0.0mm / 0.0mm / 0.0mm | $[1732..1750, 0..100, 88..562]$ |
-| `PLINTH_CROSS_C`| `PLINTH_CROSS_STRETCHER` | 1 | $474.0 \times 100.0 \times 18.0$ | $474.0 \times 100.0 \times 18.0$ | 0.0mm / 0.0mm / 0.0mm / 0.0mm | $[891..909, 0..100, 88..562]$ |
+| `PLINTH_FRONT` | `PLINTH_FRONT_FASCIA` | 1 | $1800.0 \times 100.0 \times 18.0$ | $1798.0 \times 99.0 \times 18.0$ | 1.0mm / 0.0mm / 1.0mm / 1.0mm | $[0..1800, 0..100, 20..38]$ |
+| `PLINTH_REAR` | `PLINTH_REAR_RAIL` | 1 | $1800.0 \times 100.0 \times 18.0$ | $1800.0 \times 100.0 \times 18.0$ | 0.0mm / 0.0mm / 0.0mm / 0.0mm | $[0..1800, 0..100, 582..600]$ |
+| `PLINTH_SIDE_L`| `PLINTH_SIDE_RETURN_LEFT` | 1 | $544.0 \times 100.0 \times 18.0$ | $544.0 \times 99.0 \times 18.0$ | 1.0mm / 0.0mm / 0.0mm / 0.0mm | $[0..18, 0..100, 38..582]$ |
+| `PLINTH_SIDE_R`| `PLINTH_SIDE_RETURN_RIGHT`| 1 | $544.0 \times 100.0 \times 18.0$ | $544.0 \times 99.0 \times 18.0$ | 1.0mm / 0.0mm / 0.0mm / 0.0mm | $[1782..1800, 0..100, 38..582]$ |
+| `PLINTH_CROSS_C`| `PLINTH_CROSS_STRETCHER` | 1 | $544.0 \times 100.0 \times 18.0$ | $544.0 \times 100.0 \times 18.0$ | 0.0mm / 0.0mm / 0.0mm / 0.0mm | $[891..909, 0..100, 38..582]$ |
 
 ---
 

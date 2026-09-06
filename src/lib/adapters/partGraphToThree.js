@@ -175,6 +175,7 @@ export function partGraphToThree(partGraph, options = {}) {
       const edgeGeometry = new T.EdgesGeometry(geometry);
       const edgeLine = new T.LineSegments(edgeGeometry, materials.EDGE);
       edgeLine.name = `edges_${id}`;
+      edgeLine.raycast = () => {}; // Edge-definition LineSegments must not become selectable
       mesh.add(edgeLine);
 
       const doorIdx = doorParts.indexOf(part);
@@ -206,6 +207,7 @@ export function partGraphToThree(partGraph, options = {}) {
         suppress: 0,
         partId: id,
         hinge,
+        doorMesh: mesh,
       };
 
       // Door mesh relative to its hinge pivot
@@ -216,6 +218,7 @@ export function partGraphToThree(partGraph, options = {}) {
       mesh.userData = {
         partId: id,
         role,
+        isDoorMesh: true,
         finishedDimensionsMm: finished
           ? {
               lengthMm: finished.lengthDmm / 10,
@@ -250,6 +253,7 @@ export function partGraphToThree(partGraph, options = {}) {
       mesh.userData = {
         partId: id,
         role,
+        isDoorMesh: false,
         finishedDimensionsMm: finished
           ? {
               lengthMm: finished.lengthDmm / 10,
@@ -266,7 +270,7 @@ export function partGraphToThree(partGraph, options = {}) {
           maxZDmm: placement.maxZDmm,
         },
         sourceSpecId: partGraph.sourceSpecId || null,
-        interactive: true,
+        interactive: false,
       };
 
       rootGroup.add(mesh);
