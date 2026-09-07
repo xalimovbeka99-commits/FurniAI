@@ -29,12 +29,25 @@ await build({
   outfile: resolve(root, "partgraph-runtime-bridge.js"),
 });
 
+// Build the standalone browser transport for the live AI designer.
+// Separate bundle and separate global so it ships without touching
+// index.html, browserBridge.js or partGraphToThree.js.
+await build({
+  entryPoints: [resolve(root, "src/lib/adapters/aiDesignerTransport.js")],
+  bundle: true,
+  format: "iife",
+  globalName: "AiDesignerTransport",
+  plugins: [threeGlobalPlugin],
+  outfile: resolve(root, "ai-designer-transport.js"),
+});
+
 const files = [
   "index.html",
   "styles.css",
   "app.js",
   "legacy-builder-adapter.js",
   "partgraph-runtime-bridge.js",
+  "ai-designer-transport.js",
   "vendor-three-r128.min.js",
   "vendor-supabase.min.js",
 ];
