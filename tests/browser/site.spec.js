@@ -1676,5 +1676,261 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
       // Revision must remain 1 because no valid change occurred
       await expect(page.locator("#revRevision")).toHaveText("1");
     });
+
+    test("25. AiDesignerTransport: DESIGN_UPDATED from model proposal updates PartGraph, 3D scene, and advances revision", async ({ page }) => {
+      await page.route("**/api/design/propose", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            edits: [{ key: "envelope.heightMm", value: 2600 }],
+            unsupported: [],
+            reply: "I've increased the height to 2600 mm.",
+            provider: "mock-anthropic",
+          }),
+        });
+      });
+
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "Make me a wardrobe");
+      await page.click("#aiWardrobeSubmitBtn");
+      await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
+      await expect(page.locator("#revRevision")).toHaveText("1");
+      await expect(page.locator("#revHeight")).toHaveText("2400 mm");
+
+      // Phrasing that bypasses deterministic regex: "please make the wardrobe 2600 mm in total vertical height"
+      await page.fill("#aiConversationalInput", "please make the wardrobe 2600 mm in total vertical height");
+      await page.click("#aiConversationalSendBtn");
+
+      // Verify UI revision and height update
+      await expect(page.locator("#revRevision")).toHaveText("2");
+      await expect(page.locator("#revHeight")).toHaveText("2600 mm");
+
+      // Verify chat stream has user input and assistant reply
+      const chatStream = page.locator("#aiConversationalStream");
+      await expect(chatStream).toContainText("please make the wardrobe 2600 mm in total vertical height");
+      await expect(chatStream).toContainText("I've increased the height to 2600 mm.");
+
+      // Verify 3D geometry updated
+      const heightIn3D = await page.evaluate(() => {
+        if (!Builder.parts[0]) return 0;
+        const bbox = new THREE.Box3().setFromObject(Builder.parts[0]);
+        const size = bbox.getSize(new THREE.Vector3());
+        return Math.round(size.y * 1000); // meters to mm
+      });
+      expect(heightIn3D).toBe(2600);
+    });
+
+    test("26. AiDesignerTransport: MATERIAL_UPDATED changes swatch finish without reloading 3D geometry", async ({ page }) => {
+      await page.route("**/api/design/propose", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            edits: [{ key: "materialKey", value: "walnut" }],
+            unsupported: [],
+            reply: "I've updated the wardrobe to walnut finish.",
+            provider: "mock-anthropic",
+          }),
+        });
+      });
+
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "Make me a wardrobe");
+      await page.click("#aiWardrobeSubmitBtn");
+      await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
+      await expect(page.locator("#revRevision")).toHaveText("1");
+      await expect(page.locator("#revFinish")).toHaveText("Melamine");
+
+      await page.fill("#aiConversationalInput", "can we switch everything over to a warm walnut wood?");
+      await page.click("#aiConversationalSendBtn");
+
+      await expect(page.locator("#revRevision")).toHaveText("2");
+      await expect(page.locator("#revFinish")).toHaveText("Walnut");
+
+      const chatStream = page.locator("#aiConversationalStream");
+      await expect(chatStream).toContainText("I've updated the wardrobe to walnut finish.");
+
+      const finishInState = await page.evaluate(() => aiWardrobeState.spec.finishType);
+      expect(finishInState).toBe("walnut");
+    });
+
+    test("27. AiDesignerTransport: UNSUPPORTED explains reasons and alternatives while preserving model & revision", async ({ page }) => {
+      await page.route("**/api/design/propose", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            edits: [],
+            unsupported: [{
+              request: "remove all dividers and make it a single huge span",
+              reason: "Span exceeds maximum allowable length without support",
+              alternative: "Add a middle divider",
+            }],
+            reply: "That span would sag without additional support.",
+            provider: "mock-anthropic",
+          }),
+        });
+      });
+
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "Make me a wardrobe");
+      await page.click("#aiWardrobeSubmitBtn");
+      await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
+      await expect(page.locator("#revRevision")).toHaveText("1");
+      await expect(page.locator("#revWidth")).toHaveText("1800 mm");
+
+      await page.fill("#aiConversationalInput", "remove all dividers and make it a single huge span");
+      await page.click("#aiConversationalSendBtn");
+
+      const chatStream = page.locator("#aiConversationalStream");
+      await expect(chatStream).toContainText("Span exceeds maximum allowable length without support");
+      await expect(chatStream).toContainText("Alternative: Add a middle divider");
+
+      // Revision and model preserved
+      await expect(page.locator("#revRevision")).toHaveText("1");
+      await expect(page.locator("#revWidth")).toHaveText("1800 mm");
+    });
+
+    test("28. AiDesignerTransport: DESIGNER_UNAVAILABLE on 503 preserves active model and displays failure in stream", async ({ page }) => {
+      await page.route("**/api/design/propose", async (route) => {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: false,
+            code: "AI_PROVIDER_UNAVAILABLE",
+            error: "The FurniAI designer is not available right now. Your design is unchanged — you can keep editing it directly.",
+          }),
+        });
+      });
+
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "Make me a wardrobe");
+      await page.click("#aiWardrobeSubmitBtn");
+      await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
+      await expect(page.locator("#revRevision")).toHaveText("1");
+      await expect(page.locator("#revWidth")).toHaveText("1800 mm");
+
+      await page.fill("#aiConversationalInput", "please add a top storage bay");
+      await page.click("#aiConversationalSendBtn");
+
+      const chatStream = page.locator("#aiConversationalStream");
+      await expect(chatStream).toContainText("The FurniAI designer is not available right now. Your design is unchanged");
+
+      // Model preserved
+      await expect(page.locator("#revRevision")).toHaveText("1");
+      await expect(page.locator("#revWidth")).toHaveText("1800 mm");
+    });
+
+    test("29. AiDesignerTransport: prevents duplicate submissions while request is in flight", async ({ page }) => {
+      let requestCount = 0;
+      await page.route("**/api/design/propose", async (route) => {
+        requestCount++;
+        // Delay response to test in-flight state
+        await new Promise((r) => setTimeout(r, 400));
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            edits: [{ key: "envelope.heightMm", value: 2500 }],
+            unsupported: [],
+            reply: "Height changed to 2500 mm.",
+          }),
+        });
+      });
+
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "Make me a wardrobe");
+      await page.click("#aiWardrobeSubmitBtn");
+      await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
+
+      // Use non-deterministic phrasing:
+      await page.fill("#aiConversationalInput", "adjust the vertical clearance to 2500 mm");
+      await page.click("#aiConversationalSendBtn");
+
+      // Send button and input should be disabled during flight
+      await expect(page.locator("#aiConversationalSendBtn")).toBeDisabled();
+      await expect(page.locator("#aiConversationalInput")).toBeDisabled();
+
+      // Trigger second submit via evaluate while in flight
+      await page.evaluate(() => {
+        const btn = document.getElementById("aiConversationalSendBtn");
+        if (btn) btn.click();
+      });
+
+      // Wait for completion
+      await expect(page.locator("#revRevision")).toHaveText("2");
+      await expect(page.locator("#revHeight")).toHaveText("2500 mm");
+
+      // Should have made only 1 network request
+      expect(requestCount).toBe(1);
+
+      // Controls re-enabled
+      await expect(page.locator("#aiConversationalSendBtn")).toBeEnabled();
+      await expect(page.locator("#aiConversationalInput")).toBeEnabled();
+    });
+
+    test("30. AiDesignerTransport: stale response from in-flight request discarded if user clicks Undo", async ({ page }) => {
+      await page.route("**/api/design/propose", async (route) => {
+        // Slow response
+        await new Promise((r) => setTimeout(r, 600));
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            edits: [{ key: "envelope.heightMm", value: 2600 }],
+            unsupported: [],
+            reply: "Stale update to 2600mm.",
+          }),
+        });
+      });
+
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "Make me a wardrobe");
+      await page.click("#aiWardrobeSubmitBtn");
+      await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
+      await expect(page.locator("#revRevision")).toHaveText("1");
+
+      // Advance to revision 2 with deterministic edit
+      await page.fill("#aiConversationalInput", "Make it 2000 mm wide");
+      await page.click("#aiConversationalSendBtn");
+      await expect(page.locator("#revRevision")).toHaveText("2");
+      await expect(page.locator("#revWidth")).toHaveText("2000 mm");
+
+      // Send slow model request with non-deterministic phrasing
+      await page.fill("#aiConversationalInput", "please make the wardrobe 2600 mm in total vertical height");
+      await page.click("#aiConversationalSendBtn");
+
+      // While request is in flight, click Undo
+      await page.click("#btnUndoEdit");
+      await expect(page.locator("#revRevision")).toHaveText("1");
+      await expect(page.locator("#revWidth")).toHaveText("1800 mm");
+
+      // Wait past slow response delay
+      await page.waitForTimeout(800);
+
+      // Verify stale response did not overwrite revision or width
+      await expect(page.locator("#revRevision")).toHaveText("1");
+      await expect(page.locator("#revWidth")).toHaveText("1800 mm");
+      const heightIn3D = await page.evaluate(() => {
+        if (!Builder.parts[0]) return 0;
+        const bbox = new THREE.Box3().setFromObject(Builder.parts[0]);
+        const size = bbox.getSize(new THREE.Vector3());
+        return Math.round(size.y * 1000);
+      });
+      expect(heightIn3D).toBe(2400);
+    });
   });
 });

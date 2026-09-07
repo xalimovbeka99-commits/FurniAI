@@ -51,6 +51,7 @@ window.addEventListener('error', function(e){
 <script src="/vendor-supabase.min.js"></script>
 <script src="/legacy-builder-adapter.js"></script>
 <script src="/partgraph-runtime-bridge.js"></script>
+<script src="/ai-designer-transport.js"></script>
 <style>
 :root{
   --paper:#FAF9F5; --paper-2:#F4F2EB; --paper-3:#EAE5D9;
@@ -2047,6 +2048,8 @@ function initAiWardrobePanel(forceReset = false) {
     observations: [],
     origins: {},
     undoStack: [],
+    editSequence: (window.aiWardrobeState?.editSequence || 0) + 1,
+    isSubmitting: false,
   };
   const inp = document.getElementById('aiWardrobeInput');
   if (inp) inp.value = '';
@@ -2181,7 +2184,7 @@ function updateAiWardrobeSummaryUI(res) {
 
   setEl('revInterior', `${baysCount} bays configured`);
   setEl('revProposalId', prop.specId || spec.specId || '');
-  setEl('revRevision', String(prop.revision || spec.revision || 1));
+  setEl('revRevision', String(res.revision || prop.revision || spec.revision || 1));
   setEl('revFingerprint', prop.fingerprint || '');
 }
 
@@ -2210,6 +2213,8 @@ function runAiWardrobeDraftPreview() {
   aiWardrobeState.answers = {};
   aiWardrobeState.approval = null;
   aiWardrobeState.undoStack = [];
+  aiWardrobeState.editSequence = (aiWardrobeState.editSequence || 0) + 1;
+  aiWardrobeState.isSubmitting = false;
 
   const currentRev = aiWardrobeState.revision || 1;
   const result = globalThis.PartGraphBridge.previewDraftWardrobe({
@@ -2257,9 +2262,20 @@ function runAiWardrobeDraftPreview() {
   }
 }
 
-function runAiWardrobeConversationalEdit(cmdText) {
+async function runAiWardrobeConversationalEdit(cmdText) {
   if (!cmdText || !aiWardrobeState.observations || !aiWardrobeState.observations.length) return;
-  if (!globalThis.PartGraphBridge || !globalThis.PartGraphBridge.applyConversationalEdit) return;
+  if (aiWardrobeState.isSubmitting) return; // Prevent duplicate submissions
+
+  aiWardrobeState.isSubmitting = true;
+  const sendBtn = document.getElementById('aiConversationalSendBtn');
+  const convInp = document.getElementById('aiConversationalInput');
+  if (sendBtn) sendBtn.disabled = true;
+  if (convInp) convInp.disabled = true;
+
+  const currentSeq = (aiWardrobeState.editSequence || 0) + 1;
+  aiWardrobeState.editSequence = currentSeq;
+  const expectedSpecId = aiWardrobeState.specId;
+  const expectedRevision = aiWardrobeState.revision;
 
   const prevSnapshot = {
     spec: JSON.parse(JSON.stringify(aiWardrobeState.spec)),
@@ -2270,14 +2286,51 @@ function runAiWardrobeConversationalEdit(cmdText) {
     revision: aiWardrobeState.revision,
   };
 
-  const res = globalThis.PartGraphBridge.applyConversationalEdit({
-    currentObservations: aiWardrobeState.observations,
-    commandText: cmdText,
-    specId: aiWardrobeState.specId,
-    revision: aiWardrobeState.revision,
-  });
+  let res;
+  try {
+    if (globalThis.AiDesignerTransport && typeof globalThis.AiDesignerTransport.proposeDesignChange === 'function') {
+      res = await globalThis.AiDesignerTransport.proposeDesignChange({
+        message: cmdText,
+        currentObservations: aiWardrobeState.observations,
+        specId: aiWardrobeState.specId,
+        revision: aiWardrobeState.revision,
+      });
+    } else if (globalThis.PartGraphBridge && typeof globalThis.PartGraphBridge.applyConversationalEdit === 'function') {
+      res = globalThis.PartGraphBridge.applyConversationalEdit({
+        currentObservations: aiWardrobeState.observations,
+        commandText: cmdText,
+        specId: aiWardrobeState.specId,
+        revision: aiWardrobeState.revision,
+      });
+    }
+  } catch (err) {
+    res = {
+      ok: false,
+      kind: 'DESIGNER_UNAVAILABLE',
+      error: err?.message || 'Could not reach the FurniAI designer. Your design is unchanged.',
+    };
+  } finally {
+    aiWardrobeState.isSubmitting = false;
+    if (sendBtn) sendBtn.disabled = false;
+    if (convInp) convInp.disabled = false;
+  }
 
-  if (res && res.ok && res.spec && res.partGraph) {
+  // Prevent stale responses from overwriting newer edits, Undo results, or a newly started design
+  if (
+    aiWardrobeState.editSequence !== currentSeq ||
+    aiWardrobeState.specId !== expectedSpecId ||
+    aiWardrobeState.revision !== expectedRevision
+  ) {
+    console.warn('Discarded stale conversational edit response');
+    return;
+  }
+
+  if (!res) return;
+
+  const kind = res.kind;
+
+  if (kind === 'DESIGN_UPDATED' || (res.ok && res.spec && res.partGraph)) {
+    // 1. DESIGN_UPDATED: geometry and specification updated
     aiWardrobeState.undoStack.push(prevSnapshot);
     aiWardrobeState.spec = res.spec;
     aiWardrobeState.proposal = res.proposal;
@@ -2295,7 +2348,62 @@ function runAiWardrobeConversationalEdit(cmdText) {
     updateAiWardrobeSummaryUI(res);
     appendAiStreamMsg('user', cmdText);
     appendAiStreamMsg('assistant', res.assistantReply || `Updated wardrobe to Revision ${res.spec.revision}.`);
-  } else if (res && res.error) {
+  } else if (kind === 'MATERIAL_UPDATED' || (res.ok && res.materialKey && !res.partGraph)) {
+    // 2. MATERIAL_UPDATED: visual swatch changed, 3D geometry unchanged
+    aiWardrobeState.undoStack.push(prevSnapshot);
+    aiWardrobeState.revision = (aiWardrobeState.revision || 1) + 1;
+    aiWardrobeState.approval = null;
+    if (res.observations) aiWardrobeState.observations = res.observations;
+    if (res.origins) aiWardrobeState.origins = res.origins;
+
+    if (globalThis.PartGraphBridge && typeof globalThis.PartGraphBridge.updateParametricMaterial === 'function') {
+      globalThis.PartGraphBridge.updateParametricMaterial(Builder, res.materialKey);
+    }
+    if (aiWardrobeState.spec) {
+      aiWardrobeState.spec = {
+        ...aiWardrobeState.spec,
+        finishType: res.materialKey,
+        revision: aiWardrobeState.revision,
+      };
+    }
+    if (aiWardrobeState.proposal) {
+      aiWardrobeState.proposal = {
+        ...aiWardrobeState.proposal,
+        revision: aiWardrobeState.revision,
+      };
+    }
+
+    updateAiWardrobeSummaryUI({
+      spec: aiWardrobeState.spec,
+      proposal: aiWardrobeState.proposal,
+      origins: aiWardrobeState.origins,
+      revision: aiWardrobeState.revision,
+    });
+    appendAiStreamMsg('user', cmdText);
+    appendAiStreamMsg('assistant', res.assistantReply || `Changed finish to ${res.materialKey}. (Revision ${aiWardrobeState.revision})`);
+  } else if (kind === 'NEEDS_MORE_DETAIL') {
+    // 3. NEEDS_MORE_DETAIL: model requires additional clarification; design is preserved
+    appendAiStreamMsg('user', cmdText);
+    appendAiStreamMsg('assistant', res.assistantReply || res.error || 'I need a little more detail before I can change the design.');
+  } else if (kind === 'UNSUPPORTED') {
+    // 4. UNSUPPORTED: request is outside manufacturing slice; explain reason and offer alternative
+    appendAiStreamMsg('user', cmdText);
+    let msg = res.error;
+    if (Array.isArray(res.unsupported) && res.unsupported.length > 0) {
+      const details = res.unsupported.map((u) => u.alternative ? `${u.reason} (Alternative: ${u.alternative})` : u.reason).join('; ');
+      msg = details || res.error;
+    }
+    appendAiStreamMsg('assistant', `Sorry — ${msg}`);
+  } else if (kind === 'REJECTED') {
+    // 5. REJECTED: validation or kernel rule failure; design is preserved
+    appendAiStreamMsg('user', cmdText);
+    appendAiStreamMsg('assistant', `Sorry — ${res.error || 'The requested change could not be applied.'}`);
+  } else if (kind === 'DESIGNER_UNAVAILABLE') {
+    // 6. DESIGNER_UNAVAILABLE: provider/network error; design is preserved
+    appendAiStreamMsg('user', cmdText);
+    appendAiStreamMsg('assistant', `Sorry — ${res.error || 'The FurniAI designer is not available right now. Your design is unchanged.'}`);
+  } else if (res.error) {
+    // Fallback for generic errors
     appendAiStreamMsg('user', cmdText);
     appendAiStreamMsg('assistant', `Sorry — ${res.error}`);
   }
@@ -2306,6 +2414,10 @@ function undoLastAiWardrobeEdit() {
     appendAiStreamMsg('assistant', 'Nothing to undo.');
     return;
   }
+  // Invalidate any in-flight requests by incrementing sequence
+  aiWardrobeState.editSequence = (aiWardrobeState.editSequence || 0) + 1;
+  aiWardrobeState.isSubmitting = false;
+
   const prev = aiWardrobeState.undoStack.pop();
   aiWardrobeState.spec = prev.spec;
   aiWardrobeState.proposal = prev.proposal;
@@ -2316,7 +2428,10 @@ function undoLastAiWardrobeEdit() {
   aiWardrobeState.approval = null;
 
   globalThis.PartGraphBridge.loadDraftPartGraph(Builder, prev.partGraph);
-  updateAiWardrobeSummaryUI({ spec: prev.spec, proposal: prev.proposal, origins: prev.origins });
+  if (prev.spec && prev.spec.finishType && globalThis.PartGraphBridge?.updateParametricMaterial) {
+    globalThis.PartGraphBridge.updateParametricMaterial(Builder, prev.spec.finishType);
+  }
+  updateAiWardrobeSummaryUI({ spec: prev.spec, proposal: prev.proposal, origins: prev.origins, revision: prev.revision });
   appendAiStreamMsg('assistant', `Reverted to Revision ${prev.revision} (${prev.spec.envelope.widthMm} mm wide).`);
 }
 
