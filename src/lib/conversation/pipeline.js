@@ -483,11 +483,54 @@ export function parseConversationalCommand(text, currentFacts = {}) {
     };
   }
 
-  // 4. Shelf layout changes
+  // Helper to detect explicit command requesting two shelves or short hanging on a bay
+  const isExplicitTwoShelvesSwitch = (text) => {
+    if (/\b(?:all\s+shelves|shelves\s+(?:in|on)\s+both)\b/i.test(text)) return false;
+    const patterns = [
+      /\b(?:switch|change|convert|set|configure|use)\s+(?:the\s+)?(?:left|right|bay\s*[12])\s+(?:bay\s+)?(?:to\s+)?(?:short\s+hanging(?:\s+with)?\s+)?(?:two|2)\s+shelves\b/i,
+      /\b(?:switch|change|convert|set|configure|use)\s+(?:short\s+hanging(?:\s+with)?\s+)?(?:two|2)\s+shelves\s+(?:on|in)\s+(?:the\s+)?(?:left|right|bay\s*[12])\b/i,
+      /\b(?:two|2)\s+shelves\s+(?:on|in)\s+(?:the\s+)?(?:left|right|bay\s*[12])\b/i,
+      /\b(?:short\s+hanging(?:\s+with)?\s+(?:two|2)\s+shelves)\s+(?:on|in)\s+(?:the\s+)?(?:left|right|bay\s*[12])\b/i,
+      /\b(?:switch|change|convert|set|configure)\s+(?:the\s+)?(?:left|right|bay\s*[12])\s+(?:bay\s+)?to\s+(?:shelves|short\s+hanging)\b/i,
+      /\b(?:yes[,\s]+)?(?:switch|change|use)\s+(?:the\s+)?(?:left|right)\s+(?:bay\s+)?(?:to\s+)?(?:two|2)\s+shelves\b/i,
+    ];
+    return patterns.some((p) => p.test(text));
+  };
+
+  // 4a. Explicit two-shelf layout switch
+  // When the user explicitly requests short hanging with two shelves on a bay:
+  if (isExplicitTwoShelvesSwitch(t)) {
+    const currentBays = currentFacts.bayCount || 2;
+    const layouts = currentFacts.bayLayouts ? [...currentFacts.bayLayouts] : ["LONG_HANGING", "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"];
+    const isLeft = /\b(?:left|bay\s*1)\b/i.test(t);
+    const isRight = /\b(?:right|bay\s*2)\b/i.test(t);
+    const targetBayIdx = isLeft ? 0 : (isRight ? 1 : 0);
+    const baySide = targetBayIdx === 0 ? "left" : "right";
+
+    if (targetBayIdx >= currentBays) {
+      return {
+        error: `Cannot modify bay ${targetBayIdx + 1} because this wardrobe only has ${currentBays} bay${currentBays > 1 ? "s" : ""}.`,
+      };
+    }
+
+    if (layouts[targetBayIdx] === "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES") {
+      return {
+        error: `The ${baySide} bay is already configured as short hanging with two adjustable shelves.`,
+      };
+    }
+
+    layouts[targetBayIdx] = "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES";
+    return {
+      changes: { bayLayouts: layouts },
+      assistantReply: `Configured the ${baySide} bay as short hanging with two adjustable shelves.`,
+    };
+  }
+
+  // 4b. Conversational shelf additions & limits
   // Requirements:
-  // "Only report success after validation and a real state change.
-  // If another shelf is supported, add exactly one in the requested bay and verify the resulting PartGraph.
-  // Otherwise explain the limitation and offer a supported alternative.
+  // "“Add another shelf on the left” must not automatically replace long hanging with short hanging and two shelves.
+  // Either add exactly one shelf through supported parameters, preserving unrelated choices,
+  // or offer the two-shelf layout as an explicit alternative before applying it.
   // Do not report an unchanged layout as an added shelf."
   if (/\b(?:add\s+(?:another\s+|more\s+)?shelf|more\s+shelves|add\s+shelv(?:es|ing)|shelves)\b/i.test(t)) {
     // Check if "all shelves" / "shelves on both"
@@ -519,7 +562,7 @@ export function parseConversationalCommand(text, currentFacts = {}) {
     } else if (isRight) {
       targetBayIdx = 1;
     } else {
-      // If neither side specified, find the first bay that can take shelves (i.e. currently LONG_HANGING)
+      // If neither side specified, find the first bay that has long hanging
       targetBayIdx = layouts.findIndex((l) => l === "LONG_HANGING");
       if (targetBayIdx === -1) {
         return {
@@ -539,11 +582,10 @@ export function parseConversationalCommand(text, currentFacts = {}) {
     const otherSide = targetBayIdx === 0 ? "right" : "left";
 
     if (currentBayLayout === "LONG_HANGING") {
-      // Transitioning from LONG_HANGING to SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES adds adjustable shelves to this bay
-      layouts[targetBayIdx] = "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES";
+      // Do NOT automatically replace long hanging with short hanging and two shelves.
+      // Offer the two-shelf layout as an explicit alternative before applying it.
       return {
-        changes: { bayLayouts: layouts },
-        assistantReply: `Added shelving to the ${baySide} bay (configured as short hanging with two adjustable shelves).`,
+        error: `Adding a single shelf to full-height long hanging is not supported in this manufacturing slice. The supported shelving layout is short hanging with two adjustable shelves. To use this layout, reply 'switch ${baySide} bay to short hanging with two shelves' or 'use two shelves on the ${baySide}'.`,
       };
     }
 

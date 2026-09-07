@@ -186,7 +186,29 @@ describe("Conversational Editing (applyConversationalEdit)", () => {
     expect(editResult.error).toMatch(/change the left bay to shelves or switch back/i);
   });
 
-  it("adds shelving to the left bay when requested ('Add another shelf on the left'), increasing PartGraph parts", () => {
+  it("honestly rejects 'Add another shelf on the left' without automatically replacing long hanging, and offers two-shelf layout as explicit alternative", () => {
+    const initialDraft = previewDraftWardrobe({
+      description: "A wardrobe for my bedroom",
+      specId: "spec-conv-shelfoffer",
+      revision: 1,
+    });
+    // Bay 0 (left bay) starts with LONG_HANGING (0 adjustable shelves)
+    expect(initialDraft.spec.bays[0].components.filter((c) => c.type === "SHELF_ADJUSTABLE")).toHaveLength(0);
+
+    const editResult = applyConversationalEdit({
+      currentObservations: initialDraft.observations,
+      commandText: "Add another shelf on the left",
+      specId: "spec-conv-shelfoffer",
+      revision: 1,
+    });
+
+    // Must NOT automatically replace long hanging with short hanging and two shelves
+    expect(editResult.ok).toBe(false);
+    expect(editResult.error).toMatch(/single shelf to full-height long hanging is not supported/i);
+    expect(editResult.error).toMatch(/short hanging with two shelves/i);
+  });
+
+  it("applies the two-shelf layout to the left bay when explicitly requested ('switch left bay to short hanging with two shelves')", () => {
     const initialDraft = previewDraftWardrobe({
       description: "A wardrobe for my bedroom",
       specId: "spec-conv-addshelf",
@@ -198,7 +220,7 @@ describe("Conversational Editing (applyConversationalEdit)", () => {
 
     const editResult = applyConversationalEdit({
       currentObservations: initialDraft.observations,
-      commandText: "Add another shelf on the left",
+      commandText: "switch left bay to short hanging with two shelves",
       specId: "spec-conv-addshelf",
       revision: 1,
     });
@@ -250,7 +272,7 @@ describe("Conversational Editing (applyConversationalEdit)", () => {
     expect(widthEdit.spec.envelope.widthMm).toBe(2000);
     undoStack.push(snapshot1);
 
-    // 3. Shelf edit: "Add another shelf on the left"
+    // 3. Shelf edit: explicit switch to two shelves on the left
     const snapshot2 = {
       spec: JSON.parse(JSON.stringify(widthEdit.spec)),
       proposal: { ...widthEdit.proposal },
@@ -262,7 +284,7 @@ describe("Conversational Editing (applyConversationalEdit)", () => {
 
     const shelfEdit = applyConversationalEdit({
       currentObservations: widthEdit.observations,
-      commandText: "Add another shelf on the left",
+      commandText: "switch left bay to short hanging with two shelves",
       specId,
       revision: 2,
     });

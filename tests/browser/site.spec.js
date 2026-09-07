@@ -1185,12 +1185,12 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
       await page.click("#aiWardrobeSubmitBtn");
       await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
 
-      // Request supported shelf change: 'Add another shelf on the left.'
-      await page.fill("#aiConversationalInput", "Add another shelf on the left.");
+      // Request supported shelf change via explicit alternative
+      await page.fill("#aiConversationalInput", "Switch left bay to short hanging with two shelves");
       await page.click("#aiConversationalSendBtn");
 
       // Verify conversational reply in stream
-      await expect(page.locator("#aiConversationalStream")).toContainText("Added shelving to the left bay");
+      await expect(page.locator("#aiConversationalStream")).toContainText("Configured the left bay as short hanging with two adjustable shelves");
       await expect(page.locator("#revRevision")).toContainText("2");
     });
 
@@ -1623,8 +1623,8 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
       const specIdAfterWidth = await page.evaluate(() => aiWardrobeState.specId);
       expect(specIdAfterWidth).toBe(initialSpecId);
 
-      // 3. Shelf edit: Add another shelf on the left
-      await page.fill("#aiConversationalInput", "Add another shelf on the left");
+      // 3. Shelf edit: Switch left bay to short hanging with two shelves
+      await page.fill("#aiConversationalInput", "Switch left bay to short hanging with two shelves");
       await page.click("#aiConversationalSendBtn");
       await expect(page.locator("#revRevision")).toHaveText("3");
       await expect(page.locator("#revWidth")).toHaveText("2000 mm");
@@ -1655,6 +1655,26 @@ test.describe("FurniAI static site — real browser lifecycle", () => {
       await expect(chatStream).toContainText("Nothing to undo");
       await expect(page.locator("#revRevision")).toHaveText("1");
       await expect(page.locator("#revWidth")).toHaveText("1800 mm");
+    });
+
+    test("24. conversational edit rejects auto-replacement on 'Add another shelf on the left' and offers two-shelf layout as explicit alternative", async ({ page }) => {
+      await page.goto("/#/build/ai-wardrobe");
+      await page.waitForFunction(() => typeof Builder !== "undefined" && Builder.ready);
+      await page.fill("#aiWardrobeInput", "Make me a wardrobe");
+      await page.click("#aiWardrobeSubmitBtn");
+      await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible();
+      await expect(page.locator("#revRevision")).toHaveText("1");
+
+      // Left bay starts with LONG_HANGING. "Add another shelf on the left" must NOT auto-replace.
+      await page.fill("#aiConversationalInput", "Add another shelf on the left");
+      await page.click("#aiConversationalSendBtn");
+
+      const chatStream = page.locator("#aiConversationalStream");
+      await expect(chatStream).toContainText("single shelf to full-height long hanging is not supported");
+      await expect(chatStream).toContainText("short hanging with two shelves");
+
+      // Revision must remain 1 because no valid change occurred
+      await expect(page.locator("#revRevision")).toHaveText("1");
     });
   });
 });

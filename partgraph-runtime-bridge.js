@@ -3386,6 +3386,41 @@ var PartGraphBridge = (() => {
         assistantReply: `Updated depth to ${depthMm} mm.`
       };
     }
+    const isExplicitTwoShelvesSwitch = (text2) => {
+      if (/\b(?:all\s+shelves|shelves\s+(?:in|on)\s+both)\b/i.test(text2)) return false;
+      const patterns = [
+        /\b(?:switch|change|convert|set|configure|use)\s+(?:the\s+)?(?:left|right|bay\s*[12])\s+(?:bay\s+)?(?:to\s+)?(?:short\s+hanging(?:\s+with)?\s+)?(?:two|2)\s+shelves\b/i,
+        /\b(?:switch|change|convert|set|configure|use)\s+(?:short\s+hanging(?:\s+with)?\s+)?(?:two|2)\s+shelves\s+(?:on|in)\s+(?:the\s+)?(?:left|right|bay\s*[12])\b/i,
+        /\b(?:two|2)\s+shelves\s+(?:on|in)\s+(?:the\s+)?(?:left|right|bay\s*[12])\b/i,
+        /\b(?:short\s+hanging(?:\s+with)?\s+(?:two|2)\s+shelves)\s+(?:on|in)\s+(?:the\s+)?(?:left|right|bay\s*[12])\b/i,
+        /\b(?:switch|change|convert|set|configure)\s+(?:the\s+)?(?:left|right|bay\s*[12])\s+(?:bay\s+)?to\s+(?:shelves|short\s+hanging)\b/i,
+        /\b(?:yes[,\s]+)?(?:switch|change|use)\s+(?:the\s+)?(?:left|right)\s+(?:bay\s+)?(?:to\s+)?(?:two|2)\s+shelves\b/i
+      ];
+      return patterns.some((p) => p.test(text2));
+    };
+    if (isExplicitTwoShelvesSwitch(t)) {
+      const currentBays = currentFacts.bayCount || 2;
+      const layouts = currentFacts.bayLayouts ? [...currentFacts.bayLayouts] : ["LONG_HANGING", "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"];
+      const isLeft = /\b(?:left|bay\s*1)\b/i.test(t);
+      const isRight = /\b(?:right|bay\s*2)\b/i.test(t);
+      const targetBayIdx = isLeft ? 0 : isRight ? 1 : 0;
+      const baySide = targetBayIdx === 0 ? "left" : "right";
+      if (targetBayIdx >= currentBays) {
+        return {
+          error: `Cannot modify bay ${targetBayIdx + 1} because this wardrobe only has ${currentBays} bay${currentBays > 1 ? "s" : ""}.`
+        };
+      }
+      if (layouts[targetBayIdx] === "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES") {
+        return {
+          error: `The ${baySide} bay is already configured as short hanging with two adjustable shelves.`
+        };
+      }
+      layouts[targetBayIdx] = "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES";
+      return {
+        changes: { bayLayouts: layouts },
+        assistantReply: `Configured the ${baySide} bay as short hanging with two adjustable shelves.`
+      };
+    }
     if (/\b(?:add\s+(?:another\s+|more\s+)?shelf|more\s+shelves|add\s+shelv(?:es|ing)|shelves)\b/i.test(t)) {
       if (/all\s+shelves|shelves\s+(?:in|on)\s+both\s+(?:bays|sides)/i.test(t)) {
         const currentBays2 = currentFacts.bayCount || 2;
@@ -3428,10 +3463,8 @@ var PartGraphBridge = (() => {
       const baySide = targetBayIdx === 0 ? "left" : "right";
       const otherSide = targetBayIdx === 0 ? "right" : "left";
       if (currentBayLayout === "LONG_HANGING") {
-        layouts[targetBayIdx] = "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES";
         return {
-          changes: { bayLayouts: layouts },
-          assistantReply: `Added shelving to the ${baySide} bay (configured as short hanging with two adjustable shelves).`
+          error: `Adding a single shelf to full-height long hanging is not supported in this manufacturing slice. The supported shelving layout is short hanging with two adjustable shelves. To use this layout, reply 'switch ${baySide} bay to short hanging with two shelves' or 'use two shelves on the ${baySide}'.`
         };
       }
       return {
