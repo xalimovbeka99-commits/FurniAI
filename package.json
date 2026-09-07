@@ -20,7 +20,9 @@
     "demo:golden-partgraph": "node scripts/demo-golden-partgraph.mjs",
     "demo:parametric-partgraph": "node scripts/demo-parametric-partgraph.mjs",
     "demo:viewer-bridge": "node scripts/demo-viewer-bridge.mjs",
-    "demo:ai-wardrobe": "node scripts/demo-ai-wardrobe.mjs"
+    "demo:ai-wardrobe": "node scripts/demo-ai-wardrobe.mjs",
+    "verify:live-designer": "node scripts/verify-live-designer.mjs",
+    "dev:api": "node scripts/dev-api-server.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.28.0",
