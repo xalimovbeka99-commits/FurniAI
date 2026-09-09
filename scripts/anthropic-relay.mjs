@@ -52,9 +52,14 @@ export async function startAnthropicRelay() {
       });
   });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  server.unref();
   return {
     baseUrl: `http://127.0.0.1:${server.address().port}`,
     calls,
     close: () => new Promise((r) => server.close(() => { rmSync(dir, { recursive: true, force: true }); r(); })),
+    closeSync: () => {
+      try { server.close(); } catch {}
+      try { rmSync(dir, { recursive: true, force: true }); } catch {}
+    },
   };
 }

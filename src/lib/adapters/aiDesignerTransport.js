@@ -75,6 +75,18 @@ export async function proposeDesignChange({
   // ---- 1. Deterministic first ------------------------------------------
   const parsed = parseConversationalCommand(message, factsFrom(currentObservations));
   if (parsed) {
+    if (parsed.error) {
+      return { ok: false, error: parsed.error, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.REJECTED };
+    }
+    if (parsed.changes?.materialKey && Object.keys(parsed.changes).length === 1) {
+      return {
+        ok: true,
+        source: RESULT_SOURCE.DETERMINISTIC,
+        kind: RESULT_KIND.MATERIAL_UPDATED,
+        materialKey: parsed.changes.materialKey,
+        assistantReply: parsed.assistantReply,
+      };
+    }
     const applied = applyConversationalEdit({ currentObservations, commandText: message, specId, revision });
     return applied.ok
       ? { ...applied, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.DESIGN_UPDATED }

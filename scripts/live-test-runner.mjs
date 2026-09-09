@@ -22,6 +22,7 @@ import { startAnthropicRelay } from "./anthropic-relay.mjs";
 
 const relay = await startAnthropicRelay();
 process.env.ANTHROPIC_BASE_URL = relay.baseUrl;
-console.log(`[sandbox] SDK -> ${relay.baseUrl} -> curl -> https://api.anthropic.com\n`);
-process.on("exit", () => relay.close());
+process.on("exit", () => {
+  try { relay.closeSync?.(); } catch {}
+});
 await import("./live-test-design-propose.mjs");

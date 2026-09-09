@@ -3102,6 +3102,18 @@ var AiDesignerTransport = (() => {
     }
     const parsed = parseConversationalCommand(message, factsFrom(currentObservations));
     if (parsed) {
+      if (parsed.error) {
+        return { ok: false, error: parsed.error, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.REJECTED };
+      }
+      if (parsed.changes?.materialKey && Object.keys(parsed.changes).length === 1) {
+        return {
+          ok: true,
+          source: RESULT_SOURCE.DETERMINISTIC,
+          kind: RESULT_KIND.MATERIAL_UPDATED,
+          materialKey: parsed.changes.materialKey,
+          assistantReply: parsed.assistantReply
+        };
+      }
       const applied2 = applyConversationalEdit({ currentObservations, commandText: message, specId, revision });
       return applied2.ok ? { ...applied2, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.DESIGN_UPDATED } : { ...applied2, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.REJECTED };
     }
