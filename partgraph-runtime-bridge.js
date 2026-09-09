@@ -1000,6 +1000,7 @@ var PartGraphBridge = (() => {
     }
     const fixedShelves = [];
     const adjShelves = [];
+    const previews = [];
     for (const bay of baySpans) {
       let currentBottomFaceY = yTopBottomDmm;
       let currentRailCenterY = null;
@@ -1050,6 +1051,42 @@ var PartGraphBridge = (() => {
         } else if (comp.type.startsWith("HANGING_RAIL")) {
           const offsetBelowDmm = assertDeciMm(comp.offsetBelowShelfMm, `${comp.id}.offsetBelowShelfMm`);
           currentRailCenterY = currentBottomFaceY - offsetBelowDmm;
+          const railHw = furniSpec.hardware?.hangingRails || {};
+          const tubeType = railHw.type || "OVAL_TUBE_15X30";
+          const minorDiamMm = 15;
+          const majorDiamMm = 30;
+          const endInsetDmm = 20;
+          const minXDmm = bay.minXDmm + endInsetDmm;
+          const maxXDmm = bay.maxXDmm - endInsetDmm;
+          const centerZDmm = zCarcassFrontDmm + Math.floor(dividerDepthDmm / 2);
+          const halfMinorDmm = Math.round(minorDiamMm / 2 * 10);
+          const halfMajorDmm = Math.round(majorDiamMm / 2 * 10);
+          previews.push({
+            id: (comp.partId || comp.id).toUpperCase().replace(/-/g, "_"),
+            kind: "HANGING_RAIL",
+            status: "PREVIEW_ONLY",
+            visualConcept: true,
+            engineeringVerified: false,
+            manufacturingOutput: false,
+            sourceComponentId: comp.id,
+            sourceComponentType: comp.type,
+            tubeType,
+            bayIndex: bay.index,
+            // Axis-aligned bounds in deci-mm (same contract as panels)
+            minXDmm,
+            maxXDmm,
+            minYDmm: currentRailCenterY - halfMinorDmm,
+            maxYDmm: currentRailCenterY + halfMinorDmm,
+            minZDmm: centerZDmm - halfMajorDmm,
+            maxZDmm: centerZDmm + halfMajorDmm,
+            centerYDmm: currentRailCenterY,
+            centerZDmm,
+            notes: [
+              "Visual hanging-rail preview for customer layout comprehension.",
+              "Not a PartGraph structural panel; excluded from totalStructuralParts.",
+              `Hardware status: ${railHw.status || "PREVIEW_ONLY"}.`
+            ]
+          });
         } else if (comp.type === "SHELF_ADJUSTABLE") {
           let minYDmm;
           let maxYDmm;
@@ -1390,10 +1427,12 @@ var PartGraphBridge = (() => {
       unitScale: "deci-mm",
       qualificationStatus: furniSpec.qualificationStatus,
       parts,
+      previews,
       operations,
       warnings,
       summary: {
         totalStructuralParts: parts.length,
+        totalPreviewParts: previews.length,
         totalOperations: operations.length,
         approvedOperations: operations.filter((op) => op.status === "APPROVED").length,
         blockedOperations: operations.filter((op) => op.status !== "APPROVED").length,
@@ -1440,6 +1479,12 @@ var PartGraphBridge = (() => {
         transparent: true,
         opacity: 0.35,
         name: "mat_door_edge"
+      }),
+      HANGING_RAIL: new threeInstance.MeshStandardMaterial({
+        color: 12633806,
+        roughness: 0.28,
+        metalness: 0.85,
+        name: "mat_hanging_rail_preview_chrome"
       }),
       DEFAULT: new threeInstance.MeshStandardMaterial({
         color: 14276043,
@@ -1621,10 +1666,52 @@ var PartGraphBridge = (() => {
         rootGroup.add(mesh);
       }
     }
+    const previewList = Array.isArray(partGraph.previews) ? partGraph.previews : [];
+    let previewMeshCount = 0;
+    for (const preview of previewList) {
+      if (!preview || preview.kind !== "HANGING_RAIL") continue;
+      const minX = preview.minXDmm * DMM_TO_THREE;
+      const maxX = preview.maxXDmm * DMM_TO_THREE;
+      const minY = preview.minYDmm * DMM_TO_THREE;
+      const maxY = preview.maxYDmm * DMM_TO_THREE;
+      const minZ = preview.minZDmm * DMM_TO_THREE;
+      const maxZ = preview.maxZDmm * DMM_TO_THREE;
+      const lengthX = Math.max(maxX - minX, 1e-6);
+      const diamY = Math.max(maxY - minY, 1e-6);
+      const diamZ = Math.max(maxZ - minZ, 1e-6);
+      const radius = diamY / 2;
+      const geometry = new T.CylinderGeometry(radius, radius, lengthX, 24);
+      geometry.rotateZ(Math.PI / 2);
+      const mesh = new T.Mesh(geometry, materials.HANGING_RAIL);
+      mesh.name = `preview_${preview.id}`;
+      mesh.position.set(
+        (minX + maxX) / 2,
+        (minY + maxY) / 2,
+        (minZ + maxZ) / 2
+      );
+      mesh.scale.set(1, 1, diamZ / diamY);
+      mesh.userData = {
+        id: preview.id,
+        kind: preview.kind,
+        status: preview.status || "PREVIEW_ONLY",
+        visualConcept: true,
+        engineeringVerified: false,
+        manufacturingOutput: false,
+        isStructuralPanel: false,
+        isPreviewMesh: true,
+        tubeType: preview.tubeType || null,
+        bayIndex: preview.bayIndex,
+        sourceComponentId: preview.sourceComponentId || null,
+        notes: preview.notes || []
+      };
+      rootGroup.add(mesh);
+      previewMeshCount += 1;
+    }
     rootGroup.userData = {
       sourceSpecId: partGraph.sourceSpecId,
       partGraphVersion: partGraph.partGraphVersion,
       structuralPartCount: partGraph.parts.length,
+      previewPartCount: previewMeshCount,
       materials: allocatedMaterials,
       materialMap: materials,
       doorPivots,

@@ -796,6 +796,7 @@ var AiDesignerTransport = (() => {
     }
     const fixedShelves = [];
     const adjShelves = [];
+    const previews = [];
     for (const bay of baySpans) {
       let currentBottomFaceY = yTopBottomDmm;
       let currentRailCenterY = null;
@@ -846,6 +847,42 @@ var AiDesignerTransport = (() => {
         } else if (comp.type.startsWith("HANGING_RAIL")) {
           const offsetBelowDmm = assertDeciMm(comp.offsetBelowShelfMm, `${comp.id}.offsetBelowShelfMm`);
           currentRailCenterY = currentBottomFaceY - offsetBelowDmm;
+          const railHw = furniSpec.hardware?.hangingRails || {};
+          const tubeType = railHw.type || "OVAL_TUBE_15X30";
+          const minorDiamMm = 15;
+          const majorDiamMm = 30;
+          const endInsetDmm = 20;
+          const minXDmm = bay.minXDmm + endInsetDmm;
+          const maxXDmm = bay.maxXDmm - endInsetDmm;
+          const centerZDmm = zCarcassFrontDmm + Math.floor(dividerDepthDmm / 2);
+          const halfMinorDmm = Math.round(minorDiamMm / 2 * 10);
+          const halfMajorDmm = Math.round(majorDiamMm / 2 * 10);
+          previews.push({
+            id: (comp.partId || comp.id).toUpperCase().replace(/-/g, "_"),
+            kind: "HANGING_RAIL",
+            status: "PREVIEW_ONLY",
+            visualConcept: true,
+            engineeringVerified: false,
+            manufacturingOutput: false,
+            sourceComponentId: comp.id,
+            sourceComponentType: comp.type,
+            tubeType,
+            bayIndex: bay.index,
+            // Axis-aligned bounds in deci-mm (same contract as panels)
+            minXDmm,
+            maxXDmm,
+            minYDmm: currentRailCenterY - halfMinorDmm,
+            maxYDmm: currentRailCenterY + halfMinorDmm,
+            minZDmm: centerZDmm - halfMajorDmm,
+            maxZDmm: centerZDmm + halfMajorDmm,
+            centerYDmm: currentRailCenterY,
+            centerZDmm,
+            notes: [
+              "Visual hanging-rail preview for customer layout comprehension.",
+              "Not a PartGraph structural panel; excluded from totalStructuralParts.",
+              `Hardware status: ${railHw.status || "PREVIEW_ONLY"}.`
+            ]
+          });
         } else if (comp.type === "SHELF_ADJUSTABLE") {
           let minYDmm;
           let maxYDmm;
@@ -1186,10 +1223,12 @@ var AiDesignerTransport = (() => {
       unitScale: "deci-mm",
       qualificationStatus: furniSpec.qualificationStatus,
       parts,
+      previews,
       operations,
       warnings,
       summary: {
         totalStructuralParts: parts.length,
+        totalPreviewParts: previews.length,
         totalOperations: operations.length,
         approvedOperations: operations.filter((op) => op.status === "APPROVED").length,
         blockedOperations: operations.filter((op) => op.status !== "APPROVED").length,

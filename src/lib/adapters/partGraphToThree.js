@@ -68,6 +68,12 @@ export function createPartGraphMaterials(threeInstance = THREE) {
       opacity: 0.35,
       name: "mat_door_edge",
     }),
+    HANGING_RAIL: new threeInstance.MeshStandardMaterial({
+      color: 0xc0c6ce,
+      roughness: 0.28,
+      metalness: 0.85,
+      name: "mat_hanging_rail_preview_chrome",
+    }),
     DEFAULT: new threeInstance.MeshStandardMaterial({
       color: 0xd9d5cb,
       roughness: 0.5,
@@ -311,11 +317,58 @@ export function partGraphToThree(partGraph, options = {}) {
     }
   }
 
+
+  // EXP-01: visual-only previews (hanging rails, etc.) — not structural panels.
+  const previewList = Array.isArray(partGraph.previews) ? partGraph.previews : [];
+  let previewMeshCount = 0;
+  for (const preview of previewList) {
+    if (!preview || preview.kind !== "HANGING_RAIL") continue;
+    const minX = preview.minXDmm * DMM_TO_THREE;
+    const maxX = preview.maxXDmm * DMM_TO_THREE;
+    const minY = preview.minYDmm * DMM_TO_THREE;
+    const maxY = preview.maxYDmm * DMM_TO_THREE;
+    const minZ = preview.minZDmm * DMM_TO_THREE;
+    const maxZ = preview.maxZDmm * DMM_TO_THREE;
+    const lengthX = Math.max(maxX - minX, 1e-6);
+    const diamY = Math.max(maxY - minY, 1e-6);
+    const diamZ = Math.max(maxZ - minZ, 1e-6);
+    // Unit cylinder along Y, then rotate to X and scale oval cross-section.
+    const radius = diamY / 2;
+    const geometry = new T.CylinderGeometry(radius, radius, lengthX, 24);
+    geometry.rotateZ(Math.PI / 2);
+    const mesh = new T.Mesh(geometry, materials.HANGING_RAIL);
+    mesh.name = `preview_${preview.id}`;
+    mesh.position.set(
+      (minX + maxX) / 2,
+      (minY + maxY) / 2,
+      (minZ + maxZ) / 2
+    );
+    // Oval: stretch in Z (major) relative to Y (minor)
+    mesh.scale.set(1, 1, diamZ / diamY);
+    mesh.userData = {
+      id: preview.id,
+      kind: preview.kind,
+      status: preview.status || "PREVIEW_ONLY",
+      visualConcept: true,
+      engineeringVerified: false,
+      manufacturingOutput: false,
+      isStructuralPanel: false,
+      isPreviewMesh: true,
+      tubeType: preview.tubeType || null,
+      bayIndex: preview.bayIndex,
+      sourceComponentId: preview.sourceComponentId || null,
+      notes: preview.notes || [],
+    };
+    rootGroup.add(mesh);
+    previewMeshCount += 1;
+  }
+
   // Attach disposal helper and door pivots directly to group
   rootGroup.userData = {
     sourceSpecId: partGraph.sourceSpecId,
     partGraphVersion: partGraph.partGraphVersion,
     structuralPartCount: partGraph.parts.length,
+    previewPartCount: previewMeshCount,
     materials: allocatedMaterials,
     materialMap: materials,
     doorPivots,

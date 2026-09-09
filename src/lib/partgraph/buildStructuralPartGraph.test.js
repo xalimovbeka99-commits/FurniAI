@@ -420,4 +420,21 @@ describe("Gate G2.2-R1 — Generalized Deterministic PartGraph Kernel Suite", ()
     expect(plinthFront.placement.minXDmm).toBe(300);
     expect(plinthFront.placement.maxXDmm).toBe(17700);
   });
+
+  it("EXP-01: golden emits 2 PREVIEW_ONLY hanging-rail previews without changing 19 structural parts", () => {
+    const partGraph = buildStructuralPartGraph(fixture);
+    expect(partGraph.parts).toHaveLength(19);
+    expect(partGraph.summary.totalStructuralParts).toBe(19);
+    expect(partGraph.previews).toHaveLength(2);
+    expect(partGraph.summary.totalPreviewParts).toBe(2);
+    for (const p of partGraph.previews) {
+      expect(p.kind).toBe("HANGING_RAIL");
+      expect(p.status).toBe("PREVIEW_ONLY");
+      expect(p.visualConcept).toBe(true);
+      expect(p.engineeringVerified).toBe(false);
+      expect(p.manufacturingOutput).toBe(false);
+      expect(p.maxXDmm).toBeGreaterThan(p.minXDmm);
+      expect(p.centerYDmm).toBeGreaterThan(0);
+    }
+  });
 });

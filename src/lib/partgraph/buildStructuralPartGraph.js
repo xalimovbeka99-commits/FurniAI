@@ -1,5 +1,5 @@
 /**
- * PartGraph v0.1 — Pure Deterministic Rectangular Kernel (Generalized)
+ * PartGraph v0.1 â€” Pure Deterministic Rectangular Kernel (Generalized)
  * ---------------------------------------------------------------------
  * Generates canonical structural PartGraph data structures from a validated
  * FurniSpec v0.1 specification.
@@ -322,6 +322,8 @@ export function buildStructuralPartGraph(furniSpec) {
   // 6. Shelves Calculation (Fixed and Adjustable)
   const fixedShelves = [];
   const adjShelves = [];
+  /** Visual-only concepts — NOT structural panels / NOT manufacturing parts. */
+  const previews = [];
 
   for (const bay of baySpans) {
     let currentBottomFaceY = yTopBottomDmm;
@@ -378,6 +380,46 @@ export function buildStructuralPartGraph(furniSpec) {
       } else if (comp.type.startsWith("HANGING_RAIL")) {
         const offsetBelowDmm = assertDeciMm(comp.offsetBelowShelfMm, `${comp.id}.offsetBelowShelfMm`);
         currentRailCenterY = currentBottomFaceY - offsetBelowDmm;
+
+        // EXP-01: emit visual PREVIEW_ONLY rail (not a structural panel).
+        // Tube defaults from hardware.hangingRails (OVAL_TUBE_15X30) — clearly identified draft defaults.
+        const railHw = furniSpec.hardware?.hangingRails || {};
+        const tubeType = railHw.type || "OVAL_TUBE_15X30";
+        // 15 mm × 30 mm oval: minor=15 (vertical), major=30 (depth). Identified visual default.
+        const minorDiamMm = 15.0;
+        const majorDiamMm = 30.0;
+        const endInsetDmm = 20; // 2.0 mm each end — visual socket clearance default, not CNC
+        const minXDmm = bay.minXDmm + endInsetDmm;
+        const maxXDmm = bay.maxXDmm - endInsetDmm;
+        const centerZDmm = zCarcassFrontDmm + Math.floor(dividerDepthDmm / 2);
+        const halfMinorDmm = Math.round((minorDiamMm / 2) * 10);
+        const halfMajorDmm = Math.round((majorDiamMm / 2) * 10);
+        previews.push({
+          id: (comp.partId || comp.id).toUpperCase().replace(/-/g, "_"),
+          kind: "HANGING_RAIL",
+          status: "PREVIEW_ONLY",
+          visualConcept: true,
+          engineeringVerified: false,
+          manufacturingOutput: false,
+          sourceComponentId: comp.id,
+          sourceComponentType: comp.type,
+          tubeType,
+          bayIndex: bay.index,
+          // Axis-aligned bounds in deci-mm (same contract as panels)
+          minXDmm,
+          maxXDmm,
+          minYDmm: currentRailCenterY - halfMinorDmm,
+          maxYDmm: currentRailCenterY + halfMinorDmm,
+          minZDmm: centerZDmm - halfMajorDmm,
+          maxZDmm: centerZDmm + halfMajorDmm,
+          centerYDmm: currentRailCenterY,
+          centerZDmm,
+          notes: [
+            "Visual hanging-rail preview for customer layout comprehension.",
+            "Not a PartGraph structural panel; excluded from totalStructuralParts.",
+            `Hardware status: ${railHw.status || "PREVIEW_ONLY"}.`,
+          ],
+        });
       } else if (comp.type === "SHELF_ADJUSTABLE") {
         let minYDmm;
         let maxYDmm;
@@ -756,10 +798,12 @@ export function buildStructuralPartGraph(furniSpec) {
     unitScale: "deci-mm",
     qualificationStatus: furniSpec.qualificationStatus,
     parts,
+    previews,
     operations,
     warnings,
     summary: {
       totalStructuralParts: parts.length,
+      totalPreviewParts: previews.length,
       totalOperations: operations.length,
       approvedOperations: operations.filter((op) => op.status === "APPROVED").length,
       blockedOperations: operations.filter((op) => op.status !== "APPROVED").length,
@@ -771,3 +815,4 @@ export function buildStructuralPartGraph(furniSpec) {
     },
   };
 }
+
