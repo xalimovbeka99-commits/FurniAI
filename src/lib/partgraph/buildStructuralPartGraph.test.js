@@ -435,6 +435,46 @@ describe("Gate G2.2-R1 — Generalized Deterministic PartGraph Kernel Suite", ()
       expect(p.manufacturingOutput).toBe(false);
       expect(p.maxXDmm).toBeGreaterThan(p.minXDmm);
       expect(p.centerYDmm).toBeGreaterThan(0);
+      expect(p.tubeType).toBe("OVAL_TUBE_15X30");
+      expect(p.tubeTypeResolved).toBe(true);
+      expect(p.assumed.minorDiamMm).toBe(15);
+      expect(p.assumed.majorDiamMm).toBe(30);
+      expect(p.assumed.endInsetMm).toBe(2);
+      expect(p.assumed.finishIntent).toMatch(/chrome/i);
     }
+  });
+
+  it("EXP-01: unknown tubeType falls back to 15x30 with tubeTypeResolved false", () => {
+    const clone = JSON.parse(JSON.stringify(fixture));
+    clone.hardware = clone.hardware || {};
+    clone.hardware.hangingRails = { type: "SQUARE_BOGUS", status: "PREVIEW_ONLY" };
+    const partGraph = buildStructuralPartGraph(clone);
+    expect(partGraph.previews).toHaveLength(2);
+    for (const p of partGraph.previews) {
+      expect(p.tubeTypeResolved).toBe(false);
+      expect(p.assumed.minorDiamMm).toBe(15);
+      expect(p.assumed.majorDiamMm).toBe(30);
+      expect(p.notes.join(" ")).toMatch(/Unknown tubeType|fallback/i);
+    }
+  });
+
+  it("EXP-01: approved wide/height fixtures still emit PREVIEW_ONLY rails with consistent assumed span", () => {
+    const wide = buildStructuralPartGraph(wideFixture);
+    expect(wide.previews.length).toBeGreaterThan(0);
+    for (const p of wide.previews) {
+      expect(p.status).toBe("PREVIEW_ONLY");
+      expect(p.assumed.lengthMm).toBeCloseTo((p.maxXDmm - p.minXDmm) / 10, 5);
+      expect(p.assumed.minorDiamMm).toBe(15);
+      expect(p.assumed.majorDiamMm).toBe(30);
+    }
+    const tall = buildStructuralPartGraph(heightFixture);
+    expect(tall.previews.length).toBeGreaterThan(0);
+    const goldenY = buildStructuralPartGraph(fixture).previews[0].centerYDmm;
+    // Height fixture changes envelope; rail Y must still be below its bay's fixed shelf.
+    for (const p of tall.previews) {
+      expect(p.centerYDmm).toBeGreaterThan(0);
+      expect(p.assumed.centerYRule).toMatch(/offsetBelowShelfMm/);
+    }
+    expect(tall.summary.totalStructuralParts).toBe(tall.parts.length);
   });
 });

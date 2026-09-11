@@ -741,6 +741,49 @@ var PartGraphBridge = (() => {
   });
 
   // src/lib/partgraph/buildStructuralPartGraph.js
+  function resolveHangingRailTube(tubeType) {
+    const raw = String(tubeType || "OVAL_TUBE_15X30").toUpperCase();
+    let m = raw.match(/^OVAL_TUBE_(\d+(?:\.\d+)?)X(\d+(?:\.\d+)?)$/);
+    if (m) {
+      const a = Number(m[1]);
+      const b = Number(m[2]);
+      const minorDiamMm = Math.min(a, b);
+      const majorDiamMm = Math.max(a, b);
+      return {
+        tubeType: raw,
+        tubeTypeResolved: true,
+        profile: "OVAL",
+        minorDiamMm,
+        majorDiamMm,
+        assumptionNotes: [
+          `Parsed ${raw}: minor(vertical)=${minorDiamMm}mm, major(depth)=${majorDiamMm}mm.`
+        ]
+      };
+    }
+    m = raw.match(/^ROUND_(?:D|DIA)?_?(\d+(?:\.\d+)?)$/);
+    if (m) {
+      const d = Number(m[1]);
+      return {
+        tubeType: raw,
+        tubeTypeResolved: true,
+        profile: "ROUND",
+        minorDiamMm: d,
+        majorDiamMm: d,
+        assumptionNotes: [`Parsed ${raw}: round diameter ${d}mm.`]
+      };
+    }
+    return {
+      tubeType: raw,
+      tubeTypeResolved: false,
+      profile: "OVAL",
+      minorDiamMm: 15,
+      majorDiamMm: 30,
+      assumptionNotes: [
+        `Unknown tubeType "${raw}" \u2014 rendered as fixed OVAL 15\xD730 mm fallback (limitation).`,
+        "Supported patterns: OVAL_TUBE_<minor>X<major>, ROUND_D<diam> / ROUND_<diam>."
+      ]
+    };
+  }
   function buildStructuralPartGraph(furniSpec) {
     const valResult = validateFurniSpec(furniSpec);
     if (!valResult.valid) {
@@ -1052,15 +1095,15 @@ var PartGraphBridge = (() => {
           const offsetBelowDmm = assertDeciMm(comp.offsetBelowShelfMm, `${comp.id}.offsetBelowShelfMm`);
           currentRailCenterY = currentBottomFaceY - offsetBelowDmm;
           const railHw = furniSpec.hardware?.hangingRails || {};
-          const tubeType = railHw.type || "OVAL_TUBE_15X30";
-          const minorDiamMm = 15;
-          const majorDiamMm = 30;
-          const endInsetDmm = 20;
+          const tube = resolveHangingRailTube(railHw.type || "OVAL_TUBE_15X30");
+          const endInsetMm = 2;
+          const endInsetDmm = Math.round(endInsetMm * 10);
           const minXDmm = bay.minXDmm + endInsetDmm;
           const maxXDmm = bay.maxXDmm - endInsetDmm;
           const centerZDmm = zCarcassFrontDmm + Math.floor(dividerDepthDmm / 2);
-          const halfMinorDmm = Math.round(minorDiamMm / 2 * 10);
-          const halfMajorDmm = Math.round(majorDiamMm / 2 * 10);
+          const halfMinorDmm = Math.round(tube.minorDiamMm / 2 * 10);
+          const halfMajorDmm = Math.round(tube.majorDiamMm / 2 * 10);
+          const lengthMm = (maxXDmm - minXDmm) / 10;
           previews.push({
             id: (comp.partId || comp.id).toUpperCase().replace(/-/g, "_"),
             kind: "HANGING_RAIL",
@@ -1070,9 +1113,10 @@ var PartGraphBridge = (() => {
             manufacturingOutput: false,
             sourceComponentId: comp.id,
             sourceComponentType: comp.type,
-            tubeType,
+            tubeType: tube.tubeType,
+            tubeTypeResolved: tube.tubeTypeResolved,
+            profile: tube.profile,
             bayIndex: bay.index,
-            // Axis-aligned bounds in deci-mm (same contract as panels)
             minXDmm,
             maxXDmm,
             minYDmm: currentRailCenterY - halfMinorDmm,
@@ -1081,10 +1125,21 @@ var PartGraphBridge = (() => {
             maxZDmm: centerZDmm + halfMajorDmm,
             centerYDmm: currentRailCenterY,
             centerZDmm,
+            assumed: {
+              minorDiamMm: tube.minorDiamMm,
+              majorDiamMm: tube.majorDiamMm,
+              lengthMm,
+              endInsetMm,
+              offsetBelowShelfMm: comp.offsetBelowShelfMm,
+              centerZRule: "zCarcassFront + floor(dividerDepth/2) \u2014 mid carcass depth heuristic",
+              centerYRule: "shelfBottomFaceY - offsetBelowShelfMm",
+              finishIntent: "chrome metal preview (independent of melamine materialKey)"
+            },
             notes: [
               "Visual hanging-rail preview for customer layout comprehension.",
               "Not a PartGraph structural panel; excluded from totalStructuralParts.",
-              `Hardware status: ${railHw.status || "PREVIEW_ONLY"}.`
+              `Hardware status: ${railHw.status || "PREVIEW_ONLY"}.`,
+              ...tube.assumptionNotes
             ]
           });
         } else if (comp.type === "SHELF_ADJUSTABLE") {
@@ -1700,9 +1755,14 @@ var PartGraphBridge = (() => {
         isStructuralPanel: false,
         isPreviewMesh: true,
         tubeType: preview.tubeType || null,
+        tubeTypeResolved: preview.tubeTypeResolved !== false,
+        profile: preview.profile || null,
+        assumed: preview.assumed || null,
         bayIndex: preview.bayIndex,
         sourceComponentId: preview.sourceComponentId || null,
-        notes: preview.notes || []
+        notes: preview.notes || [],
+        // Intended finish: chrome preview metal — updateParametricMaterial must NOT recolor this.
+        finishIntent: preview.assumed && preview.assumed.finishIntent || "chrome metal preview"
       };
       rootGroup.add(mesh);
       previewMeshCount += 1;

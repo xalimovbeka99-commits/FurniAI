@@ -355,9 +355,14 @@ export function partGraphToThree(partGraph, options = {}) {
       isStructuralPanel: false,
       isPreviewMesh: true,
       tubeType: preview.tubeType || null,
+      tubeTypeResolved: preview.tubeTypeResolved !== false,
+      profile: preview.profile || null,
+      assumed: preview.assumed || null,
       bayIndex: preview.bayIndex,
       sourceComponentId: preview.sourceComponentId || null,
       notes: preview.notes || [],
+      // Intended finish: chrome preview metal — updateParametricMaterial must NOT recolor this.
+      finishIntent: (preview.assumed && preview.assumed.finishIntent) || "chrome metal preview",
     };
     rootGroup.add(mesh);
     previewMeshCount += 1;
