@@ -1,0 +1,28 @@
+{
+  "partsIdentical": true,
+  "operationsIdentical": true,
+  "partCountBase": 19,
+  "partCountExp": 19,
+  "opsCountBase": 4,
+  "opsCountExp": 4,
+  "mismatchedPartIds": [],
+  "baseSummaryKeys": [
+    "totalStructuralParts",
+    "totalOperations",
+    "approvedOperations",
+    "blockedOperations",
+    "envelope"
+  ],
+  "expSummaryKeys": [
+    "totalStructuralParts",
+    "totalPreviewParts",
+    "totalOperations",
+    "approvedOperations",
+    "blockedOperations",
+    "envelope"
+  ],
+  "expPreviewCount": 2,
+  "canonicalBaseBytes": 18509,
+  "canonicalExpBytes": 20098,
+  "canonicalEqual": false
+}
