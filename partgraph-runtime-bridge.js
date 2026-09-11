@@ -3860,11 +3860,11 @@ var PartGraphBridge = (() => {
         const named = (afterColour.match(SCOPED_PART) || beforeColour.match(SCOPED_PART))[1].toLowerCase();
         if (/\b(add|fit|install|include|put|attach|give\s+it)\b/i.test(beforeColour)) {
           return {
-            error: `I can't add ${named} to the design yet. Your wardrobe is unchanged \u2014 you can still change its size, layout or finish.`
+            error: `I can't add ${named} to the design yet. Your wardrobe is unchanged \xC3\xA2\xE2\u201A\xAC\xE2\u20AC\x9D you can still change its size, layout or finish.`
           };
         }
         return {
-          error: `I can only change the finish of the whole wardrobe at the moment, not just the ${named}. Your design is unchanged \u2014 say "make it ${mat}" if you'd like the whole wardrobe in ${mat}.`
+          error: `I can only change the finish of the whole wardrobe at the moment, not just the ${named}. Your design is unchanged \xC3\xA2\xE2\u201A\xAC\xE2\u20AC\x9D say "make it ${mat}" if you'd like the whole wardrobe in ${mat}.`
         };
       }
       const explicitFinishWord = /finish|material|colour|color|paint/i.test(t);
@@ -3875,6 +3875,25 @@ var PartGraphBridge = (() => {
           assistantReply: `Changed finish to ${mat}.`
         };
       }
+    }
+    const drawerRequest = /\b(add|fit|install|include|put|attach|want|need|give)\b[\s\S]{0,60}\bdrawers?\b/i.test(t) || /\bdrawers?\b[\s\S]{0,40}\b(add|fit|install|include)\b/i.test(t) || /\b(?:jewellery|jewelry)\s+drawer\b/i.test(t) || /\bdrawer\s+bank\b/i.test(t);
+    if (drawerRequest) {
+      const policy = COMPONENT_REPRESENTATION_POLICY[COMPONENT_TYPES.DRAWER_BANK];
+      const unsupported = [
+        {
+          request: COMPONENT_TYPES.DRAWER_BANK,
+          componentType: COMPONENT_TYPES.DRAWER_BANK,
+          code: policy.diagnosticCode,
+          reason: policy.customerMessage,
+          engineeringReason: policy.reason,
+          alternative: policy.suggestedAlternative ? policy.suggestedAlternative.summary : null,
+          alternativeApplied: false
+        }
+      ];
+      return {
+        unsupported,
+        error: policy.customerMessage
+      };
     }
     return null;
   }
@@ -3887,9 +3906,19 @@ var PartGraphBridge = (() => {
   }) {
     const currentFacts = Object.fromEntries(currentObservations.map((o) => [o.key, o.value]));
     const parsed = parseConversationalCommand(commandText, currentFacts);
+    if (parsed && Array.isArray(parsed.unsupported) && parsed.unsupported.length > 0) {
+      return {
+        ok: false,
+        kind: "UNSUPPORTED",
+        unsupported: parsed.unsupported,
+        error: parsed.error || parsed.unsupported[0].reason
+        // Explicit: no geometry, no revision bump â€” caller keeps the active design.
+      };
+    }
     if (parsed && parsed.error) {
       return {
         ok: false,
+        kind: "REJECTED",
         error: parsed.error
       };
     }
@@ -3981,7 +4010,7 @@ var PartGraphBridge = (() => {
       drillingBlocked: spec?.machiningPolicy?.drilling === "BLOCKED_PENDING_HARDWARE_APPROVAL" && drillingOperations.length === 0,
       hardwareStatuses: spec ? hardwareStatusesOf(spec) : {},
       approvedOperationTypes: [],
-      note: "DRAFT PREVIEW ONLY \u2014 NOT APPROVED FOR WORKSHOP. Geometry rendered from Bekzod-approved defaults with status PROPOSED. Approval is required before CNC or production."
+      note: "DRAFT PREVIEW ONLY \xC3\xA2\xE2\u201A\xAC\xE2\u20AC\x9D NOT APPROVED FOR WORKSHOP. Geometry rendered from Bekzod-approved defaults with status PROPOSED. Approval is required before CNC or production."
     };
   }
   function preApprovalSafety(spec, approvalState = APPROVAL_STATE.NOT_APPROVED) {

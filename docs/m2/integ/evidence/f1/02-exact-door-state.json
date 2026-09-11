@@ -1,7 +1,7 @@
 [
   {
     "id": "DOOR_01",
-    "open": true
+    "open": false
   },
   {
     "id": "DOOR_02",

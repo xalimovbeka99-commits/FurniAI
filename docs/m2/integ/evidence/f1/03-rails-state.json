@@ -3,32 +3,12 @@
     {
       "name": "preview_RAIL_LONG_L1",
       "tubeType": "OVAL_TUBE_15X30",
-      "color": 12633806,
-      "assumed": {
-        "minorDiamMm": 15,
-        "majorDiamMm": 30,
-        "lengthMm": 869,
-        "endInsetMm": 2,
-        "offsetBelowShelfMm": 100,
-        "centerZRule": "zCarcassFront + floor(dividerDepth/2) — mid carcass depth heuristic",
-        "centerYRule": "shelfBottomFaceY - offsetBelowShelfMm",
-        "finishIntent": "chrome metal preview (independent of melamine materialKey)"
-      }
+      "color": 12633806
     },
     {
       "name": "preview_RAIL_SHORT_R1",
       "tubeType": "OVAL_TUBE_15X30",
-      "color": 12633806,
-      "assumed": {
-        "minorDiamMm": 15,
-        "majorDiamMm": 30,
-        "lengthMm": 869,
-        "endInsetMm": 2,
-        "offsetBelowShelfMm": 100,
-        "centerZRule": "zCarcassFront + floor(dividerDepth/2) — mid carcass depth heuristic",
-        "centerYRule": "shelfBottomFaceY - offsetBelowShelfMm",
-        "finishIntent": "chrome metal preview (independent of melamine materialKey)"
-      }
+      "color": 12633806
     }
   ],
   "structural": 19,

@@ -1,0 +1,65 @@
+{
+  "before": {
+    "revision": 1,
+    "widthMm": 1800,
+    "heightMm": 2400,
+    "depthMm": 600,
+    "finishType": "melamine",
+    "bayCount": 2,
+    "doorCount": 4,
+    "parametricMat": "white",
+    "structural": 19,
+    "preview": 2,
+    "rails": [
+      {
+        "name": "preview_RAIL_LONG_B01",
+        "color": 12633806,
+        "tubeType": "OVAL_TUBE_15X30"
+      },
+      {
+        "name": "preview_RAIL_SHORT_B02",
+        "color": 12633806,
+        "tubeType": "OVAL_TUBE_15X30"
+      }
+    ],
+    "groupBox": {
+      "widthM": 1.8,
+      "heightM": 2.4,
+      "depthM": 0.6
+    },
+    "revWidthLabel": "1800 mm",
+    "revRevisionLabel": "1"
+  },
+  "after": {
+    "revision": 1,
+    "widthMm": 1800,
+    "heightMm": 2400,
+    "depthMm": 600,
+    "finishType": "melamine",
+    "bayCount": 2,
+    "doorCount": 4,
+    "parametricMat": "white",
+    "structural": 19,
+    "preview": 2,
+    "rails": [
+      {
+        "name": "preview_RAIL_LONG_B01",
+        "color": 12633806,
+        "tubeType": "OVAL_TUBE_15X30"
+      },
+      {
+        "name": "preview_RAIL_SHORT_B02",
+        "color": 12633806,
+        "tubeType": "OVAL_TUBE_15X30"
+      }
+    ],
+    "groupBox": {
+      "widthM": 1.8,
+      "heightM": 2.4,
+      "depthM": 0.6
+    },
+    "revWidthLabel": "1800 mm",
+    "revRevisionLabel": "1"
+  },
+  "streamText": "Make me a wardrobe\nHere is your draft wardrobe (Revision 1). Unspecified dimensions use Bekzod-approved Golden defaults. Ask for changes below or click 'Approve for Workshop'.\nAdd drawers on the left\nSorry — I can't add drawers to this wardrobe yet — the drawer boxes depend on the runner hardware, which isn't confirmed for this design. Everything else in your wardrobe is unchanged. (Alternative: A fixed shelf at the same height, which you could add drawers under later.)"
+}

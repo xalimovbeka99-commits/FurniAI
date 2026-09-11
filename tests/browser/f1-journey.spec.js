@@ -1,79 +1,195 @@
-﻿import { test, expect } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import path from "path";
 import fs from "fs";
+import { execSync } from "child_process";
 
 const OUT = path.join("docs", "m2", "integ", "evidence", "f1");
-const SHA = process.env.F1_SHA || "90e3e84d124d15f7ddfef3809c3e62eaf31dc9c4";
 
-test.describe("F1 customer journey on integration candidate", () => {
+/** Evidence SHA from the checkout under test — never a hardcoded tip. */
+function evidenceShaFromCheckout() {
+  return execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();
+}
+
+function writeJson(name, value) {
+  fs.writeFileSync(path.join(OUT, name), JSON.stringify(value, null, 2) + "\n");
+}
+
+async function snapshotDesign(page) {
+  return page.evaluate(() => {
+    // aiWardrobeState is script-scoped (let) — not on window. Prefer review DOM + Builder.
+    const num = (txt) => {
+      const m = String(txt || "").match(/(\d+(?:\.\d+)?)/);
+      return m ? Number(m[1]) : null;
+    };
+    const widthMm = num(document.getElementById("revWidth")?.textContent);
+    const heightMm = num(document.getElementById("revHeight")?.textContent);
+    const depthMm = num(document.getElementById("revDepth")?.textContent);
+    const revision = num(document.getElementById("revRevision")?.textContent);
+    const finishRaw = document.getElementById("revFinish")?.textContent?.trim() || null;
+    const finishType = finishRaw ? finishRaw.toLowerCase() : null;
+    const bayCount = num(document.getElementById("revBays")?.textContent);
+    const doorCount = num(document.getElementById("revDoors")?.textContent);
+    const rails = [];
+    const root = Builder.parts?.[0];
+    if (root) {
+      root.traverse((c) => {
+        if (c.isMesh && c.userData?.isPreviewMesh) {
+          rails.push({
+            name: c.name,
+            color: c.material?.color?.getHex?.() ?? null,
+            tubeType: c.userData.tubeType || null,
+          });
+        }
+      });
+    }
+    let groupBox = null;
+    if (root) {
+      const b = new THREE.Box3().setFromObject(root);
+      const size = new THREE.Vector3();
+      b.getSize(size);
+      groupBox = {
+        widthM: Number(size.x.toFixed(4)),
+        heightM: Number(size.y.toFixed(4)),
+        depthM: Number(size.z.toFixed(4)),
+      };
+    }
+    return {
+      revision,
+      widthMm,
+      heightMm,
+      depthMm,
+      finishType,
+      bayCount,
+      doorCount,
+      parametricMat: Builder.parametricMat || null,
+      structural: root?.userData?.structuralPartCount ?? null,
+      preview: root?.userData?.previewPartCount ?? null,
+      rails,
+      groupBox,
+      revWidthLabel: document.getElementById("revWidth")?.textContent?.trim() || null,
+      revRevisionLabel: document.getElementById("revRevision")?.textContent?.trim() || null,
+    };
+  });
+}
+
+/** Project a door mesh center to client coordinates and click — no userData.base writes. */
+async function clickDoorSurface(page, partId) {
+  const point = await page.evaluate((id) => {
+    const pivot = (Builder.doorObjs || []).find((p) => p.userData?.partId === id);
+    if (!pivot) return { error: `door ${id} not found` };
+    let mesh = null;
+    pivot.traverse((c) => {
+      if (!mesh && c.isMesh && c.visible) mesh = c;
+    });
+    if (!mesh) return { error: `no mesh for ${id}` };
+    mesh.updateWorldMatrix(true, true);
+    const box = new THREE.Box3().setFromObject(mesh);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    // Prefer a point slightly toward the camera so the front face is hit
+    const cam = Builder.cam.position.clone();
+    const towardCam = cam.sub(center).normalize().multiplyScalar(0.02);
+    center.add(towardCam);
+    const ndc = center.clone().project(Builder.cam);
+    const cv = document.getElementById("bld3d");
+    const r = cv.getBoundingClientRect();
+    return {
+      x: (ndc.x * 0.5 + 0.5) * r.width + r.left,
+      y: (-ndc.y * 0.5 + 0.5) * r.height + r.top,
+      id: pivot.userData.partId,
+      ndc: { x: ndc.x, y: ndc.y },
+    };
+  }, partId);
+  if (point.error) throw new Error(point.error);
+  await page.mouse.click(point.x, point.y);
+  return point;
+}
+
+async function doorOpenState(page) {
+  return page.evaluate(() =>
+    (Builder.doorObjs || []).map((p) => ({
+      id: p.userData?.partId || p.name,
+      open: !!p.userData?.base,
+    }))
+  );
+}
+
+test.describe("F1 evidence on integration candidate", () => {
   test.beforeAll(() => {
     fs.mkdirSync(OUT, { recursive: true });
-    fs.writeFileSync(path.join(OUT, "SOURCE_SHA.txt"), SHA + "\n");
+    const sha = evidenceShaFromCheckout();
+    fs.writeFileSync(path.join(OUT, "SOURCE_SHA.txt"), sha + "\n");
   });
 
-  test("viewer: framing, exact door, rails, material; mobile NEEDS FIXES", async ({ page }) => {
+  test("isolated viewer: rails + material chrome; mobile NEEDS FIXES (not customer-path claim)", async ({
+    page,
+  }) => {
     test.setTimeout(120000);
     await page.goto("/#/build/golden-parametric");
     await expect(page.locator("#view-builder")).toBeVisible();
     await page.waitForFunction(
-      () => typeof Builder !== "undefined" && Builder.isParametric && Builder.doorObjs && Builder.doorObjs.length === 4
+      () =>
+        typeof Builder !== "undefined" &&
+        Builder.isParametric &&
+        Builder.doorObjs &&
+        Builder.doorObjs.length === 4 &&
+        Builder.parts?.[0] &&
+        Builder.ren &&
+        Builder.cam
     );
-    await page.waitForFunction(() => Builder.parts?.[0] && Builder.ren && Builder.cam);
 
+    // Closed overview via visible toggle only — no forced door state if toggle fails.
     const toggleDoors = page.locator("#toggle-doors");
     await expect(toggleDoors).toBeVisible();
-    await page.evaluate(() => {
-      Builder.doorsOpen = false;
-      Builder.doorObjs.forEach((p) => {
-        p.userData.base = 0;
-      });
-    });
-    await page.waitForTimeout(400);
-    await page.evaluate(() => {
-      if (Builder.cam) {
-        Builder.cam.position.set(0, 0.35, 3.5);
-        if (Builder.ctrl) {
-          Builder.ctrl.target.set(0, 0.2, 0);
-          Builder.ctrl.update();
-        }
-        Builder.ren.render(Builder.scene, Builder.cam);
-      }
-    });
+    const initiallyOpen = (await doorOpenState(page)).some((d) => d.open);
+    if (initiallyOpen) {
+      await toggleDoors.click();
+      await page.waitForTimeout(500);
+    }
     await page.locator("#bld3d").screenshot({ path: path.join(OUT, "01-closed-overview.png") });
 
+    // Exact door: real pointer clicks on each door surface; verify IDs; others unchanged.
+    // Camera framing for clickability only — never writes userData.base.
     await page.evaluate(() => {
-      const door1 = Builder.doorObjs.find((p) => p.userData?.partId === "DOOR_01") || Builder.doorObjs[0];
-      door1.userData.base = 1;
-      for (const p of Builder.doorObjs) {
-        if (p !== door1) p.userData.base = 0;
-      }
+      Builder.camDist = 4.2;
+      Builder.rotY = Math.PI;
+      Builder.rotX = 0.05;
     });
-    await page.waitForTimeout(700);
-    const doorState = await page.evaluate(() =>
-      Builder.doorObjs.map((p) => ({ id: p.userData.partId || p.name, open: !!p.userData.base }))
+    await page.waitForTimeout(400);
+
+    const ids = await page.evaluate(() =>
+      (Builder.doorObjs || []).map((p) => p.userData?.partId).filter(Boolean)
     );
-    fs.writeFileSync(path.join(OUT, "02-exact-door-state.json"), JSON.stringify(doorState, null, 2));
-    expect(doorState.filter((d) => d.open).length).toBe(1);
-    expect(doorState.find((d) => d.id === "DOOR_01")?.open || doorState[0].open).toBe(true);
+    expect(ids.length).toBe(4);
+    writeJson("02-door-ids.json", { ids });
+
+    for (const id of ids) {
+      const before = await doorOpenState(page);
+      const beforeMap = Object.fromEntries(before.map((d) => [d.id, d.open]));
+      await clickDoorSurface(page, id);
+      await page.waitForTimeout(450);
+      const after = await doorOpenState(page);
+      const afterMap = Object.fromEntries(after.map((d) => [d.id, d.open]));
+      expect(afterMap[id], `${id} should toggle`).toBe(!beforeMap[id]);
+      for (const other of ids) {
+        if (other === id) continue;
+        expect(afterMap[other], `${other} must stay unchanged when clicking ${id}`).toBe(beforeMap[other]);
+      }
+      // Return to prior state with another real click (still no forced mutation).
+      await clickDoorSurface(page, id);
+      await page.waitForTimeout(350);
+    }
+    writeJson("02-exact-door-state.json", await doorOpenState(page));
     await page.locator("#bld3d").screenshot({ path: path.join(OUT, "02-exact-door-open.png") });
 
+    // Open all via visible toggle for rails (no force-after-fail).
     await toggleDoors.click();
-    await page.waitForTimeout(800);
-    await page.evaluate(() => {
-      Builder.doorsOpen = true;
-      Builder.doorObjs.forEach((p) => {
-        p.userData.base = 1;
-      });
-    });
-    await page.waitForTimeout(500);
-    await page.evaluate(() => {
-      Builder.cam.position.set(0.15, 0.9, 1.7);
-      if (Builder.ctrl) {
-        Builder.ctrl.target.set(0, 0.8, 0.15);
-        Builder.ctrl.update();
-      }
-      Builder.ren.render(Builder.scene, Builder.cam);
-    });
+    await page.waitForTimeout(700);
+    const afterToggle = await doorOpenState(page);
+    expect(afterToggle.every((d) => d.open), "toggle-doors must open all doors without forced fallback").toBe(
+      true
+    );
+
     const rails = await page.evaluate(() => {
       const out = [];
       Builder.parts[0].traverse((c) => {
@@ -82,7 +198,6 @@ test.describe("F1 customer journey on integration candidate", () => {
             name: c.name,
             tubeType: c.userData.tubeType,
             color: c.material?.color?.getHex?.() ?? null,
-            assumed: c.userData.assumed,
           });
         }
       });
@@ -92,7 +207,7 @@ test.describe("F1 customer journey on integration candidate", () => {
         preview: Builder.parts[0].userData?.previewPartCount,
       };
     });
-    fs.writeFileSync(path.join(OUT, "03-rails-state.json"), JSON.stringify(rails, null, 2));
+    writeJson("03-rails-state.json", rails);
     expect(rails.rails.length).toBe(2);
     expect(rails.structural).toBe(19);
     expect(rails.preview).toBe(2);
@@ -100,10 +215,9 @@ test.describe("F1 customer journey on integration candidate", () => {
 
     const swatches = page.locator(".b-sw");
     await expect(swatches.first()).toBeVisible();
-    expect(await swatches.count()).toBeGreaterThan(1);
     const beforeColors = rails.rails.map((r) => r.color);
     await swatches.nth(1).click();
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(400);
     const afterMat = await page.evaluate(() => {
       const out = [];
       Builder.parts[0].traverse((c) => {
@@ -113,123 +227,156 @@ test.describe("F1 customer journey on integration candidate", () => {
       });
       return { rails: out, parametricMat: Builder.parametricMat || null };
     });
-    fs.writeFileSync(path.join(OUT, "04-after-material.json"), JSON.stringify(afterMat, null, 2));
-    expect(afterMat.rails.length).toBe(2);
+    writeJson("04-after-material.json", afterMat);
     expect(afterMat.rails[0].color).toBe(beforeColors[0]);
     expect(afterMat.rails[1].color).toBe(beforeColors[1]);
     await page.locator("#bld3d").screenshot({ path: path.join(OUT, "04-material-rails-unchanged.png") });
 
-    // Narrow: canvas must render, but matrix status is NEEDS FIXES (Antigravity) — never skip-as-PASS.
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(400);
     await expect(page.locator("#bld3d")).toBeVisible();
-    await expect(page.locator("#view-builder")).toBeVisible();
     await page.screenshot({ path: path.join(OUT, "05-narrow-viewport.png"), fullPage: false });
     fs.writeFileSync(
       path.join(OUT, "05-narrow-RESULT.txt"),
-      "NEEDS FIXES (Antigravity): 390px canvas visible but usable wardrobe UI (compact badge, framing, collapsible panel, hide drawer controls) not accepted as PASS from screenshot alone.\n"
+      "NEEDS FIXES (Antigravity): canvas visible at 390px; usable wardrobe UI not accepted as PASS.\n"
     );
   });
 
-  test("local parser: Generate Draft Preview → width edit → Undo restore (no API key)", async ({ page }) => {
+  test("isolated parser TEST SETUP: AiDesignerTransport disabled — draft/edit/Undo labels only", async ({
+    page,
+  }) => {
     test.setTimeout(120000);
+    // TEST SETUP (not customer-path): force parser-only by clearing live transport.
     await page.goto("/#/build/ai-wardrobe");
     await expect(page.locator("#view-builder")).toBeVisible();
     await page.waitForFunction(
       () =>
-        typeof Builder !== "undefined" &&
-        typeof globalThis.PartGraphBridge !== "undefined" &&
-        typeof globalThis.PartGraphBridge.previewDraftWardrobe === "function" &&
-        typeof globalThis.PartGraphBridge.applyConversationalEdit === "function" &&
-        typeof initAiWardrobePanel === "function"
+        typeof globalThis.PartGraphBridge?.previewDraftWardrobe === "function" &&
+        typeof globalThis.PartGraphBridge?.applyConversationalEdit === "function"
     );
     await page.evaluate(() => {
-      initAiWardrobePanel(true);
-      const bm = document.querySelector(".b-main");
-      if (bm) bm.classList.add("ai-wardrobe-mode");
-      const aiPanel = document.getElementById("aiWardrobePanel");
-      if (aiPanel) aiPanel.style.display = "block";
-    });
-
-    // Force local parser path — missing live key must not block this test.
-    await page.evaluate(() => {
+      // TEST SETUP — parser isolation. Do not treat as customer-path evidence.
+      globalThis.__F1_TEST_SETUP_DISABLED_TRANSPORT__ = true;
       globalThis.AiDesignerTransport = null;
     });
 
-    const input = page.locator("#aiWardrobeInput");
-    const submit = page.locator("#aiWardrobeSubmitBtn");
-    await expect(input).toBeVisible();
-    await expect(submit).toBeVisible();
-    await input.fill("Make me a wardrobe");
-    await submit.click();
-
-    const review = page.locator("#aiWardrobeReviewSection");
-    await expect(review).toBeVisible({ timeout: 15000 });
-    await expect(page.locator("#revWidth")).toBeVisible();
-
+    await expect(page.locator("#aiWardrobeInput")).toBeVisible();
+    await page.locator("#aiWardrobeInput").fill("Make me a wardrobe");
+    await page.locator("#aiWardrobeSubmitBtn").click();
+    await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible({ timeout: 15000 });
     const widthBefore = (await page.locator("#revWidth").innerText()).trim();
-    const revBefore = (await page.locator("#revRevision").innerText()).trim();
-    fs.writeFileSync(
-      path.join(OUT, "07-local-draft.json"),
-      JSON.stringify({ widthBefore, revBefore, path: "previewDraftWardrobe" }, null, 2)
-    );
-    expect(widthBefore.length).toBeGreaterThan(0);
-
-    await page.waitForFunction(() => Builder.parts?.[0] && Builder.doorObjs && Builder.doorObjs.length >= 1);
-
-    // Mandatory: Undo control must become customer-visible in review after draft.
-    const undo = page.locator("#aiWardrobeReviewSection #btnUndoEdit");
-    await expect(undo).toBeVisible();
-
-    const chip = page.locator("#aiWardrobeReviewSection #chipWidth2000");
-    await expect(chip).toBeVisible();
-    await chip.click();
-
+    await page.locator("#aiWardrobeReviewSection #chipWidth2000").click();
+    await page.waitForFunction(() => document.getElementById("revWidth")?.textContent?.includes("2000"), null, {
+      timeout: 15000,
+    });
+    await page.locator("#aiWardrobeReviewSection #btnUndoEdit").click();
     await page.waitForFunction(
-      (prev) => {
-        const el = document.getElementById("revWidth");
-        return el && el.textContent && el.textContent.includes("2000");
-      },
+      (w) => document.getElementById("revWidth")?.textContent?.trim() === w,
       widthBefore,
-      { timeout: 15000 }
-    );
-
-    const widthAfterEdit = (await page.locator("#revWidth").innerText()).trim();
-    const revAfterEdit = (await page.locator("#revRevision").innerText()).trim();
-    const undoStackLen = await page.evaluate(() => (aiWardrobeState.undoStack || []).length);
-    fs.writeFileSync(
-      path.join(OUT, "08-local-edit.json"),
-      JSON.stringify({ widthAfterEdit, revAfterEdit, undoStackLen }, null, 2)
-    );
-    expect(widthAfterEdit).toContain("2000");
-    expect(undoStackLen).toBeGreaterThan(0);
-
-    // Mandatory Undo after successful edit — fail loudly if not exercisable.
-    await expect(undo).toBeVisible();
-    await expect(undo).toBeEnabled();
-    await undo.click();
-
-    await page.waitForFunction(
-      (edited) => {
-        const el = document.getElementById("revWidth");
-        return el && el.textContent && !el.textContent.includes("2000");
-      },
-      widthAfterEdit,
       { timeout: 10000 }
     );
+    writeJson("07-parser-isolation.json", {
+      claim: "isolated parser only — AiDesignerTransport disabled as TEST SETUP",
+      widthRestored: widthBefore,
+    });
+  });
 
-    const widthAfterUndo = (await page.locator("#revWidth").innerText()).trim();
-    const revAfterUndo = (await page.locator("#revRevision").innerText()).trim();
-    fs.writeFileSync(
-      path.join(OUT, "09-local-undo.json"),
-      JSON.stringify({ widthAfterUndo, revAfterUndo, widthBefore }, null, 2)
+  test("customer-path: Design with AI nav → draft → edit → Undo; full restore (normal transport)", async ({
+    page,
+  }) => {
+    test.setTimeout(120000);
+    await page.goto("/");
+    const nav = page.locator("#createWithFurniAiHeroBtn, #createWithFurniAiNavBtn").first();
+    await expect(nav).toBeVisible();
+    await nav.click();
+    await expect(page).toHaveURL(/#\/build\/ai-wardrobe/);
+    await expect(page.locator("#view-builder")).toBeVisible();
+    await page.waitForFunction(
+      () =>
+        typeof globalThis.PartGraphBridge?.previewDraftWardrobe === "function" &&
+        typeof globalThis.AiDesignerTransport?.proposeDesignChange === "function"
     );
-    expect(widthAfterUndo).toBe(widthBefore);
-    expect(revAfterUndo).toBe(revBefore);
+
+    // No initAiWardrobePanel / CSS class / hidden-panel hacks.
+    await expect(page.locator("#aiWardrobeInput")).toBeVisible();
+    await expect(page.locator("#aiWardrobeSubmitBtn")).toBeVisible();
+    await page.locator("#aiWardrobeInput").fill("Make me a wardrobe");
+    await page.locator("#aiWardrobeSubmitBtn").click();
+    await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible({ timeout: 15000 });
+    await page.waitForFunction(() => Builder.parts?.[0] && (Builder.doorObjs || []).length >= 1);
+
+    const before = await snapshotDesign(page);
+    writeJson("10-customer-draft.json", before);
+    expect(before.widthMm).toBeTruthy();
+    expect(before.groupBox?.widthM).toBeGreaterThan(0);
+
+    await page.locator("#aiWardrobeReviewSection #chipWidth2000").click();
+    await page.waitForFunction(() => (document.getElementById("revWidth")?.textContent || "").includes("2000"), null, { timeout: 15000 });
+    const edited = await snapshotDesign(page);
+    writeJson("11-customer-edit.json", edited);
+    expect(edited.widthMm).toBe(2000);
+    expect(edited.heightMm).toBe(before.heightMm);
+    expect(edited.depthMm).toBe(before.depthMm);
+    expect(edited.finishType).toBe(before.finishType);
+    expect(edited.bayCount).toBe(before.bayCount);
+    expect(edited.doorCount).toBe(before.doorCount);
+    expect(edited.rails.length).toBe(before.rails.length);
+    expect(Math.abs(edited.groupBox.widthM - before.groupBox.widthM)).toBeGreaterThan(0.05);
+
+    const undo = page.locator("#aiWardrobeReviewSection #btnUndoEdit");
+    await expect(undo).toBeVisible();
+    await undo.click();
+    await page.waitForFunction((w) => {
+      const t = document.getElementById("revWidth")?.textContent || "";
+      const m = t.match(/(\d+)/);
+      return m && Number(m[1]) === w;
+    }, before.widthMm, { timeout: 10000 });
+    const restored = await snapshotDesign(page);
+    writeJson("12-customer-undo.json", { before, restored });
+    expect(restored.widthMm).toBe(before.widthMm);
+    expect(restored.heightMm).toBe(before.heightMm);
+    expect(restored.depthMm).toBe(before.depthMm);
+    expect(restored.finishType).toBe(before.finishType);
+    expect(restored.bayCount).toBe(before.bayCount);
+    expect(restored.doorCount).toBe(before.doorCount);
+    expect(restored.revision).toBe(before.revision);
+    expect(restored.rails.map((r) => r.color)).toEqual(before.rails.map((r) => r.color));
+    expect(Math.abs(restored.groupBox.widthM - before.groupBox.widthM)).toBeLessThan(0.02);
     fs.writeFileSync(
       path.join(OUT, "06-undo-RESULT.txt"),
-      "PASS (local parser path): Undo visible after edit and restored width/revision. Live-model Undo remains UNVERIFIED without API key.\n"
+      "PASS (customer-path, normal transport deterministic width chip): Undo restored spec dims, material, rails, and rendered group size. Live-provider UNVERIFIED.\n"
     );
   });
-});
 
+  test("customer-path: unsupported drawers → explanation; design retained (deterministic transport)", async ({
+    page,
+  }) => {
+    test.setTimeout(120000);
+    await page.goto("/");
+    await page.locator("#createWithFurniAiHeroBtn, #createWithFurniAiNavBtn").first().click();
+    await expect(page.locator("#aiWardrobeInput")).toBeVisible({ timeout: 15000 });
+    await page.locator("#aiWardrobeInput").fill("Make me a wardrobe");
+    await page.locator("#aiWardrobeSubmitBtn").click();
+    await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible({ timeout: 15000 });
+    await page.waitForFunction(() => /\d+/.test(document.getElementById("revRevision")?.textContent || ""), null, { timeout: 15000 });
+
+    const before = await snapshotDesign(page);
+    await page.locator("#aiConversationalInput").fill("Add drawers on the left");
+    await page.locator("#aiConversationalSendBtn").click();
+
+    await page.waitForFunction(() => {
+      const stream = document.getElementById("aiConversationalStream");
+      return stream && /drawer/i.test(stream.textContent || "");
+    }, null, { timeout: 15000 });
+
+    const after = await snapshotDesign(page);
+    const streamText = await page.locator("#aiConversationalStream").innerText();
+    writeJson("13-unsupported-customer.json", { before, after, streamText });
+    expect(streamText).toMatch(/drawer/i);
+    expect(after.widthMm).toBe(before.widthMm);
+    expect(after.heightMm).toBe(before.heightMm);
+    expect(after.revision).toBe(before.revision);
+    expect(after.finishType).toBe(before.finishType);
+    expect(Math.abs(after.groupBox.widthM - before.groupBox.widthM)).toBeLessThan(0.02);
+  });
+});

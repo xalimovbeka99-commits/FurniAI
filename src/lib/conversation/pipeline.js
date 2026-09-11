@@ -1,9 +1,9 @@
 /**
- * FurniAI — Conversation to Parametric Wardrobe Pipeline (Gate G4 / AI-Alpha R1)
+ * FurniAI Ã¢â‚¬â€ Conversation to Parametric Wardrobe Pipeline (Gate G4 / AI-Alpha R1)
  * ---------------------------------------------------------------------
  * TWO STAGES, SEPARATED BY AN EXPLICIT HUMAN APPROVAL.
  *
- * Stage 1 — proposeWardrobe()
+ * Stage 1 Ã¢â‚¬â€ proposeWardrobe()
  *   customer description
  *     -> proposal adapter (deterministic today; proposals only, never trusted)
  *     -> deterministic gap analysis
@@ -14,7 +14,7 @@
  *     -> immutable proposal record + canonical fingerprint
  *     => stage READY_FOR_REVIEW, partGraph === null
  *
- * Stage 2 — approveAndPreview()
+ * Stage 2 Ã¢â‚¬â€ approveAndPreview()
  *   structured human approval naming the exact proposal
  *     -> validateApproval(): id, revision and recomputed fingerprint must match
  *     -> FurniSpec status becomes APPROVED
@@ -28,7 +28,8 @@
 
 import { buildStructuralPartGraph } from "../partgraph/buildStructuralPartGraph.js";
 import { validatePartGraph } from "../partgraph/validatePartGraph.js";
-import { QUALIFICATION_STATUS, SPEC_STATUS } from "../furnispec/schema.js";
+import { COMPONENT_TYPES, QUALIFICATION_STATUS, SPEC_STATUS } from "../furnispec/schema.js";
+import { COMPONENT_REPRESENTATION_POLICY } from "../partgraph/componentOutcomes.js";
 import { validateFurniSpec } from "../furnispec/validate.js";
 import { AssemblyBlockedError, assembleFurniSpec } from "./assembleFurniSpec.js";
 import { createProposal, validateApproval } from "./approval.js";
@@ -61,7 +62,7 @@ export const APPROVAL_STATE = Object.freeze({
 const MAX_RESOLUTION_ROUNDS = 8;
 
 /* ===================================================================== */
-/* Stage 1 — propose                                                      */
+/* Stage 1 Ã¢â‚¬â€ propose                                                      */
 /* ===================================================================== */
 
 /**
@@ -123,7 +124,7 @@ export function proposeWardrobe({ description, answers = {}, specId, revision = 
     partGraphValidation: null,
   };
 
-  // An out-of-slice request is refused outright — it is not a question we can ask.
+  // An out-of-slice request is refused outright Ã¢â‚¬â€ it is not a question we can ask.
   if (outOfSlice.length > 0) {
     return { ...base, stage: PIPELINE_STAGE.UNSUPPORTED_REQUEST, safety: preApprovalSafety(null) };
   }
@@ -170,7 +171,7 @@ export function proposeWardrobe({ description, answers = {}, specId, revision = 
 }
 
 /* ===================================================================== */
-/* Stage 2 — approve, then and only then preview                          */
+/* Stage 2 Ã¢â‚¬â€ approve, then and only then preview                          */
 /* ===================================================================== */
 
 /**
@@ -528,12 +529,12 @@ export function parseConversationalCommand(text, currentFacts = {}) {
 
   // 4b. Conversational shelf additions & limits
   // Requirements:
-  // "“Add another shelf on the left” must not automatically replace long hanging with short hanging and two shelves.
+  // "Ã¢â‚¬Å“Add another shelf on the leftÃ¢â‚¬Â must not automatically replace long hanging with short hanging and two shelves.
   // Either add exactly one shelf through supported parameters, preserving unrelated choices,
   // or offer the two-shelf layout as an explicit alternative before applying it.
   // Do not report an unchanged layout as an added shelf."
   // The bare word "shelves" used to enter this branch on its own, so "make the
-  // shelves oak" — a finish request — was answered with a shelving-layout
+  // shelves oak" Ã¢â‚¬â€ a finish request Ã¢â‚¬â€ was answered with a shelving-layout
   // refusal. A confident answer to a question nobody asked. Entry now requires
   // an intent about shelf quantity or layout; a sentence that merely mentions
   // shelves falls through to the branches that actually match it.
@@ -679,8 +680,8 @@ export function parseConversationalCommand(text, currentFacts = {}) {
   // Two things are separated here, because conflating them is how a customer
   // ends up with a whole wardrobe repainted when they asked about one door.
   //
-  //   "Make it walnut"            → change the wardrobe finish.
-  //   "Make the doors walnut"     → a per-part finish, which is NOT supported.
+  //   "Make it walnut"            Ã¢â€ â€™ change the wardrobe finish.
+  //   "Make the doors walnut"     Ã¢â€ â€™ a per-part finish, which is NOT supported.
   //                                 Say so; do not apply it to everything.
   //
   // Widening matters for a second reason: every phrasing the parser misses
@@ -708,11 +709,11 @@ export function parseConversationalCommand(text, currentFacts = {}) {
 
       // "Add black handles" is a request for handles, not for a black
       // wardrobe. Answering it as a finish problem would be a confident,
-      // fluent, wrong answer — worse than admitting the real limitation.
+      // fluent, wrong answer Ã¢â‚¬â€ worse than admitting the real limitation.
       if (/\b(add|fit|install|include|put|attach|give\s+it)\b/i.test(beforeColour)) {
         return {
           error:
-            `I can't add ${named} to the design yet. Your wardrobe is unchanged — ` +
+            `I can't add ${named} to the design yet. Your wardrobe is unchanged Ã¢â‚¬â€ ` +
             `you can still change its size, layout or finish.`,
         };
       }
@@ -720,7 +721,7 @@ export function parseConversationalCommand(text, currentFacts = {}) {
       return {
         error:
           `I can only change the finish of the whole wardrobe at the moment, not just the ${named}. ` +
-          `Your design is unchanged — say "make it ${mat}" if you'd like the whole wardrobe in ${mat}.`,
+          `Your design is unchanged Ã¢â‚¬â€ say "make it ${mat}" if you'd like the whole wardrobe in ${mat}.`,
       };
     }
 
@@ -739,6 +740,34 @@ export function parseConversationalCommand(text, currentFacts = {}) {
     }
   }
 
+  // 8. Unsupported component requests (M2-OMIT fail-closed at conversation entry).
+  // "Add drawers" must not fall through to the live model or invent geometry.
+  // Use the same ledger diagnostic the PartGraph would record; never apply the
+  // suggested alternative automatically; never advance revision (caller keeps design).
+  const drawerRequest =
+    /\b(add|fit|install|include|put|attach|want|need|give)\b[\s\S]{0,60}\bdrawers?\b/i.test(t) ||
+    /\bdrawers?\b[\s\S]{0,40}\b(add|fit|install|include)\b/i.test(t) ||
+    /\b(?:jewellery|jewelry)\s+drawer\b/i.test(t) ||
+    /\bdrawer\s+bank\b/i.test(t);
+  if (drawerRequest) {
+    const policy = COMPONENT_REPRESENTATION_POLICY[COMPONENT_TYPES.DRAWER_BANK];
+    const unsupported = [
+      {
+        request: COMPONENT_TYPES.DRAWER_BANK,
+        componentType: COMPONENT_TYPES.DRAWER_BANK,
+        code: policy.diagnosticCode,
+        reason: policy.customerMessage,
+        engineeringReason: policy.reason,
+        alternative: policy.suggestedAlternative ? policy.suggestedAlternative.summary : null,
+        alternativeApplied: false,
+      },
+    ];
+    return {
+      unsupported,
+      error: policy.customerMessage,
+    };
+  }
+
   return null;
 }
 
@@ -755,9 +784,20 @@ export function applyConversationalEdit({
   const currentFacts = Object.fromEntries(currentObservations.map((o) => [o.key, o.value]));
   const parsed = parseConversationalCommand(commandText, currentFacts);
 
+  if (parsed && Array.isArray(parsed.unsupported) && parsed.unsupported.length > 0) {
+    return {
+      ok: false,
+      kind: "UNSUPPORTED",
+      unsupported: parsed.unsupported,
+      error: parsed.error || parsed.unsupported[0].reason,
+      // Explicit: no geometry, no revision bump â€” caller keeps the active design.
+    };
+  }
+
   if (parsed && parsed.error) {
     return {
       ok: false,
+      kind: "REJECTED",
       error: parsed.error,
     };
   }
@@ -865,7 +905,7 @@ export function draftPreviewSafety(spec, partGraph) {
     drillingBlocked: spec?.machiningPolicy?.drilling === "BLOCKED_PENDING_HARDWARE_APPROVAL" && drillingOperations.length === 0,
     hardwareStatuses: spec ? hardwareStatusesOf(spec) : {},
     approvedOperationTypes: [],
-    note: "DRAFT PREVIEW ONLY — NOT APPROVED FOR WORKSHOP. Geometry rendered from Bekzod-approved defaults with status PROPOSED. Approval is required before CNC or production.",
+    note: "DRAFT PREVIEW ONLY Ã¢â‚¬â€ NOT APPROVED FOR WORKSHOP. Geometry rendered from Bekzod-approved defaults with status PROPOSED. Approval is required before CNC or production.",
   };
 }
 

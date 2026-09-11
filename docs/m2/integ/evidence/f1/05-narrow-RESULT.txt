@@ -1,1 +1,1 @@
-NEEDS FIXES (Antigravity): 390px canvas visible but usable wardrobe UI (compact badge, framing, collapsible panel, hide drawer controls) not accepted as PASS from screenshot alone.
+NEEDS FIXES (Antigravity): canvas visible at 390px; usable wardrobe UI not accepted as PASS.
