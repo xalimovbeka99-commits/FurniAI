@@ -532,7 +532,24 @@ export function parseConversationalCommand(text, currentFacts = {}) {
   // Either add exactly one shelf through supported parameters, preserving unrelated choices,
   // or offer the two-shelf layout as an explicit alternative before applying it.
   // Do not report an unchanged layout as an added shelf."
-  if (/\b(?:add\s+(?:another\s+|more\s+)?shelf|more\s+shelves|add\s+shelv(?:es|ing)|shelves)\b/i.test(t)) {
+  // The bare word "shelves" used to enter this branch on its own, so "make the
+  // shelves oak" — a finish request — was answered with a shelving-layout
+  // refusal. A confident answer to a question nobody asked. Entry now requires
+  // an intent about shelf quantity or layout; a sentence that merely mentions
+  // shelves falls through to the branches that actually match it.
+  const SHELF_INTENT = new RegExp(
+    [
+      "\\badd\\s+(?:another\\s+|more\\s+|a\\s+|an\\s+|\\d+\\s+|two\\s+|three\\s+)?shelv(?:es|ing)?\\b",
+      "\\badd\\s+(?:another\\s+|more\\s+)?shelf\\b",
+      "\\bmore\\s+shelves\\b",
+      "\\ball\\s+shelves\\b",
+      "\\b(?:use|switch|change|configure|want|need|with|give)\\b[^.]*\\bshelv(?:es|ing)\\b",
+      "\\b(?:\\d+|one|two|three|four)\\s+shelves\\b",
+      "\\bshelves\\s+(?:in|on)\\s+both\\b",
+    ].join("|"),
+    "i"
+  );
+  if (SHELF_INTENT.test(t)) {
     // Check if "all shelves" / "shelves on both"
     if (/all\s+shelves|shelves\s+(?:in|on)\s+both\s+(?:bays|sides)/i.test(t)) {
       const currentBays = currentFacts.bayCount || 2;
@@ -657,14 +674,69 @@ export function parseConversationalCommand(text, currentFacts = {}) {
     }
   }
 
-  // 7. Finish change: "oak", "walnut", "white"
-  const matMatch = t.match(/\b(oak|walnut|white|grey|taupe|cream|black|navy|sage|ash)\b/i);
-  if (matMatch && /finish|material|color|colour/i.test(t)) {
+  // 7. Finish change.
+  //
+  // Two things are separated here, because conflating them is how a customer
+  // ends up with a whole wardrobe repainted when they asked about one door.
+  //
+  //   "Make it walnut"            → change the wardrobe finish.
+  //   "Make the doors walnut"     → a per-part finish, which is NOT supported.
+  //                                 Say so; do not apply it to everything.
+  //
+  // Widening matters for a second reason: every phrasing the parser misses
+  // spends a model call on a trivial edit, and the model is slower, costlier
+  // and less predictable than this branch.
+  const FINISH_WORDS = "oak|walnut|white|grey|taupe|cream|black|navy|sage|ash";
+
+  /** Parts a customer might name; a finish scoped to one of these is not supported. */
+  const SCOPED_PART = /\b(door|doors|handle|handles|shelf|shelves|drawer|drawers|rail|rails|interior|inside|back|plinth|trim|edge|edges|frame|top|side|sides)\b/i;
+
+  const matMatch = t.match(new RegExp(`\\b(${FINISH_WORDS})\\b`, "i"));
+  if (matMatch) {
     const mat = matMatch[1].toLowerCase();
-    return {
-      changes: { materialKey: mat },
-      assistantReply: `Changed finish to ${mat}.`,
-    };
+    const beforeColour = t.slice(0, matMatch.index);
+    const afterColour = t.slice(matMatch.index + matMatch[1].length);
+
+    // A noun straight after the colour ("black handles") means the colour
+    // describes that thing, not the wardrobe.
+    const scopedAfter = SCOPED_PART.test(afterColour);
+    // A part named before the colour ("make the doors walnut") scopes it too.
+    const scopedBefore = SCOPED_PART.test(beforeColour);
+
+    if (scopedAfter || scopedBefore) {
+      const named = (afterColour.match(SCOPED_PART) || beforeColour.match(SCOPED_PART))[1].toLowerCase();
+
+      // "Add black handles" is a request for handles, not for a black
+      // wardrobe. Answering it as a finish problem would be a confident,
+      // fluent, wrong answer — worse than admitting the real limitation.
+      if (/\b(add|fit|install|include|put|attach|give\s+it)\b/i.test(beforeColour)) {
+        return {
+          error:
+            `I can't add ${named} to the design yet. Your wardrobe is unchanged — ` +
+            `you can still change its size, layout or finish.`,
+        };
+      }
+
+      return {
+        error:
+          `I can only change the finish of the whole wardrobe at the moment, not just the ${named}. ` +
+          `Your design is unchanged — say "make it ${mat}" if you'd like the whole wardrobe in ${mat}.`,
+      };
+    }
+
+    // An explicit finish word, or the colour standing as the whole point of
+    // the sentence ("make it walnut", "in oak", "walnut please").
+    const explicitFinishWord = /finish|material|colour|color|paint/i.test(t);
+    const colourIsTheRequest =
+      /(?:make|paint|change|switch|turn|do|have|want|like|use|try|in|to)\b[^.]*$/i.test(beforeColour) &&
+      /^[\s,.!?]*(please|thanks|thank you)?[\s,.!?]*$/i.test(afterColour);
+
+    if (explicitFinishWord || colourIsTheRequest) {
+      return {
+        changes: { materialKey: mat },
+        assistantReply: `Changed finish to ${mat}.`,
+      };
+    }
   }
 
   return null;

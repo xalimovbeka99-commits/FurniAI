@@ -15,6 +15,7 @@
 import { validateFurniSpec } from "../furnispec/validate.js";
 import { assertDeciMm, toDeciMm } from "../furnispec/units.js";
 import { PARTGRAPH_VERSION, PART_ROLES, GEOMETRY_TYPES, GRAIN_DIRECTIONS, ORIENTATIONS } from "./schema.js";
+import { createComponentLedger } from "./componentOutcomes.js";
 
 /**
  * Builds the canonical structural PartGraph from a FurniSpec v0.1 object.
@@ -373,6 +374,12 @@ export function buildStructuralPartGraph(furniSpec) {
   const adjShelves = [];
   /** Visual-only concepts — NOT structural panels / NOT manufacturing parts. */
   const previews = [];
+  // M2-OMIT-01: every accepted component is accounted for exactly once.
+  // A component that produces no part must produce a diagnostic instead.
+  // The two lists answer different questions: `previews` is what the viewer
+  // draws, `ledger` is what the customer asked for and what became of it.
+  // A PREVIEW outcome carries the id of its preview so the two can be joined.
+  const ledger = createComponentLedger();
 
   for (const bay of baySpans) {
     let currentBottomFaceY = yTopBottomDmm;
@@ -426,6 +433,7 @@ export function buildStructuralPartGraph(furniSpec) {
           },
           sourceRuleIds: ["WR-003", "WR-008", "WR-013"],
         });
+        ledger.recordStructural(comp, bay.index, [partId]);
       } else if (comp.type.startsWith("HANGING_RAIL")) {
         const offsetBelowDmm = assertDeciMm(comp.offsetBelowShelfMm, `${comp.id}.offsetBelowShelfMm`);
         currentRailCenterY = currentBottomFaceY - offsetBelowDmm;
@@ -479,6 +487,18 @@ export function buildStructuralPartGraph(furniSpec) {
             `Hardware status: ${railHw.status || "PREVIEW_ONLY"}.`,
             ...tube.assumptionNotes,
           ],
+        });
+
+        // A bought rail, not a cut panel. It is real to the customer and real
+        // to the layout (it sets the drop below it), so it is recorded as a
+        // PREVIEW outcome carrying both the datum the kernel computed and the
+        // id of the preview drawn for it — never as a structural part, and
+        // never silently.
+        ledger.recordPreview(comp, bay.index, {
+          previewId: previews[previews.length - 1].id,
+          railCenterYDmm: currentRailCenterY,
+          bayMinXDmm: bay.minXDmm,
+          bayMaxXDmm: bay.maxXDmm,
         });
       } else if (comp.type === "SHELF_ADJUSTABLE") {
         let minYDmm;
@@ -536,6 +556,14 @@ export function buildStructuralPartGraph(furniSpec) {
           },
           sourceRuleIds: ["WR-003", "WR-008", "WR-013"],
         });
+        ledger.recordStructural(comp, bay.index, [partId]);
+      } else {
+        // The catch-all that makes silent omission impossible. Any accepted
+        // component type with no branch above lands here and is reported with
+        // a structured diagnostic and ordinary-language explanation. Adding a
+        // type to FurniSpec without wiring it up degrades to an honest refusal,
+        // never to a component that quietly disappears.
+        ledger.recordUnsupported(comp, bay.index);
       }
     }
   }
@@ -851,6 +879,21 @@ export function buildStructuralPartGraph(furniSpec) {
     });
   }
 
+  // M2-OMIT-01: close the ledger and surface anything the kernel could not
+  // represent as a warning too, so an unsupported component is visible to a
+  // reader of the PartGraph alone, not only to a caller who inspects outcomes.
+  const { componentOutcomes, counts: componentCounts } = ledger.finish();
+  for (const entry of componentOutcomes) {
+    if (entry.outcome !== "UNSUPPORTED") continue;
+    warnings.push({
+      code: entry.diagnosticCode,
+      message: `Component "${entry.componentId}" (${entry.componentType}) in bay ${entry.bayIndex} is not represented: ${entry.reason}`,
+      componentId: entry.componentId,
+      componentType: entry.componentType,
+      bayIndex: entry.bayIndex,
+    });
+  }
+
   return {
     partGraphVersion: PARTGRAPH_VERSION,
     sourceSpecId: furniSpec.specId,
@@ -861,9 +904,14 @@ export function buildStructuralPartGraph(furniSpec) {
     previews,
     operations,
     warnings,
+    componentOutcomes,
     summary: {
       totalStructuralParts: parts.length,
       totalPreviewParts: previews.length,
+      totalComponents: componentCounts.totalComponents,
+      structuralComponents: componentCounts.structuralComponents,
+      previewComponents: componentCounts.previewComponents,
+      unsupportedComponents: componentCounts.unsupportedComponents,
       totalOperations: operations.length,
       approvedOperations: operations.filter((op) => op.status === "APPROVED").length,
       blockedOperations: operations.filter((op) => op.status !== "APPROVED").length,
