@@ -5,7 +5,7 @@
  * geometric, bounding-box, edge-banding, and safety invariants.
  */
 
-import { PARTGRAPH_VERSION, ORIENTATIONS } from "./schema.js";
+import { PARTGRAPH_VERSION, ORIENTATIONS, PART_ROLES } from "./schema.js";
 
 /**
  * Validates a PartGraph data structure.
@@ -57,6 +57,19 @@ export function validatePartGraph(partGraph) {
       addError("DUPLICATE_PART_ID", `Duplicate Part ID "${part.id}".`, part.id);
     }
     seenPartIds.add(part.id);
+
+    // Role must be a declared PART_ROLES member. Without this check any string
+    // passes validation, so a typo or an unwired role becomes a part the
+    // geometry adapter silently refuses to draw — a valid PartGraph with an
+    // invisible panel. Roles are the contract between kernel and adapter, so
+    // an undeclared one is a validation failure, not a rendering quirk.
+    if (typeof part.role !== "string" || !Object.prototype.hasOwnProperty.call(PART_ROLES, part.role)) {
+      addError(
+        "INVALID_PART_ROLE",
+        `Part "${part.id}" has role ${JSON.stringify(part.role)}, which is not a declared PART_ROLES member.`,
+        part.id
+      );
+    }
 
     // Integer checks for finished dimensions
     const fin = part.finished || {};

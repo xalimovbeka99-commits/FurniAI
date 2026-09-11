@@ -205,10 +205,19 @@ describe("G3.1-R1 — PartGraph-to-Three.js Adapter Unit Tests", () => {
       };
     });
 
+    // Count what the graph itself says should exist, before disposal empties
+    // the group. Derived from the INPUT data, not from the adapter: one box
+    // per structural part, one edge outline per door, one tube per preview.
+    // The previous hard-coded 23 went stale the moment EXP-01 added rail
+    // previews — disposal was correct and the expectation was not.
+    const expectedGeometries =
+      goldenPartGraph.parts.length +
+      goldenPartGraph.parts.filter((p) => p.role === "DOOR_PANEL").length +
+      (goldenPartGraph.previews?.length ?? 0);
+
     disposePartGraphGroup(group);
 
-    // 19 BoxGeometries + 4 EdgesGeometries = 23 geometries
-    expect(disposedGeoCount).toBe(23);
+    expect(disposedGeoCount).toBe(expectedGeometries);
     expect(disposedMatCount).toBe(materials.length);
     expect(group.children.length).toBe(0);
   });

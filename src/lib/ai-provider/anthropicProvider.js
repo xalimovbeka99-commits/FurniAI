@@ -23,7 +23,9 @@ import { extractionToolSchema, EXTRACT_TOOL_NAME } from "./extractionSchema.js";
 import { buildSystemPrompt } from "./promptTemplate.js";
 import { toFslProviderError } from "./errors.js";
 
-const DEFAULT_MODEL = "claude-sonnet-4-6";
+// Verified 2026-09-11 against platform.claude.com/docs/en/models/overview.
+// "claude-sonnet-4-6" is not a published Anthropic model id.
+const DEFAULT_MODEL = "claude-sonnet-5";
 const DEFAULT_TIMEOUT_MS = 20000;
 const DEFAULT_ATTACHMENT_CAPTION = "Describe the furniture shown in the attached file(s) and extract its requirements.";
 

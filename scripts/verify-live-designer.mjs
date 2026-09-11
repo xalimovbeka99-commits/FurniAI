@@ -131,7 +131,11 @@ console.log(THIN);
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.OPENAI_API_KEY;
 const unconfigured = await post(`${base}${AI_DESIGNER_ENDPOINT}`, { message: REWORDED_EDIT, currentFacts: {} });
-check("Returns 503 AI_PROVIDER_UNAVAILABLE", unconfigured.status === 503 && unconfigured.body?.code === "AI_PROVIDER_UNAVAILABLE", `status ${unconfigured.status}`);
+check(
+  "Returns 503 AI_PROVIDER_NOT_CONFIGURED (named precisely, not a generic outage)",
+  unconfigured.status === 503 && unconfigured.body?.code === "AI_PROVIDER_NOT_CONFIGURED",
+  `status ${unconfigured.status} code ${unconfigured.body?.code}`
+);
 check("The message tells the customer their design is unchanged", /unchanged/i.test(unconfigured.body?.error ?? ""));
 check("No credential, header or raw provider payload is echoed", !/sk-|api[_-]?key|authorization/i.test(JSON.stringify(unconfigured.body)));
 
@@ -238,6 +242,31 @@ check("No geometry was produced", outage.partGraph == null);
 check("The active design is untouched", JSON.stringify(before) === beforeSnapshot);
 check("No raw provider error or credential leaked to the client", !/sk-|x-api-key|stand-in outage/i.test(JSON.stringify(outage)));
 await broken.close();
+
+/* 6b. A REJECTED CREDENTIAL IS NOT AN OUTAGE ------------------------- */
+console.log("\n[6b] A REJECTED CREDENTIAL IS NAMED AS SUCH, NOT AS AN OUTAGE");
+console.log(THIN);
+// The operationally important distinction. A 401 means the provider is up and
+// answering — paging someone to check a healthy service wastes the time it
+// takes to discover the key was simply revoked.
+const rejecting = await startStandInProvider(() => ({
+  status: 401,
+  body: { type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } },
+}));
+process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${rejecting.port}`;
+const authRejected = await post(`${base}${AI_DESIGNER_ENDPOINT}`, { message: REWORDED_EDIT, currentFacts: {} });
+check(
+  "A rejected key is reported as AI_PROVIDER_AUTH_REJECTED, not AI_PROVIDER_UNAVAILABLE",
+  authRejected.body?.code === "AI_PROVIDER_AUTH_REJECTED",
+  `code ${authRejected.body?.code}`
+);
+check("The customer still just hears that their design is unchanged", /unchanged/i.test(authRejected.body?.error ?? ""));
+check(
+  "The operator remediation note stays in the server log, never in the response body",
+  !/api[_-]?key|ANTHROPIC|OPENAI|operatorNote/i.test(JSON.stringify(authRejected.body)),
+  JSON.stringify(authRejected.body?.code)
+);
+await rejecting.close();
 
 /* ------------------------------------------------------------------- */
 await api.close();

@@ -16,6 +16,35 @@ describe("PartGraph v0.1 Validator Suite", () => {
     expect(validatePartGraph("not an object").valid).toBe(false);
   });
 
+  it("rejects a part whose role is not a declared PART_ROLES member", () => {
+    // Before this guard any string passed. A typo'd or unwired role produced a
+    // PartGraph that validated cleanly and then rendered nothing — a wardrobe
+    // silently missing a panel. Roles are the kernel/adapter contract, so an
+    // undeclared one is a validation failure.
+    const partGraph = buildStructuralPartGraph(fixture);
+    partGraph.parts[0].role = "DRAWER_FRONT"; // plausible, but not declared yet
+    const result = validatePartGraph(partGraph);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.code === "INVALID_PART_ROLE")).toBe(true);
+  });
+
+  it("rejects a missing or non-string role", () => {
+    for (const bad of [undefined, null, 42, {}]) {
+      const partGraph = buildStructuralPartGraph(fixture);
+      partGraph.parts[0].role = bad;
+      const result = validatePartGraph(partGraph);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.code === "INVALID_PART_ROLE")).toBe(true);
+    }
+  });
+
+  it("accepts every role the kernel actually emits", () => {
+    const partGraph = buildStructuralPartGraph(fixture);
+    const result = validatePartGraph(partGraph);
+    expect(result.errors.filter((e) => e.code === "INVALID_PART_ROLE")).toEqual([]);
+    expect(new Set(partGraph.parts.map((p) => p.role)).size).toBeGreaterThan(1);
+  });
+
   it("rejects duplicate Part IDs", () => {
     const partGraph = buildStructuralPartGraph(fixture);
     partGraph.parts.push({ ...partGraph.parts[0] });

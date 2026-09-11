@@ -28,7 +28,9 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const { evaluateConstruction, PANEL_THK_CM, SHELF_SPAN_INFO_CM } = require('./constructionValidator');
 
-const MODEL = 'claude-sonnet-4-6';
+// See src/lib/ai-provider/anthropicChatClient.js for the verification note.
+// This endpoint is live in production, so an invalid id fails every request.
+const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 
 const TYPES = ['wardrobe','walkin_l','walkin_u','kitchen','kitchen_l','kitchen_u','kitchen_island','vanity_freestanding','vanity_floating','bookshelf','sideboard'];
 const MATERIALS = ['oak','walnut','white','grey','taupe','cream','black','navy','sage','terracotta','mahogany','ash','ivory'];
