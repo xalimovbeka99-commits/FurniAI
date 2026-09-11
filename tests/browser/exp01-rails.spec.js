@@ -1,4 +1,4 @@
-﻿import { test, expect } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import path from "path";
 import fs from "fs";
 
@@ -104,31 +104,30 @@ test.describe("EXP-01 hanging-rail preview evidence", () => {
       await page.locator("#bld3d").screenshot({ path: path.join(OUT, "rails-after-material.png") });
     }
 
-    // Undo if button exists
+    // Undo only if visible+enabled (hidden in parametric chrome until AI revision exists)
     const undo = page.locator("#btnUndoEdit");
-    if (await undo.count()) {
-      const enabled = await undo.isEnabled().catch(() => false);
-      if (enabled) {
-        await undo.click();
-        await page.waitForTimeout(400);
-        const afterUndo = await page.evaluate(() => {
-          const rails = [];
-          Builder.parts[0].traverse((c) => {
-            if (c.isMesh && c.userData?.isPreviewMesh) {
-              rails.push({ name: c.name, color: c.material?.color?.getHex?.() ?? null });
-            }
-          });
-          return { rails, parametricMat: Builder.parametricMat || null };
+    const undoVisible = (await undo.count()) > 0 && (await undo.isVisible().catch(() => false));
+    const undoEnabled = undoVisible && (await undo.isEnabled().catch(() => false));
+    if (undoEnabled) {
+      await undo.click();
+      await page.waitForTimeout(400);
+      const afterUndo = await page.evaluate(() => {
+        const rails = [];
+        Builder.parts[0].traverse((c) => {
+          if (c.isMesh && c.userData?.isPreviewMesh) {
+            rails.push({ name: c.name, color: c.material?.color?.getHex?.() ?? null });
+          }
         });
-        fs.writeFileSync(path.join(OUT, "browser-rail-state-after-undo.json"), JSON.stringify(afterUndo, null, 2));
-        expect(afterUndo.rails.length).toBe(2);
-        await page.locator("#bld3d").screenshot({ path: path.join(OUT, "rails-after-undo.png") });
-      } else {
-        fs.writeFileSync(
-          path.join(OUT, "browser-undo-note.txt"),
-          "btnUndoEdit present but disabled (no AI revision stack). Rail material independence verified via swatch colors instead."
-        );
-      }
+        return { rails, parametricMat: Builder.parametricMat || null };
+      });
+      fs.writeFileSync(path.join(OUT, "browser-rail-state-after-undo.json"), JSON.stringify(afterUndo, null, 2));
+      expect(afterUndo.rails.length).toBe(2);
+      await page.locator("#bld3d").screenshot({ path: path.join(OUT, "rails-after-undo.png") });
+    } else {
+      fs.writeFileSync(
+        path.join(OUT, "browser-undo-note.txt"),
+        "Undo not customer-visible on golden-parametric without AI revision stack. Marked UNVERIFIED for journey scenario 7 on this path; material independence still verified."
+      );
     }
   });
 });

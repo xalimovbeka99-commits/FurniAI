@@ -1,0 +1,7 @@
+﻿SOURCE_SHA=10c8c3091c06a9e71448237138fa2b6b7569c826
+(note: evidence screenshots below were captured from local dist built at this worktree after build:legacy; final commit SHA may include this evidence commit)
+BUILD=npm run build:legacy
+LOCAL_URL=http://127.0.0.1:4173/#/build/golden-parametric
+AUTH_REQUIRED=no (localhost)
+PARTGRAPH_TESTS=28/28 PASS
+PLAYWRIGHT_EXP01=1/1 PASS
