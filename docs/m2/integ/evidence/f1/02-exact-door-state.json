@@ -1,0 +1,18 @@
+[
+  {
+    "id": "DOOR_01",
+    "open": true
+  },
+  {
+    "id": "DOOR_02",
+    "open": false
+  },
+  {
+    "id": "DOOR_03",
+    "open": false
+  },
+  {
+    "id": "DOOR_04",
+    "open": false
+  }
+]

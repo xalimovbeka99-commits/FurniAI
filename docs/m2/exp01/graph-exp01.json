@@ -1,0 +1,495 @@
+{
+  "parts": [
+    {
+      "id": "CARC_TOP",
+      "role": "TOP_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 18000,
+        "widthDmm": 5800,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 0,
+        "maxXDmm": 18000,
+        "minYDmm": 23820,
+        "maxYDmm": 24000,
+        "minZDmm": 200,
+        "maxZDmm": 6000
+      }
+    },
+    {
+      "id": "CARC_BOT",
+      "role": "BOTTOM_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 18000,
+        "widthDmm": 5800,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 0,
+        "maxXDmm": 18000,
+        "minYDmm": 1000,
+        "maxYDmm": 1180,
+        "minZDmm": 200,
+        "maxZDmm": 6000
+      }
+    },
+    {
+      "id": "CARC_SIDE_L",
+      "role": "SIDE_PANEL_LEFT",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 22640,
+        "widthDmm": 5800,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 0,
+        "maxXDmm": 180,
+        "minYDmm": 1180,
+        "maxYDmm": 23820,
+        "minZDmm": 200,
+        "maxZDmm": 6000
+      }
+    },
+    {
+      "id": "CARC_SIDE_R",
+      "role": "SIDE_PANEL_RIGHT",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 22640,
+        "widthDmm": 5800,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 17820,
+        "maxXDmm": 18000,
+        "minYDmm": 1180,
+        "maxYDmm": 23820,
+        "minZDmm": 200,
+        "maxZDmm": 6000
+      }
+    },
+    {
+      "id": "CARC_DIV_01",
+      "role": "DIVIDER_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 22640,
+        "widthDmm": 5600,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 8910,
+        "maxXDmm": 9090,
+        "minYDmm": 1180,
+        "maxYDmm": 23820,
+        "minZDmm": 200,
+        "maxZDmm": 5800
+      }
+    },
+    {
+      "id": "SHELF_FIX_L1",
+      "role": "FIXED_SHELF",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 8730,
+        "widthDmm": 5600,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 180,
+        "maxXDmm": 8910,
+        "minYDmm": 20140,
+        "maxYDmm": 20320,
+        "minZDmm": 200,
+        "maxZDmm": 5800
+      }
+    },
+    {
+      "id": "SHELF_FIX_R1",
+      "role": "FIXED_SHELF",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 8730,
+        "widthDmm": 5600,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 9090,
+        "maxXDmm": 17820,
+        "minYDmm": 20140,
+        "maxYDmm": 20320,
+        "minZDmm": 200,
+        "maxZDmm": 5800
+      }
+    },
+    {
+      "id": "SHELF_ADJ_R2",
+      "role": "ADJUSTABLE_SHELF",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 8710,
+        "widthDmm": 5500,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 9100,
+        "maxXDmm": 17810,
+        "minYDmm": 6280,
+        "maxYDmm": 6460,
+        "minZDmm": 250,
+        "maxZDmm": 5750
+      }
+    },
+    {
+      "id": "SHELF_ADJ_R3",
+      "role": "ADJUSTABLE_SHELF",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 8710,
+        "widthDmm": 5500,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 9100,
+        "maxXDmm": 17810,
+        "minYDmm": 9960,
+        "maxYDmm": 10140,
+        "minZDmm": 250,
+        "maxZDmm": 5750
+      }
+    },
+    {
+      "id": "BACK_PANEL_01",
+      "role": "BACK_PANEL",
+      "materialCode": "HDF_WHITE_6",
+      "finished": {
+        "lengthDmm": 22760,
+        "widthDmm": 17760,
+        "thicknessDmm": 60
+      },
+      "placement": {
+        "minXDmm": 120,
+        "maxXDmm": 17880,
+        "minYDmm": 1120,
+        "maxYDmm": 23880,
+        "minZDmm": 5865,
+        "maxZDmm": 5925
+      }
+    },
+    {
+      "id": "DOOR_01",
+      "role": "DOOR_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 22960,
+        "widthDmm": 4475,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 20,
+        "maxXDmm": 4495,
+        "minYDmm": 1020,
+        "maxYDmm": 23980,
+        "minZDmm": 0,
+        "maxZDmm": 180
+      }
+    },
+    {
+      "id": "DOOR_02",
+      "role": "DOOR_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 22960,
+        "widthDmm": 4475,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 4515,
+        "maxXDmm": 8990,
+        "minYDmm": 1020,
+        "maxYDmm": 23980,
+        "minZDmm": 0,
+        "maxZDmm": 180
+      }
+    },
+    {
+      "id": "DOOR_03",
+      "role": "DOOR_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 22960,
+        "widthDmm": 4475,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 9010,
+        "maxXDmm": 13485,
+        "minYDmm": 1020,
+        "maxYDmm": 23980,
+        "minZDmm": 0,
+        "maxZDmm": 180
+      }
+    },
+    {
+      "id": "DOOR_04",
+      "role": "DOOR_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 22960,
+        "widthDmm": 4475,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 13505,
+        "maxXDmm": 17980,
+        "minYDmm": 1020,
+        "maxYDmm": 23980,
+        "minZDmm": 0,
+        "maxZDmm": 180
+      }
+    },
+    {
+      "id": "PLINTH_FRONT",
+      "role": "PLINTH_FRONT_FASCIA",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 18000,
+        "widthDmm": 1000,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 0,
+        "maxXDmm": 18000,
+        "minYDmm": 0,
+        "maxYDmm": 1000,
+        "minZDmm": 200,
+        "maxZDmm": 380
+      }
+    },
+    {
+      "id": "PLINTH_REAR",
+      "role": "PLINTH_REAR_RAIL",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 18000,
+        "widthDmm": 1000,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 0,
+        "maxXDmm": 18000,
+        "minYDmm": 0,
+        "maxYDmm": 1000,
+        "minZDmm": 5820,
+        "maxZDmm": 6000
+      }
+    },
+    {
+      "id": "PLINTH_SIDE_L",
+      "role": "PLINTH_SIDE_RETURN_LEFT",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 5440,
+        "widthDmm": 1000,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 0,
+        "maxXDmm": 180,
+        "minYDmm": 0,
+        "maxYDmm": 1000,
+        "minZDmm": 380,
+        "maxZDmm": 5820
+      }
+    },
+    {
+      "id": "PLINTH_SIDE_R",
+      "role": "PLINTH_SIDE_RETURN_RIGHT",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 5440,
+        "widthDmm": 1000,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 17820,
+        "maxXDmm": 18000,
+        "minYDmm": 0,
+        "maxYDmm": 1000,
+        "minZDmm": 380,
+        "maxZDmm": 5820
+      }
+    },
+    {
+      "id": "PLINTH_CROSS_C",
+      "role": "PLINTH_CROSS_STRETCHER",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 5440,
+        "widthDmm": 1000,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 8910,
+        "maxXDmm": 9090,
+        "minYDmm": 0,
+        "maxYDmm": 1000,
+        "minZDmm": 380,
+        "maxZDmm": 5820
+      }
+    }
+  ],
+  "operations": [
+    {
+      "id": "OP_GRV_SIDE_L",
+      "hostPartId": "CARC_SIDE_L",
+      "type": "BACK_GROOVE",
+      "face": "INNER",
+      "vector": [
+        1,
+        0,
+        0
+      ],
+      "widthDmm": 70,
+      "depthDmm": 70,
+      "status": "APPROVED"
+    },
+    {
+      "id": "OP_GRV_SIDE_R",
+      "hostPartId": "CARC_SIDE_R",
+      "type": "BACK_GROOVE",
+      "face": "INNER",
+      "vector": [
+        -1,
+        0,
+        0
+      ],
+      "widthDmm": 70,
+      "depthDmm": 70,
+      "status": "APPROVED"
+    },
+    {
+      "id": "OP_GRV_TOP",
+      "hostPartId": "CARC_TOP",
+      "type": "BACK_GROOVE",
+      "face": "LOWER",
+      "vector": [
+        0,
+        -1,
+        0
+      ],
+      "widthDmm": 70,
+      "depthDmm": 70,
+      "status": "APPROVED"
+    },
+    {
+      "id": "OP_GRV_BOT",
+      "hostPartId": "CARC_BOT",
+      "type": "BACK_GROOVE",
+      "face": "UPPER",
+      "vector": [
+        0,
+        1,
+        0
+      ],
+      "widthDmm": 70,
+      "depthDmm": 70,
+      "status": "APPROVED"
+    }
+  ],
+  "previews": [
+    {
+      "id": "RAIL_LONG_L1",
+      "kind": "HANGING_RAIL",
+      "status": "PREVIEW_ONLY",
+      "visualConcept": true,
+      "engineeringVerified": false,
+      "manufacturingOutput": false,
+      "sourceComponentId": "rail-long-l1",
+      "sourceComponentType": "HANGING_RAIL_LONG",
+      "tubeType": "OVAL_TUBE_15X30",
+      "tubeTypeResolved": true,
+      "profile": "OVAL",
+      "bayIndex": 0,
+      "minXDmm": 200,
+      "maxXDmm": 8890,
+      "minYDmm": 19065,
+      "maxYDmm": 19215,
+      "minZDmm": 2850,
+      "maxZDmm": 3150,
+      "centerYDmm": 19140,
+      "centerZDmm": 3000,
+      "assumed": {
+        "minorDiamMm": 15,
+        "majorDiamMm": 30,
+        "lengthMm": 869,
+        "endInsetMm": 2,
+        "offsetBelowShelfMm": 100,
+        "centerZRule": "zCarcassFront + floor(dividerDepth/2) — mid carcass depth heuristic",
+        "centerYRule": "shelfBottomFaceY - offsetBelowShelfMm",
+        "finishIntent": "chrome metal preview (independent of melamine materialKey)"
+      },
+      "notes": [
+        "Visual hanging-rail preview for customer layout comprehension.",
+        "Not a PartGraph structural panel; excluded from totalStructuralParts.",
+        "Hardware status: PREVIEW_ONLY.",
+        "Parsed OVAL_TUBE_15X30: minor(vertical)=15mm, major(depth)=30mm."
+      ]
+    },
+    {
+      "id": "RAIL_SHORT_R1",
+      "kind": "HANGING_RAIL",
+      "status": "PREVIEW_ONLY",
+      "visualConcept": true,
+      "engineeringVerified": false,
+      "manufacturingOutput": false,
+      "sourceComponentId": "rail-short-r1",
+      "sourceComponentType": "HANGING_RAIL_SHORT",
+      "tubeType": "OVAL_TUBE_15X30",
+      "tubeTypeResolved": true,
+      "profile": "OVAL",
+      "bayIndex": 1,
+      "minXDmm": 9110,
+      "maxXDmm": 17800,
+      "minYDmm": 19065,
+      "maxYDmm": 19215,
+      "minZDmm": 2850,
+      "maxZDmm": 3150,
+      "centerYDmm": 19140,
+      "centerZDmm": 3000,
+      "assumed": {
+        "minorDiamMm": 15,
+        "majorDiamMm": 30,
+        "lengthMm": 869,
+        "endInsetMm": 2,
+        "offsetBelowShelfMm": 100,
+        "centerZRule": "zCarcassFront + floor(dividerDepth/2) — mid carcass depth heuristic",
+        "centerYRule": "shelfBottomFaceY - offsetBelowShelfMm",
+        "finishIntent": "chrome metal preview (independent of melamine materialKey)"
+      },
+      "notes": [
+        "Visual hanging-rail preview for customer layout comprehension.",
+        "Not a PartGraph structural panel; excluded from totalStructuralParts.",
+        "Hardware status: PREVIEW_ONLY.",
+        "Parsed OVAL_TUBE_15X30: minor(vertical)=15mm, major(depth)=30mm."
+      ]
+    }
+  ],
+  "summary": {
+    "totalStructuralParts": 19,
+    "totalPreviewParts": 2,
+    "totalOperations": 4,
+    "approvedOperations": 4,
+    "blockedOperations": 0,
+    "envelope": {
+      "widthDmm": 18000,
+      "heightDmm": 24000,
+      "depthDmm": 6000
+    }
+  },
+  "canonical": "{\n  \"partGraphVersion\": \"partgraph/0.1\",\n  \"sourceSpecId\": \"furnispec-golden-wardrobe-01\",\n  \"sourceRevision\": 1,\n  \"unitScale\": \"deci-mm\",\n  \"qualificationStatus\": \"WORKSHOP_REVIEW_NOT_CNC_QUALIFIED\",\n  \"parts\": [\n    {\n      \"id\": \"CARC_TOP\",\n      \"role\": \"TOP_PANEL\",\n      \"quantity\": 1,\n      \"materialCode\": \"MEL_WHITE_18\",\n      \"geometryType\": \"RECTANGULAR_PANEL\",\n      \"finished\": {\n        \"lengthDmm\": 18000,\n        \"widthDmm\": 5800,\n        \"thicknessDmm\": 180\n      },\n      \"raw\": {\n        \"lengthDmm\": 17980,\n        \"widthDmm\": 5790,\n        \"thicknessDmm\": 180\n      },\n      \"placement\": {\n        \"minXDmm\": 0,\n        \"maxXDmm\": 18000,\n        \"minYDmm\": 23820,\n        \"maxYDmm\": 24000,\n        \"minZDmm\": 200,\n        \"maxZDmm\": 6000\n      },\n      \"orientation\": \"HORIZONTAL_XZ\",\n      \"grainDirection\": \"LENGTH\",\n      \"edges\": {\n        \"LENGTH_EDGE_1\": 10,\n        \"LENGTH_EDGE_2\": 0,\n        \"WIDTH_EDGE_1\": 10,\n        \"WIDTH_EDGE_2\": 10\n      },\n      \"status\": \"APPROVED\",\n      \"sourceRuleIds\": [\n        \"WR-001\",\n        \"WR-003\",\n        \"WR-013\"\n      ]\n    },\n    {\n      \"id\": \"CARC_BOT\",\n      \"role\": \"BOTTOM_PANEL\",\n      \"quantity\": 1,\n      \"materialCode\": \"MEL_WHITE_18\",\n      \"geometryType\": \"RECTANGULAR_PANEL\",\n      \"finished\": {\n        \"lengthDmm\": 18000,\n        \"widthDmm\": 5800,\n        \"thicknessDmm\": 180\n      },\n      \"raw\": {\n        \"lengthDmm\": 17980,\n        \"widthDmm\": 5790,\n        \"thicknessDmm\": 180\n      },\n      \"placement\": {\n        \"minXDmm\": 0,\n        \"maxXDmm\": 18000,\n        \"minYDmm\": 1000,\n        \"maxYDmm\": 1180,\n        \"minZDmm\": 200,\n        \"maxZDmm\": 6000\n      },\n      \"orientation\": \"HORIZONTAL_XZ\",\n      \"grainDirection\": \"LENGTH\",\n      \"edges\": {\n        \"LENGTH_EDGE_1\": 10,\n        \"LENGTH_EDGE_2\": 0,\n        \"WIDTH_EDGE_1\": 10,\n        \"WIDTH_EDGE_2\": 10\n      },\n      \"status\": \"APPROVED\",\n      \"sourceRuleIds\": [\n        \"WR-001\",\n        \"WR-003\",\n        \"WR-013\"\n      ]\n    },\n    {\n      \"id\": \"CARC_SIDE_L\",\n      \"role\": \"SIDE_PANEL_LEFT\",\n      \"quantity\": 1,\n      \"materialCode\": \"MEL_WHITE_18\",\n      \"geometryType\": \"RECTANGULAR_PANEL\",\n      \"finished\": {\n        \"lengthDmm\": 22640,\n        \"widthDmm\": 5800,\n        \"thicknessDmm\": 180\n      },\n      \"raw\": {\n        \"lengthDmm\": 22640,\n        \"widthDmm\": 5790,\n        \"thicknessDmm\": 180\n      },\n      \"placement\": {\n        \"minXDmm\": 0,\n        \"maxXDmm\": 180,\n        \"minYDmm\": 1180,\n        \"maxYDmm\": 23820,\n        \"minZDmm\": 200,\n        \"maxZDmm\": 6000\n      },\n      \"orientation\": \"VERTICAL_YZ\",\n      \"grainDirection\": \"LENGTH\",\n      \"edges\": {\n        \"LENGTH_EDGE_1\": 10,\n        \"LENGTH_EDGE_2\": 0,\n        \"WIDTH_EDGE_1\": 0,\n        \"WIDTH_EDGE_2\": 0\n      },\n      \"status\": \"APPROVED\",\n      \"sourceRuleIds\": [\n        \"WR-001\",\n        \"WR-003\",\n        \"WR-013\"\n      ]\n    },\n    {\n      \"id\": \"CARC_SIDE_R\",\n      \"role\": \"SIDE_PANEL_RIGHT\",\n      \"quantity\": 1,\n      \"materialCode\": \"MEL_WHITE_18\",\n      \"geometryType\": \"RECTANGULAR_PANEL\",\n      \"finished\": {\n        \"lengthDmm\": 22640,\n        \"widthDmm\": 5800,\n        \"thicknessDmm\": 180\n      },\n      \"raw\": {\n        \"lengthDmm\": 22640,\n        \"widthDmm\": 5790,\n        \"thicknessDmm\": 180\n      },\n      \"placement\": {\n        \"minXDmm\": 17820,\n        \"maxXDmm\": 18000,\n        \"minYDmm\": 1180,\n        \"maxYDmm\": 23820,\n        \"minZDmm\": 200,\n        \"maxZDmm\": 6000\n      },\n      \"orientation\": \"VERTICAL_YZ\",\n      \"grainDirection\": \"LENGTH\",\n      \"edges\": {\n        \"LENGTH_EDGE_1\": 10,\n        \"LENGTH_EDGE_2\": 0,\n        \"WIDTH_EDGE_1\": 0,\n        \"WIDTH_EDGE_2\": 0\n      },\n      \"status\": \"APPROVED\",\n      \"sourceRuleIds\": [\n        \"WR-001\",\n        \"WR-003\",\n        \"WR-013\"\n      ]\n    },\n    {\n      \"id\": \"CARC_DIV_01\",\n      \"role\": \"DIVIDER_PANEL\",\n      \"quantity\": 1,\n      \"materialCode\": \"MEL_WHITE_18\",\n      \"geometryType\": \"RECTANGULAR_PANEL\",\n      \"finished\": {\n        \"lengthDmm\": 22640,\n        \"widthDmm\": 5600,\n        \"thicknessDmm\": 180\n      },\n      \"raw\": {\n        \"lengthDmm\": 22640,\n        \"widthDmm\": 5590,\n        \"thicknessDmm\": 180\n      },\n      \"placement\": {\n        \"minXDmm\": 8910,\n        \"maxXDmm\": 9090,\n        \"minYDmm\": 1180,\n        \"maxYDmm\": 23820,\n        \"minZDmm\": 200,\n        \"maxZDmm\": 5800\n      },\n      \"orientation\": \"VERTICAL_YZ\",\n      \"grainDirection\": \"LENGTH\",\n      \"edges\": {\n        \"LENGTH_EDGE_1\": 10,\n        \"LENGTH_EDGE_2\": 0,\n        \"WIDTH_EDGE_1\": 0,\n        \"WIDTH_EDGE_2\": 0\n      },\n      \"status\": \"APPROVED\",\n      \"sourceRuleIds\": [\n        \"WR-002\",\n        \"WR-003\",\n        \"WR-013\"\n      ]\n    },\n    {\n      \"id\": \"SHELF_FIX_L1\",\n      \"role\": \"FIXED_SHELF\",\n      \"quantity\": 1,\n      \"materialCode\": \"MEL_WHITE_18\",\n      \"geometryType\": \"RECTANGULAR_PANEL\",\n      \"finished\": {\n        \"lengthDmm\": 8730,\n        \"widthDmm\": 5600,\n        \"thicknessDmm\": 180\n      },\n      \"raw\": {\n        \"lengthDmm\": 8730,\n        \"widthDmm\": 5590,\n        \"thicknessDmm\": 180\n      },\n      \"placement\": {\n        \"minXDmm\": 180,\n        \"maxXDmm\": 8910,\n        \"minYDmm\": 20140,\n        \"maxYDmm\": 20320,\n        \"minZDmm\": 200,\n        \"maxZDmm\": 5800\n      },\n      \"orientation\": \"HORIZONTAL_XZ\",\n      \"grainDirection\": \"LENGTH\",\n      \"edges\": {\n        \"LENGTH_EDGE_1\": 10,\n        \"LENGTH_EDGE_2\": 0,\n        \"WIDTH_EDGE_1\": 0,\n        \"WIDTH_EDGE_2\": 0\n      },\n      \"status\": \"APPROVED\",\n      \"sourceRuleIds\": [\n        \"WR-003\",\n        \"WR-008\",\n        \"WR-013\"\n      ]\n    },\n    {\n      \"id\": \"SHELF_FIX_R1\",\n      \"role\": \"FIXED_SHELF\",\n      \"quantity\": 1,\n      \"materialCode\": \"MEL_WHITE_18\",\n      \"geometryType\": \"RECTANGULAR_PANEL\",\n      \"finished\": {\n        \"lengthDmm\": 8730,\n        \"widthDmm\": 5600,\n        \"thicknessDmm\": 180\n      },\n      \"raw\": {\n        \"lengthDmm\": 8730,\n        \"widthDmm\": 5590,\n        \"thicknessDmm\": 180\n      },\n      \"placement\": {\n        \"minXDmm\": 9090,\n        \"maxXDmm\": 17820,\n        \"minYDmm\": 20140,\n        \"maxYDmm\": 20320,\n        \"minZDmm\": 200,\n        \"maxZDmm\": 5800\n      },\n      \"orientation\": \"HORIZONTAL_XZ\",\n      \"grainDirection\": \"LENGTH\",\n      \"edges\": {\n        \"LENGTH_EDGE_1\": 10,\n        \"LENGTH_EDGE_2\": 0,\n        \"WIDTH_EDGE_1\": 0,\n        \"WIDTH_EDGE_2\": 0\n      },\n      \"status\": \"APPROVED\",\n      \"sourceRuleIds\": [\n        \"WR-003\",\n        \"WR-008\",\n        \"WR-013\"\n      ]\n    },\n    {\n      \"id\": \"SHELF_ADJ_R2\",\n      \"role\": \"ADJUSTABLE_SHELF\",\n      \"quantity\": 1,\n      \"materialCode\": \"MEL_WHITE_18\",\n      \"geometryType\": \"RECTANGULAR_PANEL\",\n      \"finished\": {\n        \"lengthDmm\": 8710,\n        \"widthDmm\": 5500,\n        \"thicknessDmm\": 180\n      },\n      \"raw\": {\n        \"lengthDmm\": 8690,\n        \"widthDmm\": 5490,\n        \"thicknessDmm\": 180\n      },\n      \"placement\": {\n        \"minXDmm\": 9100,\n        \"maxXDmm\": 17810,\n        \"minYDmm\": 6280,\n        \"maxYDmm\": 6460,\n        \"minZDmm\": 250,\n        \"maxZDmm\": 5750\n      },\n      \"orientation\": \"HORIZONTAL_XZ\",\n      \"grainDirection\": \"LENGTH\",\n      \"edges\": {\n        \"LENGTH_EDGE_1\": 10,\n        \"LENGTH_EDGE_2\": 0,\n        \"WIDTH_EDGE_1\": 10,\n        \"WIDTH_EDGE_2\": 10\n      },\n      \"status\": \"APPROVED\",\n      \"sourceRuleIds\": [\n        \"WR-003\",\n        \"WR-008\",\n        \"WR-013\"\n      ]\n    },\n    {\n      \"id\": \"SHELF_ADJ_R3\",\n      \"role\": \"ADJUSTABLE_SHELF\",\n      \"quantity\": 1,\n      \"materialCode\": \"MEL_WHITE_18\",\n      \"geometryType\": \"RECTANGULAR_PANEL\",\n      \"finished\": {\n        \"lengthDmm\": 8710,\n        \"widthDmm\": 5500,\n        \"thicknessDmm\": 180\n      },\n      \"raw\": {\n        \"lengthDmm\": 8690,\n        \"widthDmm\": 5490,\n        \"thicknessDmm\": 180\n      },\n      \"placement\": {\n        \"minXDmm\": 9100,\n        \"maxXDmm\": 17810,\n        \"minYDmm\": 9960,\n        \"maxYDmm\": 10140,\n        \"minZDmm\": 250,\n        \"maxZDmm\": 5750\n      },\n      \"orientation\": \"HORIZONTAL_XZ\",\n      \"grainDirection\": \"LENGTH\",\n      \"edges\": {\n        \"LENGTH_EDGE_1\": 10,\n        \"LENGTH_EDGE_2\": 0,\n        \"WIDTH_EDGE_1\": 10,\n        \"WIDTH_EDGE_2\": 10\n      },\n      \"status\": \"APPROVED\",\n      \"sourceRuleIds\": [\n        \"WR-003\",\n        \"WR-008\",\n        \"WR-013\"\n      ]\n    },\n    {\n      \"id\": \"BACK_PANEL_01\",\n      \"role\": \"BACK_PANEL\",\n      \"quantity\": 1,\n      \"materialCode\": \"HDF_WHITE_6\",\n      \"geometryType\": \"RECTANGULAR_PANEL\",\n      \"finished\": {\n        \"lengthDmm\": 22760,\n        \"widthDmm\": 17760,\n        \"thicknessDmm\": 60\n      },\n      \"raw\": {\n        \"lengthDmm\": 22760,\n        \"widthDmm\": 17760,\n        \"thicknessDmm\": 60\n      },\n      \"placement\": {\n        \"minXDmm\": 120,\n        \"maxXDmm\": 17880,\n        \"minYDmm\": 1120,\n        \"maxYDmm\": 23880,\n        \"minZDmm\": 5865,\n        \"maxZDmm\": 5925\n      },\n      \"orientation\": \"VERTICAL_XY\",\n      \"grainDirection\": \"LENGTH\",\n      \"edges\": {\n        \"LENGTH_EDGE_1\": 0,\n        \"LENGTH_EDGE_2\": 0,\n        \"WIDTH_EDGE_1\": 0,\n        \"WIDTH_EDGE_2\": 0\n      },\n      \"status\": \"APPROVED\",\n      \"sourceRuleIds\": [\n        \"WR-003\",\n        \"WR-004\",\n        \"WR-005\",\n        \"WR-006\"\n      ]\n    },\n    {\n      \"id\": \"DOOR_01\",\n      \"role\": \"DOOR_PANEL\",\n      \"quantity\": 1,\n      \"materialCode\": \"MEL_WHITE_18\",\n      \"geometryType\": \"RECTANGULAR_PANEL\",\n      \"finished\": {\n        \"lengthDmm\": 22960,\n        \"widthDmm\": 4475,\n        \"thicknessDmm\": 180\n      },\n      \"raw\": {\n        \"lengthDmm\": 22940,\n        \"widthDmm\": 4455,\n        \"thicknessDmm\": 180\n      },\n      \"placement\": {\n        \"minXDmm\": 20,\n        \"maxXDmm\": 4495,\n        \"minYDmm\": 1020,\n        \"maxYDmm\": 23980,\n        \"minZDmm\": 0,\n        \"maxZDmm\": 180\n      },\n      \"orientation\": \"VERTICAL_XY\",\n      \"grainDirection\": \"LENGTH\",\n      \"edges\": {\n        \"LENGTH_EDGE_1\": 10,\n        \"LENGTH_EDGE_2\": 10,\n        \"WIDTH_EDGE_1\": 10,\n        \"WIDTH_EDGE_2\": 10\n      },\n      \"status\": \"APPROVED\",\n      \"sourceRuleIds\": [\n        \"WR-003\",\n        \"WR-007\",\n        \"WR-008\",\n        \"WR-013\"\n      ]\n    },\n    {\n      \"id\": \"DOOR_02\",\n      \"role\": \"DOOR_PANEL\",\n      \"quantity\": 1,\n      \"materialCode\": \"MEL_WHITE_18\",\n      \"geometryType\": \"RECTANGULAR_PANEL\",\n      \"finished\": {\n        \"lengthDmm\": 22960,\n        \"widthDmm\": 4475,\n        \"thicknessDmm\": 180\n      },\n      \"raw\": {\n        \"lengthDmm\": 22940,\n        \"widthDmm\": 4455,\n        \"thicknessDmm\": 180\n      },\n      \"placement\": {\n        \"minXDmm\": 4515,\n        \"maxXDmm\": 8990,\n        \"minYDmm\": 1020,\n        \"maxYDmm\": 23980,\n        \"minZDmm\": 0,\n        \"maxZDmm\": 180\n      },\n      \"orientation\": \"VERTICAL_XY\",\n      \"grainDirection\": \"LENGTH\",\n      \"edges\": {\n        \"LENGTH_EDGE_1\": 10,\n        \"LENGTH_EDGE_2\": 10,\n        \"WIDTH_EDGE_1\": 10,\n        \"WIDTH_EDGE_2\": 10\n      },\n      \"status\": \"APPROVED\",\n      \"sourceRuleIds\": [\n        \"WR-003\",\n        \"WR-007\",\n        \"WR-008\",\n        \"WR-013\"\n      ]\n    },\n    {\n      \"id\": \"DOOR_03\",\n      \"role\": \"DOOR_PANEL\",\n      \"quantity\": 1,\n      \"materialCode\": \"MEL_WHITE_18\",\n      \"geometryType\": \"RECTANGULAR_PANEL\",\n      \"finished\": {\n        \"lengthDmm\": 22960,\n        \"widthDmm\": 4475,\n        \"thicknessDmm\": 180\n      },\n      \"raw\": {\n        \"lengthDmm\": 22940,\n        \"widthDmm\": 4455,\n        \"thicknessDmm\": 180\n      },\n      \"placement\": {\n        \"minXDmm\": 9010,\n        \"maxXDmm\": 13485,\n        \"minYDmm\": 1020,\n        \"maxYDmm\": 23980,\n        \"minZDmm\": 0,\n        \"maxZDmm\": 180\n      },\n      \"orientation\": \"VERTICAL_XY\",\n      \"grainDirection\": \"LENGTH\",\n      \"edges\": {\n        \"LENGTH_EDGE_1\": 10,\n        \"LENGTH_EDGE_2\": 10,\n        \"WIDTH_EDGE_1\": 10,\n        \"WIDTH_EDGE_2\": 10\n      },\n      \"status\": \"APPROVED\",\n      \"sourceRuleIds\": [\n        \"WR-003\",\n        \"WR-007\",\n        \"WR-008\",\n        \"WR-013\"\n      ]\n    },\n    {\n      \"id\": \"DOOR_04\",\n      \"role\": \"DOOR_PANEL\",\n      \"quantity\": 1,\n      \"materialCode\": \"MEL_WHITE_18\",\n      \"geometryType\": \"RECTANGULAR_PANEL\",\n      \"finished\": {\n        \"lengthDmm\": 22960,\n        \"widthDmm\": 4475,\n        \"thicknessDmm\": 180\n      },\n      \"raw\": {\n        \"lengthDmm\": 22940,\n        \"widthDmm\": 4455,\n        \"thicknessDmm\": 180\n      },\n      \"placement\": {\n        \"minXDmm\": 13505,\n        \"maxXDmm\": 17980,\n        \"minYDmm\": 1020,\n        \"maxYDmm\": 23980,\n        \"minZDmm\": 0,\n        \"maxZDmm\": 180\n      },\n      \"orientation\": \"VERTICAL_XY\",\n      \"grainDirection\": \"LENGTH\",\n      \"edges\": {\n        \"LENGTH_EDGE_1\": 10,\n        \"LENGTH_EDGE_2\": 10,\n        \"WIDTH_EDGE_1\": 10,\n        \"WIDTH_EDGE_2\": 10\n      },\n      \"status\": \"APPROVED\",\n      \"sourceRuleIds\": [\n        \"WR-003\",\n        \"WR-007\",\n        \"WR-008\",\n        \"WR-013\"\n      ]\n    },\n    {\n      \"id\": \"PLINTH_FRONT\",\n      \"role\": \"PLINTH_FRONT_FASCIA\",\n      \"quantity\": 1,\n      \"materialCode\": \"MEL_WHITE_18\",\n      \"geometryType\": \"RECTANGULAR_PANEL\",\n      \"finished\": {\n        \"lengthDmm\": 18000,\n        \"widthDmm\": 1000,\n        \"thicknessDmm\": 180\n      },\n      \"raw\": {\n        \"lengthDmm\": 17980,\n        \"widthDmm\": 990,\n        \"thicknessDmm\": 180\n      },\n      \"placement\": {\n        \"minXDmm\": 0,\n        \"maxXDmm\": 18000,\n        \"minYDmm\": 0,\n        \"maxYDmm\": 1000,\n        \"minZDmm\": 200,\n        \"maxZDmm\": 380\n      },\n      \"orientation\": \"VERTICAL_XY\",\n      \"grainDirection\": \"LENGTH\",\n      \"edges\": {\n        \"LENGTH_EDGE_1\": 10,\n        \"LENGTH_EDGE_2\": 0,\n        \"WIDTH_EDGE_1\": 10,\n        \"WIDTH_EDGE_2\": 10\n      },\n      \"status\": \"APPROVED\",\n      \"sourceRuleIds\": [\n        \"WR-005\",\n        \"WR-006\",\n        \"WR-007\",\n        \"WR-013\"\n      ]\n    },\n    {\n      \"id\": \"PLINTH_REAR\",\n      \"role\": \"PLINTH_REAR_RAIL\",\n      \"quantity\": 1,\n      \"materialCode\": \"MEL_WHITE_18\",\n      \"geometryType\": \"RECTANGULAR_PANEL\",\n      \"finished\": {\n        \"lengthDmm\": 18000,\n        \"widthDmm\": 1000,\n        \"thicknessDmm\": 180\n      },\n      \"raw\": {\n        \"lengthDmm\": 18000,\n        \"widthDmm\": 1000,\n        \"thicknessDmm\": 180\n      },\n      \"placement\": {\n        \"minXDmm\": 0,\n        \"maxXDmm\": 18000,\n        \"minYDmm\": 0,\n        \"maxYDmm\": 1000,\n        \"minZDmm\": 5820,\n        \"maxZDmm\": 6000\n      },\n      \"orientation\": \"VERTICAL_XY\",\n      \"grainDirection\": \"LENGTH\",\n      \"edges\": {\n        \"LENGTH_EDGE_1\": 0,\n        \"LENGTH_EDGE_2\": 0,\n        \"WIDTH_EDGE_1\": 0,\n        \"WIDTH_EDGE_2\": 0\n      },\n      \"status\": \"APPROVED\",\n      \"sourceRuleIds\": [\n        \"WR-005\",\n        \"WR-007\"\n      ]\n    },\n    {\n      \"id\": \"PLINTH_SIDE_L\",\n      \"role\": \"PLINTH_SIDE_RETURN_LEFT\",\n      \"quantity\": 1,\n      \"materialCode\": \"MEL_WHITE_18\",\n      \"geometryType\": \"RECTANGULAR_PANEL\",\n      \"finished\": {\n        \"lengthDmm\": 5440,\n        \"widthDmm\": 1000,\n        \"thicknessDmm\": 180\n      },\n      \"raw\": {\n        \"lengthDmm\": 5440,\n        \"widthDmm\": 990,\n        \"thicknessDmm\": 180\n      },\n      \"placement\": {\n        \"minXDmm\": 0,\n        \"maxXDmm\": 180,\n        \"minYDmm\": 0,\n        \"maxYDmm\": 1000,\n        \"minZDmm\": 380,\n        \"maxZDmm\": 5820\n      },\n      \"orientation\": \"VERTICAL_YZ\",\n      \"grainDirection\": \"LENGTH\",\n      \"edges\": {\n        \"LENGTH_EDGE_1\": 10,\n        \"LENGTH_EDGE_2\": 0,\n        \"WIDTH_EDGE_1\": 0,\n        \"WIDTH_EDGE_2\": 0\n      },\n      \"status\": \"APPROVED\",\n      \"sourceRuleIds\": [\n        \"WR-005\",\n        \"WR-006\",\n        \"WR-007\",\n        \"WR-013\"\n      ]\n    },\n    {\n      \"id\": \"PLINTH_SIDE_R\",\n      \"role\": \"PLINTH_SIDE_RETURN_RIGHT\",\n      \"quantity\": 1,\n      \"materialCode\": \"MEL_WHITE_18\",\n      \"geometryType\": \"RECTANGULAR_PANEL\",\n      \"finished\": {\n        \"lengthDmm\": 5440,\n        \"widthDmm\": 1000,\n        \"thicknessDmm\": 180\n      },\n      \"raw\": {\n        \"lengthDmm\": 5440,\n        \"widthDmm\": 990,\n        \"thicknessDmm\": 180\n      },\n      \"placement\": {\n        \"minXDmm\": 17820,\n        \"maxXDmm\": 18000,\n        \"minYDmm\": 0,\n        \"maxYDmm\": 1000,\n        \"minZDmm\": 380,\n        \"maxZDmm\": 5820\n      },\n      \"orientation\": \"VERTICAL_YZ\",\n      \"grainDirection\": \"LENGTH\",\n      \"edges\": {\n        \"LENGTH_EDGE_1\": 10,\n        \"LENGTH_EDGE_2\": 0,\n        \"WIDTH_EDGE_1\": 0,\n        \"WIDTH_EDGE_2\": 0\n      },\n      \"status\": \"APPROVED\",\n      \"sourceRuleIds\": [\n        \"WR-005\",\n        \"WR-006\",\n        \"WR-007\",\n        \"WR-013\"\n      ]\n    },\n    {\n      \"id\": \"PLINTH_CROSS_C\",\n      \"role\": \"PLINTH_CROSS_STRETCHER\",\n      \"quantity\": 1,\n      \"materialCode\": \"MEL_WHITE_18\",\n      \"geometryType\": \"RECTANGULAR_PANEL\",\n      \"finished\": {\n        \"lengthDmm\": 5440,\n        \"widthDmm\": 1000,\n        \"thicknessDmm\": 180\n      },\n      \"raw\": {\n        \"lengthDmm\": 5440,\n        \"widthDmm\": 1000,\n        \"thicknessDmm\": 180\n      },\n      \"placement\": {\n        \"minXDmm\": 8910,\n        \"maxXDmm\": 9090,\n        \"minYDmm\": 0,\n        \"maxYDmm\": 1000,\n        \"minZDmm\": 380,\n        \"maxZDmm\": 5820\n      },\n      \"orientation\": \"VERTICAL_YZ\",\n      \"grainDirection\": \"LENGTH\",\n      \"edges\": {\n        \"LENGTH_EDGE_1\": 0,\n        \"LENGTH_EDGE_2\": 0,\n        \"WIDTH_EDGE_1\": 0,\n        \"WIDTH_EDGE_2\": 0\n      },\n      \"status\": \"APPROVED\",\n      \"sourceRuleIds\": [\n        \"WR-005\",\n        \"WR-007\"\n      ]\n    }\n  ],\n  \"previews\": [\n    {\n      \"id\": \"RAIL_LONG_L1\",\n      \"kind\": \"HANGING_RAIL\",\n      \"status\": \"PREVIEW_ONLY\",\n      \"visualConcept\": true,\n      \"engineeringVerified\": false,\n      \"manufacturingOutput\": false,\n      \"sourceComponentId\": \"rail-long-l1\",\n      \"sourceComponentType\": \"HANGING_RAIL_LONG\",\n      \"tubeType\": \"OVAL_TUBE_15X30\",\n      \"tubeTypeResolved\": true,\n      \"profile\": \"OVAL\",\n      \"bayIndex\": 0,\n      \"minXDmm\": 200,\n      \"maxXDmm\": 8890,\n      \"minYDmm\": 19065,\n      \"maxYDmm\": 19215,\n      \"minZDmm\": 2850,\n      \"maxZDmm\": 3150,\n      \"centerYDmm\": 19140,\n      \"centerZDmm\": 3000,\n      \"assumed\": {\n        \"minorDiamMm\": 15,\n        \"majorDiamMm\": 30,\n        \"lengthMm\": 869,\n        \"endInsetMm\": 2,\n        \"offsetBelowShelfMm\": 100,\n        \"centerZRule\": \"zCarcassFront + floor(dividerDepth/2) — mid carcass depth heuristic\",\n        \"centerYRule\": \"shelfBottomFaceY - offsetBelowShelfMm\",\n        \"finishIntent\": \"chrome metal preview (independent of melamine materialKey)\"\n      },\n      \"notes\": [\n        \"Visual hanging-rail preview for customer layout comprehension.\",\n        \"Not a PartGraph structural panel; excluded from totalStructuralParts.\",\n        \"Hardware status: PREVIEW_ONLY.\",\n        \"Parsed OVAL_TUBE_15X30: minor(vertical)=15mm, major(depth)=30mm.\"\n      ]\n    },\n    {\n      \"id\": \"RAIL_SHORT_R1\",\n      \"kind\": \"HANGING_RAIL\",\n      \"status\": \"PREVIEW_ONLY\",\n      \"visualConcept\": true,\n      \"engineeringVerified\": false,\n      \"manufacturingOutput\": false,\n      \"sourceComponentId\": \"rail-short-r1\",\n      \"sourceComponentType\": \"HANGING_RAIL_SHORT\",\n      \"tubeType\": \"OVAL_TUBE_15X30\",\n      \"tubeTypeResolved\": true,\n      \"profile\": \"OVAL\",\n      \"bayIndex\": 1,\n      \"minXDmm\": 9110,\n      \"maxXDmm\": 17800,\n      \"minYDmm\": 19065,\n      \"maxYDmm\": 19215,\n      \"minZDmm\": 2850,\n      \"maxZDmm\": 3150,\n      \"centerYDmm\": 19140,\n      \"centerZDmm\": 3000,\n      \"assumed\": {\n        \"minorDiamMm\": 15,\n        \"majorDiamMm\": 30,\n        \"lengthMm\": 869,\n        \"endInsetMm\": 2,\n        \"offsetBelowShelfMm\": 100,\n        \"centerZRule\": \"zCarcassFront + floor(dividerDepth/2) — mid carcass depth heuristic\",\n        \"centerYRule\": \"shelfBottomFaceY - offsetBelowShelfMm\",\n        \"finishIntent\": \"chrome metal preview (independent of melamine materialKey)\"\n      },\n      \"notes\": [\n        \"Visual hanging-rail preview for customer layout comprehension.\",\n        \"Not a PartGraph structural panel; excluded from totalStructuralParts.\",\n        \"Hardware status: PREVIEW_ONLY.\",\n        \"Parsed OVAL_TUBE_15X30: minor(vertical)=15mm, major(depth)=30mm.\"\n      ]\n    }\n  ],\n  \"operations\": [\n    {\n      \"id\": \"OP_GRV_SIDE_L\",\n      \"hostPartId\": \"CARC_SIDE_L\",\n      \"type\": \"BACK_GROOVE\",\n      \"face\": \"INNER\",\n      \"vector\": [\n        1,\n        0,\n        0\n      ],\n      \"widthDmm\": 70,\n      \"depthDmm\": 70,\n      \"status\": \"APPROVED\"\n    },\n    {\n      \"id\": \"OP_GRV_SIDE_R\",\n      \"hostPartId\": \"CARC_SIDE_R\",\n      \"type\": \"BACK_GROOVE\",\n      \"face\": \"INNER\",\n      \"vector\": [\n        -1,\n        0,\n        0\n      ],\n      \"widthDmm\": 70,\n      \"depthDmm\": 70,\n      \"status\": \"APPROVED\"\n    },\n    {\n      \"id\": \"OP_GRV_TOP\",\n      \"hostPartId\": \"CARC_TOP\",\n      \"type\": \"BACK_GROOVE\",\n      \"face\": \"LOWER\",\n      \"vector\": [\n        0,\n        -1,\n        0\n      ],\n      \"widthDmm\": 70,\n      \"depthDmm\": 70,\n      \"status\": \"APPROVED\"\n    },\n    {\n      \"id\": \"OP_GRV_BOT\",\n      \"hostPartId\": \"CARC_BOT\",\n      \"type\": \"BACK_GROOVE\",\n      \"face\": \"UPPER\",\n      \"vector\": [\n        0,\n        1,\n        0\n      ],\n      \"widthDmm\": 70,\n      \"depthDmm\": 70,\n      \"status\": \"APPROVED\"\n    }\n  ],\n  \"warnings\": [],\n  \"summary\": {\n    \"totalStructuralParts\": 19,\n    \"totalPreviewParts\": 2,\n    \"totalOperations\": 4,\n    \"approvedOperations\": 4,\n    \"blockedOperations\": 0,\n    \"envelope\": {\n      \"widthDmm\": 18000,\n      \"heightDmm\": 24000,\n      \"depthDmm\": 6000\n    }\n  }\n}"
+}

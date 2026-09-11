@@ -1,0 +1,15 @@
+{
+  "rails": [
+    {
+      "name": "preview_RAIL_LONG_L1",
+      "color": 12633806,
+      "finishIntent": "chrome metal preview (independent of melamine materialKey)"
+    },
+    {
+      "name": "preview_RAIL_SHORT_R1",
+      "color": 12633806,
+      "finishIntent": "chrome metal preview (independent of melamine materialKey)"
+    }
+  ],
+  "parametricMat": "walnut"
+}
