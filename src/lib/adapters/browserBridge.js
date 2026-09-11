@@ -106,6 +106,7 @@ export function updateParametricMaterial(builder, matKey) {
     materials.CARCASS.needsUpdate = true;
   }
 
+  // EXP-01: materials.HANGING_RAIL (preview chrome) intentionally NOT updated — rails keep metal finish.
   if (materials.DOOR) {
     materials.DOOR.color.setHex(color);
     materials.DOOR.roughness = Math.max(0.25, rough * 0.9);
