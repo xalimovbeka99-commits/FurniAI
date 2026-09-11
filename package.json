@@ -22,7 +22,8 @@
     "demo:viewer-bridge": "node scripts/demo-viewer-bridge.mjs",
     "demo:ai-wardrobe": "node scripts/demo-ai-wardrobe.mjs",
     "verify:live-designer": "node scripts/verify-live-designer.mjs",
-    "dev:api": "node scripts/dev-api-server.mjs"
+    "dev:api": "node scripts/dev-api-server.mjs",
+    "test:browser:f1": "playwright test tests/browser/f1-journey.spec.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.28.0",

@@ -1,1 +1,1 @@
-FAIL (journey step): Undo control not customer-visible on golden-parametric without AI revision stack. Dom present=true. Requires Antigravity: AI edit → visible Undo → restore on this SHA.
+PASS (local parser path): Undo visible after edit and restored width/revision. Live-model Undo remains UNVERIFIED without API key.
