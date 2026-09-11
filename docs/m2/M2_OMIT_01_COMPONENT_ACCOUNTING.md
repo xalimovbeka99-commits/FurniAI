@@ -85,6 +85,54 @@ at the same height. **The alternative is offered, never applied**
 Lifting this is the M2 drawer slice and needs a ruling on the runner family
 first.
 
+## A diagnostic is not a fulfilment
+
+The ledger makes an unbuildable component **visible** in the PartGraph. That is
+where the first version stopped, and stopping there is not enough: a PartGraph
+carrying an `UNSUPPORTED` outcome is *valid*, and handing it to a customer as
+their new design would ship a wardrobe silently missing the part they asked
+for, with the explanation sitting in a field the browser never reads.
+
+`pipeline.js` therefore runs `unrepresentableComponents(partGraph)` at every
+path that turns a spec into a customer-visible design — `previewDraftWardrobe`
+and `approveAndPreview`, and through them `applyConversationalEdit`. If
+anything is unrepresentable:
+
+- the design is **not** replaced (`spec` and `partGraph` come back `null`),
+- the revision is **not** advanced,
+- the suggested alternative is **not** applied, and
+- the caller gets `unsupported[]` plus an ordinary-language explanation.
+
+The transport maps that to `RESULT_KIND.UNSUPPORTED`, which `index.html`
+already renders with the reason and the offered alternative — a different
+branch from `REJECTED`, which shows only a bare error.
+
+An approval cannot override this. `approveAndPreview` refuses an approved spec
+containing an unbuildable component, because an approval cannot make a
+component buildable.
+
+## Requests answered before a model is involved
+
+`componentRequests.js` recognises unsupported component requests at parse time.
+"Add drawers" — the likeliest unsupported request a wardrobe customer will
+type — previously matched no branch, fell through to the model, and with no
+provider reachable came back as *"the designer is not available right now"*: a
+hard capability limit reported as a transient failure, telling the customer to
+retry something that will never work.
+
+For anything FurniSpec knows as a component type, the wording and the offered
+alternative are read from `COMPONENT_REPRESENTATION_POLICY` — the same source
+the kernel ledger uses — so the parser and the kernel cannot give different
+explanations for the same limitation. A test asserts they are identical.
+
+**Current exposure is latent, not live.** No customer path can put a
+`DRAWER_BANK` into a spec today: `assembleFurniSpec` emits only shelves and
+rails and throws on an unknown bay layout. The kernel-side guard is proven
+through `approveAndPreview`, which accepts an externally supplied spec and is
+the strictest boundary in the system. The gap opens the moment a new bay
+layout, a model edit, or F2 component editing can introduce one — which is
+why the boundary exists now rather than then.
+
 ## What must not change
 
 Golden dimensions (1800 / 2300 / 100 / 2400 / 18 / 2264, bumper 2.0, plinth

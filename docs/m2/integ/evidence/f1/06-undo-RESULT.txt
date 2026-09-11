@@ -1,1 +1,1 @@
-PASS (customer-path, normal transport deterministic width chip): Undo restored spec dims, material, rails, and rendered group size. Live-provider UNVERIFIED.
+PASS (customer-path): Undo restored envelope labels, revision, proposalId/fingerprint, rail chrome, structural panel materialCode identity + group size (Three hex may remint). Does not claim live-provider Undo. Live-provider UNVERIFIED.

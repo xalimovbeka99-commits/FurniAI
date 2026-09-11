@@ -1,37 +1,37 @@
-﻿# F1 readiness report — Grok integration verification
+﻿# F1 readiness report — reconciled candidate
 
 **Date:** 2026-09-11 (Asia/Dubai)  
-**Isolated checkout:** `C:\Users\xalim\FurniAI-F1-Candidate` branch `integ/f1-m2omit-candidate`  
-**Bundle imported:** `f1-candidate.bundle` tip `d5c32aa` (verified) on prereqs `dfc72f8`, `337c7bf`, `206ee06`  
-**Combined onto:** integ tip `81a641d` (not rolled back to Claude’s `90e3e84` base)  
-**Draft PR:** https://github.com/xalimovbeka99-commits/FurniAI/pull/3  
+**Branch:** `integ/f1-m2omit-candidate`  
+**Isolated checkout:** `C:\Users\xalim\FurniAI-F1-Candidate`  
+**Draft PR:** https://github.com/xalimovbeka99-commits/FurniAI/pull/4  
 **Main / production:** unchanged  
-**Antigravity mobile:** not available on remote (still NEEDS FIXES)
 
-## Evidence lanes (keep separate)
+## Boundary reconciliation
+See `docs/m2/integ/BOUNDARY_RECONCILIATION.md`.
 
-| Lane | What it proves | Status |
-|---|---|---|
-| **Parser / deterministic transport** | `proposeDesignChange` without model; width chip; drawer UNSUPPORTED | PASS (unit + Playwright customer-path) |
-| **Isolated parser TEST SETUP** | `AiDesignerTransport` cleared on purpose | PASS (labels only; not customer-path claim) |
-| **Simulated provider** | Integrity / stub-fetch suites from Claude | PASS (prior; not live) |
-| **Live provider** | Real Anthropic path | **UNVERIFIED** (API credential blocker only for this lane) |
+- **Claude owns** final unsupported boundary: tip `8a865cf` (`componentRequests.js`, kernel `unrepresentableComponents` incl. approval refusal, transport → `UNSUPPORTED`).
+- **Grok owns** integration/browser verification: customer nav, pointer doors, unsupported assistant-bubble asserts, Undo identity + panel materialCode.
+- Grok’s inline drawer parser was **not** kept; superseded by Claude’s `componentRequests.js`.
+- Grok’s `unsupportedCustomerEntry.test.js` superseded by Claude’s `unsupportedRequestIntegration.test.js`.
 
-## F1 journey matrix
+## Evidence lanes
 
-| # | Customer step | Result | Evidence |
-|---|---|---|---|
-| 1a | Design with AI nav → local draft | **PASS** | Playwright customer-path (no DOM/CSS hacks) |
-| 1b | Live draft | **UNVERIFIED** | Live provider |
-| 2–5 | Clear wardrobe / exact door / rails / material | **PASS** | Pointer door clicks (no `userData.base` writes); rails 19+2; chrome kept |
-| 6a | Supported edit (deterministic transport) | **PASS** | Width chip via normal transport |
-| 6b | Live edit | **UNVERIFIED** | Live provider |
-| 8 | Undo after supported edit | **PASS** (customer-path) | Restored width/height/depth/finish/bays/doors/rails/group size |
-| 9 | Unsupported drawers → explanation; design kept | **PASS** (integration review) | Transport entry + Playwright; alternativeApplied false; no revision bump. Not yet “complete unsupported-request fix” product acceptance beyond this boundary. |
-| 10 | Narrow usable UI | **NEEDS FIXES** | Antigravity |
+| Lane | Status |
+|---|---|
+| Parser / deterministic transport | **PASS** (Claude integration tests + Playwright customer-path) |
+| Isolated parser TEST SETUP | **PASS** (transport cleared on purpose; not customer-path) |
+| Simulated provider | **PASS** (Claude integrity suites) |
+| Live provider | **UNVERIFIED** (API credential) |
+| Mobile usable UI | **NEEDS FIXES** (Antigravity; no extra assignment) |
 
-## SHA provenance
-`docs/m2/integ/evidence/f1/SOURCE_SHA.txt` is written by Playwright from `git rev-parse HEAD` of the checkout under test. No hardcoded default tip.
+## F1 Playwright (this tip)
+5/5 PASS — SHA stamped by test from `git rev-parse HEAD`.
+
+1. Isolated viewer + pointer door clicks  
+2. Parser TEST SETUP draft/edit/Undo labels  
+3. Customer-path Undo: envelope + proposalId/fingerprint + rail chrome + panel materialCode + group size  
+4. Unsupported: **new** assistant bubble explains + offers alternative; design/revision retained  
+5. Negative proof: removing that assistant bubble makes asserts fail  
 
 ## Recommendation
-Candidate ready for Bekzod **integration review** of M2-OMIT + F1 acceptance checks. Mobile still Antigravity. Live AI still credential-gated. Stay on F1.
+Ready for Bekzod integration review of reconciled F1 candidate. Stay on F1.

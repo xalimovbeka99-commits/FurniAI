@@ -97,7 +97,9 @@ export const COMPONENT_REPRESENTATION_POLICY = Object.freeze({
       "else in your wardrobe is unchanged.",
     suggestedAlternative: Object.freeze({
       componentType: COMPONENT_TYPES.SHELF_FIXED,
-      summary: "A fixed shelf at the same height, which you could add drawers under later.",
+      // Lower-case and clause-shaped: it is always read inside an offer
+      // sentence ("If you'd like, I can use ..."), never on its own.
+      summary: "a fixed shelf at the same height, which you could add drawers under later",
       applied: false,
     }),
   }),

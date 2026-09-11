@@ -8,14 +8,14 @@
  *
  * ONE public call. Order of resolution:
  *
- *   1. DETERMINISTIC â€” the existing `parseConversationalCommand` runs first,
+ *   1. DETERMINISTIC — the existing `parseConversationalCommand` runs first,
  *      in the browser, with no network call. "Make it 2000 mm wide" and its
  *      rewordings already resolve here: instant, free, offline, and identical
  *      to what ships today. A deterministic rejection (negative, imprecise,
  *      out-of-range) is returned as-is and the model is never consulted.
- *   2. MODEL â€” only phrasings the deterministic parser does not recognise are
+ *   2. MODEL — only phrasings the deterministic parser does not recognise are
  *      sent to POST /api/design/propose, which returns PROPOSED EDITS ONLY.
- *   3. KERNEL â€” those proposed edits are replayed through the existing
+ *   3. KERNEL — those proposed edits are replayed through the existing
  *      `applyConversationalEdit` via a proposal-only adapter. The deterministic
  *      validator and kernel own every dimension and all geometry; a model
  *      proposal that fails validation changes nothing.
@@ -75,20 +75,18 @@ export async function proposeDesignChange({
   // ---- 1. Deterministic first ------------------------------------------
   const parsed = parseConversationalCommand(message, factsFrom(currentObservations));
   if (parsed) {
-    // Unsupported-component diagnostics must reach the customer as UNSUPPORTED
-    // (not REJECTED, not a model call). Design and revision stay with the caller.
-    if (Array.isArray(parsed.unsupported) && parsed.unsupported.length > 0) {
+    if (parsed.error) {
+      // Same distinction as below: a capability limit is UNSUPPORTED (the
+      // browser shows the reason and the offered alternative), a bad value is
+      // REJECTED (a bare error). Collapsing them loses the explanation.
+      const parsedUnsupported = Array.isArray(parsed.unsupported) ? parsed.unsupported : [];
       return {
         ok: false,
+        error: parsed.error,
+        ...(parsedUnsupported.length > 0 ? { unsupported: parsedUnsupported } : {}),
         source: RESULT_SOURCE.DETERMINISTIC,
-        kind: RESULT_KIND.UNSUPPORTED,
-        unsupported: parsed.unsupported,
-        error: parsed.error || parsed.unsupported[0].reason,
-        assistantReply: parsed.error || parsed.unsupported[0].reason,
+        kind: parsedUnsupported.length > 0 ? RESULT_KIND.UNSUPPORTED : RESULT_KIND.REJECTED,
       };
-    }
-    if (parsed.error) {
-      return { ok: false, error: parsed.error, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.REJECTED };
     }
     if (parsed.changes?.materialKey && Object.keys(parsed.changes).length === 1) {
       return {
@@ -103,10 +101,15 @@ export async function proposeDesignChange({
     if (applied.ok) {
       return { ...applied, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.DESIGN_UPDATED };
     }
-    if (applied.kind === "UNSUPPORTED" || (Array.isArray(applied.unsupported) && applied.unsupported.length > 0)) {
-      return { ...applied, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.UNSUPPORTED };
-    }
-    return { ...applied, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.REJECTED };
+    // A refusal carrying structured `unsupported` entries is a capability
+    // limit, not a validation failure. The browser renders the two
+    // differently: UNSUPPORTED shows the reason and the offered alternative,
+    // REJECTED shows a bare error. Sending a capability limit down the
+    // REJECTED path would hide the explanation the customer needs.
+    const kind = Array.isArray(applied.unsupported) && applied.unsupported.length > 0
+      ? RESULT_KIND.UNSUPPORTED
+      : RESULT_KIND.REJECTED;
+    return { ...applied, source: RESULT_SOURCE.DETERMINISTIC, kind };
   }
 
   // ---- 2. Model, for phrasings the parser does not recognise ------------

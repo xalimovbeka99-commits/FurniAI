@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { buildStructuralPartGraph } from "./buildStructuralPartGraph.js";
 import { validatePartGraph } from "./validatePartGraph.js";
 import { validateFurniSpec } from "../furnispec/validate.js";
+import { unrepresentableComponents } from "../conversation/pipeline.js";
 import { COMPONENT_TYPES } from "../furnispec/schema.js";
 import {
   COMPONENT_OUTCOME,
@@ -207,9 +208,19 @@ describe("a requested DRAWER_BANK is reported, never silently omitted", () => {
     expect(warning.componentType).toBe(COMPONENT_TYPES.DRAWER_BANK);
   });
 
-  it("still produces a valid PartGraph — an unsupported component is not a crash", () => {
+  it("produces a well-formed DIAGNOSTIC PartGraph — which is not a fulfilled request", () => {
+    // The graph is structurally valid: an unsupported component is a reported
+    // limitation, not a crash, and the diagnostic has to be inspectable.
     const graph = buildStructuralPartGraph(specWithDrawerBank());
     expect(validatePartGraph(graph).valid).toBe(true);
+
+    // But validity here must never be read as "the customer got what they
+    // asked for". The graph itself says otherwise, and `pipeline.js`
+    // (`unrepresentableComponents`) refuses to hand it to a customer as their
+    // design — proven end to end in
+    // src/lib/conversation/unsupportedRequestIntegration.test.js.
+    expect(graph.summary.unsupportedComponents).toBeGreaterThan(0);
+    expect(unrepresentableComponents(graph)).not.toBeNull();
   });
 
   it("converts to the customer-facing unsupported[] shape the transport already reads", () => {

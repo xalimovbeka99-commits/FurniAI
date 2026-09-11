@@ -29,15 +29,28 @@ async function snapshotDesign(page) {
     const finishType = finishRaw ? finishRaw.toLowerCase() : null;
     const bayCount = num(document.getElementById("revBays")?.textContent);
     const doorCount = num(document.getElementById("revDoors")?.textContent);
+    const fingerprint = document.getElementById("revFingerprint")?.textContent?.trim() || null;
+    const proposalId = document.getElementById("revProposalId")?.textContent?.trim() || null;
     const rails = [];
+    const panelMaterials = [];
     const root = Builder.parts?.[0];
     if (root) {
       root.traverse((c) => {
-        if (c.isMesh && c.userData?.isPreviewMesh) {
+        if (!(c.isMesh && c.visible)) return;
+        if (c.userData?.isPreviewMesh) {
           rails.push({
             name: c.name,
             color: c.material?.color?.getHex?.() ?? null,
             tubeType: c.userData.tubeType || null,
+          });
+          return;
+        }
+        if (c.userData?.partId || c.userData?.role) {
+          panelMaterials.push({
+            partId: c.userData.partId || c.name || null,
+            role: c.userData.role || null,
+            materialCode: c.userData.materialCode || null,
+            color: c.material?.color?.getHex?.() ?? null,
           });
         }
       });
@@ -61,15 +74,39 @@ async function snapshotDesign(page) {
       finishType,
       bayCount,
       doorCount,
+      fingerprint,
+      proposalId,
       parametricMat: Builder.parametricMat || null,
       structural: root?.userData?.structuralPartCount ?? null,
       preview: root?.userData?.previewPartCount ?? null,
       rails,
+      panelMaterials,
       groupBox,
       revWidthLabel: document.getElementById("revWidth")?.textContent?.trim() || null,
       revRevisionLabel: document.getElementById("revRevision")?.textContent?.trim() || null,
     };
   });
+}
+
+
+async function latestAssistantText(page) {
+  return page.evaluate(() => {
+    const nodes = [...document.querySelectorAll("#aiConversationalStream [data-role='assistant']")];
+    return nodes.length ? nodes[nodes.length - 1].textContent.trim() : "";
+  });
+}
+
+async function waitForNewAssistant(page, prevCount, { timeout = 15000 } = {}) {
+  await page.waitForFunction(
+    (n) => document.querySelectorAll("#aiConversationalStream [data-role='assistant']").length > n,
+    prevCount,
+    { timeout }
+  );
+  return latestAssistantText(page);
+}
+
+async function assistantCount(page) {
+  return page.locator("#aiConversationalStream [data-role='assistant']").count();
 }
 
 /** Project a door mesh center to client coordinates and click — no userData.base writes. */
@@ -281,7 +318,7 @@ test.describe("F1 evidence on integration candidate", () => {
     });
   });
 
-  test("customer-path: Design with AI nav → draft → edit → Undo; full restore (normal transport)", async ({
+  test("customer-path: Design with AI nav → draft → edit → Undo restores identity + panel materials", async ({
     page,
   }) => {
     test.setTimeout(120000);
@@ -308,10 +345,15 @@ test.describe("F1 evidence on integration candidate", () => {
     const before = await snapshotDesign(page);
     writeJson("10-customer-draft.json", before);
     expect(before.widthMm).toBeTruthy();
+    expect(before.fingerprint).toBeTruthy();
+    expect(before.proposalId).toBeTruthy();
+    expect(before.panelMaterials.length).toBeGreaterThan(0);
     expect(before.groupBox?.widthM).toBeGreaterThan(0);
 
     await page.locator("#aiWardrobeReviewSection #chipWidth2000").click();
-    await page.waitForFunction(() => (document.getElementById("revWidth")?.textContent || "").includes("2000"), null, { timeout: 15000 });
+    await page.waitForFunction(() => (document.getElementById("revWidth")?.textContent || "").includes("2000"), null, {
+      timeout: 15000,
+    });
     const edited = await snapshotDesign(page);
     writeJson("11-customer-edit.json", edited);
     expect(edited.widthMm).toBe(2000);
@@ -321,18 +363,26 @@ test.describe("F1 evidence on integration candidate", () => {
     expect(edited.bayCount).toBe(before.bayCount);
     expect(edited.doorCount).toBe(before.doorCount);
     expect(edited.rails.length).toBe(before.rails.length);
+    expect(edited.fingerprint).not.toBe(before.fingerprint);
     expect(Math.abs(edited.groupBox.widthM - before.groupBox.widthM)).toBeGreaterThan(0.05);
 
     const undo = page.locator("#aiWardrobeReviewSection #btnUndoEdit");
     await expect(undo).toBeVisible();
     await undo.click();
-    await page.waitForFunction((w) => {
-      const t = document.getElementById("revWidth")?.textContent || "";
-      const m = t.match(/(\d+)/);
-      return m && Number(m[1]) === w;
-    }, before.widthMm, { timeout: 10000 });
+    await page.waitForFunction(
+      (w) => {
+        const t = document.getElementById("revWidth")?.textContent || "";
+        const m = t.match(/(\d+)/);
+        return m && Number(m[1]) === w;
+      },
+      before.widthMm,
+      { timeout: 10000 }
+    );
     const restored = await snapshotDesign(page);
     writeJson("12-customer-undo.json", { before, restored });
+
+    // Coverage claim (accurate): restores review labels, canonical identity fields,
+    // rail chrome, and rendered structural panel material samples — not merely width/revision.
     expect(restored.widthMm).toBe(before.widthMm);
     expect(restored.heightMm).toBe(before.heightMm);
     expect(restored.depthMm).toBe(before.depthMm);
@@ -340,15 +390,23 @@ test.describe("F1 evidence on integration candidate", () => {
     expect(restored.bayCount).toBe(before.bayCount);
     expect(restored.doorCount).toBe(before.doorCount);
     expect(restored.revision).toBe(before.revision);
+    expect(restored.fingerprint).toBe(before.fingerprint);
+    expect(restored.proposalId).toBe(before.proposalId);
     expect(restored.rails.map((r) => r.color)).toEqual(before.rails.map((r) => r.color));
+    // Rendered panel material identity: materialCode per partId (Three hex can remint on reload while codes stay).
+    expect(restored.panelMaterials.map((p) => p.partId).sort()).toEqual(before.panelMaterials.map((p) => p.partId).sort());
+    const beforeMat = Object.fromEntries(before.panelMaterials.map((p) => [p.partId, p.materialCode]));
+    const afterMat = Object.fromEntries(restored.panelMaterials.map((p) => [p.partId, p.materialCode]));
+    expect(afterMat).toEqual(beforeMat);
+    expect(Object.values(afterMat).every((c) => !!c)).toBe(true);
     expect(Math.abs(restored.groupBox.widthM - before.groupBox.widthM)).toBeLessThan(0.02);
     fs.writeFileSync(
       path.join(OUT, "06-undo-RESULT.txt"),
-      "PASS (customer-path, normal transport deterministic width chip): Undo restored spec dims, material, rails, and rendered group size. Live-provider UNVERIFIED.\n"
+      "PASS (customer-path): Undo restored envelope labels, revision, proposalId/fingerprint, rail chrome, structural panel materialCode identity + group size (Three hex may remint). Does not claim live-provider Undo. Live-provider UNVERIFIED.\n"
     );
   });
 
-  test("customer-path: unsupported drawers → explanation; design retained (deterministic transport)", async ({
+  test("customer-path: unsupported drawers → new assistant explains + alternative offered; design retained", async ({
     page,
   }) => {
     test.setTimeout(120000);
@@ -358,25 +416,71 @@ test.describe("F1 evidence on integration candidate", () => {
     await page.locator("#aiWardrobeInput").fill("Make me a wardrobe");
     await page.locator("#aiWardrobeSubmitBtn").click();
     await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible({ timeout: 15000 });
-    await page.waitForFunction(() => /\d+/.test(document.getElementById("revRevision")?.textContent || ""), null, { timeout: 15000 });
+    await page.waitForFunction(() => /\d+/.test(document.getElementById("revRevision")?.textContent || ""), null, {
+      timeout: 15000,
+    });
 
     const before = await snapshotDesign(page);
+    const prevAssistants = await assistantCount(page);
+
     await page.locator("#aiConversationalInput").fill("Add drawers on the left");
     await page.locator("#aiConversationalSendBtn").click();
 
-    await page.waitForFunction(() => {
-      const stream = document.getElementById("aiConversationalStream");
-      return stream && /drawer/i.test(stream.textContent || "");
-    }, null, { timeout: 15000 });
+    const assistantText = await waitForNewAssistant(page, prevAssistants);
+    // Assert the NEW assistant bubble — not the whole stream (which already mentions wardrobe).
+    expect(assistantText.length).toBeGreaterThan(0);
+    expect(assistantText).toMatch(/drawer/i);
+    expect(assistantText).toMatch(/can't|cannot|not (?:supported|available)|yet/i);
+    expect(assistantText).toMatch(/shelf|alternative|instead|unchanged/i);
 
+    // Wait until send button re-enabled = response finished
+    await expect(page.locator("#aiConversationalSendBtn")).toBeEnabled({ timeout: 10000 });
     const after = await snapshotDesign(page);
-    const streamText = await page.locator("#aiConversationalStream").innerText();
-    writeJson("13-unsupported-customer.json", { before, after, streamText });
-    expect(streamText).toMatch(/drawer/i);
+    writeJson("13-unsupported-customer.json", { before, after, assistantText, prevAssistants });
+
     expect(after.widthMm).toBe(before.widthMm);
     expect(after.heightMm).toBe(before.heightMm);
     expect(after.revision).toBe(before.revision);
+    expect(after.fingerprint).toBe(before.fingerprint);
+    expect(after.proposalId).toBe(before.proposalId);
     expect(after.finishType).toBe(before.finishType);
     expect(Math.abs(after.groupBox.widthM - before.groupBox.widthM)).toBeLessThan(0.02);
+    // Alternative offered in text, not applied as a layout/geometry change
+    expect(after.bayCount).toBe(before.bayCount);
+    expect(after.doorCount).toBe(before.doorCount);
+    expect(after.structural).toBe(before.structural);
+  });
+
+  test("unsupported browser check fails if the new assistant response is removed", async ({ page }) => {
+    test.setTimeout(120000);
+    await page.goto("/");
+    await page.locator("#createWithFurniAiHeroBtn, #createWithFurniAiNavBtn").first().click();
+    await expect(page.locator("#aiWardrobeInput")).toBeVisible({ timeout: 15000 });
+    await page.locator("#aiWardrobeInput").fill("Make me a wardrobe");
+    await page.locator("#aiWardrobeSubmitBtn").click();
+    await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible({ timeout: 15000 });
+
+    const prevAssistants = await assistantCount(page);
+    await page.locator("#aiConversationalInput").fill("Add drawers on the left");
+    await page.locator("#aiConversationalSendBtn").click();
+    await waitForNewAssistant(page, prevAssistants);
+
+    // Remove only the newest assistant bubble — proves assertions target that node.
+    await page.evaluate(() => {
+      const nodes = [...document.querySelectorAll("#aiConversationalStream [data-role='assistant']")];
+      nodes.at(-1)?.remove();
+    });
+
+    const missing = await latestAssistantText(page);
+    let failed = false;
+    try {
+      expect(missing).toMatch(/drawer/i);
+      expect(missing).toMatch(/can't|cannot|not (?:supported|available)|yet/i);
+      expect(missing).toMatch(/shelf|alternative|instead|unchanged/i);
+    } catch {
+      failed = true;
+    }
+    expect(failed).toBe(true);
   });
 });
+

@@ -576,7 +576,9 @@ var AiDesignerTransport = (() => {
       customerMessage: "I can't add drawers to this wardrobe yet \u2014 the drawer boxes depend on the runner hardware, which isn't confirmed for this design. Everything else in your wardrobe is unchanged.",
       suggestedAlternative: Object.freeze({
         componentType: COMPONENT_TYPES.SHELF_FIXED,
-        summary: "A fixed shelf at the same height, which you could add drawers under later.",
+        // Lower-case and clause-shaped: it is always read inside an offer
+        // sentence ("If you'd like, I can use ..."), never on its own.
+        summary: "a fixed shelf at the same height, which you could add drawers under later",
         applied: false
       })
     })
@@ -666,6 +668,18 @@ var AiDesignerTransport = (() => {
         };
       }
     };
+  }
+  function unsupportedComponentsForCustomer(componentOutcomes = []) {
+    return componentOutcomes.filter((e) => e.outcome === COMPONENT_OUTCOME.UNSUPPORTED).map((e) => ({
+      request: e.componentId,
+      componentType: e.componentType,
+      bayIndex: e.bayIndex,
+      code: e.diagnosticCode,
+      reason: e.customerMessage,
+      engineeringReason: e.reason,
+      alternative: e.suggestedAlternative ? e.suggestedAlternative.summary : null,
+      alternativeApplied: false
+    }));
   }
 
   // src/lib/partgraph/buildStructuralPartGraph.js
@@ -2586,6 +2600,55 @@ var AiDesignerTransport = (() => {
     [BAY_LAYOUT.SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES]: "short hanging over two adjustable shelves, with a shelf over the top"
   });
 
+  // src/lib/conversation/componentRequests.js
+  var REQUEST_INTENT = /\b(add|put|fit|install|include|want|need|like|give|have|can\s+(?:i|we|you)|could\s+(?:i|we|you)|with)\b/i;
+  var COMPONENT_WORDS = Object.freeze([
+    { pattern: /\b(drawers?|drawer\s+bank|chest\s+of\s+drawers)\b/i, componentType: COMPONENT_TYPES.DRAWER_BANK, customerWord: "drawers" }
+  ]);
+  var UNMODELLED_WORDS = Object.freeze([
+    { pattern: /\b(handles?|knobs?|pulls?)\b/i, customerWord: "handles" },
+    { pattern: /\b(mirrors?|mirrored)\b/i, customerWord: "a mirror" },
+    { pattern: /\b(lights?|lighting|led\s+strip|leds?)\b/i, customerWord: "lighting" },
+    { pattern: /\b(locks?|lockable)\b/i, customerWord: "a lock" },
+    { pattern: /\b(shoe\s+racks?|tie\s+racks?|trouser\s+racks?|baskets?)\b/i, customerWord: "racks and baskets" },
+    { pattern: /\b(soft[-\s]?close|push[-\s]?to[-\s]?open)\b/i, customerWord: "soft-close hardware" }
+  ]);
+  function detectUnsupportedComponentRequest(text) {
+    if (typeof text !== "string" || !REQUEST_INTENT.test(text)) return null;
+    const unsupported = [];
+    for (const { pattern, componentType, customerWord } of COMPONENT_WORDS) {
+      if (!pattern.test(text)) continue;
+      const policy = COMPONENT_REPRESENTATION_POLICY[componentType];
+      if (!policy || policy.outcome !== COMPONENT_OUTCOME.UNSUPPORTED) continue;
+      unsupported.push({
+        request: customerWord,
+        componentType,
+        code: policy.diagnosticCode ?? COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED,
+        reason: policy.customerMessage,
+        engineeringReason: policy.reason,
+        alternative: policy.suggestedAlternative ? policy.suggestedAlternative.summary : null,
+        alternativeApplied: false
+      });
+    }
+    for (const { pattern, customerWord } of UNMODELLED_WORDS) {
+      if (!pattern.test(text)) continue;
+      unsupported.push({
+        request: customerWord,
+        componentType: null,
+        code: COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED,
+        reason: `I can't add ${customerWord} to the design yet. Your wardrobe is unchanged.`,
+        engineeringReason: `"${customerWord}" has no representation in FurniSpec v0.1 \u2014 it is neither a cut part nor an approved hardware item.`,
+        alternative: null,
+        alternativeApplied: false
+      });
+    }
+    if (unsupported.length === 0) return null;
+    return {
+      unsupported,
+      error: unsupported.map((u) => u.alternative ? `${u.reason} If you'd like, I can use ${u.alternative}.` : u.reason).join(" ")
+    };
+  }
+
   // src/lib/conversation/clarifyInput.js
   var ACCEPTED_DIMENSION_UNITS = Object.freeze({
     // Millimetre variants (factor to dmm = 10, factor to mm = 1)
@@ -2765,6 +2828,14 @@ var AiDesignerTransport = (() => {
     APPROVAL_REJECTED: "APPROVAL_REJECTED",
     APPROVED: "APPROVED"
   });
+  function unrepresentableComponents(partGraph) {
+    const outcomes = partGraph?.componentOutcomes ?? [];
+    const blocked = outcomes.filter((e) => e.outcome === COMPONENT_OUTCOME.UNSUPPORTED);
+    if (blocked.length === 0) return null;
+    const unsupported = unsupportedComponentsForCustomer(outcomes);
+    const customerMessage = unsupported.map((u) => u.alternative ? `${u.reason} If you'd like, I can use ${u.alternative}.` : u.reason).join(" ");
+    return { unsupported, customerMessage };
+  }
   function previewDraftWardrobe({
     description,
     answers = {},
@@ -2861,6 +2932,22 @@ var AiDesignerTransport = (() => {
     const proposal = createProposal(assembled.spec);
     const partGraph = buildStructuralPartGraph(assembled.spec);
     const partGraphValidation = validatePartGraph(partGraph);
+    const unrepresentable = unrepresentableComponents(partGraph);
+    if (unrepresentable) {
+      return {
+        stage: PIPELINE_STAGE.UNSUPPORTED_REQUEST,
+        interpretation,
+        observations,
+        gaps,
+        spec: null,
+        proposal: null,
+        partGraph: null,
+        partGraphValidation: null,
+        unsupported: unrepresentable.unsupported,
+        error: unrepresentable.customerMessage,
+        safety: preApprovalSafety(null)
+      };
+    }
     return {
       stage: PIPELINE_STAGE.DRAFT_PREVIEW,
       previewType: "DRAFT_PREVIEW",
@@ -2900,6 +2987,13 @@ var AiDesignerTransport = (() => {
   function parseConversationalCommand(text, currentFacts = {}) {
     if (typeof text !== "string" || !text.trim()) return null;
     const t = text.trim();
+    const unsupportedRequest = detectUnsupportedComponentRequest(t);
+    if (unsupportedRequest) {
+      return {
+        error: unsupportedRequest.error,
+        unsupported: unsupportedRequest.unsupported
+      };
+    }
     const widthRaw = extractDimension(t, "width");
     if (widthRaw !== null) {
       const parsedDim = parseDimension(widthRaw);
@@ -3103,11 +3197,11 @@ var AiDesignerTransport = (() => {
         const named = (afterColour.match(SCOPED_PART) || beforeColour.match(SCOPED_PART))[1].toLowerCase();
         if (/\b(add|fit|install|include|put|attach|give\s+it)\b/i.test(beforeColour)) {
           return {
-            error: `I can't add ${named} to the design yet. Your wardrobe is unchanged \xC3\xA2\xE2\u201A\xAC\xE2\u20AC\x9D you can still change its size, layout or finish.`
+            error: `I can't add ${named} to the design yet. Your wardrobe is unchanged \u2014 you can still change its size, layout or finish.`
           };
         }
         return {
-          error: `I can only change the finish of the whole wardrobe at the moment, not just the ${named}. Your design is unchanged \xC3\xA2\xE2\u201A\xAC\xE2\u20AC\x9D say "make it ${mat}" if you'd like the whole wardrobe in ${mat}.`
+          error: `I can only change the finish of the whole wardrobe at the moment, not just the ${named}. Your design is unchanged \u2014 say "make it ${mat}" if you'd like the whole wardrobe in ${mat}.`
         };
       }
       const explicitFinishWord = /finish|material|colour|color|paint/i.test(t);
@@ -3118,25 +3212,6 @@ var AiDesignerTransport = (() => {
           assistantReply: `Changed finish to ${mat}.`
         };
       }
-    }
-    const drawerRequest = /\b(add|fit|install|include|put|attach|want|need|give)\b[\s\S]{0,60}\bdrawers?\b/i.test(t) || /\bdrawers?\b[\s\S]{0,40}\b(add|fit|install|include)\b/i.test(t) || /\b(?:jewellery|jewelry)\s+drawer\b/i.test(t) || /\bdrawer\s+bank\b/i.test(t);
-    if (drawerRequest) {
-      const policy = COMPONENT_REPRESENTATION_POLICY[COMPONENT_TYPES.DRAWER_BANK];
-      const unsupported = [
-        {
-          request: COMPONENT_TYPES.DRAWER_BANK,
-          componentType: COMPONENT_TYPES.DRAWER_BANK,
-          code: policy.diagnosticCode,
-          reason: policy.customerMessage,
-          engineeringReason: policy.reason,
-          alternative: policy.suggestedAlternative ? policy.suggestedAlternative.summary : null,
-          alternativeApplied: false
-        }
-      ];
-      return {
-        unsupported,
-        error: policy.customerMessage
-      };
     }
     return null;
   }
@@ -3149,20 +3224,14 @@ var AiDesignerTransport = (() => {
   }) {
     const currentFacts = Object.fromEntries(currentObservations.map((o) => [o.key, o.value]));
     const parsed = parseConversationalCommand(commandText, currentFacts);
-    if (parsed && Array.isArray(parsed.unsupported) && parsed.unsupported.length > 0) {
-      return {
-        ok: false,
-        kind: "UNSUPPORTED",
-        unsupported: parsed.unsupported,
-        error: parsed.error || parsed.unsupported[0].reason
-        // Explicit: no geometry, no revision bump â€” caller keeps the active design.
-      };
-    }
     if (parsed && parsed.error) {
       return {
         ok: false,
-        kind: "REJECTED",
-        error: parsed.error
+        error: parsed.error,
+        // A parse-time capability limit carries the same structured shape as a
+        // kernel-time one, so the browser and the transport handle both the
+        // same way and neither can lose the explanation.
+        ...parsed.unsupported ? { unsupported: parsed.unsupported } : {}
       };
     }
     if (!parsed) {
@@ -3188,7 +3257,10 @@ var AiDesignerTransport = (() => {
       if (!draft2.spec || !draft2.partGraph || draft2.validation && !draft2.validation.valid) {
         return {
           ok: false,
-          error: draft2.error || draft2.validation?.errors?.map((e) => e.message).join("; ") || "Failed to generate valid wardrobe geometry for this change."
+          error: draft2.error || draft2.validation?.errors?.map((e) => e.message).join("; ") || "Failed to generate valid wardrobe geometry for this change.",
+          // Carry the structured refusal so the browser can show the reason and
+          // the offered alternative, rather than a generic failure string.
+          ...draft2.unsupported ? { unsupported: draft2.unsupported } : {}
         };
       }
       if (draft2.partGraphValidation && !draft2.partGraphValidation.valid) {
@@ -3220,7 +3292,10 @@ var AiDesignerTransport = (() => {
     if (!draft.spec || !draft.partGraph || draft.validation && !draft.validation.valid) {
       return {
         ok: false,
-        error: draft.error || draft.validation?.errors?.map((e) => e.message).join("; ") || "Failed to generate valid wardrobe geometry for this change."
+        error: draft.error || draft.validation?.errors?.map((e) => e.message).join("; ") || "Failed to generate valid wardrobe geometry for this change.",
+        // Carry the structured refusal so the browser can show the reason and
+        // the offered alternative, rather than a generic failure string.
+        ...draft.unsupported ? { unsupported: draft.unsupported } : {}
       };
     }
     if (draft.partGraphValidation && !draft.partGraphValidation.valid) {
@@ -3253,7 +3328,7 @@ var AiDesignerTransport = (() => {
       drillingBlocked: spec?.machiningPolicy?.drilling === "BLOCKED_PENDING_HARDWARE_APPROVAL" && drillingOperations.length === 0,
       hardwareStatuses: spec ? hardwareStatusesOf(spec) : {},
       approvedOperationTypes: [],
-      note: "DRAFT PREVIEW ONLY \xC3\xA2\xE2\u201A\xAC\xE2\u20AC\x9D NOT APPROVED FOR WORKSHOP. Geometry rendered from Bekzod-approved defaults with status PROPOSED. Approval is required before CNC or production."
+      note: "DRAFT PREVIEW ONLY \u2014 NOT APPROVED FOR WORKSHOP. Geometry rendered from Bekzod-approved defaults with status PROPOSED. Approval is required before CNC or production."
     };
   }
   function preApprovalSafety(spec, approvalState = APPROVAL_STATE.NOT_APPROVED) {
@@ -3424,18 +3499,15 @@ var AiDesignerTransport = (() => {
     }
     const parsed = parseConversationalCommand(message, factsFrom(currentObservations));
     if (parsed) {
-      if (Array.isArray(parsed.unsupported) && parsed.unsupported.length > 0) {
+      if (parsed.error) {
+        const parsedUnsupported = Array.isArray(parsed.unsupported) ? parsed.unsupported : [];
         return {
           ok: false,
+          error: parsed.error,
+          ...parsedUnsupported.length > 0 ? { unsupported: parsedUnsupported } : {},
           source: RESULT_SOURCE.DETERMINISTIC,
-          kind: RESULT_KIND.UNSUPPORTED,
-          unsupported: parsed.unsupported,
-          error: parsed.error || parsed.unsupported[0].reason,
-          assistantReply: parsed.error || parsed.unsupported[0].reason
+          kind: parsedUnsupported.length > 0 ? RESULT_KIND.UNSUPPORTED : RESULT_KIND.REJECTED
         };
-      }
-      if (parsed.error) {
-        return { ok: false, error: parsed.error, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.REJECTED };
       }
       if (parsed.changes?.materialKey && Object.keys(parsed.changes).length === 1) {
         return {
@@ -3450,10 +3522,8 @@ var AiDesignerTransport = (() => {
       if (applied2.ok) {
         return { ...applied2, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.DESIGN_UPDATED };
       }
-      if (applied2.kind === "UNSUPPORTED" || Array.isArray(applied2.unsupported) && applied2.unsupported.length > 0) {
-        return { ...applied2, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.UNSUPPORTED };
-      }
-      return { ...applied2, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.REJECTED };
+      const kind = Array.isArray(applied2.unsupported) && applied2.unsupported.length > 0 ? RESULT_KIND.UNSUPPORTED : RESULT_KIND.REJECTED;
+      return { ...applied2, source: RESULT_SOURCE.DETERMINISTIC, kind };
     }
     if (typeof fetchImpl !== "function") {
       return {
