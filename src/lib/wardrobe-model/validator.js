@@ -19,6 +19,7 @@ export function validateWardrobeModel(model) {
   if (!(model.widthMm > 0)) issues.push({ code: "INVALID_DIMENSION", message: "widthMm must be > 0." });
   if (!(model.heightMm > 0)) issues.push({ code: "INVALID_DIMENSION", message: "heightMm must be > 0." });
   if (!(model.depthMm > 0)) issues.push({ code: "INVALID_DIMENSION", message: "depthMm must be > 0." });
+  if (!(model.panelThicknessMm > 0)) issues.push({ code: "INVALID_DIMENSION", message: "panelThicknessMm must be > 0." });
   if (issues.length > 0) return issues; // nothing below is meaningful without valid outer dimensions
 
   const seenIds = new Map();

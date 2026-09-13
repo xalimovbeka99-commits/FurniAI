@@ -127,5 +127,19 @@ class ProductionBridgeTests(unittest.TestCase):
         self.assertTrue(any(name.endswith("/FACTORY_RELEASE_REQUIRED.txt") for name in names))
 
 
+
+    def test_rejects_engineering_failures_before_emitting_zip(self):
+        """Fail-closed: inspector failures must not emit cutlist/DXF ZIP bytes."""
+        payload = wardrobe_payload()
+        # 200x200x200 mm is below manufacturable floors -> ENGINEERING_CHECKS_FAILED
+        payload["config"].update({"w": 20, "h": 20, "d": 20, "sections": 1, "drawers": 0, "shelves": 0})
+        with self.assertRaises(production_api.ProductionRequestError) as ctx:
+            production_api.build_factory_review_pack(payload)
+        err = ctx.exception
+        self.assertEqual(err.code, "ENGINEERING_CHECKS_FAILED")
+        self.assertTrue(hasattr(err, "report"))
+        self.assertIn("gates", err.report)
+
+
 if __name__ == "__main__":
     unittest.main()

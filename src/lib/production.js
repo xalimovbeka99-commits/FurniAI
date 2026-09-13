@@ -9,6 +9,10 @@
  * Same order in → identical preview data out, every time. The future factory
  * path may pass an approved neutral package into BAZIS or another validated
  * adapter; it must never treat these generic planning notes as machine data.
+ *
+ * Fail-closed preview gate: if validateGeometry reports any issue, cut-list /
+ * pack builders abort with ProductionPreviewError (GEOMETRY_VALIDATION_FAILED)
+ * instead of emitting a partial BOM/CSV from corrupted geometry.
  */
 import { buildGeometry, partsToCutList, validateGeometry } from "./buildGeometry.js";
 import { MATERIALS } from "./knowledgeBase.js";
@@ -23,6 +27,29 @@ export const PRODUCTION_CAPABILITIES = Object.freeze({
   nesting: "unsupported",
   cnc: "unsupported",
 });
+
+/** Structured abort when geometry is unsafe for even a preview cut list. */
+export class ProductionPreviewError extends Error {
+  constructor(code, message, issues = []) {
+    super(message || code);
+    this.name = "ProductionPreviewError";
+    this.code = code;
+    this.issues = issues;
+  }
+}
+
+/** Run rectangular-kernel geometry QA and abort before any BOM/CSV emission. */
+export function assertProductionGeometry(config, parts = buildGeometry(config)) {
+  const issues = validateGeometry(parts, config);
+  if (issues.length > 0) {
+    throw new ProductionPreviewError(
+      "GEOMETRY_VALIDATION_FAILED",
+      "Production preview aborted: geometry validation failed; refusing incomplete cut-list/BOM.",
+      issues,
+    );
+  }
+  return parts;
+}
 
 /** Decide edge banding + grain per part role (simple, factory-sane defaults). */
 function finishFor(role) {
@@ -44,9 +71,9 @@ function finishFor(role) {
   }
 }
 
-/** Build the enriched cut list (mm) from a config. */
+/** Build the enriched cut list (mm) from a config. Aborts on geometry failure. */
 export function buildCutList(config) {
-  const parts = buildGeometry(config);
+  const parts = assertProductionGeometry(config);
   const rows = partsToCutList(parts).map((r, i) => {
     const f = finishFor(r.role);
     return {
@@ -92,10 +119,10 @@ export function buildDrillingSpec(config) {
 export function buildProductionPack(order) {
   const { orderId, config, customer = {}, price = null, createdAt = new Date().toISOString() } = order;
   const d = config.dimensions;
-  const geometry = buildGeometry(config);
-  const geometryIssues = validateGeometry(geometry, config);
+  // Fail closed before cut-list/BOM: never emit incomplete preview data from
+  // rejected or partially-mutated geometry (nesting/DXF remain unsupported).
+  const geometry = assertProductionGeometry(config);
   const releaseBlockers = [
-    ...geometryIssues.map((issue) => `${issue.code}: ${issue.message}`),
     "Exact hardware SKUs and manufacturer drilling templates are not selected.",
     "Factory construction, stock, tooling, machine and postprocessor profiles are not approved.",
     "Drawing, nesting and CNC capabilities are not implemented.",
@@ -124,8 +151,8 @@ export function buildProductionPack(order) {
     },
     cutList: buildCutList(config),
     drilling: buildDrillingSpec(config),
-    geometryValidation: geometryIssues,
-    summary: summarise(config),
+    geometryValidation: [],
+    summary: summariseFromParts(config, geometry),
   };
 }
 
@@ -144,8 +171,7 @@ export function cutListToCSV(orderId, config) {
 }
 
 // --- helpers ---------------------------------------------------------------
-function summarise(config) {
-  const parts = buildGeometry(config);
+function summariseFromParts(config, parts) {
   const byRole = parts.reduce((a, p) => ((a[p.role] = (a[p.role] || 0) + 1), a), {});
   return {
     totalParts: parts.length,

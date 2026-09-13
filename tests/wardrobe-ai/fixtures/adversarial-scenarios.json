@@ -1,5 +1,5 @@
 {
-  "fixtureVersion": "wardrobe-ai-adversarial/2",
+  "fixtureVersion": "wardrobe-ai-adversarial/3",
   "status": "ACTIVE",
   "defaultExpected": {
     "success": false,
@@ -661,6 +661,164 @@
       "metadata": {
         "enforcement": "enforced",
         "category": "oob-dims"
+      }
+    },
+    {
+      "id": "drawer-bank-exceeds-interior-height",
+      "prompt": "Stack a drawer bank taller than the section interior.",
+      "seed": {
+        "widthMm": 900,
+        "heightMm": 800,
+        "depthMm": 600
+      },
+      "request": {
+        "tool": "component_add",
+        "arguments": {
+          "sectionId": "$section0",
+          "type": "DRAWER_BANK",
+          "rows": 5
+        }
+      },
+      "expectedError": "COMPONENT_OUTSIDE_SECTION",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "physical-clearance",
+        "notes": "5 rows ? 180mm = 900mm > interior (800 - 2?18). Kernel places at z=0; post-commit validator fail-closes."
+      }
+    },
+    {
+      "id": "shelf-at-exact-drawer-bank-vertical",
+      "prompt": "Place a shelf at the exact vertical band of an existing drawer bank.",
+      "seed": {
+        "widthMm": 900,
+        "heightMm": 2600,
+        "depthMm": 600,
+        "components": [
+          {
+            "section": 0,
+            "type": "DRAWER_BANK",
+            "rows": 3,
+            "positionMm": 0
+          }
+        ]
+      },
+      "request": {
+        "tool": "component_add",
+        "arguments": {
+          "sectionId": "$section0",
+          "type": "SHELF",
+          "positionMm": 200
+        }
+      },
+      "expectedError": "COMPONENT_OVERLAP",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "collision",
+        "notes": "Shelf at 200mm sits inside drawer bank zone 0?540mm."
+      }
+    },
+    {
+      "id": "shelf-spacing-below-100mm-clearance",
+      "prompt": "Place two shelves with less than 100mm clear spacing.",
+      "seed": {
+        "widthMm": 900,
+        "heightMm": 2600,
+        "depthMm": 600,
+        "components": [
+          {
+            "section": 0,
+            "type": "SHELF",
+            "positionMm": 500
+          }
+        ]
+      },
+      "request": {
+        "tool": "component_add",
+        "arguments": {
+          "sectionId": "$section0",
+          "type": "SHELF",
+          "positionMm": 550
+        }
+      },
+      "expectedError": "INSUFFICIENT_SHELF_CLEARANCE",
+      "metadata": {
+        "enforcement": "aspirational",
+        "category": "physical-clearance",
+        "notes": "Validator only rejects zone overlap (>0.5mm). Gap shelves (50mm centers, 18mm zones) currently commit. Product min clearance 100mm is not enforced."
+      }
+    },
+    {
+      "id": "hanging-rail-below-800mm-clearance",
+      "prompt": "Mount a hanging rail with less than 800mm vertical clearance below.",
+      "seed": {
+        "widthMm": 900,
+        "heightMm": 2600,
+        "depthMm": 600
+      },
+      "request": {
+        "tool": "component_add",
+        "arguments": {
+          "sectionId": "$section0",
+          "type": "HANGING_RAIL",
+          "positionMm": 200
+        }
+      },
+      "expectedError": "INSUFFICIENT_HANGING_CLEARANCE",
+      "metadata": {
+        "enforcement": "aspirational",
+        "category": "physical-clearance",
+        "notes": "Rail zone is only 40mm; positionMm is height from floor. Clearance below = 200mm << 800mm product rule. Kernel currently accepts."
+      }
+    },
+    {
+      "id": "bay-width-at-kernel-floor-300",
+      "request": {
+        "tool": "wardrobe_create",
+        "arguments": {
+          "widthMm": 300,
+          "heightMm": 2500,
+          "depthMm": 600
+        }
+      },
+      "expectedError": "INVALID_DIMENSION",
+      "metadata": {
+        "enforcement": "aspirational",
+        "category": "oob-dims",
+        "notes": "Kernel min width is 300mm (create succeeds). Product/slide-hardware floor is ~400mm. Case documents the gap; see oob-width-under-400-aspirational-policy."
+      }
+    },
+    {
+      "id": "depth-below-300-hanging-rod-floor",
+      "request": {
+        "tool": "wardrobe_create",
+        "arguments": {
+          "widthMm": 2000,
+          "heightMm": 2500,
+          "depthMm": 250
+        }
+      },
+      "expectedError": "INVALID_DIMENSION",
+      "metadata": {
+        "enforcement": "aspirational",
+        "category": "oob-dims",
+        "notes": "Kernel min depth is 200mm so 250 succeeds. Hanging-rod product floor ~300mm is not fail-closed."
+      }
+    },
+    {
+      "id": "depth-above-1200-sheet-yield",
+      "request": {
+        "tool": "wardrobe_create",
+        "arguments": {
+          "widthMm": 2000,
+          "heightMm": 2500,
+          "depthMm": 1201
+        }
+      },
+      "expectedError": "INVALID_DIMENSION",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "oob-dims",
+        "notes": "Duplicate of depth-above-max; kept as explicit sheet-yield boundary label for physical-boundary audit."
       }
     }
   ]
