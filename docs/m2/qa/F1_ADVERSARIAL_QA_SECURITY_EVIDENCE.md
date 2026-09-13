@@ -2,6 +2,7 @@
 
 **Date:** 2026-09-13 (Asia/Dubai)  
 **Base SHA:** `b3288bfaf0b8e14ff0813078219c41dc7a701d8a`  
+**Final engineering SHA:** `6d78e2601138ade33b32d26eadee9e0e8e3bb979` (relay harness + locks). Evidence/docs tip is the branch HEAD after this file lands.
 **Branch:** `test/adversarial-qa-security-f1`  
 **Checkout:** `C:\Users\xalim\FurniAI-F1-Candidate`  
 **Scope:** F1 only. No F2. No merge. No deploy. `main` / production untouched.  
@@ -42,7 +43,7 @@ Failure signatures (stable):
 
 ## 4) Full clean suite
 
-Command: `npx vitest run` from clean checkout tip (see report totals after run). Physical / adversarial / security clusters must stay green.
+Command: `npx vitest run` on tip `6d78e26` → **994 passed**, 4 skipped, 20 todo, **0 failed** (78 files passed | 1 skipped). Physical / adversarial / security clusters green.
 
 ## 5) CI evidence
 
