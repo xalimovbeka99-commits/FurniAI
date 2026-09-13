@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Relay concurrency.
  *
  * The relay wrote each request's body and curl config to FIXED filenames in a
@@ -10,6 +10,15 @@
  * This test drives concurrent requests through the real relay with `curl`
  * replaced by a stub that echoes back the body it was handed, and asserts each
  * response matches its own request.
+ *
+ * Harness notes (Windows + Unix):
+ * - The stub is a Node script selected via ANTHROPIC_RELAY_CURL_STUB. On
+ *   Windows, `execFile("curl")` ignores a PATH-shadowing curl.cmd and always
+ *   launches System32\curl.exe, so PATH stubbing alone cannot open the race
+ *   window this test exists to catch.
+ * - Cleanup asserts only against THIS relay's `dir` — scanning every
+ *   fa-relay-* under tmpdir() is a test-isolation trap (stale body.json /
+ *   curl.cfg from older fixed-name runs).
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, writeFileSync, chmodSync, rmSync, readdirSync } from "node:fs";
@@ -18,39 +27,40 @@ import path from "node:path";
 import { startAnthropicRelay } from "../../../scripts/anthropic-relay.mjs";
 
 let stubDir;
-let originalPath;
+let originalStubEnv;
 
 beforeAll(() => {
-  // A stub `curl` that understands the two flags the relay uses and replies
-  // with the body file's contents plus the trailing status code the relay
-  // parses. A small sleep widens the window the real bug lived in.
   stubDir = mkdtempSync(path.join(tmpdir(), "fa-curlstub-"));
-  const stub = path.join(stubDir, "curl");
+  const stubJs = path.join(stubDir, "curl-stub.js");
   writeFileSync(
-    stub,
+    stubJs,
     [
-      "#!/bin/sh",
-      "body=''",
-      "while [ $# -gt 0 ]; do",
-      "  case \"$1\" in",
-      "    --data-binary) body=$(printf '%s' \"$2\" | sed 's/^@//'); shift 2 ;;",
-      "    *) shift ;;",
-      "  esac",
-      "done",
-      "sleep 0.05",
-      "cat \"$body\"",
-      "printf '\\n200'",
+      "const fs = require('fs');",
+      "let bodyPath = '';",
+      "const argv = process.argv.slice(2);",
+      "for (let i = 0; i < argv.length; i++) {",
+      "  if (argv[i] === '--data-binary' && argv[i + 1]) {",
+      "    bodyPath = String(argv[i + 1]).replace(/^@/, '');",
+      "    i++;",
+      "  }",
+      "}",
+      "const start = Date.now();",
+      "while (Date.now() - start < 50) { /* busy-wait ~50ms like the sh sleep */ }",
+      "if (!bodyPath) { process.stderr.write('curl-stub: missing --data-binary'); process.exit(1); }",
+      "process.stdout.write(fs.readFileSync(bodyPath));",
+      "process.stdout.write('\\n200');",
       "",
     ].join("\n"),
     { mode: 0o755 }
   );
-  chmodSync(stub, 0o755);
-  originalPath = process.env.PATH;
-  process.env.PATH = `${stubDir}:${originalPath}`;
+  chmodSync(stubJs, 0o755);
+  originalStubEnv = process.env.ANTHROPIC_RELAY_CURL_STUB;
+  process.env.ANTHROPIC_RELAY_CURL_STUB = stubJs;
 });
 
 afterAll(() => {
-  process.env.PATH = originalPath;
+  if (originalStubEnv === undefined) delete process.env.ANTHROPIC_RELAY_CURL_STUB;
+  else process.env.ANTHROPIC_RELAY_CURL_STUB = originalStubEnv;
   rmSync(stubDir, { recursive: true, force: true });
 });
 
@@ -95,15 +105,10 @@ describe("anthropic relay", () => {
       await Promise.all(
         Array.from({ length: 5 }, (_, i) => post(relay.baseUrl, { marker: `cleanup-${i}`, nonce: "x" }))
       );
-      // The relay's directory is internal; reach it via the same tmp prefix.
-      const relayDirs = readdirSync(tmpdir()).filter((d) => d.startsWith("fa-relay-"));
-      const leftovers = relayDirs.flatMap((d) => {
-        try {
-          return readdirSync(path.join(tmpdir(), d));
-        } catch {
-          return [];
-        }
-      });
+      // Scope to THIS relay's directory only. Scanning every fa-relay-* under
+      // tmpdir() is a test-isolation trap: stale dirs from older fixed-name
+      // runs (body.json / curl.cfg) falsely fail a correct implementation.
+      const leftovers = readdirSync(relay.dir);
       expect(leftovers).toEqual([]);
     } finally {
       await relay.close();

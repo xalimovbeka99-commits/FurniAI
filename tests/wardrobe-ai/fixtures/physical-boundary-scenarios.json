@@ -34,7 +34,7 @@
       "metadata": {
         "enforcement": "enforced",
         "category": "panel-thickness",
-        "notes": "Fail-closed: carcass/panel thickness > 50mm is INVALID_DIMENSION (realistic envelope 12-50mm)."
+        "notes": "Fail-closed: carcass/panel thickness > 50mm is INVALID_DIMENSION. Code enforces panelThicknessMm > 0 and <= 50mm only - there is no approved 12mm minimum floor."
       }
     }
   ]

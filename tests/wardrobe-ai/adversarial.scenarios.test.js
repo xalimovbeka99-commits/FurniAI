@@ -64,6 +64,10 @@ function resolvePlaceholders(value, model) {
   return value;
 }
 
+function byteSnapshot(model) {
+  return model == null ? null : JSON.stringify(model);
+}
+
 function snapshotIdentity(model) {
   if (!model) return null;
   return {
@@ -102,6 +106,7 @@ describe("adversarial-scenarios fixture harness", () => {
     test(`${c.id} [${enforcement}] → ${label}`, async () => {
       const seedModel = buildSeed(c.seed);
       const before = snapshotIdentity(seedModel);
+      const beforeBytes = byteSnapshot(seedModel);
 
       if (enforcement === "aspirational") {
         // Document-only: must not crash; do not require fail-closed yet.
@@ -142,6 +147,7 @@ describe("adversarial-scenarios fixture harness", () => {
           error: c.expectedError,
         });
         expect(snapshotIdentity(result.model)).toEqual(before);
+        expect(byteSnapshot(result.model)).toBe(beforeBytes);
         return;
       }
 
@@ -157,6 +163,7 @@ describe("adversarial-scenarios fixture harness", () => {
 
       if (seedModel) {
         expect(snapshotIdentity(seedModel)).toEqual(before);
+        expect(byteSnapshot(seedModel)).toBe(beforeBytes);
       }
     });
   }

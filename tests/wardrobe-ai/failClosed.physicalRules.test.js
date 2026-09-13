@@ -146,4 +146,35 @@ describe("fail-closed physical rules", () => {
     const created = run("wardrobe_create", null, { widthMm: 300, heightMm: 2500, depthMm: 600 });
     expect(created.success).toBe(true);
   });
+
+
+  test("rejected physical ops leave previous valid design byte-identical", () => {
+    const created = run("wardrobe_create", null, { widthMm: 900, heightMm: 2600, depthMm: 600 });
+    expect(created.success).toBe(true);
+    const before = JSON.stringify(created.model);
+
+    const badRail = run("component_add", created.model, {
+      sectionId: created.model.sections[0].id,
+      type: "HANGING_RAIL",
+      positionMm: 200,
+    });
+    expect(badRail.success).toBe(false);
+    expect(JSON.stringify(created.model)).toBe(before);
+
+    const first = run("component_add", created.model, {
+      sectionId: created.model.sections[0].id,
+      type: "SHELF",
+      positionMm: 500,
+    });
+    expect(first.success).toBe(true);
+    const afterShelf = JSON.stringify(first.model);
+
+    const tooClose = run("component_add", first.model, {
+      sectionId: first.model.sections[0].id,
+      type: "SHELF",
+      positionMm: 550,
+    });
+    expect(tooClose.success).toBe(false);
+    expect(JSON.stringify(first.model)).toBe(afterShelf);
+  });
 });
