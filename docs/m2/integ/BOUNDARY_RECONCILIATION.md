@@ -1,27 +1,28 @@
 ﻿# F1 unsupported-boundary reconciliation
 
-**Date:** 2026-09-11 (Asia/Dubai)
+**Date:** 2026-09-13 (Asia/Dubai)
 **Candidate:** `integ/f1-m2omit-candidate`
+**Claude tip retained:** `e163a3d50db406bea293c7c90f7be6530f9bc550` (`f1-reconciled.bundle`)
 
 ## Conflict
-Grok (PR #4 / `fcbbd2a`) and Claude (`8a865cf`, descendant of `d5c32aa`) independently wired the unsupported-request boundary.
+Grok (PR #4) and Claude independently wired the unsupported-request boundary.
+Claude then shipped reconciled tip `e163a3d` (descends from `88b03db`, not from Grok's later `0e67597` / `e13c9ff`).
 
 ## Retained implementation (Claude owns boundary)
-From Claude tip `8a865cf1c50730f3c48a03de9d655387cc1c36d6`:
-- `src/lib/conversation/componentRequests.js` — deterministic unsupported component requests (drawers, etc.), policy-backed wording/alternatives
-- `src/lib/conversation/pipeline.js` — `unrepresentableComponents` refusal at `previewDraftWardrobe` / `approveAndPreview` / edit paths; no design replacement; no revision advance; alternative not applied; approval cannot override
-- `src/lib/adapters/aiDesignerTransport.js` — maps unsupported[] to `RESULT_KIND.UNSUPPORTED` (not REJECTED / not DESIGNER_UNAVAILABLE)
-- `src/lib/conversation/unsupportedRequestIntegration.test.js` — entry-point integration tests
-- `componentOutcomes` ledger updates + accounting doc
+From Claude tip `e163a3d` (reconciled), not a third parser:
+- `src/lib/conversation/componentRequests.js`
+- `src/lib/conversation/pipeline.js`
+- transport + runtime bridge bundles aligned with that tip
+- `unsupportedRequestIntegration.test.js` + restored `unsupportedCustomerEntry.test.js`
+- Mojibake repairs in kernel/header comments from `e163a3d`
 
-**Why:** BEK assigned Claude ownership of the final boundary. Claude’s tip also covers kernel refusal including approval, shared policy source for parser+kernel explanations, negation / “light oak” regressions called out in the patch, and refuses unbuildable designs instead of previewing them with a silent missing part.
+**Attribution:** Negation / `light oak` deciding fixes are in **reconciled** `e163a3d`, not attributed solely to original `8a865cf`. See `RECONCILIATION_UNSUPPORTED_BOUNDARY.md`.
 
 ## Retained verification (Grok owns integration / browser)
-Kept and improved on this branch (not discarded):
-- `tests/browser/f1-journey.spec.js` — customer nav, pointer door clicks, parser TEST SETUP isolation, customer-path Undo, unsupported browser path
-- Evidence under `docs/m2/integ/evidence/f1/` with SHA from `git rev-parse HEAD`
+- `tests/browser/f1-journey.spec.js` (assistant-bubble asserts, wait-for-finished response, Undo canonical + panel finish)
+- `index.html` `data-role` markers
+- Evidence under `docs/m2/integ/evidence/f1/`
 - `docs/m2/integ/F1_READINESS.md`
 
-## Not blindly merged
-- Grok’s inline `drawerRequest` block inside `parseConversationalCommand` was **replaced** by Claude’s `componentRequests.js` integration (same intent, Claude’s structure).
-- Grok’s `unsupportedCustomerEntry.test.js` is **superseded** by Claude’s broader `unsupportedRequestIntegration.test.js` (covers proposeDesignChange, applyConversationalEdit, previewDraftWardrobe, approveAndPreview). Removed to avoid duplicate/divergent assertions on the same boundary.
+## Not written
+No third competing parser. Grok inline drawer detection stays replaced by Claude's module.

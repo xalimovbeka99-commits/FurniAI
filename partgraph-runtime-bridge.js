@@ -3220,46 +3220,68 @@ var PartGraphBridge = (() => {
   }
 
   // src/lib/conversation/componentRequests.js
-  var REQUEST_INTENT = /\b(add|put|fit|install|include|want|need|like|give|have|can\s+(?:i|we|you)|could\s+(?:i|we|you)|with)\b/i;
+  var REQUEST_VERB = "add|put|fit|install|include|want|need|like|love|have|give|get|use|with|featuring";
+  var NEGATION = /\b(no|not|n't|never|without|none|don't|dont|do\s+not|does\s+not|doesn't|won't|will\s+not|can't|cannot|rather\s+not|instead\s+of|skip|drop|remove|delete|take\s+out|get\s+rid|no\s+need|unless)\b/i;
+  var REFERENCE_FRAMING = /\b(you\s+(?:showed|mentioned|suggested|said)|the\s+ones?\s+(?:you|in)|showroom|catalogue|catalog|last\s+time|earlier|previous|other\s+wardrobe|like\s+the\s+one)\b/i;
+  var GAP = "(?:\\s+(?:up\\s+to|a|an|the|some|any|more|extra|another|about|around|at\\s+least|\\d+|one|two|three|four|five|six|couple|few|pair|of|my|our|it|its))*(?:\\s+[a-z-]+){0,2}\\s+";
   var COMPONENT_WORDS = Object.freeze([
-    { pattern: /\b(drawers?|drawer\s+bank|chest\s+of\s+drawers)\b/i, componentType: COMPONENT_TYPES.DRAWER_BANK, customerWord: "drawers" }
+    {
+      noun: "drawers?|drawer\\s+bank|chest\\s+of\\s+drawers",
+      componentType: COMPONENT_TYPES.DRAWER_BANK,
+      customerWord: "drawers"
+    }
   ]);
   var UNMODELLED_WORDS = Object.freeze([
-    { pattern: /\b(handles?|knobs?|pulls?)\b/i, customerWord: "handles" },
-    { pattern: /\b(mirrors?|mirrored)\b/i, customerWord: "a mirror" },
-    { pattern: /\b(lights?|lighting|led\s+strip|leds?)\b/i, customerWord: "lighting" },
-    { pattern: /\b(locks?|lockable)\b/i, customerWord: "a lock" },
-    { pattern: /\b(shoe\s+racks?|tie\s+racks?|trouser\s+racks?|baskets?)\b/i, customerWord: "racks and baskets" },
-    { pattern: /\b(soft[-\s]?close|push[-\s]?to[-\s]?open)\b/i, customerWord: "soft-close hardware" }
+    { noun: "handles?|knobs?|pulls?", customerWord: "handles" },
+    { noun: "mirrors?|mirrored\\s+doors?", customerWord: "a mirror" },
+    { noun: "lighting|lights|led\\s+strips?|leds?|spotlights?|light\\s+strips?", customerWord: "lighting" },
+    { noun: "locks?|lockable", customerWord: "a lock" },
+    { noun: "shoe\\s+racks?|tie\\s+racks?|trouser\\s+racks?|baskets?|pull-?out\\s+racks?", customerWord: "racks and baskets" },
+    { noun: "soft[-\\s]?close|push[-\\s]?to[-\\s]?open", customerWord: "soft-close hardware" }
   ]);
+  function toClauses(text) {
+    return text.split(/[;.!?]+|,\s*|\s+\band\b\s+|\s+\bbut\b\s+|\s+\bthen\b\s+|\s+\balso\b\s+|\s+\bhowever\b\s+/i).map((c) => c.trim()).filter(Boolean);
+  }
+  function clauseRequests(clause, noun) {
+    const governed = new RegExp(`\\b(?:${REQUEST_VERB})\\b${GAP}(?:${noun})\\b`, "i");
+    if (governed.test(clause)) return true;
+    const quantified = new RegExp(`\\b(?:\\d+|two|three|four|five|six)\\s+(?:[a-z-]+\\s+){0,2}?(?:${noun})\\b`, "i");
+    return quantified.test(clause);
+  }
   function detectUnsupportedComponentRequest(text) {
-    if (typeof text !== "string" || !REQUEST_INTENT.test(text)) return null;
+    if (typeof text !== "string" || !text.trim()) return null;
     const unsupported = [];
-    for (const { pattern, componentType, customerWord } of COMPONENT_WORDS) {
-      if (!pattern.test(text)) continue;
-      const policy = COMPONENT_REPRESENTATION_POLICY[componentType];
-      if (!policy || policy.outcome !== COMPONENT_OUTCOME.UNSUPPORTED) continue;
-      unsupported.push({
-        request: customerWord,
-        componentType,
-        code: policy.diagnosticCode ?? COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED,
-        reason: policy.customerMessage,
-        engineeringReason: policy.reason,
-        alternative: policy.suggestedAlternative ? policy.suggestedAlternative.summary : null,
-        alternativeApplied: false
-      });
-    }
-    for (const { pattern, customerWord } of UNMODELLED_WORDS) {
-      if (!pattern.test(text)) continue;
-      unsupported.push({
-        request: customerWord,
-        componentType: null,
-        code: COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED,
-        reason: `I can't add ${customerWord} to the design yet. Your wardrobe is unchanged.`,
-        engineeringReason: `"${customerWord}" has no representation in FurniSpec v0.1 \u2014 it is neither a cut part nor an approved hardware item.`,
-        alternative: null,
-        alternativeApplied: false
-      });
+    const seen = /* @__PURE__ */ new Set();
+    for (const clause of toClauses(text)) {
+      if (NEGATION.test(clause) || REFERENCE_FRAMING.test(clause)) continue;
+      for (const { noun, componentType, customerWord } of COMPONENT_WORDS) {
+        if (seen.has(customerWord) || !clauseRequests(clause, noun)) continue;
+        const policy = COMPONENT_REPRESENTATION_POLICY[componentType];
+        if (!policy || policy.outcome !== COMPONENT_OUTCOME.UNSUPPORTED) continue;
+        seen.add(customerWord);
+        unsupported.push({
+          request: customerWord,
+          componentType,
+          code: policy.diagnosticCode ?? COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED,
+          reason: policy.customerMessage,
+          engineeringReason: policy.reason,
+          alternative: policy.suggestedAlternative ? policy.suggestedAlternative.summary : null,
+          alternativeApplied: false
+        });
+      }
+      for (const { noun, customerWord } of UNMODELLED_WORDS) {
+        if (seen.has(customerWord) || !clauseRequests(clause, noun)) continue;
+        seen.add(customerWord);
+        unsupported.push({
+          request: customerWord,
+          componentType: null,
+          code: COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED,
+          reason: `I can't add ${customerWord} to the design yet. Your wardrobe is unchanged.`,
+          engineeringReason: `"${customerWord}" has no representation in FurniSpec v0.1 \u2014 it is neither a cut part nor an approved hardware item.`,
+          alternative: null,
+          alternativeApplied: false
+        });
+      }
     }
     if (unsupported.length === 0) return null;
     return {
@@ -3998,13 +4020,12 @@ var PartGraphBridge = (() => {
     const currentFacts = Object.fromEntries(currentObservations.map((o) => [o.key, o.value]));
     const parsed = parseConversationalCommand(commandText, currentFacts);
     if (parsed && parsed.error) {
+      const parsedUnsupported = Array.isArray(parsed.unsupported) ? parsed.unsupported : [];
       return {
         ok: false,
+        kind: parsedUnsupported.length > 0 ? "UNSUPPORTED" : "REJECTED",
         error: parsed.error,
-        // A parse-time capability limit carries the same structured shape as a
-        // kernel-time one, so the browser and the transport handle both the
-        // same way and neither can lose the explanation.
-        ...parsed.unsupported ? { unsupported: parsed.unsupported } : {}
+        ...parsedUnsupported.length > 0 ? { unsupported: parsedUnsupported } : {}
       };
     }
     if (!parsed) {

@@ -853,13 +853,17 @@ export function applyConversationalEdit({
   const parsed = parseConversationalCommand(commandText, currentFacts);
 
   if (parsed && parsed.error) {
+    // A parse-time capability limit carries the same structured shape as a
+    // kernel-time one, so the browser and the transport handle both the same
+    // way and neither can lose the explanation. `kind` (adopted from Grok's
+    // PR #4) lets a caller branch without re-deriving the reason from the
+    // array — asserted by src/lib/adapters/unsupportedCustomerEntry.test.js.
+    const parsedUnsupported = Array.isArray(parsed.unsupported) ? parsed.unsupported : [];
     return {
       ok: false,
+      kind: parsedUnsupported.length > 0 ? "UNSUPPORTED" : "REJECTED",
       error: parsed.error,
-      // A parse-time capability limit carries the same structured shape as a
-      // kernel-time one, so the browser and the transport handle both the
-      // same way and neither can lose the explanation.
-      ...(parsed.unsupported ? { unsupported: parsed.unsupported } : {}),
+      ...(parsedUnsupported.length > 0 ? { unsupported: parsedUnsupported } : {}),
     };
   }
 

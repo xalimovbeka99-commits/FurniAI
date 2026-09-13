@@ -1,5 +1,5 @@
 /**
- * PartGraph v0.1 â€” Pure Deterministic Rectangular Kernel (Generalized)
+ * PartGraph v0.1 — Pure Deterministic Rectangular Kernel (Generalized)
  * ---------------------------------------------------------------------
  * Generates canonical structural PartGraph data structures from a validated
  * FurniSpec v0.1 specification.

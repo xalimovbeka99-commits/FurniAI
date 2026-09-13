@@ -305,3 +305,97 @@ describe("one wording, one source", () => {
     expect(viaKernel.unsupported[0].reason).toBe(policyMessage);
   });
 });
+
+describe("false positives — an intent word and a component word are not a request", () => {
+  /**
+   * Both cases below were live defects: a keyword match found a request verb
+   * and a component noun anywhere in the sentence and refused confidently.
+   *
+   * A false refusal is worse than a missed one. A missed request still gets an
+   * answer from the model; a false refusal tells the customer that something
+   * they never asked for is impossible AND discards the edit they did ask for
+   * in the same breath.
+   */
+  const ask = (message, design) =>
+    proposeDesignChange({
+      message,
+      currentObservations: design.observations,
+      specId: SPEC_ID,
+      revision: design.spec.revision,
+      fetchImpl: null,
+    });
+
+  it("applies the width edit in 'I do not want drawers; make it 2000 mm wide'", async () => {
+    // The customer is DECLINING drawers and REQUESTING a width change. The
+    // refusal used to win and the width edit was thrown away.
+    const design = activeDesign();
+    const res = await ask("I do not want drawers; make it 2000 mm wide", design);
+
+    expect(res.kind).toBe(RESULT_KIND.DESIGN_UPDATED);
+    expect(res.spec.envelope.widthMm).toBe(2000);
+    expect(res.spec.revision).toBe(design.spec.revision + 1);
+    expect(res.unsupported ?? []).toEqual([]);
+  });
+
+  it("never reads 'a light oak finish' as a request for lighting", async () => {
+    // "light" is a far more common adjective than a request for illumination.
+    const design = activeDesign();
+    const res = await ask("I would like a light oak finish", design);
+
+    expect(res.kind).not.toBe(RESULT_KIND.UNSUPPORTED);
+    expect(JSON.stringify(res.unsupported ?? [])).not.toMatch(/lighting/i);
+    expect(res.error ?? "").not.toMatch(/lighting/i);
+  });
+
+  const deferrals = [
+    "no drawers please",
+    "a wardrobe without drawers",
+    "remove the drawers",
+    "I'd rather not have drawers",
+    "The drawers you showed me were nice",
+    "make it light grey",
+    "light oak please",
+  ];
+
+  for (const message of deferrals) {
+    it(`does not issue a confident refusal for "${message}"`, async () => {
+      const design = activeDesign();
+      const res = await ask(message, design);
+      // Whatever happens next — a finish change, a rejection, or a handover to
+      // the model — it must not be a refusal about a component.
+      expect(res.kind).not.toBe(RESULT_KIND.UNSUPPORTED);
+      expect(res.unsupported ?? []).toEqual([]);
+    });
+  }
+
+  it("still refuses when the same sentence really does request drawers", async () => {
+    // The control for the deferrals above: negation handling must not have
+    // simply disabled detection.
+    const design = activeDesign();
+    const res = await ask("I want drawers on the left", design);
+    expect(res.kind).toBe(RESULT_KIND.UNSUPPORTED);
+    expect(res.unsupported[0].componentType).toBe(COMPONENT_TYPES.DRAWER_BANK);
+  });
+
+  it("keeps a supported edit that merely mentions an existing feature", async () => {
+    // Shelves and rails exist in the design already. Naming one is not a
+    // request to add an unsupported component.
+    const design = activeDesign();
+    for (const message of ["Make it 2000 mm wide", "Change the finish to walnut"]) {
+      const res = await ask(message, design);
+      expect(res.kind, message).not.toBe(RESULT_KIND.UNSUPPORTED);
+      expect(res.ok, message).toBe(true);
+    }
+  });
+
+  it("answers a genuine lighting request as UNSUPPORTED, design unchanged", async () => {
+    const design = activeDesign();
+    const before = snapshotOf(design);
+    const res = await ask("Add LED lighting inside", design);
+
+    expect(res.kind).toBe(RESULT_KIND.UNSUPPORTED);
+    expect(res.error).toMatch(/lighting/i);
+    expect(res.partGraph ?? null).toBeNull();
+    expect(snapshotOf(design)).toBe(before);
+  });
+});

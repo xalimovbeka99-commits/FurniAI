@@ -7,8 +7,8 @@
     "finishType": "melamine",
     "bayCount": 2,
     "doorCount": 4,
-    "fingerprint": "fs256:420efa4fdaf977c2ff698ee7ca22f97ae637a49e767f69129962d6034e827f24",
-    "proposalId": "furnispec-ai-wardrobe-5289",
+    "fingerprint": "fs256:a5739870f4dac07322aaf46bfc779c1b804919196b13fe9a0ab06152f9833b66",
+    "proposalId": "furnispec-ai-wardrobe-1605",
     "parametricMat": "white",
     "structural": 19,
     "preview": 2,
@@ -156,8 +156,8 @@
     "finishType": "melamine",
     "bayCount": 2,
     "doorCount": 4,
-    "fingerprint": "fs256:420efa4fdaf977c2ff698ee7ca22f97ae637a49e767f69129962d6034e827f24",
-    "proposalId": "furnispec-ai-wardrobe-5289",
+    "fingerprint": "fs256:a5739870f4dac07322aaf46bfc779c1b804919196b13fe9a0ab06152f9833b66",
+    "proposalId": "furnispec-ai-wardrobe-1605",
     "parametricMat": "white",
     "structural": 19,
     "preview": 2,
@@ -298,5 +298,6 @@
     "revRevisionLabel": "1"
   },
   "assistantText": "Sorry â€” I can't add drawers to this wardrobe yet — the drawer boxes depend on the runner hardware, which isn't confirmed for this design. Everything else in your wardrobe is unchanged. (Alternative: a fixed shelf at the same height, which you could add drawers under later)",
+  "userText": "Add drawers on the left",
   "prevAssistants": 1
 }

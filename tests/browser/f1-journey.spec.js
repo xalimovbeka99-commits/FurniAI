@@ -91,18 +91,31 @@ async function snapshotDesign(page) {
 
 async function latestAssistantText(page) {
   return page.evaluate(() => {
+    // Only assistant bubbles — never the customer's own echoed message.
     const nodes = [...document.querySelectorAll("#aiConversationalStream [data-role='assistant']")];
     return nodes.length ? nodes[nodes.length - 1].textContent.trim() : "";
   });
 }
 
-async function waitForNewAssistant(page, prevCount, { timeout = 15000 } = {}) {
+async function latestUserText(page) {
+  return page.evaluate(() => {
+    const nodes = [...document.querySelectorAll("#aiConversationalStream [data-role='user']")];
+    return nodes.length ? nodes[nodes.length - 1].textContent.trim() : "";
+  });
+}
+
+async function waitForUnsupportedResponseFinished(page, prevCount, { timeout = 20000 } = {}) {
+  // 1) new assistant bubble appears
   await page.waitForFunction(
     (n) => document.querySelectorAll("#aiConversationalStream [data-role='assistant']").length > n,
     prevCount,
     { timeout }
   );
-  return latestAssistantText(page);
+  // 2) response finished before any preserved-state checks
+  await expect(page.locator("#aiConversationalSendBtn")).toBeEnabled({ timeout });
+  const assistantText = await latestAssistantText(page);
+  const userText = await latestUserText(page);
+  return { assistantText, userText };
 }
 
 async function assistantCount(page) {
@@ -381,28 +394,34 @@ test.describe("F1 evidence on integration candidate", () => {
     const restored = await snapshotDesign(page);
     writeJson("12-customer-undo.json", { before, restored });
 
-    // Coverage claim (accurate): restores review labels, canonical identity fields,
-    // rail chrome, and rendered structural panel material samples — not merely width/revision.
+    // Canonical identity + actual panel finish (not merely width/revision labels).
     expect(restored.widthMm).toBe(before.widthMm);
     expect(restored.heightMm).toBe(before.heightMm);
     expect(restored.depthMm).toBe(before.depthMm);
     expect(restored.finishType).toBe(before.finishType);
+    expect(restored.finishType).toBeTruthy();
     expect(restored.bayCount).toBe(before.bayCount);
     expect(restored.doorCount).toBe(before.doorCount);
     expect(restored.revision).toBe(before.revision);
     expect(restored.fingerprint).toBe(before.fingerprint);
     expect(restored.proposalId).toBe(before.proposalId);
+    // Builder.parametricMat is a live paint cache and may not round-trip on Undo;
+    // actual panel finish is asserted via finishType + per-part materialCode below.
     expect(restored.rails.map((r) => r.color)).toEqual(before.rails.map((r) => r.color));
-    // Rendered panel material identity: materialCode per partId (Three hex can remint on reload while codes stay).
     expect(restored.panelMaterials.map((p) => p.partId).sort()).toEqual(before.panelMaterials.map((p) => p.partId).sort());
     const beforeMat = Object.fromEntries(before.panelMaterials.map((p) => [p.partId, p.materialCode]));
     const afterMat = Object.fromEntries(restored.panelMaterials.map((p) => [p.partId, p.materialCode]));
     expect(afterMat).toEqual(beforeMat);
     expect(Object.values(afterMat).every((c) => !!c)).toBe(true);
+    // Actual panel finish identity: materialCode per structural part (Three hex may remint).
+    for (const part of restored.panelMaterials) {
+      expect(part.materialCode).toBe(beforeMat[part.partId]);
+      expect(part.materialCode).toBeTruthy();
+    }
     expect(Math.abs(restored.groupBox.widthM - before.groupBox.widthM)).toBeLessThan(0.02);
     fs.writeFileSync(
       path.join(OUT, "06-undo-RESULT.txt"),
-      "PASS (customer-path): Undo restored envelope labels, revision, proposalId/fingerprint, rail chrome, structural panel materialCode identity + group size (Three hex may remint). Does not claim live-provider Undo. Live-provider UNVERIFIED.\n"
+      "PASS (customer-path): Undo restored canonical state (envelope, revision, proposalId/fingerprint, finishType) + actual panel finish materialCode + rail chrome + group size. Does not claim live-provider Undo. Live-provider UNVERIFIED.\n"
     );
   });
 
@@ -422,21 +441,24 @@ test.describe("F1 evidence on integration candidate", () => {
 
     const before = await snapshotDesign(page);
     const prevAssistants = await assistantCount(page);
+    const customerMsg = "Add drawers on the left";
 
-    await page.locator("#aiConversationalInput").fill("Add drawers on the left");
+    await page.locator("#aiConversationalInput").fill(customerMsg);
     await page.locator("#aiConversationalSendBtn").click();
 
-    const assistantText = await waitForNewAssistant(page, prevAssistants);
-    // Assert the NEW assistant bubble — not the whole stream (which already mentions wardrobe).
+    // Wait until the assistant response finishes BEFORE reading text or preserved state.
+    const { assistantText, userText } = await waitForUnsupportedResponseFinished(page, prevAssistants);
+    // Assert the NEW assistant explanation — not the customer's own "drawer" message.
+    expect(userText).toMatch(/add drawers on the left/i);
     expect(assistantText.length).toBeGreaterThan(0);
+    expect(assistantText.toLowerCase()).not.toBe(userText.toLowerCase());
+    expect(assistantText.toLowerCase()).not.toBe(customerMsg.toLowerCase());
     expect(assistantText).toMatch(/drawer/i);
     expect(assistantText).toMatch(/can't|cannot|not (?:supported|available)|yet/i);
     expect(assistantText).toMatch(/shelf|alternative|instead|unchanged/i);
 
-    // Wait until send button re-enabled = response finished
-    await expect(page.locator("#aiConversationalSendBtn")).toBeEnabled({ timeout: 10000 });
     const after = await snapshotDesign(page);
-    writeJson("13-unsupported-customer.json", { before, after, assistantText, prevAssistants });
+    writeJson("13-unsupported-customer.json", { before, after, assistantText, userText, prevAssistants });
 
     expect(after.widthMm).toBe(before.widthMm);
     expect(after.heightMm).toBe(before.heightMm);
@@ -463,15 +485,17 @@ test.describe("F1 evidence on integration candidate", () => {
     const prevAssistants = await assistantCount(page);
     await page.locator("#aiConversationalInput").fill("Add drawers on the left");
     await page.locator("#aiConversationalSendBtn").click();
-    await waitForNewAssistant(page, prevAssistants);
+    await waitForUnsupportedResponseFinished(page, prevAssistants);
 
-    // Remove only the newest assistant bubble — proves assertions target that node.
+    // Remove only the newest assistant bubble — proves assertions target that node, not the user bubble.
     await page.evaluate(() => {
       const nodes = [...document.querySelectorAll("#aiConversationalStream [data-role='assistant']")];
       nodes.at(-1)?.remove();
     });
 
     const missing = await latestAssistantText(page);
+    const stillUser = await latestUserText(page);
+    expect(stillUser).toMatch(/add drawers on the left/i);
     let failed = false;
     try {
       expect(missing).toMatch(/drawer/i);
