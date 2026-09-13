@@ -109,7 +109,7 @@ describe("Core wardrobe modeling benchmark — closed by the Wardrobe AI (Phase 
   });
 
   test("production handoff cross-check: every rendered part traces to a stable model id, no duplicate/omitted ids", () => {
-    let model = createWardrobe({ widthMm: 2400, heightMm: 2600, depthMm: 600 });
+    let model = createWardrobe({ widthMm: 1800, heightMm: 2600, depthMm: 600 });
     model = findTool("section_add").run(model, { widthMm: 900 }).model;
     model = findTool("component_add").run(model, { sectionId: model.sections[0].id, type: "SHELF" }).model;
     model = findTool("component_add").run(model, { sectionId: model.sections[1].id, type: "DRAWER_BANK", rows: 3, positionMm: 0 }).model;

@@ -190,9 +190,13 @@ function defineTool({ name, description, inputSchema, run }) {
     description,
     inputSchema,
     run(model, input) {
-      const schemaError = checkSchemaShape(input, inputSchema);
+      // Normalize null/undefined the same way checkSchemaShape does, so a
+      // null arguments object cannot crash kernel destructuring after the
+      // schema gate treated it as {}.
+      const normalized = input === undefined || input === null ? {} : input;
+      const schemaError = checkSchemaShape(normalized, inputSchema);
       if (schemaError) return schemaError;
-      return run(model, input);
+      return run(model, normalized);
     },
   };
 }

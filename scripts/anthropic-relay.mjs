@@ -1,4 +1,4 @@
-/**
+﻿/**
  * SANDBOX-ONLY relay. The workspace VM has no DNS; outbound HTTPS works only
  * through the proxy, which curl honours natively and node-fetch (used by
  * @anthropic-ai/sdk) does not. This listens on 127.0.0.1 and forwards each
@@ -16,6 +16,24 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+/**
+ * Resolve the curl binary used to forward a request.
+ *
+ * Production: system `curl`.
+ * Tests: set ANTHROPIC_RELAY_CURL_STUB to an absolute Node script path. On
+ * Windows, `execFile("curl")` ignores a PATH-shadowing `curl.cmd` and always
+ * launches System32\curl.exe, so PATH stubbing alone cannot exercise the
+ * concurrency harness. Invoking `node <stub> …args` keeps execFile (no shell)
+ * and works on every platform.
+ */
+function curlInvocation(forwardArgs) {
+  const stub = process.env.ANTHROPIC_RELAY_CURL_STUB;
+  if (stub) {
+    return { command: process.execPath, args: [stub, ...forwardArgs] };
+  }
+  return { command: "curl", args: forwardArgs };
+}
+
 export async function startAnthropicRelay() {
   const dir = mkdtempSync(path.join(tmpdir(), "fa-relay-"));
   const calls = [];
@@ -26,8 +44,8 @@ export async function startAnthropicRelay() {
     const body = Buffer.concat(chunks);
     // One file pair per request. These were previously fixed names in a shared
     // directory, so two concurrent requests raced: the second overwrote the
-    // first\'s body and headers between write and curl exec, and request A
-    // could be sent to the API carrying request B\'s payload. Unique names
+    // first's body and headers between write and curl exec, and request A
+    // could be sent to the API carrying request B's payload. Unique names
     // remove the race; both files are removed in the callback below.
     const reqId = `${process.pid.toString(36)}-${Date.now().toString(36)}-${(requestCounter += 1).toString(36)}-${randomUUID().slice(0, 8)}`;
     const bodyFile = path.join(dir, `body-${reqId}.json`);
@@ -43,8 +61,12 @@ export async function startAnthropicRelay() {
 
     const url = `https://api.anthropic.com${req.url}`;
     const started = Date.now();
-    execFile("curl", ["-s", "-S", "--max-time", "90", "-X", req.method, "--config", cfgFile,
-                      "--data-binary", `@${bodyFile}`, "-w", "\n%{http_code}", url],
+    const forwardArgs = [
+      "-s", "-S", "--max-time", "90", "-X", req.method, "--config", cfgFile,
+      "--data-binary", `@${bodyFile}`, "-w", "\n%{http_code}", url,
+    ];
+    const { command, args } = curlInvocation(forwardArgs);
+    execFile(command, args,
       { maxBuffer: 20 * 1024 * 1024 }, (err, stdout, stderr) => {
         // Per-request files are dead the moment curl returns, either way.
         try { rmSync(bodyFile, { force: true }); } catch {}
@@ -66,6 +88,8 @@ export async function startAnthropicRelay() {
   server.unref();
   return {
     baseUrl: `http://127.0.0.1:${server.address().port}`,
+    /** Absolute path of this relay's private temp directory (test visibility). */
+    dir,
     calls,
     close: () => new Promise((r) => server.close(() => { rmSync(dir, { recursive: true, force: true }); r(); })),
     closeSync: () => {

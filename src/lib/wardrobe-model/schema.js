@@ -87,6 +87,10 @@ export const ZONE_COMPONENT_TYPES = Object.freeze([
 
 export const DEFAULTS = Object.freeze({
   panelThicknessMm: PANEL_THICKNESS_MM,
+  /** Realistic carcass/panel thickness envelope (validator fail-closed). */
+  maxPanelThicknessMm: 50,
+  /** Rear back panel thickness in mm (furnitureConfig BACK_THICKNESS). */
+  backThicknessMm: 5,
 
   minWardrobeWidthMm: 300,
   maxWardrobeWidthMm: 6000,
@@ -105,6 +109,15 @@ export const DEFAULTS = Object.freeze({
   maxDrawerRows: 8,
   minDoorLeaves: 1,
   maxDoorLeaves: 4,
+
+  /** Fail-closed: clear gap between shelf zones must be >= this. */
+  minShelfClearanceMm: 60,
+  /** Fail-closed: vertical clear drop below hanging-rail rod centre. */
+  minHangingClearanceBelowMm: 800,
+  /** Fail-closed: interior depth floor when a bay has a hanging rod. */
+  minHangingInteriorDepthMm: 300,
+  /** Fail-closed: continuous shelf span without a vertical partition. */
+  maxUnsupportedShelfSpanMm: 1200,
 });
 
 /** The one zone-height a given component type occupies, given its own fields. */

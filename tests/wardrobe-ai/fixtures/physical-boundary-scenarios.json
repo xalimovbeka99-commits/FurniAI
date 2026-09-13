@@ -1,0 +1,41 @@
+{
+  "fixtureVersion": "wardrobe-ai-physical-boundary/2",
+  "status": "ACTIVE",
+  "notes": "Direct-mutation / structural edge cases (panel thickness envelope) plus clearance audit labels.",
+  "cases": [
+    {
+      "id": "panel-thickness-zero",
+      "mutation": {
+        "panelThicknessMm": 0
+      },
+      "expectedError": "INVALID_DIMENSION",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "panel-thickness"
+      }
+    },
+    {
+      "id": "panel-thickness-negative",
+      "mutation": {
+        "panelThicknessMm": -5
+      },
+      "expectedError": "INVALID_DIMENSION",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "panel-thickness"
+      }
+    },
+    {
+      "id": "panel-thickness-extreme-100",
+      "mutation": {
+        "panelThicknessMm": 100
+      },
+      "expectedError": "INVALID_DIMENSION",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "panel-thickness",
+        "notes": "Fail-closed: carcass/panel thickness > 50mm is INVALID_DIMENSION. Code enforces panelThicknessMm > 0 and <= 50mm only - there is no approved 12mm minimum floor."
+      }
+    }
+  ]
+}

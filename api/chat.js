@@ -441,7 +441,8 @@ module.exports = async (req,res)=>{
     });
   }catch(err){
     safeLogError(err);
-    res.status(500).json({error:'Agent failed'});
+    const clientErr = clientErrorFromProvider(err);
+    res.status(clientErr.status).json({ error: clientErr.error, code: clientErr.code });
   }
 };
 
@@ -482,6 +483,43 @@ function safeErrorStatus(err){
   return Number.isInteger(raw) && raw >= 100 && raw <= 599 ? raw : 500;
 }
 
+
+// Map provider HTTP statuses to sanitized client categories. Never forward
+// raw SDK messages, headers, or key material — only fixed codes/messages.
+// Aligns with PROVIDER_ERROR_CODES (RATE_LIMITED / UNAVAILABLE) used by
+// src/lib/ai-provider/errors.js without importing the ESM module into this
+// CommonJS Vercel function.
+const CLIENT_PROVIDER_CODES = Object.freeze({
+  PROVIDER_UNAVAILABLE: 'PROVIDER_UNAVAILABLE',
+  RATE_LIMITED: 'RATE_LIMITED',
+  PROVIDER_ERROR: 'PROVIDER_ERROR',
+});
+
+function clientErrorFromProvider(err){
+  const status = safeErrorStatus(err);
+  if (status === 401 || status === 403 || status === 402) {
+    // 401/403 = auth; 402 = billing/quota on some providers. Customers get the
+    // same unavailable category — never a credential or billing leak.
+    return {
+      status: 503,
+      code: CLIENT_PROVIDER_CODES.PROVIDER_UNAVAILABLE,
+      error: 'AI service is temporarily unavailable.',
+    };
+  }
+  if (status === 429) {
+    return {
+      status: 429,
+      code: CLIENT_PROVIDER_CODES.RATE_LIMITED,
+      error: 'The AI service is rate-limiting requests. Please try again shortly.',
+    };
+  }
+  return {
+    status: 500,
+    code: CLIENT_PROVIDER_CODES.PROVIDER_ERROR,
+    error: 'Agent failed',
+  };
+}
+
 function safeLogError(err){
   const safeInfo = {
     name: safeErrorName(err),
@@ -496,4 +534,6 @@ function safeLogError(err){
 // `module` is invisible to `require("./chat.js").safeLogError`, which is
 // exactly how the regression test below reaches this function.
 module.exports.safeLogError = safeLogError;
+module.exports.clientErrorFromProvider = clientErrorFromProvider;
+module.exports.CLIENT_PROVIDER_CODES = CLIENT_PROVIDER_CODES;
 

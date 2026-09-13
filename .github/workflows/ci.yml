@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, test/adversarial-qa-security-f1]
   push:
-    branches: [main]
+    branches: [main, test/adversarial-qa-security-f1]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}

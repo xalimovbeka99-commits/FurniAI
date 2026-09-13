@@ -19,8 +19,8 @@ describe("runWardrobeAgent — tool-calling loop", () => {
 
   test("multiple tool_use blocks in a single response all execute in order against the running model", async () => {
     const before = {
-      id: "wardrobe-01", revision: 1, widthMm: 2400, heightMm: 2600, depthMm: 600, panelThicknessMm: 18,
-      sections: [{ id: "section-01", widthMm: 2364, components: [] }], idCounters: { wardrobe: 1, section: 1 },
+      id: "wardrobe-01", revision: 1, widthMm: 900, heightMm: 2600, depthMm: 600, panelThicknessMm: 18,
+      sections: [{ id: "section-01", widthMm: 864, components: [] }], idCounters: { wardrobe: 1, section: 1 },
     };
     const client = createFakeWardrobeAgentProvider([
       {
@@ -66,7 +66,7 @@ describe("runWardrobeAgent — tool-calling loop", () => {
     const client = createFakeWardrobeAgentProvider([
       { text: "A rotating carousel section isn't supported yet — I can add a hanging rail or shelves instead." },
     ]);
-    const before = { id: "wardrobe-01", revision: 3, widthMm: 2400, heightMm: 2600, depthMm: 600, panelThicknessMm: 18, sections: [], idCounters: { wardrobe: 1 } };
+    const before = { id: "wardrobe-01", revision: 3, widthMm: 900, heightMm: 2600, depthMm: 600, panelThicknessMm: 18, sections: [], idCounters: { wardrobe: 1 } };
     const result = await runWardrobeAgent({ client, model: before, message: "Add a rotating carousel section" });
 
     expect(result.toolCalls).toHaveLength(0);
@@ -79,7 +79,7 @@ describe("runWardrobeAgent — tool-calling loop", () => {
       { toolCalls: [{ name: "section_resize", input: { sectionId: "does-not-exist", widthMm: 700 } }] },
       { text: "I couldn't find that section." },
     ]);
-    const before = { id: "wardrobe-01", revision: 1, widthMm: 2400, heightMm: 2600, depthMm: 600, panelThicknessMm: 18, sections: [{ id: "section-01", widthMm: 2364, components: [] }], idCounters: { wardrobe: 1, section: 1 } };
+    const before = { id: "wardrobe-01", revision: 1, widthMm: 900, heightMm: 2600, depthMm: 600, panelThicknessMm: 18, sections: [{ id: "section-01", widthMm: 864, components: [] }], idCounters: { wardrobe: 1, section: 1 } };
     const result = await runWardrobeAgent({ client, model: before, message: "Resize a section that does not exist" });
 
     expect(result.toolCalls[0].result.success).toBe(false);
@@ -112,7 +112,7 @@ describe("runWardrobeAgent — tool-calling loop", () => {
     const client = createFakeWardrobeAgentProvider(() => ({
       content: [{ type: "tool_use", id: "loop", name: "wardrobe_resize", input: { widthMm: 2400 } }],
     }));
-    const before = { id: "wardrobe-01", revision: 1, widthMm: 2400, heightMm: 2600, depthMm: 600, panelThicknessMm: 18, sections: [{ id: "section-01", widthMm: 2364, components: [] }], idCounters: { wardrobe: 1, section: 1 } };
+    const before = { id: "wardrobe-01", revision: 1, widthMm: 900, heightMm: 2600, depthMm: 600, panelThicknessMm: 18, sections: [{ id: "section-01", widthMm: 864, components: [] }], idCounters: { wardrobe: 1, section: 1 } };
     const result = await runWardrobeAgent({ client, model: before, message: "loop forever", maxToolCalls: 3 });
     expect(result.toolCalls.length).toBe(3);
   });

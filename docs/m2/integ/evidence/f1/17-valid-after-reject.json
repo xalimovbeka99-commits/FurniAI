@@ -1,0 +1,55 @@
+{
+  "chips": [
+    {
+      "id": "chipWidth2000",
+      "text": "Make it 2000 mm wide"
+    },
+    {
+      "id": "chipAddShelf",
+      "text": "Add shelf on left"
+    },
+    {
+      "id": "chipFinishWalnut",
+      "text": "Walnut finish"
+    },
+    {
+      "id": "aiConversationalSendBtn",
+      "text": "Send"
+    },
+    {
+      "id": "btnApproveGenerate3D",
+      "text": "Approve for Workshop"
+    },
+    {
+      "id": "btnUndoEdit",
+      "text": "â†¶ Undo"
+    },
+    {
+      "id": "btnReviewEditAnswers",
+      "text": "Edit description"
+    },
+    {
+      "id": "btnStartNewWardrobeReview",
+      "text": "Start new"
+    }
+  ],
+  "shelfChipCount": 1,
+  "before": {
+    "rev": "1",
+    "fp": "fs256:a5739870f4dac07322aaf46bfc779c1b804919196b13fe9a0ab06152f9833b66"
+  },
+  "afterShelf": {
+    "rev": "1",
+    "fp": "fs256:a5739870f4dac07322aaf46bfc779c1b804919196b13fe9a0ab06152f9833b66",
+    "width": "1800 mm",
+    "assist": "Sorry â€” Adding a single shelf to full-height long hanging is not supported in this manufacturing slice. The supported shelving layout is short hanging with two adjustable shelves. To use this layout, reply 'switch left bay to short hanging with two shelves' or 'use two shelves on the left'."
+  },
+  "afterWidth": {
+    "rev": "2",
+    "fp": "fs256:0880154d059ca0d0fc970dcb022a79c83e6be2b578f5f3dd731e255cf5fa56e1",
+    "width": "2000 mm"
+  },
+  "shelfChanged": false,
+  "widthChanged": true,
+  "status": "PASS"
+}

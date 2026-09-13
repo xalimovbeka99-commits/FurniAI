@@ -18,8 +18,8 @@ function threeSectionWardrobeWithComponents() {
   for (let i = 0; i < 6; i++) {
     model = addComponent(model, { sectionId: leftId, type: COMPONENT_TYPES.SHELF });
   }
-  model = addComponent(model, { sectionId: centerId, type: COMPONENT_TYPES.HANGING_RAIL, positionMm: 100 });
-  model = addComponent(model, { sectionId: centerId, type: COMPONENT_TYPES.HANGING_RAIL, positionMm: 1300 });
+  model = addComponent(model, { sectionId: centerId, type: COMPONENT_TYPES.HANGING_RAIL, positionMm: 780 });
+  model = addComponent(model, { sectionId: centerId, type: COMPONENT_TYPES.HANGING_RAIL, positionMm: 1700 });
   model = addComponent(model, { sectionId: rightId, type: COMPONENT_TYPES.DRAWER_BANK, rows: 4, positionMm: 0 });
   model = addComponent(model, { sectionId: rightId, type: COMPONENT_TYPES.HANGING_RAIL });
   return model;

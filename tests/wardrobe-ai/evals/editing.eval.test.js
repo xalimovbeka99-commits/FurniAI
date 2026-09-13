@@ -143,7 +143,7 @@ describe("eval: reference-based edits", () => {
     let model = createWardrobe({ widthMm: 900, heightMm: 2600, depthMm: 600 });
     model = addComponent(model, { sectionId: model.sections[0].id, type: "DRAWER_BANK", rows: 3, positionMm: 0 });
     // explicit position, well clear of even the 5-row (900mm) size this test resizes up to
-    model = addComponent(model, { sectionId: model.sections[0].id, type: "HANGING_RAIL", positionMm: 1200 });
+    model = addComponent(model, { sectionId: model.sections[0].id, type: "HANGING_RAIL", positionMm: 1800 });
     const drawerBank = model.sections[0].components.find((c) => c.type === "DRAWER_BANK");
 
     const client = createFakeWardrobeAgentProvider([
@@ -156,8 +156,8 @@ describe("eval: reference-based edits", () => {
 
   test("'the second rail' resolves to the correct one of two hanging rails", async () => {
     let model = createWardrobe({ widthMm: 900, heightMm: 2600, depthMm: 600 });
-    model = addComponent(model, { sectionId: model.sections[0].id, type: "HANGING_RAIL", positionMm: 100 });
-    model = addComponent(model, { sectionId: model.sections[0].id, type: "HANGING_RAIL", positionMm: 1300 });
+    model = addComponent(model, { sectionId: model.sections[0].id, type: "HANGING_RAIL", positionMm: 780 });
+    model = addComponent(model, { sectionId: model.sections[0].id, type: "HANGING_RAIL", positionMm: 1700 });
     const secondRail = model.sections[0].components[1];
 
     const client = createFakeWardrobeAgentProvider([
@@ -166,7 +166,7 @@ describe("eval: reference-based edits", () => {
     ]);
     const result = await runWardrobeAgent({ client, model, message: "Remove the second hanging rail." });
     expect(result.model.sections[0].components).toHaveLength(1);
-    expect(result.model.sections[0].components[0].positionMm).toBe(100); // the first rail survived
+    expect(result.model.sections[0].components[0].positionMm).toBe(780); // the first rail survived
   });
 });
 
@@ -234,7 +234,7 @@ describe("eval: multi-edit prompts (one message, multiple tool calls in one turn
 
 describe("eval: multi-turn continuity", () => {
   test("a sequence of edits all land on the SAME model, never a regenerated one", async () => {
-    let model = createWardrobe({ widthMm: 2400, heightMm: 2600, depthMm: 600 });
+    let model = createWardrobe({ widthMm: 1800, heightMm: 2600, depthMm: 600 });
     const wardrobeId = model.id;
 
     const turn1 = await runWardrobeAgent({
