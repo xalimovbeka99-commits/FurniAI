@@ -1,5 +1,6 @@
 ﻿# F1 + Antigravity presentation combine
 
+**Combined SHA:** 2f233c41ee9c225bd4a58b51f9bbf68a3f567586  
 **Branch:** `integ/f1-claude-handoff` (kept; CI already lists it)  
 **Base tip:** `7541cbd` — Claude rule authority + BEK `changeToken` stale guard  
 **AG tip:** `3ac95e0` (`antigravity/f1-presentation-finish`) — 390px mobile, drawer hide, WebGL stability  
