@@ -1,19 +1,667 @@
 {
-  "fixtureVersion": "wardrobe-ai-adversarial/1",
-  "status": "NOT_IMPLEMENTED",
+  "fixtureVersion": "wardrobe-ai-adversarial/2",
+  "status": "ACTIVE",
   "defaultExpected": {
     "success": false,
     "modelUnchanged": true,
     "revisionUnchanged": true
   },
   "cases": [
-    { "id": "negative-width", "request": { "tool": "wardrobe_create", "arguments": { "widthMm": -1, "heightMm": 2500, "depthMm": 600 } }, "expectedError": "INVALID_DIMENSION" },
-    { "id": "zero-height", "request": { "tool": "wardrobe_create", "arguments": { "widthMm": 2000, "heightMm": 0, "depthMm": 600 } }, "expectedError": "INVALID_DIMENSION" },
-    { "id": "section-exceeds-space", "prompt": "In a 2000 mm wardrobe make the left section 1300 mm and the right section 900 mm.", "expectedError": "SECTION_WIDTHS_EXCEED_WARDROBE" },
-    { "id": "shelf-outside-section", "request": { "tool": "component_move", "arguments": { "componentId": "shelf-left-03", "axis": "z", "deltaMm": 9999 } }, "expectedError": "SHELF_OUTSIDE_SECTION" },
-    { "id": "overlapping-components", "prompt": "Move all shelves to exactly the same height.", "expectedError": "COMPONENT_OVERLAP" },
-    { "id": "unsupported-component", "prompt": "Add a curved automated rotating wardrobe section.", "expectedError": "NOT_IMPLEMENTED" },
-    { "id": "fabricated-tool", "prompt": "Use wardrobe_add_rotating_carousel now.", "expectedError": "TOOL_NOT_AVAILABLE" },
-    { "id": "llm-geometry-coordinates", "request": { "tool": "component_add", "arguments": { "type": "SHELF", "threeJsPosition": [0.1, 0.7, -0.2] } }, "expectedError": "INVALID_TOOL_ARGUMENTS", "forbiddenFields": ["threeJsPosition", "position", "x", "y", "z"] }
+    {
+      "id": "negative-width",
+      "request": {
+        "tool": "wardrobe_create",
+        "arguments": {
+          "widthMm": -1,
+          "heightMm": 2500,
+          "depthMm": 600
+        }
+      },
+      "expectedError": "INVALID_DIMENSION",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "oob-dims"
+      }
+    },
+    {
+      "id": "zero-height",
+      "request": {
+        "tool": "wardrobe_create",
+        "arguments": {
+          "widthMm": 2000,
+          "heightMm": 0,
+          "depthMm": 600
+        }
+      },
+      "expectedError": "INVALID_DIMENSION",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "oob-dims"
+      }
+    },
+    {
+      "id": "section-exceeds-space",
+      "prompt": "In a 2000 mm wardrobe make the left section 2000 mm (leaving no room for the right).",
+      "seed": {
+        "widthMm": 2000,
+        "heightMm": 2600,
+        "depthMm": 600,
+        "extraSections": [
+          {
+            "widthMm": 900
+          }
+        ]
+      },
+      "request": {
+        "tool": "section_resize",
+        "arguments": {
+          "sectionId": "$section0",
+          "widthMm": 2000
+        }
+      },
+      "expectedError": "SECTION_WIDTHS_EXCEED_WARDROBE",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "section-fit"
+      }
+    },
+    {
+      "id": "shelf-outside-section",
+      "prompt": "Move a shelf far outside the carcass.",
+      "seed": {
+        "widthMm": 900,
+        "heightMm": 2600,
+        "depthMm": 600,
+        "components": [
+          {
+            "section": 0,
+            "type": "SHELF",
+            "positionMm": 500
+          }
+        ]
+      },
+      "request": {
+        "tool": "component_move",
+        "arguments": {
+          "componentId": "$component0",
+          "axis": "z",
+          "deltaMm": 9999
+        }
+      },
+      "expectedError": "COMPONENT_OUTSIDE_SECTION",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "containment",
+        "aspirationalAlias": "SHELF_OUTSIDE_SECTION",
+        "notes": "Real validator uses COMPONENT_OUTSIDE_SECTION for all zone components."
+      }
+    },
+    {
+      "id": "overlapping-components",
+      "prompt": "Move all shelves to exactly the same height.",
+      "seed": {
+        "widthMm": 900,
+        "heightMm": 2600,
+        "depthMm": 600,
+        "components": [
+          {
+            "section": 0,
+            "type": "SHELF",
+            "positionMm": 400
+          },
+          {
+            "section": 0,
+            "type": "SHELF",
+            "positionMm": 800
+          }
+        ]
+      },
+      "request": {
+        "tool": "component_add",
+        "arguments": {
+          "sectionId": "$section0",
+          "type": "SHELF",
+          "positionMm": 402
+        }
+      },
+      "expectedError": "COMPONENT_OVERLAP",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "collision"
+      }
+    },
+    {
+      "id": "unsupported-component",
+      "prompt": "Add a curved automated rotating wardrobe section.",
+      "seed": {
+        "widthMm": 2400,
+        "heightMm": 2600,
+        "depthMm": 600
+      },
+      "request": {
+        "tool": "component_add",
+        "arguments": {
+          "sectionId": "$section0",
+          "type": "DIVIDER"
+        }
+      },
+      "expectedError": "NOT_IMPLEMENTED",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "unsupported"
+      }
+    },
+    {
+      "id": "fabricated-tool",
+      "prompt": "Use wardrobe_add_rotating_carousel now.",
+      "seed": {
+        "widthMm": 2400,
+        "heightMm": 2600,
+        "depthMm": 600
+      },
+      "agentToolCall": {
+        "name": "wardrobe_add_rotating_carousel",
+        "input": {
+          "rpm": 12
+        }
+      },
+      "expectedError": "TOOL_NOT_AVAILABLE",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "fabricated-tool"
+      }
+    },
+    {
+      "id": "llm-geometry-coordinates",
+      "request": {
+        "tool": "component_add",
+        "arguments": {
+          "type": "SHELF",
+          "sectionId": "$section0",
+          "threeJsPosition": [
+            0.1,
+            0.7,
+            -0.2
+          ]
+        }
+      },
+      "seed": {
+        "widthMm": 900,
+        "heightMm": 2600,
+        "depthMm": 600
+      },
+      "expectedError": "INVALID_TOOL_ARGUMENTS",
+      "forbiddenFields": [
+        "threeJsPosition",
+        "position",
+        "x",
+        "y",
+        "z"
+      ],
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "forbidden-coords"
+      }
+    },
+    {
+      "id": "oob-width-below-kernel-min",
+      "request": {
+        "tool": "wardrobe_create",
+        "arguments": {
+          "widthMm": 299,
+          "heightMm": 2500,
+          "depthMm": 600
+        }
+      },
+      "expectedError": "INVALID_DIMENSION",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "oob-dims",
+        "notes": "Kernel min width is 300mm."
+      }
+    },
+    {
+      "id": "oob-width-above-max",
+      "request": {
+        "tool": "wardrobe_create",
+        "arguments": {
+          "widthMm": 6001,
+          "heightMm": 2500,
+          "depthMm": 600
+        }
+      },
+      "expectedError": "INVALID_DIMENSION",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "oob-dims"
+      }
+    },
+    {
+      "id": "oob-width-under-400-aspirational-policy",
+      "request": {
+        "tool": "wardrobe_create",
+        "arguments": {
+          "widthMm": 350,
+          "heightMm": 2500,
+          "depthMm": 600
+        }
+      },
+      "expectedError": "INVALID_DIMENSION",
+      "metadata": {
+        "enforcement": "aspirational",
+        "category": "oob-dims",
+        "notes": "Product brief cited width <400 as OOB; kernel currently allows 300-6000. Case records the aspirational floor."
+      }
+    },
+    {
+      "id": "negative-depth",
+      "request": {
+        "tool": "wardrobe_create",
+        "arguments": {
+          "widthMm": 2000,
+          "heightMm": 2500,
+          "depthMm": -50
+        }
+      },
+      "expectedError": "INVALID_DIMENSION",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "oob-dims"
+      }
+    },
+    {
+      "id": "negative-height-resize",
+      "seed": {
+        "widthMm": 2400,
+        "heightMm": 2600,
+        "depthMm": 600
+      },
+      "request": {
+        "tool": "wardrobe_resize",
+        "arguments": {
+          "heightMm": -100
+        }
+      },
+      "expectedError": "INVALID_DIMENSION",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "oob-dims"
+      }
+    },
+    {
+      "id": "fractional-millimetre-width",
+      "seed": {
+        "widthMm": 2400,
+        "heightMm": 2600,
+        "depthMm": 600
+      },
+      "request": {
+        "tool": "wardrobe_resize",
+        "arguments": {
+          "widthMm": 2400.5
+        }
+      },
+      "expectedError": "INVALID_DIMENSION",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "oob-dims"
+      }
+    },
+    {
+      "id": "impossible-unsupported-shelf-span-4000",
+      "prompt": "Create a 4000 mm wide single-bay wardrobe and add a full-width shelf with no mid support.",
+      "seed": {
+        "widthMm": 4000,
+        "heightMm": 2600,
+        "depthMm": 600
+      },
+      "request": {
+        "tool": "component_add",
+        "arguments": {
+          "sectionId": "$section0",
+          "type": "SHELF",
+          "positionMm": 1200
+        }
+      },
+      "expectedError": "UNSUPPORTED_SHELF_SPAN",
+      "metadata": {
+        "enforcement": "aspirational",
+        "category": "impossible-span",
+        "notes": "constructionValidator warns on long spans for the legacy cfg path; wardrobe-model validator does not yet fail-closed on unsupported shelf span."
+      }
+    },
+    {
+      "id": "colliding-drawer-vs-hanging-rail",
+      "prompt": "Put drawers and a hanging rail in the same vertical zone.",
+      "seed": {
+        "widthMm": 900,
+        "heightMm": 2600,
+        "depthMm": 600,
+        "components": [
+          {
+            "section": 0,
+            "type": "HANGING_RAIL",
+            "positionMm": 200
+          }
+        ]
+      },
+      "request": {
+        "tool": "component_add",
+        "arguments": {
+          "sectionId": "$section0",
+          "type": "DRAWER_BANK",
+          "rows": 3,
+          "positionMm": 180
+        }
+      },
+      "expectedError": "COMPONENT_OVERLAP",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "collision"
+      }
+    },
+    {
+      "id": "shelf-above-cabinet-height",
+      "prompt": "Add a shelf above the cabinet interior height.",
+      "seed": {
+        "widthMm": 900,
+        "heightMm": 2600,
+        "depthMm": 600,
+        "components": [
+          {
+            "section": 0,
+            "type": "SHELF",
+            "positionMm": 500
+          }
+        ]
+      },
+      "request": {
+        "tool": "component_move",
+        "arguments": {
+          "componentId": "$component0",
+          "axis": "z",
+          "deltaMm": 4000
+        }
+      },
+      "expectedError": "COMPONENT_OUTSIDE_SECTION",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "collision",
+        "notes": "addComponent rejects position above interior with INVALID_DIMENSION; move yields COMPONENT_OUTSIDE_SECTION via post-commit validator."
+      }
+    },
+    {
+      "id": "drawer-bank-rows-out-of-range",
+      "seed": {
+        "widthMm": 900,
+        "heightMm": 2600,
+        "depthMm": 600
+      },
+      "request": {
+        "tool": "component_add",
+        "arguments": {
+          "sectionId": "$section0",
+          "type": "DRAWER_BANK",
+          "rows": 20
+        }
+      },
+      "expectedError": "OUT_OF_RANGE",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "schema-fuzz"
+      }
+    },
+    {
+      "id": "schema-missing-required-width",
+      "request": {
+        "tool": "wardrobe_create",
+        "arguments": {
+          "heightMm": 2500,
+          "depthMm": 600
+        }
+      },
+      "expectedError": "INVALID_TOOL_ARGUMENTS",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "schema-fuzz"
+      }
+    },
+    {
+      "id": "schema-null-arguments",
+      "request": {
+        "tool": "wardrobe_create",
+        "arguments": null
+      },
+      "expectedError": "INVALID_TOOL_ARGUMENTS",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "schema-fuzz",
+        "notes": "null arguments normalize to {}; wardrobe_create then fails required-field INVALID_TOOL_ARGUMENTS."
+      }
+    },
+    {
+      "id": "schema-array-instead-of-object",
+      "seed": {
+        "widthMm": 2400,
+        "heightMm": 2600,
+        "depthMm": 600
+      },
+      "request": {
+        "tool": "section_add",
+        "arguments": [
+          900
+        ]
+      },
+      "expectedError": "INVALID_TOOL_ARGUMENTS",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "schema-fuzz"
+      }
+    },
+    {
+      "id": "forbidden-xyz-coordinates",
+      "seed": {
+        "widthMm": 900,
+        "heightMm": 2600,
+        "depthMm": 600
+      },
+      "request": {
+        "tool": "component_add",
+        "arguments": {
+          "sectionId": "$section0",
+          "type": "SHELF",
+          "x": 0.1,
+          "y": 0.7,
+          "z": -0.2
+        }
+      },
+      "expectedError": "INVALID_TOOL_ARGUMENTS",
+      "forbiddenFields": [
+        "x",
+        "y",
+        "z"
+      ],
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "forbidden-coords"
+      }
+    },
+    {
+      "id": "forbidden-position-vector",
+      "seed": {
+        "widthMm": 900,
+        "heightMm": 2600,
+        "depthMm": 600
+      },
+      "request": {
+        "tool": "component_move",
+        "arguments": {
+          "componentId": "shelf-01",
+          "axis": "z",
+          "deltaMm": 10,
+          "position": [
+            1,
+            2,
+            3
+          ]
+        }
+      },
+      "expectedError": "INVALID_TOOL_ARGUMENTS",
+      "forbiddenFields": [
+        "position"
+      ],
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "forbidden-coords"
+      }
+    },
+    {
+      "id": "fabricated-tool-set-material-pbr",
+      "prompt": "Call set_pbr_material_override with a gold foil shader.",
+      "seed": {
+        "widthMm": 2400,
+        "heightMm": 2600,
+        "depthMm": 600
+      },
+      "agentToolCall": {
+        "name": "set_pbr_material_override",
+        "input": {
+          "shader": "gold-foil"
+        }
+      },
+      "expectedError": "TOOL_NOT_AVAILABLE",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "fabricated-tool"
+      }
+    },
+    {
+      "id": "non-wardrobe-kitchen-island-sink",
+      "prompt": "Inject a kitchen island sink into this wardrobe.",
+      "seed": {
+        "widthMm": 2400,
+        "heightMm": 2600,
+        "depthMm": 600
+      },
+      "request": {
+        "tool": "component_add",
+        "arguments": {
+          "sectionId": "$section0",
+          "type": "SINK"
+        }
+      },
+      "expectedError": "INVALID_ARGUMENT",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "non-wardrobe-injection",
+        "aspirationalAlias": "UNSUPPORTED_FURNITURE_TYPE",
+        "notes": "Wardrobe tools reject unknown component types as INVALID_ARGUMENT; FSL UNSUPPORTED_FURNITURE_TYPE is the cross-product aspirational code."
+      }
+    },
+    {
+      "id": "non-wardrobe-vanity-basin",
+      "prompt": "Add a vanity basin and mirror cabinet into the wardrobe bay.",
+      "seed": {
+        "widthMm": 2400,
+        "heightMm": 2600,
+        "depthMm": 600
+      },
+      "request": {
+        "tool": "component_add",
+        "arguments": {
+          "sectionId": "$section0",
+          "type": "VANITY_BASIN"
+        }
+      },
+      "expectedError": "INVALID_ARGUMENT",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "non-wardrobe-injection",
+        "aspirationalAlias": "UNSUPPORTED_FURNITURE_TYPE"
+      }
+    },
+    {
+      "id": "move-unsupported-axis-x",
+      "seed": {
+        "widthMm": 900,
+        "heightMm": 2600,
+        "depthMm": 600,
+        "components": [
+          {
+            "section": 0,
+            "type": "SHELF",
+            "positionMm": 500
+          }
+        ]
+      },
+      "request": {
+        "tool": "component_move",
+        "arguments": {
+          "componentId": "$component0",
+          "axis": "x",
+          "deltaMm": 50
+        }
+      },
+      "expectedError": "NOT_IMPLEMENTED",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "unsupported"
+      }
+    },
+    {
+      "id": "remove-missing-component",
+      "seed": {
+        "widthMm": 900,
+        "heightMm": 2600,
+        "depthMm": 600
+      },
+      "request": {
+        "tool": "component_remove",
+        "arguments": {
+          "componentId": "shelf-does-not-exist"
+        }
+      },
+      "expectedError": "COMPONENT_NOT_FOUND",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "schema-fuzz"
+      }
+    },
+    {
+      "id": "resize-missing-section",
+      "seed": {
+        "widthMm": 2400,
+        "heightMm": 2600,
+        "depthMm": 600
+      },
+      "request": {
+        "tool": "section_resize",
+        "arguments": {
+          "sectionId": "S_nonexistent",
+          "widthMm": 700
+        }
+      },
+      "expectedError": "SECTION_NOT_FOUND",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "schema-fuzz"
+      }
+    },
+    {
+      "id": "depth-above-max",
+      "request": {
+        "tool": "wardrobe_create",
+        "arguments": {
+          "widthMm": 2000,
+          "heightMm": 2500,
+          "depthMm": 1201
+        }
+      },
+      "expectedError": "INVALID_DIMENSION",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "oob-dims"
+      }
+    }
   ]
 }

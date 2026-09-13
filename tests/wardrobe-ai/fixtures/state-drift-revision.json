@@ -1,0 +1,52 @@
+{
+  "fixtureVersion": "wardrobe-ai-state-drift/1",
+  "status": "ACTIVE",
+  "identityField": "model.id",
+  "notes": "Wardrobe AI kernel identity is model.id; revision bumps only on successful tool commits. Panel thickness (panelThicknessMm) must not silently reset. Drawer banks are supported in wardrobe-tools (DRAWER_BANK); the PartGraph customer path still fail-closes drawers as UNSUPPORTED — this fixture exercises the wardrobe-agent/tool path where drawers are applicable.",
+  "scenario": {
+    "id": "state-drift-five-turn-revision",
+    "turns": [
+      {
+        "turn": 1,
+        "prompt": "Create a 2400 x 2600 x 600 mm wardrobe with three sections.",
+        "expected": { "success": true, "revision": 1, "sectionCount": 3, "widthMm": 2400, "heightMm": 2600, "depthMm": 600 }
+      },
+      {
+        "turn": 2,
+        "prompt": "Add 4 drawers in the middle section.",
+        "drawerStep": true,
+        "expected": { "success": true, "revisionAdvances": true, "middleDrawerRows": 4 }
+      },
+      {
+        "turn": 3,
+        "prompt": "Change the depth to 650 mm.",
+        "expected": { "success": true, "revisionAdvances": true, "depthMm": 650, "preserveWidthHeight": true, "preservePanelThickness": true }
+      },
+      {
+        "turn": 4,
+        "prompt": "Change the material to holographic carbon-fibre (non-standard).",
+        "expected": {
+          "success": false,
+          "revisionUnchanged": true,
+          "modelUnchanged": true,
+          "expectedError": "TOOL_NOT_AVAILABLE",
+          "notes": "WardrobeModel has no material field; fabricated material tool must fail closed."
+        }
+      },
+      {
+        "turn": 5,
+        "prompt": "In the middle section use 2 drawers and 2 shelves instead.",
+        "drawerStep": true,
+        "expected": { "success": true, "revisionAdvances": true, "middleDrawerRows": 2, "middleShelfCount": 2 }
+      }
+    ],
+    "finalExpected": {
+      "sameModelIdAcrossTurns": true,
+      "depthMm": 650,
+      "widthMm": 2400,
+      "heightMm": 2600,
+      "panelThicknessUnchanged": true,
+      "sectionCount": 3
+    }
+  }
+}

@@ -114,3 +114,48 @@ describe('BLOCKER 2 (round 2) — API Chat Error Redaction & Log Security', () =
     expect(logs[0]).toContain('"status":500');
   });
 });
+
+
+describe("BLOCKER 2 (round 3) — sanitized 401/402/429 client categories", () => {
+  const { clientErrorFromProvider, CLIENT_PROVIDER_CODES } = chatHandler;
+
+  test("401/403/402 map to PROVIDER_UNAVAILABLE without leaking secrets", () => {
+    for (const status of [401, 403, 402]) {
+      const err = new Error(`Authentication failed: sk-ant-LEAK`);
+      err.status = status;
+      err.headers = { authorization: "Bearer sk-ant-LEAK" };
+      const mapped = clientErrorFromProvider(err);
+      expect(mapped).toEqual({
+        status: 503,
+        code: CLIENT_PROVIDER_CODES.PROVIDER_UNAVAILABLE,
+        error: "AI service is temporarily unavailable.",
+      });
+      expect(JSON.stringify(mapped)).not.toContain("sk-ant");
+      expect(JSON.stringify(mapped)).not.toContain("LEAK");
+    }
+  });
+
+  test("429 maps to RATE_LIMITED with a fixed customer message", () => {
+    const err = new Error("rate_limit_error: retry-after leaked token sk-ant-LEAK");
+    err.status = 429;
+    err.code = "rate_limit_error";
+    const mapped = clientErrorFromProvider(err);
+    expect(mapped.status).toBe(429);
+    expect(mapped.code).toBe(CLIENT_PROVIDER_CODES.RATE_LIMITED);
+    expect(mapped.error).toBe("The AI service is rate-limiting requests. Please try again shortly.");
+    expect(JSON.stringify(mapped)).not.toContain("sk-ant");
+    expect(JSON.stringify(mapped)).not.toContain("LEAK");
+  });
+
+  test("unknown failures stay PROVIDER_ERROR / 500 with the fixed Agent failed message", () => {
+    const err = new Error("boom with sk-ant-LEAK");
+    err.status = 500;
+    const mapped = clientErrorFromProvider(err);
+    expect(mapped).toEqual({
+      status: 500,
+      code: CLIENT_PROVIDER_CODES.PROVIDER_ERROR,
+      error: "Agent failed",
+    });
+    expect(JSON.stringify(mapped)).not.toContain("sk-ant");
+  });
+});

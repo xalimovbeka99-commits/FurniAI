@@ -17,7 +17,7 @@
  * (cookies/rewrites/redirects) are never used here, so nothing is lost.
  */
 import { runWardrobeAgent } from "../../../../lib/wardrobe-agent/runWardrobeAgent.js";
-import { createChatProviderRouter, shouldExposeProviderDebugInfo, AllProvidersUnavailableError, redactErrorForLogging } from "../../../../lib/ai-provider/index.js";
+import { createChatProviderRouter, shouldExposeProviderDebugInfo, AllProvidersUnavailableError, ProviderError, PROVIDER_ERROR_CODES, redactErrorForLogging } from "../../../../lib/ai-provider/index.js";
 
 const MESSAGE_MAX_LENGTH = 2000;
 
@@ -93,6 +93,21 @@ export async function POST(req) {
     }
     if (err?.name === "AgentTimeoutError") {
       return errorResponse(504, "AI_PROVIDER_TIMEOUT", "The Wardrobe AI did not respond in time.");
+    }
+    // Smallest safe hardening: if a ProviderError leaks past failover, map
+    // auth/billing/rate-limit to sanitized categories — never raw SDK text.
+    if (err instanceof ProviderError) {
+      if (err.code === PROVIDER_ERROR_CODES.RATE_LIMITED) {
+        return errorResponse(429, "RATE_LIMITED", "The AI provider is rate-limiting requests.");
+      }
+      if (
+        err.code === PROVIDER_ERROR_CODES.AUTH_ERROR ||
+        err.code === PROVIDER_ERROR_CODES.MISSING_API_KEY ||
+        err.code === PROVIDER_ERROR_CODES.QUOTA_EXCEEDED ||
+        err.code === PROVIDER_ERROR_CODES.UNAVAILABLE
+      ) {
+        return errorResponse(503, "PROVIDER_UNAVAILABLE", "The Wardrobe AI is not available right now.");
+      }
     }
     console.error("wardrobe agent route error:", redactErrorForLogging(err));
     return errorResponse(500, "WARDROBE_AGENT_ERROR", "Something went wrong running the Wardrobe AI.");

@@ -172,4 +172,22 @@ describe("POST /api/wardrobe/chat", () => {
       logSpy.mockRestore();
     }
   });
+
+
+  it("maps ProviderError RATE_LIMITED to 429 RATE_LIMITED without leaking internals", async () => {
+    runMock.mockRejectedValueOnce(new RealProviderError("RATE_LIMITED", "The AI provider is rate-limiting requests.", { cause: new Error("Authorization: Bearer sk-ant-LEAK") }));
+    const { status, body } = await post({ message: "Create a wardrobe." });
+    expect(status).toBe(429);
+    expect(body.code).toBe("RATE_LIMITED");
+    expect(JSON.stringify(body)).not.toContain("sk-ant");
+    expect(JSON.stringify(body)).not.toContain("LEAK");
+  });
+
+  it("maps ProviderError AUTH_ERROR to 503 PROVIDER_UNAVAILABLE", async () => {
+    runMock.mockRejectedValueOnce(new RealProviderError("AUTH_ERROR", "The AI provider rejected the request credentials."));
+    const { status, body } = await post({ message: "Create a wardrobe." });
+    expect(status).toBe(503);
+    expect(body.code).toBe("PROVIDER_UNAVAILABLE");
+  });
+
 });
