@@ -301,11 +301,24 @@ describe("6. the backend contract still carries the material and Undo flow", () 
     expect(res.spec.revision).toBe(2);
   });
 
-  it("keeps the six published result kinds intact", () => {
+  it("keeps the published result kinds intact", () => {
     // The browser branches on exactly these. Renaming or dropping one breaks
     // Antigravity's handler silently, in the fallback branch.
+    //
+    // Updated from six to seven when STALE_REVISION was added
+    // (src/lib/adapters/staleRevisionGuard.test.js). Assertion stays EXACT.
+    // STALE_REVISION is additive: unknown kinds fall into AG's generic-error
+    // path, which already says the design is unchanged.
     expect(Object.keys(RESULT_KIND).sort()).toEqual(
-      ["DESIGNER_UNAVAILABLE", "DESIGN_UPDATED", "MATERIAL_UPDATED", "NEEDS_MORE_DETAIL", "REJECTED", "UNSUPPORTED"].sort()
+      [
+        "DESIGNER_UNAVAILABLE",
+        "DESIGN_UPDATED",
+        "MATERIAL_UPDATED",
+        "NEEDS_MORE_DETAIL",
+        "REJECTED",
+        "STALE_REVISION",
+        "UNSUPPORTED",
+      ].sort()
     );
   });
 });

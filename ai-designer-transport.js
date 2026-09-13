@@ -23,6 +23,8 @@ var AiDesignerTransport = (() => {
     AI_DESIGNER_ENDPOINT: () => AI_DESIGNER_ENDPOINT,
     RESULT_KIND: () => RESULT_KIND,
     RESULT_SOURCE: () => RESULT_SOURCE,
+    isStaleAnswer: () => isStaleAnswer,
+    isStaleForRevision: () => isStaleForRevision,
     proposeDesignChange: () => proposeDesignChange
   });
 
@@ -3501,19 +3503,92 @@ var AiDesignerTransport = (() => {
     NEEDS_MORE_DETAIL: "NEEDS_MORE_DETAIL",
     UNSUPPORTED: "UNSUPPORTED",
     REJECTED: "REJECTED",
-    DESIGNER_UNAVAILABLE: "DESIGNER_UNAVAILABLE"
+    DESIGNER_UNAVAILABLE: "DESIGNER_UNAVAILABLE",
+    /**
+     * The answer that came back is for a design the customer has already moved
+     * past — they edited again, pressed Undo, or switched designs while it was
+     * in flight. Covers changeToken mismatch and design-id mismatch (not only
+     * revision inequality). Kept as STALE_REVISION for Antigravity additive
+     * compatibility; see docs/m2/integ/ANTIGRAVITY_STALE_GUARD_HANDOFF.md.
+     */
+    STALE_REVISION: "STALE_REVISION"
   });
   function factsFrom(observations) {
     return Object.fromEntries((observations ?? []).map((o) => [o.key, o.value]));
+  }
+  function readGetter(maybeGetter) {
+    if (typeof maybeGetter !== "function") return void 0;
+    return maybeGetter();
+  }
+  function isStaleAnswer({
+    designIdAtRequest,
+    changeTokenAtRequest,
+    currentDesignId,
+    currentChangeToken,
+    revisionAtRequest,
+    currentRevision
+  } = {}) {
+    const hasDesignGuard = typeof currentDesignId === "function";
+    const hasTokenGuard = typeof currentChangeToken === "function";
+    const hasRevisionGuard = typeof currentRevision === "function";
+    if (!hasDesignGuard && !hasTokenGuard && !hasRevisionGuard) return false;
+    if (hasDesignGuard) {
+      const nowId = readGetter(currentDesignId);
+      if (designIdAtRequest == null || nowId == null || nowId === "") return false;
+      if (String(nowId) !== String(designIdAtRequest)) return true;
+    }
+    if (hasTokenGuard) {
+      const nowToken = readGetter(currentChangeToken);
+      if (!Number.isFinite(nowToken) || !Number.isFinite(changeTokenAtRequest)) return false;
+      if (nowToken !== changeTokenAtRequest) return true;
+    }
+    if (hasRevisionGuard && !hasTokenGuard) {
+      const now = readGetter(currentRevision);
+      if (!Number.isFinite(now) || !Number.isFinite(revisionAtRequest)) return false;
+      if (now !== revisionAtRequest) return true;
+    }
+    return false;
+  }
+  function isStaleForRevision({ revisionAtRequest, currentRevision } = {}) {
+    return isStaleAnswer({ revisionAtRequest, currentRevision });
+  }
+  function staleResult({
+    designIdAtRequest,
+    changeTokenAtRequest,
+    currentDesignId,
+    currentChangeToken,
+    revisionAtRequest,
+    currentRevision
+  }) {
+    return {
+      ok: false,
+      source: RESULT_SOURCE.DETERMINISTIC,
+      kind: RESULT_KIND.STALE_REVISION,
+      designIdAtRequest: designIdAtRequest ?? null,
+      currentDesignId: currentDesignId ?? null,
+      changeTokenAtRequest: Number.isFinite(changeTokenAtRequest) ? changeTokenAtRequest : null,
+      currentChangeToken: Number.isFinite(currentChangeToken) ? currentChangeToken : null,
+      revisionAtRequest: Number.isFinite(revisionAtRequest) ? revisionAtRequest : null,
+      currentRevision: Number.isFinite(currentRevision) ? currentRevision : null,
+      error: "That answer arrived for an older version of your design, so it was not applied. Your current design is unchanged \u2014 please ask again."
+    };
   }
   async function proposeDesignChange({
     message,
     currentObservations = [],
     specId,
     revision = 1,
+    changeToken = void 0,
     endpoint = AI_DESIGNER_ENDPOINT,
     fetchImpl = typeof fetch === "function" ? fetch : null,
-    signal = void 0
+    signal = void 0,
+    currentDesignId = void 0,
+    currentChangeToken = void 0,
+    /**
+     * Legacy: reads the caller's CURRENT revision when the answer lands.
+     * Prefer currentChangeToken — revision rewinds on Undo.
+     */
+    currentRevision = void 0
   }) {
     if (typeof message !== "string" || message.trim() === "") {
       return { ok: false, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.REJECTED, error: "Please describe the change you want." };
@@ -3567,6 +3642,26 @@ var AiDesignerTransport = (() => {
         ...signal ? { signal } : {}
       });
       payload = await response.json().catch(() => null);
+      const liveDesignId = readGetter(currentDesignId);
+      const liveChangeToken = readGetter(currentChangeToken);
+      const liveRevision = readGetter(currentRevision);
+      if (isStaleAnswer({
+        designIdAtRequest: specId,
+        changeTokenAtRequest: changeToken,
+        currentDesignId,
+        currentChangeToken,
+        revisionAtRequest: revision,
+        currentRevision
+      })) {
+        return staleResult({
+          designIdAtRequest: specId,
+          changeTokenAtRequest: changeToken,
+          currentDesignId: liveDesignId,
+          currentChangeToken: liveChangeToken,
+          revisionAtRequest: revision,
+          currentRevision: liveRevision
+        });
+      }
       if (!response.ok || !payload?.ok) {
         return {
           ok: false,
