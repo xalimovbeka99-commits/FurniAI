@@ -1,0 +1,77 @@
+{
+  "viewport": {
+    "w": 390,
+    "h": 844
+  },
+  "sheetsWereOpen": true,
+  "canvas": {
+    "top": 190.5,
+    "left": 0,
+    "right": 390,
+    "bottom": 844.5,
+    "width": 390,
+    "height": 654
+  },
+  "left": {
+    "top": 844,
+    "left": 0,
+    "right": 390,
+    "bottom": 1149.25,
+    "width": 390,
+    "height": 305.25
+  },
+  "right": {
+    "top": 844,
+    "left": 0,
+    "right": 390,
+    "bottom": 1232.234375,
+    "width": 390,
+    "height": 388.234375
+  },
+  "mainClasses": [
+    "b-main",
+    "custom-type"
+  ],
+  "after": {
+    "canvas": {
+      "top": 190.5,
+      "left": 0,
+      "right": 390,
+      "bottom": 844.5,
+      "width": 390,
+      "height": 654
+    },
+    "left": {
+      "top": 844,
+      "left": 0,
+      "right": 390,
+      "bottom": 1149.25,
+      "width": 390,
+      "height": 305.25
+    },
+    "right": {
+      "top": 844,
+      "left": 0,
+      "right": 390,
+      "bottom": 1232.234375,
+      "width": 390,
+      "height": 388.234375
+    },
+    "leftOverlapPx": 0.5,
+    "rightOverlapPx": 0.5,
+    "leftOccludes": false,
+    "rightOccludes": false,
+    "freeCanvasHeightPx": 654,
+    "freeCanvasFrac": 0.7748815165876777,
+    "mainClasses": [
+      "b-main",
+      "custom-type"
+    ]
+  },
+  "leftOverlapPx": 0.5,
+  "rightOverlapPx": 0.5,
+  "leftOccludes": false,
+  "rightOccludes": false,
+  "freeCanvasHeightPx": 654,
+  "freeCanvasFrac": 0.7748815165876777
+}

@@ -202,6 +202,10 @@ export function loadGoldenWardrobe(builder) {
   const currentMat = builder.parametricMat || "white";
   updateParametricMaterial(builder, currentMat);
 
+  if (typeof builder.updateActionButtons === "function") {
+    builder.updateActionButtons();
+  }
+
   return {
     partGraph,
     furnitureGroup,
@@ -268,6 +272,10 @@ export function loadApprovedPartGraph(builder, partGraph) {
   // Apply current or default material
   const currentMat = builder.parametricMat || "white";
   updateParametricMaterial(builder, currentMat);
+
+  if (typeof builder.updateActionButtons === "function") {
+    builder.updateActionButtons();
+  }
 
   return {
     partGraph,

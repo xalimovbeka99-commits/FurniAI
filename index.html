@@ -302,15 +302,34 @@ footer ul a:hover{opacity:1;color:var(--brass)}
   .b-tab{flex:1;border:none;background:transparent;border-radius:100px;font-family:'Space Mono',monospace;font-size:11.5px;font-weight:600;color:var(--ink-soft);cursor:pointer;min-height:44px;display:flex;align-items:center;justify-content:center;transition:all .15s}
   .b-tab.active{color:var(--paper);background:var(--ink)}
 
+  /* Mobile Builder Header: clean 2-row wrap so controls and parametric badge never collide */
+  .b-top{flex-wrap:wrap;padding:8px 14px;gap:6px 10px}
+  .b-top .left{gap:10px;min-width:0;flex:1 1 auto}
+  .b-title{font-size:1.1rem;max-width:140px}
+  .b-title .t{font-size:9.5px}
+  .b-nav{gap:8px;flex-shrink:0}
+  .b-nav #createWithFurniAiBldBtn{font-size:11px;padding:4px 9px;margin-right:2px}
+  .b-nav-btn{width:32px;height:32px;font-size:15px}
+  .b-nav-pos{font-size:11px;min-width:44px}
+  .parametric-badge{width:100%;margin-top:2px;padding:5px 10px;gap:6px 8px;font-size:9.5px;box-sizing:border-box;justify-content:flex-start;background:rgba(0,180,216,.06)}
+  .p-tag{letter-spacing:.05em}
+  .p-spec,.p-dims,.p-parts{padding:0 4px;font-size:9px}
+  .p-pill{padding:1px 5px;font-size:8.5px}
+
   /* Mobile builder layout: 3D stage fills the whole screen; panels float above it as slide-up sheets */
   .b-main{flex-direction:column;overflow:hidden;position:relative}
   .b-stage{position:absolute;inset:0;flex:none;height:auto}
   .b-hint{display:none}
+  .b-dims-tag{top:10px;right:10px;font-size:10px;padding:4px 8px}
 
-  .b-panel{display:flex!important;flex-direction:column;position:fixed;left:0;right:0;bottom:0;width:100%;max-height:64vh;background:var(--paper);border-radius:20px 20px 0 0;box-shadow:0 -16px 40px -16px rgba(33,30,25,.4);padding:20px 18px calc(86px + env(safe-area-inset-bottom));overflow-y:auto;transform:translateY(100%);transition:transform .32s cubic-bezier(.32,.72,0,1);z-index:25;touch-action:pan-y}
-  .b-panel::before{content:'';position:sticky;top:-4px;display:block;width:36px;height:4px;border-radius:100px;background:var(--line-soft);margin:0 auto 16px}
+  .b-panel{display:flex!important;flex-direction:column;position:fixed;left:0;right:0;bottom:0;width:100%;max-height:46vh;background:var(--paper);border-radius:20px 20px 0 0;box-shadow:0 -16px 40px -16px rgba(33,30,25,.4);padding:14px 18px calc(76px + env(safe-area-inset-bottom));overflow-y:auto;transform:translateY(100%);transition:transform .32s cubic-bezier(.32,.72,0,1);z-index:25;touch-action:pan-y}
+  .b-panel::before{content:'';position:sticky;top:-4px;display:block;width:42px;height:5px;border-radius:100px;background:var(--line);margin:0 auto 12px;cursor:pointer}
   .b-main.show-left .b-panel.left{transform:translateY(0)}
   .b-main.show-right .b-panel.right{transform:translateY(0)}
+
+  /* When bottom sheet is open, hide floating AI button to prevent obscuring panel controls */
+  .b-main.show-left ~ .ai-fab,
+  .b-main.show-right ~ .ai-fab{opacity:0;pointer-events:none}
 
   .b-row{width:100%;margin-bottom:14px}
   .b-row label{font-size:13px}
@@ -819,6 +838,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 /* ======================= ROUTER ======================= */
 let landingActive=true, builderActive=false;
 let hRafId=null, bldRafId=null;
+let heroVisible=true;
 
 function go(hash){ if(location.hash===hash){route();} else location.hash=hash; }
 function route(){
@@ -890,7 +910,11 @@ function showProjects(){
 
 function startHeroLoop(){
   if(typeof document!=='undefined'&&document.hidden)return;
-  if(!hRafId && landingActive && hRen){
+  if(hRafId){
+    cancelAnimationFrame(hRafId);
+    hRafId=null;
+  }
+  if(landingActive && hRen && heroVisible){
     hLoop();
   }
 }
@@ -1044,6 +1068,7 @@ function heroInit(){
   try{
     hRen=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true});hRen.setPixelRatio(Math.min(devicePixelRatio,2));hRen.setSize(W,H);
     hRen.shadowMap.enabled=true;hRen.shadowMap.type=THREE.PCFSoftShadowMap;hRen.outputEncoding=THREE.sRGBEncoding;hRen.toneMapping=THREE.ACESFilmicToneMapping;hRen.toneMappingExposure=1.08;
+    window.hRen=hRen;
   }catch(e){
     console.warn('Hero WebGL init error:',e);
     return;
@@ -1069,6 +1094,20 @@ function heroInit(){
   const fill=new THREE.DirectionalLight(0xdfe8ff,.3);fill.position.set(-4,2,-2);hScene.add(fill);
   heroWardrobe();
   const fl=new THREE.Mesh(new THREE.PlaneGeometry(30,30),new THREE.MeshStandardMaterial({color:0xe3d9c7,roughness:.92}));fl.rotation.x=-Math.PI/2;fl.position.y=-1.22;fl.receiveShadow=true;hScene.add(fl);
+  if(typeof IntersectionObserver!=='undefined'){
+    const hObs=new IntersectionObserver((entries)=>{
+      entries.forEach(entry=>{
+        heroVisible=entry.isIntersecting;
+        if(heroVisible){
+          if(landingActive) startHeroLoop();
+        }else{
+          stopHeroLoop();
+        }
+      });
+    },{threshold:0.02});
+    hObs.observe(wrap||cv);
+  }
+
   startHeroLoop();
 }
 function hp(w,h,d,c,x,y,z,ro,me){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshStandardMaterial({color:c,roughness:ro!==undefined?ro:.72,metalness:me||0}));m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;HG.add(m);return m}
@@ -1090,7 +1129,7 @@ function heroWardrobe(){
 }
 let ht0=Date.now();
 function hLoop(){
-  if(!landingActive||!hRen){
+  if(!landingActive||!hRen||!heroVisible){
     hRafId=null;
     return;
   }
@@ -1492,6 +1531,23 @@ const Builder={
   roundedShape(w,h,r){const s=new THREE.Shape();const x=-w/2,y=-h/2;s.moveTo(x+r,y);s.lineTo(x+w-r,y);s.quadraticCurveTo(x+w,y,x+w,y+r);s.lineTo(x+w,y+h-r);s.quadraticCurveTo(x+w,y+h,x+w-r,y+h);s.lineTo(x+r,y+h);s.quadraticCurveTo(x,y+h,x,y+h-r);s.lineTo(x,y+r);s.quadraticCurveTo(x,y,x+r,y);return s},
   frontPanel(w,h,depth,color,rough,metal){const shape=this.roundedShape(w,h,Math.min(w,h)*.04);const geo=new THREE.ExtrudeGeometry(shape,{depth,bevelEnabled:true,bevelThickness:.004,bevelSize:.004,bevelSegments:2});geo.center();return new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color,roughness:rough,metalness:metal,bumpMap:grainTexture(),bumpScale:.0018}))},
 
+  updateActionButtons(){
+    const tdr = document.getElementById('toggle-drawers');
+    if (tdr) {
+      const hasDrawers = Boolean(this.drawerObjs && this.drawerObjs.length > 0);
+      tdr.disabled = !hasDrawers;
+      tdr.style.display = hasDrawers ? '' : 'none';
+      if (!hasDrawers) tdr.classList.remove('on');
+    }
+    const td = document.getElementById('toggle-doors');
+    if (td) {
+      const hasDoors = Boolean(this.doorObjs && this.doorObjs.length > 0);
+      td.disabled = !hasDoors;
+      td.style.display = hasDoors ? '' : 'none';
+      if (!hasDoors) td.classList.remove('on');
+    }
+  },
+
   clear(){
     const targets = [...this.parts, ...this.doorObjs, ...this.drawerObjs];
     targets.forEach(p => { if (p && p.parent) p.parent.remove(p); });
@@ -1502,6 +1558,7 @@ const Builder={
     const cv = document.getElementById('bld3d'); if (cv) cv.style.cursor = '';
     const td = document.getElementById('toggle-doors'); if (td) td.classList.remove('on');
     const tdr = document.getElementById('toggle-drawers'); if (tdr) tdr.classList.remove('on');
+    this.updateActionButtons();
   },
 
   build(){
@@ -1509,6 +1566,7 @@ const Builder={
       if(globalThis.PartGraphBridge&&typeof globalThis.PartGraphBridge.loadGoldenWardrobe==='function'){
         globalThis.PartGraphBridge.loadGoldenWardrobe(this);
       }
+      this.updateActionButtons();
       return;
     }
     this.clear();const T=this.cfg.type;
@@ -1525,7 +1583,9 @@ const Builder={
       if(T==='vanity_floating') fl.position.y=-this.cfg.h/100/2-0.25;
       else fl.position.y=-this.cfg.h/100/2-.001;
     }
-    this.updateDimsTag();},
+    this.updateDimsTag();
+    this.updateActionButtons();
+  },
 
   wall(opts){const P=this.P;const W=opts.length,H=opts.H,D=opts.D,N=opts.sections;const m=MAT[this.cfg.mat],mc=m.color;
     const plH=.08,bb=-H/2+plH,ih=H-plH,sw=(W-P*(N+1))/N;const dh=.13,skip=opts.cornerSkip;
@@ -1839,6 +1899,7 @@ const Builder={
       }else{
         console.error('PartGraphBridge is unavailable.');
       }
+      this.updateActionButtons();
       return;
     }
     if(idx==='ai-wardrobe'){
@@ -1990,6 +2051,19 @@ const Builder={
         tR.classList.add('active'); tL.classList.remove('active');
       });
     }
+
+    document.querySelectorAll('.b-panel').forEach(panel => {
+      panel.addEventListener('click', e => {
+        if (!isMobile()) return;
+        const rect = panel.getBoundingClientRect();
+        if (e.clientY - rect.top <= 28) {
+          bm.classList.remove('show-left');
+          bm.classList.remove('show-right');
+          if (tL) tL.classList.remove('active');
+          if (tR) tR.classList.remove('active');
+        }
+      });
+    });
   }
 };
 window.Builder=Builder;
@@ -2000,6 +2074,8 @@ let aiWardrobeState = {
   answers: {},
   specId: null,
   revision: 1,
+  // editSequence === transport changeToken (monotonic; bumps on draft/edit/Undo; never rewinds).
+  editSequence: 0,
   currentStage: null,
   proposal: null,
   approval: null,
@@ -2291,11 +2367,16 @@ async function runAiWardrobeConversationalEdit(cmdText) {
   let res;
   try {
     if (globalThis.AiDesignerTransport && typeof globalThis.AiDesignerTransport.proposeDesignChange === 'function') {
+      // editSequence is AG's monotonic UI generation counter (bumps on draft/edit/Undo).
+      // Transport names the same value changeToken / currentChangeToken — one guard, not two.
       res = await globalThis.AiDesignerTransport.proposeDesignChange({
         message: cmdText,
         currentObservations: aiWardrobeState.observations,
         specId: aiWardrobeState.specId,
         revision: aiWardrobeState.revision,
+        changeToken: currentSeq,
+        currentDesignId: () => aiWardrobeState.specId,
+        currentChangeToken: () => aiWardrobeState.editSequence,
       });
     } else if (globalThis.PartGraphBridge && typeof globalThis.PartGraphBridge.applyConversationalEdit === 'function') {
       res = globalThis.PartGraphBridge.applyConversationalEdit({
@@ -2330,6 +2411,13 @@ async function runAiWardrobeConversationalEdit(cmdText) {
   if (!res) return;
 
   const kind = res.kind;
+
+  if (kind === 'STALE_REVISION') {
+    // Transport already refused apply; keep UI discard path consistent.
+    appendAiStreamMsg('user', cmdText);
+    appendAiStreamMsg('assistant', res.error || 'That answer arrived too late and was not applied. Your design is unchanged.');
+    return;
+  }
 
   if (kind === 'DESIGN_UPDATED' || (res.ok && res.spec && res.partGraph)) {
     // 1. DESIGN_UPDATED: geometry and specification updated

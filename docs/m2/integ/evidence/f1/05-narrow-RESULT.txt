@@ -1,1 +1,1 @@
-NEEDS FIXES (Antigravity): canvas visible at 390px; usable wardrobe UI not accepted as PASS.
+PASS (measured): canvas unoccluded at 390x844; freeCanvas=654px (77.5%); sheets collapsed; badge+doors visible; drawers hidden.

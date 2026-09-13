@@ -4256,6 +4256,9 @@ var PartGraphBridge = (() => {
     builder.lookAtZ = 0;
     const currentMat = builder.parametricMat || "white";
     updateParametricMaterial(builder, currentMat);
+    if (typeof builder.updateActionButtons === "function") {
+      builder.updateActionButtons();
+    }
     return {
       partGraph,
       furnitureGroup,
@@ -4298,6 +4301,9 @@ var PartGraphBridge = (() => {
     builder.lookAtZ = 0;
     const currentMat = builder.parametricMat || "white";
     updateParametricMaterial(builder, currentMat);
+    if (typeof builder.updateActionButtons === "function") {
+      builder.updateActionButtons();
+    }
     return {
       partGraph,
       furnitureGroup,

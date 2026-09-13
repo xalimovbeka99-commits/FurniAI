@@ -285,11 +285,89 @@ test.describe("F1 evidence on integration candidate", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(400);
     await expect(page.locator("#bld3d")).toBeVisible();
+    await expect(page.locator("#parametricBadge")).toBeVisible();
+    await expect(page.locator("#toggle-doors")).toBeVisible();
+    // Golden parametric has no drawers — drawer toggle must be hidden (AG presentation).
+    await expect(page.locator("#toggle-drawers")).toBeHidden();
+
+    // Measure actual occlusion: canvas vs open bottom sheets overlapping wardrobe.
+    // Do NOT claim PASS from CSS max-height alone.
+    const beforeOcc = await page.evaluate(() => {
+      const box = (el) => {
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { top: r.top, left: r.left, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+      };
+      const main = document.querySelector(".b-main");
+      return {
+        viewport: { w: window.innerWidth, h: window.innerHeight },
+        sheetsWereOpen: Boolean(main && (main.classList.contains("show-left") || main.classList.contains("show-right"))),
+        canvas: box(document.getElementById("bld3d")),
+        left: box(document.querySelector(".b-panel.left")),
+        right: box(document.querySelector(".b-panel.right")),
+        mainClasses: main ? [...main.classList] : [],
+      };
+    });
+
+    // Collapse sheets and wait for CSS transition (~320ms) before measuring again.
+    await page.evaluate(() => {
+      const main = document.querySelector(".b-main");
+      if (main) {
+        main.classList.remove("show-left");
+        main.classList.remove("show-right");
+      }
+      document.getElementById("tab-left")?.classList.remove("active");
+      document.getElementById("tab-right")?.classList.remove("active");
+    });
+    await page.waitForTimeout(450);
+
+    const afterOcc = await page.evaluate(() => {
+      const box = (el) => {
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { top: r.top, left: r.left, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+      };
+      const canvas = box(document.getElementById("bld3d"));
+      const left = box(document.querySelector(".b-panel.left"));
+      const right = box(document.querySelector(".b-panel.right"));
+      const overlapY = (a, b) => {
+        if (!a || !b) return 0;
+        return Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+      };
+      const sheetVisiblyOverCanvas = (panelBox) => {
+        if (!panelBox || !canvas) return false;
+        const intersects = overlapY(canvas, panelBox) > 8;
+        const onScreen = panelBox.top < window.innerHeight - 4 && panelBox.bottom > 4;
+        return intersects && onScreen && panelBox.top < canvas.bottom - 8;
+      };
+      return {
+        canvas,
+        left,
+        right,
+        leftOverlapPx: overlapY(canvas, left),
+        rightOverlapPx: overlapY(canvas, right),
+        leftOccludes: sheetVisiblyOverCanvas(left),
+        rightOccludes: sheetVisiblyOverCanvas(right),
+        freeCanvasHeightPx: canvas ? canvas.height : 0,
+        freeCanvasFrac: canvas && window.innerHeight ? canvas.height / window.innerHeight : 0,
+        mainClasses: [...(document.querySelector(".b-main")?.classList || [])],
+      };
+    });
+
+    const occlusion = { ...beforeOcc, after: afterOcc, ...afterOcc };
+    writeJson("05-narrow-occlusion.json", occlusion);
     await page.screenshot({ path: path.join(OUT, "05-narrow-viewport.png"), fullPage: false });
-    fs.writeFileSync(
-      path.join(OUT, "05-narrow-RESULT.txt"),
-      "NEEDS FIXES (Antigravity): canvas visible at 390px; usable wardrobe UI not accepted as PASS.\n"
-    );
+
+    const usable =
+      afterOcc.freeCanvasHeightPx >= 320 &&
+      afterOcc.freeCanvasFrac >= 0.45 &&
+      !afterOcc.leftOccludes &&
+      !afterOcc.rightOccludes;
+    const resultLine = usable
+      ? `PASS (measured): canvas unoccluded at 390x844; freeCanvas=${afterOcc.freeCanvasHeightPx}px (${(afterOcc.freeCanvasFrac * 100).toFixed(1)}%); sheets collapsed; badge+doors visible; drawers hidden.\n`
+      : `NEEDS FIXES (measured): freeCanvas=${afterOcc.freeCanvasHeightPx}px (${(afterOcc.freeCanvasFrac * 100).toFixed(1)}%); leftOccludes=${afterOcc.leftOccludes}; rightOccludes=${afterOcc.rightOccludes}; leftOverlapPx=${afterOcc.leftOverlapPx}; rightOverlapPx=${afterOcc.rightOverlapPx}.\n`;
+    fs.writeFileSync(path.join(OUT, "05-narrow-RESULT.txt"), resultLine);
+    await expect(page.locator("#bld3d")).toBeVisible();
   });
 
   test("isolated parser TEST SETUP: AiDesignerTransport disabled — draft/edit/Undo labels only", async ({
