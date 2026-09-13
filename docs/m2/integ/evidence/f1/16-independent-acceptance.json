@@ -1,0 +1,90 @@
+﻿{
+    "ranAt":  "2026-09-13T15:23:36.122Z",
+    "sha":  "9a9bf6355fecdd36bf3604ae2cb2f7f63be0fcf6",
+    "items":  {
+                  "designWithAiNav":  {
+                                          "status":  "PASS",
+                                          "url":  "http://127.0.0.1:4173/#/build/ai-wardrobe"
+                                      },
+                  "shortDescriptionDraft":  {
+                                                "status":  "PASS",
+                                                "draft":  {
+                                                              "widthMm":  1800,
+                                                              "heightMm":  2400,
+                                                              "depthMm":  600,
+                                                              "revision":  1,
+                                                              "finishType":  "melamine",
+                                                              "bayCount":  2,
+                                                              "doorCount":  4,
+                                                              "fingerprint":  "fs256:2a9ced16a4cf481013af58f5bd130bb755b51c81a67216f1ae6cd69786833d43",
+                                                              "proposalId":  "furnispec-ai-wardrobe-2830",
+                                                              "structural":  19,
+                                                              "preview":  2,
+                                                              "rails":  2,
+                                                              "cncBadge":  true,
+                                                              "drillingBadge":  true,
+                                                              "workshopBadge":  true
+                                                          }
+                                            },
+                  "workshopBadges":  {
+                                         "status":  "PASS",
+                                         "cnc":  true,
+                                         "drilling":  true,
+                                         "workshop":  true,
+                                         "note":  "CNC NOT QUALIFIED / drilling BLOCKED / WORKSHOP REVIEW visible in UI"
+                                     },
+                  "supportedWidthEdit":  {
+                                             "status":  "PASS",
+                                             "before":  1800,
+                                             "after":  2000,
+                                             "revision":  2
+                                         },
+                  "finishChangeLayoutPreserved":  {
+                                                      "status":  "PASS",
+                                                      "howTested":  "customer-path material swatch (.b-sw nth=1) after draft+width edit; envelope/bays/doors/structural/rails unchanged",
+                                                      "afterParametricMat":  "walnut",
+                                                      "layoutSame":  true,
+                                                      "railsPreview":  true
+                                                  },
+                  "unsupportedAssistantNotCustomer":  {
+                                                          "status":  "PASS",
+                                                          "assistantText":  "Sorry Ã¢â‚¬â€ I can\u0027t add drawers to this wardrobe yet â€” the drawer boxes depend on the runner hardware, which isn\u0027t confirmed for this design. Everything else in your wardrobe is unchanged. (Alternative: a fixed shelf at the same height, which you could add drawers under later)",
+                                                          "designUnchanged":  true
+                                                      },
+                  "validEditAfterRejection":  {
+                                                  "status":  "PASS",
+                                                  "note":  "After drawers unsupported (design unchanged), chipAddShelf also refused (assistant explanation). Valid width edit via #chipWidth2000 then applied (rev 1-\u003e2, width 2000). Evidence: 17-valid-after-reject.json",
+                                                  "proof":  "docs/m2/integ/evidence/f1/17-valid-after-reject.json"
+                                              },
+                  "undoOrder":  {
+                                    "status":  "PASS",
+                                    "beforeRevision":  2,
+                                    "afterRevision":  1
+                                },
+                  "railsRemainPreview":  {
+                                             "status":  "PASS",
+                                             "structural":  19,
+                                             "preview":  2,
+                                             "rails":  2
+                                         },
+                  "desktopEvidence":  {
+                                          "status":  "PASS",
+                                          "path":  "docs/m2/integ/evidence/f1/14-acceptance-desktop.png"
+                                      },
+                  "mobile390":  {
+                                    "status":  "NEEDS_FIXES",
+                                    "canvasVisible":  true,
+                                    "path":  "docs/m2/integ/evidence/f1/15-acceptance-mobile-390.png",
+                                    "note":  "Antigravity-owned; canvas visible but usable wardrobe UI not accepted as PASS"
+                                },
+                  "saveReopen":  {
+                                     "status":  "UNVERIFIED",
+                                     "note":  "Save design control visible; F1 does not claim durable reopen persistence â€” UNVERIFIED",
+                                     "saveControlPresent":  true
+                                 },
+                  "exactDoorPointer":  {
+                                           "status":  "PASS",
+                                           "evidence":  "docs/m2/integ/evidence/f1/02-exact-door-*.png + 02-exact-door-state.json from npm run test:browser:f1"
+                                       }
+              }
+}
