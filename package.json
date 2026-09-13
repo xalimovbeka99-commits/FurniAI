@@ -20,7 +20,11 @@
     "demo:golden-partgraph": "node scripts/demo-golden-partgraph.mjs",
     "demo:parametric-partgraph": "node scripts/demo-parametric-partgraph.mjs",
     "demo:viewer-bridge": "node scripts/demo-viewer-bridge.mjs",
-    "demo:ai-wardrobe": "node scripts/demo-ai-wardrobe.mjs"
+    "demo:ai-wardrobe": "node scripts/demo-ai-wardrobe.mjs",
+    "verify:live-designer": "node scripts/verify-live-designer.mjs",
+    "check:provider": "node scripts/check-provider-config.mjs",
+    "dev:api": "node scripts/dev-api-server.mjs",
+    "test:browser:f1": "playwright test tests/browser/f1-journey.spec.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.28.0",

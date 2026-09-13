@@ -40,13 +40,32 @@ var PartGraphBridge = (() => {
   // src/lib/adapters/browserBridge.js
   var browserBridge_exports = {};
   __export(browserBridge_exports, {
+    ACCEPTED_DIMENSION_UNITS: () => ACCEPTED_DIMENSION_UNITS,
+    APPROVAL_STATE: () => APPROVAL_STATE,
+    BEKZOD_APPROVED_DEFAULTS: () => BEKZOD_APPROVED_DEFAULTS,
     DMM_TO_THREE: () => DMM_TO_THREE,
+    OBSERVATION_ORIGIN: () => OBSERVATION_ORIGIN,
+    PIPELINE_STAGE: () => PIPELINE_STAGE,
+    applyConversationalEdit: () => applyConversationalEdit,
+    approveAndPreview: () => approveAndPreview,
     buildStructuralPartGraph: () => buildStructuralPartGraph,
+    createDeterministicPhraseAdapter: () => createDeterministicPhraseAdapter,
+    createProposal: () => createProposal,
     disposePartGraphGroup: () => disposePartGraphGroup,
+    draftPreviewSafety: () => draftPreviewSafety,
     goldenSpec: () => goldenWardrobe_fixture_default,
+    loadApprovedPartGraph: () => loadApprovedPartGraph,
+    loadDraftPartGraph: () => loadDraftPartGraph,
     loadGoldenWardrobe: () => loadGoldenWardrobe,
+    parseAndValidateClarifyInput: () => parseAndValidateClarifyInput,
+    parseConversationalCommand: () => parseConversationalCommand,
+    parseDimension: () => parseDimension,
     partGraphToThree: () => partGraphToThree,
+    previewDraftWardrobe: () => previewDraftWardrobe,
+    proposeWardrobe: () => proposeWardrobe,
+    runConversationToWardrobe: () => runConversationToWardrobe,
     updateParametricMaterial: () => updateParametricMaterial,
+    validateApproval: () => validateApproval,
     validateFurniSpec: () => validateFurniSpec
   });
 
@@ -285,6 +304,12 @@ var PartGraphBridge = (() => {
       );
     }
     return rounded;
+  }
+  function fromDeciMm(dmm) {
+    if (typeof dmm !== "number" || !Number.isInteger(dmm)) {
+      throw new Error(`fromDeciMm expects an integer deci-millimetre value, got ${dmm}.`);
+    }
+    return dmm / 10;
   }
   function assertDeciMm(valueMm, field) {
     const dmm = toDeciMm(valueMm, field);
@@ -715,7 +740,196 @@ var PartGraphBridge = (() => {
     // Panels facing front on XY plane (Doors, Back, Plinth Front/Rear)
   });
 
+  // src/lib/partgraph/componentOutcomes.js
+  var COMPONENT_OUTCOME = Object.freeze({
+    STRUCTURAL: "STRUCTURAL",
+    PREVIEW: "PREVIEW",
+    UNSUPPORTED: "UNSUPPORTED"
+  });
+  var COMPONENT_DIAGNOSTIC_CODE = Object.freeze({
+    /** The kernel has no representation for this component type at all. */
+    COMPONENT_NOT_REPRESENTED: "COMPONENT_NOT_REPRESENTED",
+    /** The type passed FurniSpec validation but no policy is declared here. */
+    UNDECLARED_COMPONENT_TYPE: "UNDECLARED_COMPONENT_TYPE",
+    /** The type is representable but this instance could not be placed. */
+    COMPONENT_NOT_PLACED: "COMPONENT_NOT_PLACED"
+  });
+  var COMPONENT_REPRESENTATION_POLICY = Object.freeze({
+    [COMPONENT_TYPES.SHELF_FIXED]: Object.freeze({
+      outcome: COMPONENT_OUTCOME.STRUCTURAL,
+      representation: "Fixed shelf panel cut to the clear bay width."
+    }),
+    [COMPONENT_TYPES.SHELF_ADJUSTABLE]: Object.freeze({
+      outcome: COMPONENT_OUTCOME.STRUCTURAL,
+      representation: "Adjustable shelf panel, inset by the clearance policy."
+    }),
+    [COMPONENT_TYPES.HANGING_RAIL_LONG]: Object.freeze({
+      outcome: COMPONENT_OUTCOME.PREVIEW,
+      previewKind: "HANGING_RAIL",
+      representation: "Bought hanging rail. Not a cut panel. Recorded as a placement datum (rail centre height) and, where the preview lane is enabled, drawn as a PREVIEW_ONLY visual."
+    }),
+    [COMPONENT_TYPES.HANGING_RAIL_SHORT]: Object.freeze({
+      outcome: COMPONENT_OUTCOME.PREVIEW,
+      previewKind: "HANGING_RAIL",
+      representation: "Bought hanging rail. Not a cut panel. Recorded as a placement datum (rail centre height) and, where the preview lane is enabled, drawn as a PREVIEW_ONLY visual."
+    }),
+    [COMPONENT_TYPES.DRAWER_BANK]: Object.freeze({
+      outcome: COMPONENT_OUTCOME.UNSUPPORTED,
+      diagnosticCode: COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED,
+      reason: "No drawer part roles exist in PartGraph v0.1 (no DRAWER_FRONT, DRAWER_BOX_SIDE, DRAWER_BOX_BACK, DRAWER_BOX_FRONT or DRAWER_BOTTOM), and drawer box dimensions depend on a runner family that has not been approved. Emitting geometry would require inventing construction rules.",
+      customerMessage: "I can't add drawers to this wardrobe yet \u2014 the drawer boxes depend on the runner hardware, which isn't confirmed for this design. Everything else in your wardrobe is unchanged.",
+      suggestedAlternative: Object.freeze({
+        componentType: COMPONENT_TYPES.SHELF_FIXED,
+        // Lower-case and clause-shaped: it is always read inside an offer
+        // sentence ("If you'd like, I can use ..."), never on its own.
+        summary: "a fixed shelf at the same height, which you could add drawers under later",
+        applied: false
+      })
+    })
+  });
+  function createComponentLedger() {
+    const entries = /* @__PURE__ */ new Map();
+    function key(bayIndex, componentId) {
+      return `${bayIndex}:${componentId}`;
+    }
+    function put(entry) {
+      const k = key(entry.bayIndex, entry.componentId);
+      if (entries.has(k)) {
+        throw new Error(
+          `Component "${entry.componentId}" in bay ${entry.bayIndex} was recorded twice in the outcome ledger.`
+        );
+      }
+      entries.set(k, Object.freeze(entry));
+    }
+    return {
+      /** A component that produced real manufacturing parts. */
+      recordStructural(comp, bayIndex, partIds) {
+        const policy = COMPONENT_REPRESENTATION_POLICY[comp.type];
+        put({
+          componentId: comp.id,
+          componentType: comp.type,
+          bayIndex,
+          outcome: COMPONENT_OUTCOME.STRUCTURAL,
+          partIds: Object.freeze([...partIds]),
+          representation: policy?.representation ?? null
+        });
+      },
+      /**
+       * A component represented visually and/or by a placement datum, never as a
+       * cut part. `datum` documents what the kernel actually computed (for a
+       * hanging rail: its centre height), so the outcome is meaningful even when
+       * the visual preview lane is not enabled on this branch.
+       */
+      recordPreview(comp, bayIndex, datum = null) {
+        const policy = COMPONENT_REPRESENTATION_POLICY[comp.type];
+        put({
+          componentId: comp.id,
+          componentType: comp.type,
+          bayIndex,
+          outcome: COMPONENT_OUTCOME.PREVIEW,
+          previewKind: policy?.previewKind ?? null,
+          partIds: Object.freeze([]),
+          placementDatum: datum ? Object.freeze({ ...datum }) : null,
+          representation: policy?.representation ?? null
+        });
+      },
+      /**
+       * A component the kernel cannot represent. `overrides` lets a caller
+       * narrow the diagnostic (e.g. COMPONENT_NOT_PLACED) without duplicating
+       * the customer-facing copy.
+       */
+      recordUnsupported(comp, bayIndex, overrides = {}) {
+        const policy = COMPONENT_REPRESENTATION_POLICY[comp.type];
+        const undeclared = !policy;
+        put({
+          componentId: comp.id,
+          componentType: comp.type,
+          bayIndex,
+          outcome: COMPONENT_OUTCOME.UNSUPPORTED,
+          partIds: Object.freeze([]),
+          diagnosticCode: overrides.diagnosticCode ?? policy?.diagnosticCode ?? COMPONENT_DIAGNOSTIC_CODE.UNDECLARED_COMPONENT_TYPE,
+          reason: overrides.reason ?? policy?.reason ?? `Component type "${comp.type}" passed FurniSpec validation but no representation policy is declared for it.`,
+          customerMessage: overrides.customerMessage ?? policy?.customerMessage ?? "I couldn't include one of the parts you asked for in this design. Everything else is unchanged.",
+          suggestedAlternative: policy?.suggestedAlternative ?? null,
+          undeclared
+        });
+      },
+      /** Has this component already been accounted for? */
+      has(comp, bayIndex) {
+        return entries.has(key(bayIndex, comp.id));
+      },
+      finish() {
+        const list = Object.freeze([...entries.values()]);
+        const count = (outcome) => list.filter((e) => e.outcome === outcome).length;
+        return {
+          componentOutcomes: list,
+          counts: Object.freeze({
+            totalComponents: list.length,
+            structuralComponents: count(COMPONENT_OUTCOME.STRUCTURAL),
+            previewComponents: count(COMPONENT_OUTCOME.PREVIEW),
+            unsupportedComponents: count(COMPONENT_OUTCOME.UNSUPPORTED)
+          })
+        };
+      }
+    };
+  }
+  function unsupportedComponentsForCustomer(componentOutcomes = []) {
+    return componentOutcomes.filter((e) => e.outcome === COMPONENT_OUTCOME.UNSUPPORTED).map((e) => ({
+      request: e.componentId,
+      componentType: e.componentType,
+      bayIndex: e.bayIndex,
+      code: e.diagnosticCode,
+      reason: e.customerMessage,
+      engineeringReason: e.reason,
+      alternative: e.suggestedAlternative ? e.suggestedAlternative.summary : null,
+      alternativeApplied: false
+    }));
+  }
+
   // src/lib/partgraph/buildStructuralPartGraph.js
+  function resolveHangingRailTube(tubeType) {
+    const raw = String(tubeType || "OVAL_TUBE_15X30").toUpperCase();
+    let m = raw.match(/^OVAL_TUBE_(\d+(?:\.\d+)?)X(\d+(?:\.\d+)?)$/);
+    if (m) {
+      const a = Number(m[1]);
+      const b = Number(m[2]);
+      const minorDiamMm = Math.min(a, b);
+      const majorDiamMm = Math.max(a, b);
+      return {
+        tubeType: raw,
+        tubeTypeResolved: true,
+        profile: "OVAL",
+        minorDiamMm,
+        majorDiamMm,
+        assumptionNotes: [
+          `Parsed ${raw}: minor(vertical)=${minorDiamMm}mm, major(depth)=${majorDiamMm}mm.`
+        ]
+      };
+    }
+    m = raw.match(/^ROUND_(?:D|DIA)?_?(\d+(?:\.\d+)?)$/);
+    if (m) {
+      const d = Number(m[1]);
+      return {
+        tubeType: raw,
+        tubeTypeResolved: true,
+        profile: "ROUND",
+        minorDiamMm: d,
+        majorDiamMm: d,
+        assumptionNotes: [`Parsed ${raw}: round diameter ${d}mm.`]
+      };
+    }
+    return {
+      tubeType: raw,
+      tubeTypeResolved: false,
+      profile: "OVAL",
+      minorDiamMm: 15,
+      majorDiamMm: 30,
+      assumptionNotes: [
+        `Unknown tubeType "${raw}" \u2014 rendered as fixed OVAL 15\xD730 mm fallback (limitation).`,
+        "Supported patterns: OVAL_TUBE_<minor>X<major>, ROUND_D<diam> / ROUND_<diam>."
+      ]
+    };
+  }
   function buildStructuralPartGraph(furniSpec) {
     const valResult = validateFurniSpec(furniSpec);
     if (!valResult.valid) {
@@ -975,6 +1189,8 @@ var PartGraphBridge = (() => {
     }
     const fixedShelves = [];
     const adjShelves = [];
+    const previews = [];
+    const ledger = createComponentLedger();
     for (const bay of baySpans) {
       let currentBottomFaceY = yTopBottomDmm;
       let currentRailCenterY = null;
@@ -1022,9 +1238,64 @@ var PartGraphBridge = (() => {
             },
             sourceRuleIds: ["WR-003", "WR-008", "WR-013"]
           });
+          ledger.recordStructural(comp, bay.index, [partId]);
         } else if (comp.type.startsWith("HANGING_RAIL")) {
           const offsetBelowDmm = assertDeciMm(comp.offsetBelowShelfMm, `${comp.id}.offsetBelowShelfMm`);
           currentRailCenterY = currentBottomFaceY - offsetBelowDmm;
+          const railHw = furniSpec.hardware?.hangingRails || {};
+          const tube = resolveHangingRailTube(railHw.type || "OVAL_TUBE_15X30");
+          const endInsetMm = 2;
+          const endInsetDmm = Math.round(endInsetMm * 10);
+          const minXDmm = bay.minXDmm + endInsetDmm;
+          const maxXDmm = bay.maxXDmm - endInsetDmm;
+          const centerZDmm = zCarcassFrontDmm + Math.floor(dividerDepthDmm / 2);
+          const halfMinorDmm = Math.round(tube.minorDiamMm / 2 * 10);
+          const halfMajorDmm = Math.round(tube.majorDiamMm / 2 * 10);
+          const lengthMm = (maxXDmm - minXDmm) / 10;
+          previews.push({
+            id: (comp.partId || comp.id).toUpperCase().replace(/-/g, "_"),
+            kind: "HANGING_RAIL",
+            status: "PREVIEW_ONLY",
+            visualConcept: true,
+            engineeringVerified: false,
+            manufacturingOutput: false,
+            sourceComponentId: comp.id,
+            sourceComponentType: comp.type,
+            tubeType: tube.tubeType,
+            tubeTypeResolved: tube.tubeTypeResolved,
+            profile: tube.profile,
+            bayIndex: bay.index,
+            minXDmm,
+            maxXDmm,
+            minYDmm: currentRailCenterY - halfMinorDmm,
+            maxYDmm: currentRailCenterY + halfMinorDmm,
+            minZDmm: centerZDmm - halfMajorDmm,
+            maxZDmm: centerZDmm + halfMajorDmm,
+            centerYDmm: currentRailCenterY,
+            centerZDmm,
+            assumed: {
+              minorDiamMm: tube.minorDiamMm,
+              majorDiamMm: tube.majorDiamMm,
+              lengthMm,
+              endInsetMm,
+              offsetBelowShelfMm: comp.offsetBelowShelfMm,
+              centerZRule: "zCarcassFront + floor(dividerDepth/2) \u2014 mid carcass depth heuristic",
+              centerYRule: "shelfBottomFaceY - offsetBelowShelfMm",
+              finishIntent: "chrome metal preview (independent of melamine materialKey)"
+            },
+            notes: [
+              "Visual hanging-rail preview for customer layout comprehension.",
+              "Not a PartGraph structural panel; excluded from totalStructuralParts.",
+              `Hardware status: ${railHw.status || "PREVIEW_ONLY"}.`,
+              ...tube.assumptionNotes
+            ]
+          });
+          ledger.recordPreview(comp, bay.index, {
+            previewId: previews[previews.length - 1].id,
+            railCenterYDmm: currentRailCenterY,
+            bayMinXDmm: bay.minXDmm,
+            bayMaxXDmm: bay.maxXDmm
+          });
         } else if (comp.type === "SHELF_ADJUSTABLE") {
           let minYDmm;
           let maxYDmm;
@@ -1075,6 +1346,9 @@ var PartGraphBridge = (() => {
             },
             sourceRuleIds: ["WR-003", "WR-008", "WR-013"]
           });
+          ledger.recordStructural(comp, bay.index, [partId]);
+        } else {
+          ledger.recordUnsupported(comp, bay.index);
         }
       }
     }
@@ -1358,6 +1632,17 @@ var PartGraphBridge = (() => {
         message: `Plinth side inset (${furniSpec.plinth.sideInsetMm}mm) is an assumption pending Bekzod workshop confirmation.`
       });
     }
+    const { componentOutcomes, counts: componentCounts } = ledger.finish();
+    for (const entry of componentOutcomes) {
+      if (entry.outcome !== "UNSUPPORTED") continue;
+      warnings.push({
+        code: entry.diagnosticCode,
+        message: `Component "${entry.componentId}" (${entry.componentType}) in bay ${entry.bayIndex} is not represented: ${entry.reason}`,
+        componentId: entry.componentId,
+        componentType: entry.componentType,
+        bayIndex: entry.bayIndex
+      });
+    }
     return {
       partGraphVersion: PARTGRAPH_VERSION,
       sourceSpecId: furniSpec.specId,
@@ -1365,10 +1650,17 @@ var PartGraphBridge = (() => {
       unitScale: "deci-mm",
       qualificationStatus: furniSpec.qualificationStatus,
       parts,
+      previews,
       operations,
       warnings,
+      componentOutcomes,
       summary: {
         totalStructuralParts: parts.length,
+        totalPreviewParts: previews.length,
+        totalComponents: componentCounts.totalComponents,
+        structuralComponents: componentCounts.structuralComponents,
+        previewComponents: componentCounts.previewComponents,
+        unsupportedComponents: componentCounts.unsupportedComponents,
         totalOperations: operations.length,
         approvedOperations: operations.filter((op) => op.status === "APPROVED").length,
         blockedOperations: operations.filter((op) => op.status !== "APPROVED").length,
@@ -1415,6 +1707,12 @@ var PartGraphBridge = (() => {
         transparent: true,
         opacity: 0.35,
         name: "mat_door_edge"
+      }),
+      HANGING_RAIL: new threeInstance.MeshStandardMaterial({
+        color: 12633806,
+        roughness: 0.28,
+        metalness: 0.85,
+        name: "mat_hanging_rail_preview_chrome"
       }),
       DEFAULT: new threeInstance.MeshStandardMaterial({
         color: 14276043,
@@ -1536,7 +1834,20 @@ var PartGraphBridge = (() => {
           sourceSpecId: partGraph.sourceSpecId || null,
           interactive: true,
           pivot,
-          hinge
+          hinge,
+          materialCode: part.materialCode || null,
+          rawDimensionsMm: part.raw ? {
+            lengthMm: part.raw.lengthDmm / 10,
+            widthMm: part.raw.widthDmm / 10,
+            thicknessMm: part.raw.thicknessDmm / 10
+          } : null,
+          edgesMm: part.edges ? {
+            lengthEdge1Mm: part.edges.LENGTH_EDGE_1 / 10,
+            lengthEdge2Mm: part.edges.LENGTH_EDGE_2 / 10,
+            widthEdge1Mm: part.edges.WIDTH_EDGE_1 / 10,
+            widthEdge2Mm: part.edges.WIDTH_EDGE_2 / 10
+          } : null,
+          partData: part
         };
         pivot.add(mesh);
         rootGroup.add(pivot);
@@ -1565,15 +1876,75 @@ var PartGraphBridge = (() => {
             maxZDmm: placement.maxZDmm
           },
           sourceSpecId: partGraph.sourceSpecId || null,
-          interactive: false
+          interactive: false,
+          materialCode: part.materialCode || null,
+          rawDimensionsMm: part.raw ? {
+            lengthMm: part.raw.lengthDmm / 10,
+            widthMm: part.raw.widthDmm / 10,
+            thicknessMm: part.raw.thicknessDmm / 10
+          } : null,
+          edgesMm: part.edges ? {
+            lengthEdge1Mm: part.edges.LENGTH_EDGE_1 / 10,
+            lengthEdge2Mm: part.edges.LENGTH_EDGE_2 / 10,
+            widthEdge1Mm: part.edges.WIDTH_EDGE_1 / 10,
+            widthEdge2Mm: part.edges.WIDTH_EDGE_2 / 10
+          } : null,
+          partData: part
         };
         rootGroup.add(mesh);
       }
+    }
+    const previewList = Array.isArray(partGraph.previews) ? partGraph.previews : [];
+    let previewMeshCount = 0;
+    for (const preview of previewList) {
+      if (!preview || preview.kind !== "HANGING_RAIL") continue;
+      const minX = preview.minXDmm * DMM_TO_THREE;
+      const maxX = preview.maxXDmm * DMM_TO_THREE;
+      const minY = preview.minYDmm * DMM_TO_THREE;
+      const maxY = preview.maxYDmm * DMM_TO_THREE;
+      const minZ = preview.minZDmm * DMM_TO_THREE;
+      const maxZ = preview.maxZDmm * DMM_TO_THREE;
+      const lengthX = Math.max(maxX - minX, 1e-6);
+      const diamY = Math.max(maxY - minY, 1e-6);
+      const diamZ = Math.max(maxZ - minZ, 1e-6);
+      const radius = diamY / 2;
+      const geometry = new T.CylinderGeometry(radius, radius, lengthX, 24);
+      geometry.rotateZ(Math.PI / 2);
+      const mesh = new T.Mesh(geometry, materials.HANGING_RAIL);
+      mesh.name = `preview_${preview.id}`;
+      mesh.position.set(
+        (minX + maxX) / 2,
+        (minY + maxY) / 2,
+        (minZ + maxZ) / 2
+      );
+      mesh.scale.set(1, 1, diamZ / diamY);
+      mesh.userData = {
+        id: preview.id,
+        kind: preview.kind,
+        status: preview.status || "PREVIEW_ONLY",
+        visualConcept: true,
+        engineeringVerified: false,
+        manufacturingOutput: false,
+        isStructuralPanel: false,
+        isPreviewMesh: true,
+        tubeType: preview.tubeType || null,
+        tubeTypeResolved: preview.tubeTypeResolved !== false,
+        profile: preview.profile || null,
+        assumed: preview.assumed || null,
+        bayIndex: preview.bayIndex,
+        sourceComponentId: preview.sourceComponentId || null,
+        notes: preview.notes || [],
+        // Intended finish: chrome preview metal — updateParametricMaterial must NOT recolor this.
+        finishIntent: preview.assumed && preview.assumed.finishIntent || "chrome metal preview"
+      };
+      rootGroup.add(mesh);
+      previewMeshCount += 1;
     }
     rootGroup.userData = {
       sourceSpecId: partGraph.sourceSpecId,
       partGraphVersion: partGraph.partGraphVersion,
       structuralPartCount: partGraph.parts.length,
+      previewPartCount: previewMeshCount,
       materials: allocatedMaterials,
       materialMap: materials,
       doorPivots,
@@ -1615,6 +1986,2182 @@ var PartGraphBridge = (() => {
     while (group.children.length > 0) {
       group.remove(group.children[0]);
     }
+  }
+
+  // src/lib/partgraph/validatePartGraph.js
+  function validatePartGraph(partGraph) {
+    const errors = [];
+    const addError = (code, message, partId = void 0) => {
+      errors.push({ code, message, partId });
+    };
+    if (!partGraph || typeof partGraph !== "object") {
+      return {
+        valid: false,
+        errors: [{ code: "INVALID_PARTGRAPH_TYPE", message: "PartGraph must be a non-null object." }]
+      };
+    }
+    if (partGraph.partGraphVersion !== PARTGRAPH_VERSION) {
+      addError("UNSUPPORTED_PARTGRAPH_VERSION", `Expected version "${PARTGRAPH_VERSION}", got "${partGraph.partGraphVersion}".`);
+    }
+    if (partGraph.unitScale !== "deci-mm") {
+      addError("INVALID_UNIT_SCALE", `unitScale must be "deci-mm", got "${partGraph.unitScale}".`);
+    }
+    if (partGraph.qualificationStatus === "CNC_QUALIFIED") {
+      addError("CNC_QUALIFIED_FORBIDDEN", "CNC qualification is forbidden in Phase 1 / Gate G2.");
+    }
+    const parts = partGraph.parts;
+    if (!Array.isArray(parts) || parts.length === 0) {
+      addError("EMPTY_PARTS_LIST", "PartGraph parts array must be non-empty.");
+      return { valid: false, errors };
+    }
+    const seenPartIds = /* @__PURE__ */ new Set();
+    for (const part of parts) {
+      if (!part.id || typeof part.id !== "string") {
+        addError("MISSING_PART_ID", "Part requires a string id.");
+        continue;
+      }
+      if (seenPartIds.has(part.id)) {
+        addError("DUPLICATE_PART_ID", `Duplicate Part ID "${part.id}".`, part.id);
+      }
+      seenPartIds.add(part.id);
+      if (typeof part.role !== "string" || !Object.prototype.hasOwnProperty.call(PART_ROLES, part.role)) {
+        addError(
+          "INVALID_PART_ROLE",
+          `Part "${part.id}" has role ${JSON.stringify(part.role)}, which is not a declared PART_ROLES member.`,
+          part.id
+        );
+      }
+      const fin = part.finished || {};
+      ["lengthDmm", "widthDmm", "thicknessDmm"].forEach((dim) => {
+        const val = fin[dim];
+        if (typeof val !== "number" || !Number.isInteger(val) || val <= 0) {
+          addError("INVALID_FINISHED_DIMENSION", `Part "${part.id}" finished.${dim} must be a strictly positive integer, got ${val}.`, part.id);
+        }
+      });
+      const raw = part.raw || {};
+      ["lengthDmm", "widthDmm", "thicknessDmm"].forEach((dim) => {
+        const val = raw[dim];
+        if (typeof val !== "number" || !Number.isInteger(val) || val <= 0) {
+          addError("INVALID_RAW_DIMENSION", `Part "${part.id}" raw.${dim} must be a strictly positive integer, got ${val}.`, part.id);
+        }
+      });
+      const edges = part.edges || {};
+      const expectedRawLengthDmm = (fin.lengthDmm || 0) - ((edges.WIDTH_EDGE_1 || 0) + (edges.WIDTH_EDGE_2 || 0));
+      const expectedRawWidthDmm = (fin.widthDmm || 0) - ((edges.LENGTH_EDGE_1 || 0) + (edges.LENGTH_EDGE_2 || 0));
+      if (raw.lengthDmm !== expectedRawLengthDmm) {
+        addError(
+          "RAW_LENGTH_MISMATCH",
+          `Part "${part.id}" raw length (${raw.lengthDmm}) != finished length (${fin.lengthDmm}) - edge banding (${edges.WIDTH_EDGE_1} + ${edges.WIDTH_EDGE_2}).`,
+          part.id
+        );
+      }
+      if (raw.widthDmm !== expectedRawWidthDmm) {
+        addError(
+          "RAW_WIDTH_MISMATCH",
+          `Part "${part.id}" raw width (${raw.widthDmm}) != finished width (${fin.widthDmm}) - edge banding (${edges.LENGTH_EDGE_1} + ${edges.LENGTH_EDGE_2}).`,
+          part.id
+        );
+      }
+      const p = part.placement || {};
+      ["minXDmm", "maxXDmm", "minYDmm", "maxYDmm", "minZDmm", "maxZDmm"].forEach((coord) => {
+        const val = p[coord];
+        if (typeof val !== "number" || !Number.isInteger(val) || val < 0) {
+          addError("INVALID_PLACEMENT_COORDINATE", `Part "${part.id}" placement.${coord} must be a non-negative integer, got ${val}.`, part.id);
+        }
+      });
+      const boxDeltaX = (p.maxXDmm || 0) - (p.minXDmm || 0);
+      const boxDeltaY = (p.maxYDmm || 0) - (p.minYDmm || 0);
+      const boxDeltaZ = (p.maxZDmm || 0) - (p.minZDmm || 0);
+      if (part.orientation === ORIENTATIONS.HORIZONTAL_XZ) {
+        const match1 = boxDeltaX === fin.lengthDmm && boxDeltaZ === fin.widthDmm;
+        const match2 = boxDeltaX === fin.widthDmm && boxDeltaZ === fin.lengthDmm;
+        if (!(match1 || match2) || boxDeltaY !== fin.thicknessDmm) {
+          addError(
+            "BOUNDING_BOX_MISMATCH",
+            `Part "${part.id}" bounding box (${boxDeltaX}x${boxDeltaY}x${boxDeltaZ}) does not match finished dimensions (${fin.lengthDmm}x${fin.thicknessDmm}x${fin.widthDmm}) for HORIZONTAL_XZ.`,
+            part.id
+          );
+        }
+      } else if (part.orientation === ORIENTATIONS.VERTICAL_YZ) {
+        const match1 = boxDeltaY === fin.lengthDmm && boxDeltaZ === fin.widthDmm;
+        const match2 = boxDeltaY === fin.widthDmm && boxDeltaZ === fin.lengthDmm;
+        if (!(match1 || match2) || boxDeltaX !== fin.thicknessDmm) {
+          addError(
+            "BOUNDING_BOX_MISMATCH",
+            `Part "${part.id}" bounding box (${boxDeltaX}x${boxDeltaY}x${boxDeltaZ}) does not match finished dimensions (${fin.thicknessDmm}x${fin.lengthDmm}x${fin.widthDmm}) for VERTICAL_YZ.`,
+            part.id
+          );
+        }
+      } else if (part.orientation === ORIENTATIONS.VERTICAL_XY) {
+        const match1 = boxDeltaY === fin.lengthDmm && boxDeltaX === fin.widthDmm;
+        const match2 = boxDeltaY === fin.widthDmm && boxDeltaX === fin.lengthDmm;
+        if (!(match1 || match2) || boxDeltaZ !== fin.thicknessDmm) {
+          addError(
+            "BOUNDING_BOX_MISMATCH",
+            `Part "${part.id}" bounding box (${boxDeltaX}x${boxDeltaY}x${boxDeltaZ}) does not match finished dimensions (${fin.widthDmm}x${fin.lengthDmm}x${fin.thicknessDmm}) for VERTICAL_XY.`,
+            part.id
+          );
+        }
+      }
+    }
+    for (let i = 0; i < parts.length; i++) {
+      for (let j = i + 1; j < parts.length; j++) {
+        const p1 = parts[i];
+        const p2 = parts[j];
+        const overlapX = Math.min(p1.placement.maxXDmm, p2.placement.maxXDmm) - Math.max(p1.placement.minXDmm, p2.placement.minXDmm);
+        const overlapY = Math.min(p1.placement.maxYDmm, p2.placement.maxYDmm) - Math.max(p1.placement.minYDmm, p2.placement.minYDmm);
+        const overlapZ = Math.min(p1.placement.maxZDmm, p2.placement.maxZDmm) - Math.max(p1.placement.minZDmm, p2.placement.minZDmm);
+        if (overlapX > 0 && overlapY > 0 && overlapZ > 0) {
+          const isBackPanelEngagement = p1.id === "BACK_PANEL_01" && ["CARC_TOP", "CARC_BOT", "CARC_SIDE_L", "CARC_SIDE_R"].includes(p2.id) || p2.id === "BACK_PANEL_01" && ["CARC_TOP", "CARC_BOT", "CARC_SIDE_L", "CARC_SIDE_R"].includes(p1.id);
+          if (!isBackPanelEngagement) {
+            addError(
+              "UNINTENDED_PART_COLLISION",
+              `Part "${p1.id}" and Part "${p2.id}" collide with overlap volume ${overlapX}x${overlapY}x${overlapZ} dmm.`,
+              p1.id
+            );
+          }
+        }
+      }
+    }
+    const operations = partGraph.operations || [];
+    for (const op of operations) {
+      if (!seenPartIds.has(op.hostPartId)) {
+        addError("INVALID_HOST_PART", `Operation "${op.id}" references non-existent hostPartId "${op.hostPartId}".`);
+      }
+    }
+    return {
+      valid: errors.length === 0,
+      errors
+    };
+  }
+
+  // src/lib/rules/wardrobeRuleCatalog.js
+  var RULE_PROVENANCE = Object.freeze({
+    RULEBOOK_V0_1: "RULEBOOK_V0_1",
+    GOLDEN_FIXTURE_BEKZOD_APPROVED: "GOLDEN_FIXTURE_BEKZOD_APPROVED",
+    REQUIRES_BEKZOD_RULING: "REQUIRES_BEKZOD_RULING"
+  });
+  function rule(id, value, provenance, note) {
+    return Object.freeze({ id, value, provenance, note });
+  }
+  var { RULEBOOK_V0_1, GOLDEN_FIXTURE_BEKZOD_APPROVED, REQUIRES_BEKZOD_RULING } = RULE_PROVENANCE;
+  var WARDROBE_RULES = Object.freeze({
+    constructionStyle: rule("WR-001", "CAP_STYLE", RULEBOOK_V0_1, "Cap Style (Style B): top/bottom cap the outer sides and divider."),
+    panelThicknessMm: rule("WR-003", 18, RULEBOOK_V0_1, "Carcass panels, shelves, divider, doors and plinth rails."),
+    backThicknessMm: rule("WR-003", 6, RULEBOOK_V0_1, "Back panel core thickness."),
+    grooveDepthMm: rule("WR-004", 7, RULEBOOK_V0_1, "Back groove machined into top, bottom and both outer sides."),
+    grooveWidthMm: rule("WR-005", 7, RULEBOOK_V0_1, "6.0mm back panel + 1.0mm assembly glue gap."),
+    grooveRootAllowanceMm: rule("WR-005", 1, RULEBOOK_V0_1, "Assembly glue gap component of the 7.0mm groove width."),
+    grooveRearDatumMm: rule("WR-006", 20, RULEBOOK_V0_1, "Groove rear face measured from the carcass rear datum."),
+    doorBumperGapMm: rule("RULEBOOK-S1-Z-ALLOCATION", 2, RULEBOOK_V0_1, "Door bumper / operating air gap, Z in [18.0, 20.0]."),
+    doorRevealMm: rule("WR-008", 2, RULEBOOK_V0_1, "2.0mm perimeter reveals and 2.0mm gaps between doors."),
+    plinthFrontRecessMm: rule("WR-007", 0, RULEBOOK_V0_1, "Frame-aligned plinth: front fascia sits at the carcass front datum, zero recess."),
+    plinthSideInsetMm: rule("WR-007", 0, RULEBOOK_V0_1, "Frame-aligned plinth: side returns align with the carcass frame footprint."),
+    hangingRailOffsetBelowShelfMm: rule("WR-012", 100, RULEBOOK_V0_1, "Rail centre 100.0mm below the underside of the fixed shelf."),
+    edgeBandFrontVisibleMm: rule("WR-013", 1, RULEBOOK_V0_1, "Front visible edges receive 1.0mm PVC."),
+    edgeBandRearUnbandedMm: rule("WR-013", 0, RULEBOOK_V0_1, "Non-visible edges receive 0.0mm."),
+    edgeBandDoorPerimeterMm: rule("WR-013", 1, RULEBOOK_V0_1, "Door perimeter banding."),
+    hingeType: rule("WR-010", "CONCEALED_110", RULEBOOK_V0_1, "110 degree soft-close concealed clip-on, semantic only."),
+    hingeCountPerDoor: rule("WR-011", 5, RULEBOOK_V0_1, "Five hinges per door."),
+    shelfPinPitchMm: rule("WR-009", 32, RULEBOOK_V0_1, "System 32 semantic grid; drilling coordinates blocked."),
+    // --- Values present in the Bekzod-approved Golden Wardrobe fixture but not
+    // --- stated as a numbered Rulebook rule. Approved, but by fixture not by rule.
+    topCompartmentClearOpeningMm: rule("GF-TOP-OPENING", 350, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Clear opening above the top fixed shelf."),
+    shelfCompartmentClearOpeningMm: rule("GF-SHELF-OPENING", 350, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Clear opening above an adjustable shelf."),
+    longHangingTargetClearDropMm: rule("GF-HANG-LONG", 1400, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Long hanging zone target clear drop."),
+    shortHangingTargetClearDropMm: rule("GF-HANG-SHORT", 900, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Short hanging zone target clear drop."),
+    fixedShelfRearSetbackMm: rule("GF-SHELF-REAR", 20, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Fixed shelf / divider depth = carcass depth - 20.0mm (WR-002 rear clearance)."),
+    adjustableShelfSideClearanceMm: rule("GF-ADJ-SIDE", 1, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Adjustable shelf side clearance per face."),
+    adjustableShelfFrontSetbackMm: rule("GF-ADJ-FRONT", 5, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Adjustable shelf front setback, applied symmetrically front and rear."),
+    shelfPinType: rule("WR-009", "SYSTEM_32_PIN_5MM", RULEBOOK_V0_1, "System 32 5mm shelf pin, semantic only."),
+    joineryType: rule("GF-JOINERY", "CONFIRMAT_AND_DOWEL", GOLDEN_FIXTURE_BEKZOD_APPROVED, "Carcass joinery family; drilling coordinates blocked."),
+    hangingRailType: rule("GF-RAIL", "OVAL_TUBE_15X30", GOLDEN_FIXTURE_BEKZOD_APPROVED, "Hanging rail profile, preview only."),
+    // --- NOT approved. Reading these through resolve() throws by design.
+    bayCountForWidth: rule("UNRULED-BAY-COUNT", null, REQUIRES_BEKZOD_RULING, "No approved rule maps overall width to a bay count. Must be asked."),
+    doorsPerBay: rule("UNRULED-DOORS-PER-BAY", null, REQUIRES_BEKZOD_RULING, "Golden, narrow and wide fixtures all use 2 doors per bay, but no Rulebook rule states it. Must be asked."),
+    unevenBayWidthDistribution: rule("UNRULED-BAY-SPLIT", null, REQUIRES_BEKZOD_RULING, "No approved rule for distributing a non-integral bay-width remainder. Must be asked.")
+  });
+  var UnapprovedRuleError = class extends Error {
+    constructor(key, ruleRecord) {
+      super(
+        `Rule "${key}" (${ruleRecord.id}) is ${RULE_PROVENANCE.REQUIRES_BEKZOD_RULING} and cannot be applied. ${ruleRecord.note}`
+      );
+      this.name = "UnapprovedRuleError";
+      this.code = "UNAPPROVED_RULE_APPLICATION";
+      this.ruleKey = key;
+      this.ruleId = ruleRecord.id;
+    }
+  };
+  function resolve(key) {
+    const record = WARDROBE_RULES[key];
+    if (!record) {
+      throw new Error(`Unknown rule key "${key}".`);
+    }
+    if (record.provenance === RULE_PROVENANCE.REQUIRES_BEKZOD_RULING) {
+      throw new UnapprovedRuleError(key, record);
+    }
+    return record.value;
+  }
+  function ruleIdOf(key) {
+    const record = WARDROBE_RULES[key];
+    if (!record) throw new Error(`Unknown rule key "${key}".`);
+    return record.id;
+  }
+
+  // src/lib/rules/materialCatalog.js
+  var MATERIAL_CATALOG = Object.freeze({
+    melamine: Object.freeze({
+      provenance: RULE_PROVENANCE.GOLDEN_FIXTURE_BEKZOD_APPROVED,
+      sourceId: "GF-MATERIALS",
+      carcass: Object.freeze({ code: "MEL_WHITE_18", name: "18mm White Melamine Particleboard", thicknessMm: 18 }),
+      backPanel: Object.freeze({ code: "HDF_WHITE_6", name: "6mm White HDF Backer", thicknessMm: 6 }),
+      fronts: Object.freeze({ code: "MEL_WHITE_18", name: "18mm White Melamine Particleboard", thicknessMm: 18 })
+    })
+  });
+  function hasApprovedMaterials(finishType) {
+    return Object.prototype.hasOwnProperty.call(MATERIAL_CATALOG, finishType);
+  }
+  function materialsFor(finishType) {
+    if (!hasApprovedMaterials(finishType)) {
+      const err = new Error(`No Bekzod-approved material record for finish "${finishType}".`);
+      err.code = "UNAPPROVED_MATERIAL";
+      throw err;
+    }
+    const entry = MATERIAL_CATALOG[finishType];
+    return {
+      carcass: { ...entry.carcass },
+      backPanel: { ...entry.backPanel },
+      fronts: { ...entry.fronts }
+    };
+  }
+
+  // src/lib/conversation/intakeModel.js
+  var OBSERVATION_ORIGIN = Object.freeze({
+    /** The customer said it, in their own words. */
+    CUSTOMER_STATED: "CUSTOMER_STATED",
+    /** The customer confirmed a value put to them in a clarification question. */
+    CUSTOMER_CONFIRMED: "CUSTOMER_CONFIRMED",
+    /** Extracted or parsed from prompt chips, assistant suggestions, or conversation context. */
+    EXTRACTED: "EXTRACTED",
+    /** Supplied using Bekzod-approved Golden Wardrobe defaults for immediate draft preview. */
+    DEFAULTED: "DEFAULTED",
+    /** Derived by a closure equation from approved rules and stated values. */
+    RULE_DERIVED: "RULE_DERIVED"
+  });
+  var BEKZOD_APPROVED_DEFAULTS = Object.freeze({
+    "envelope.widthMm": 1800,
+    "envelope.heightMm": 2400,
+    "envelope.depthMm": 600,
+    "plinth.heightMm": 100,
+    bayCount: 2,
+    doorCount: 4,
+    finishType: "melamine",
+    bayLayouts: Object.freeze(["LONG_HANGING", "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"])
+  });
+  var GAP_KIND = Object.freeze({
+    /** The fact was never supplied. */
+    MISSING_REQUIRED_FACT: "MISSING_REQUIRED_FACT",
+    /** Supplied, but hedged or imprecise ("about 2 metres"). */
+    AMBIGUOUS_FACT: "AMBIGUOUS_FACT",
+    /** Supplied, but internally inconsistent with another stated fact. */
+    CONFLICTING_FACT: "CONFLICTING_FACT",
+    /** Would require applying a rule that has no Bekzod ruling. */
+    UNRULED_DERIVATION: "UNRULED_DERIVATION",
+    /** Requested, but outside the first manufacturing slice. */
+    OUT_OF_SLICE: "OUT_OF_SLICE"
+  });
+  var GAP_SEVERITY = Object.freeze({
+    /** The kernel must refuse the spec while this gap stands. */
+    BLOCKING: "BLOCKING",
+    /** Worth asking, but does not stop assembly. */
+    ADVISORY: "ADVISORY"
+  });
+  var BAY_LAYOUT = Object.freeze({
+    LONG_HANGING: "LONG_HANGING",
+    SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES: "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"
+  });
+  var SUPPORTED_FINISHES = Object.freeze(["melamine"]);
+  var REQUIRED_INTAKE_FACTS = Object.freeze([
+    Object.freeze({ key: "envelope.widthMm", label: "overall width", unit: "mm", derivable: false }),
+    Object.freeze({ key: "envelope.heightMm", label: "overall height", unit: "mm", derivable: false }),
+    Object.freeze({ key: "envelope.depthMm", label: "overall depth", unit: "mm", derivable: false }),
+    Object.freeze({ key: "plinth.heightMm", label: "plinth height", unit: "mm", derivable: false }),
+    Object.freeze({ key: "bayCount", label: "number of bays", unit: "count", derivable: false }),
+    Object.freeze({ key: "doorCount", label: "number of hinged doors", unit: "count", derivable: false }),
+    Object.freeze({ key: "finishType", label: "finish", unit: "enum", derivable: false }),
+    Object.freeze({ key: "bayLayouts", label: "interior layout of each bay", unit: "enum[]", derivable: false })
+  ]);
+  var REQUIRED_INTAKE_KEYS = Object.freeze(REQUIRED_INTAKE_FACTS.map((f) => f.key));
+  function observation(key, value, origin, meta = {}) {
+    if (!Object.values(OBSERVATION_ORIGIN).includes(origin)) {
+      throw new Error(`Unknown observation origin "${origin}".`);
+    }
+    return Object.freeze({
+      key,
+      value,
+      origin,
+      sourceText: meta.sourceText ?? null,
+      sourceSpan: meta.sourceSpan ? Object.freeze([...meta.sourceSpan]) : null,
+      ruleIds: Object.freeze([...meta.ruleIds ?? []])
+    });
+  }
+  function gap(key, kind, severity, meta = {}) {
+    if (!Object.values(GAP_KIND).includes(kind)) throw new Error(`Unknown gap kind "${kind}".`);
+    if (!Object.values(GAP_SEVERITY).includes(severity)) throw new Error(`Unknown gap severity "${severity}".`);
+    return Object.freeze({
+      key,
+      kind,
+      severity,
+      detail: meta.detail ?? "",
+      sourceText: meta.sourceText ?? null,
+      /** A value put to the customer for confirmation. Never applied on its own. */
+      proposal: meta.proposal ?? null,
+      proposalBasis: meta.proposalBasis ?? null
+    });
+  }
+  function sortGaps(gaps) {
+    const order = new Map(REQUIRED_INTAKE_KEYS.map((k, i) => [k, i]));
+    return [...gaps].sort((a, b) => {
+      const ai = order.has(a.key) ? order.get(a.key) : REQUIRED_INTAKE_KEYS.length;
+      const bi = order.has(b.key) ? order.get(b.key) : REQUIRED_INTAKE_KEYS.length;
+      if (ai !== bi) return ai - bi;
+      return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+    });
+  }
+
+  // src/lib/conversation/assembleFurniSpec.js
+  var AssemblyBlockedError = class extends Error {
+    constructor(gaps) {
+      super(`FurniSpec assembly refused: ${gaps.length} blocking clarification gap(s) unresolved.`);
+      this.name = "AssemblyBlockedError";
+      this.code = "ASSEMBLY_BLOCKED_BY_CLARIFICATION";
+      this.gaps = gaps;
+    }
+  };
+  var ClosureError = class extends Error {
+    constructor(message, path) {
+      super(message);
+      this.name = "ClosureError";
+      this.code = "DERIVATION_DOES_NOT_CLOSE";
+      this.path = path;
+    }
+  };
+  function pad2(n) {
+    return String(n).padStart(2, "0");
+  }
+  function assembleFurniSpec({ facts, gaps = [], specId, revision, status }) {
+    const blocking = gaps.filter((g) => g.severity === GAP_SEVERITY.BLOCKING);
+    if (blocking.length > 0) throw new AssemblyBlockedError(blocking);
+    if (typeof specId !== "string" || specId.trim() === "") throw new Error("assembleFurniSpec requires an explicit specId.");
+    if (!Number.isInteger(revision) || revision < 1) throw new Error("assembleFurniSpec requires an explicit integer revision >= 1.");
+    if (status !== SPEC_STATUS.PROPOSED && status !== SPEC_STATUS.APPROVED) {
+      throw new Error(`assembleFurniSpec requires an explicit status of PROPOSED or APPROVED, got "${status}".`);
+    }
+    const derivations = [];
+    const record = (path, valueDmm, ruleKeys, formula) => {
+      derivations.push({
+        path,
+        value: fromDeciMm(valueDmm),
+        ruleIds: ruleKeys.map(ruleIdOf),
+        formula
+      });
+      return fromDeciMm(valueDmm);
+    };
+    const envWDmm = toDeciMm(facts["envelope.widthMm"], "envelope.widthMm");
+    const envHDmm = toDeciMm(facts["envelope.heightMm"], "envelope.heightMm");
+    const envDDmm = toDeciMm(facts["envelope.depthMm"], "envelope.depthMm");
+    const plinthHDmm = toDeciMm(facts["plinth.heightMm"], "plinth.heightMm");
+    const bayCount = facts.bayCount;
+    const doorCount = facts.doorCount;
+    const finishType = facts.finishType;
+    const bayLayouts = facts.bayLayouts;
+    if (!Number.isInteger(bayCount) || bayCount < 1) throw new Error("bayCount must be a positive integer.");
+    if (!Number.isInteger(doorCount) || doorCount < 1) throw new Error("doorCount must be a positive integer.");
+    if (!Array.isArray(bayLayouts) || bayLayouts.length !== bayCount) {
+      throw new Error("bayLayouts must contain exactly one layout per bay.");
+    }
+    const panelTDmm = toDeciMm(resolve("panelThicknessMm"), "panelThicknessMm");
+    const backTDmm = toDeciMm(resolve("backThicknessMm"), "backThicknessMm");
+    const bumperDmm = toDeciMm(resolve("doorBumperGapMm"), "doorBumperGapMm");
+    const revealDmm = toDeciMm(resolve("doorRevealMm"), "doorRevealMm");
+    const railOffsetDmm = toDeciMm(resolve("hangingRailOffsetBelowShelfMm"), "hangingRailOffsetBelowShelfMm");
+    const topOpeningDmm = toDeciMm(resolve("topCompartmentClearOpeningMm"), "topCompartmentClearOpeningMm");
+    const shelfOpeningDmm = toDeciMm(resolve("shelfCompartmentClearOpeningMm"), "shelfCompartmentClearOpeningMm");
+    const longDropDmm = toDeciMm(resolve("longHangingTargetClearDropMm"), "longHangingTargetClearDropMm");
+    const shortDropDmm = toDeciMm(resolve("shortHangingTargetClearDropMm"), "shortHangingTargetClearDropMm");
+    const shelfRearSetbackDmm = toDeciMm(resolve("fixedShelfRearSetbackMm"), "fixedShelfRearSetbackMm");
+    const adjFrontSetbackDmm = toDeciMm(resolve("adjustableShelfFrontSetbackMm"), "adjustableShelfFrontSetbackMm");
+    const carcassHDmm = envHDmm - plinthHDmm;
+    const carcassHeightMm = record("carcass.heightMm", carcassHDmm, [], "envelope.heightMm - plinth.heightMm");
+    const carcassDDmm = envDDmm - panelTDmm - bumperDmm;
+    const carcassDepthMm = record(
+      "carcass.depthMm",
+      carcassDDmm,
+      ["panelThicknessMm", "doorBumperGapMm"],
+      "envelope.depthMm - doorThickness(WR-003) - bumperGap"
+    );
+    const internalWidthDmm = envWDmm - (bayCount + 1) * panelTDmm;
+    if (internalWidthDmm <= 0 || internalWidthDmm % bayCount !== 0) {
+      throw new ClosureError(
+        `Bay clear width does not close exactly: ${internalWidthDmm / 10}mm over ${bayCount} bays.`,
+        "bays[].clearWidthMm"
+      );
+    }
+    const bayClearWDmm = internalWidthDmm / bayCount;
+    const bayClearWidthMm = record(
+      "bays[].clearWidthMm",
+      bayClearWDmm,
+      ["panelThicknessMm"],
+      "(envelope.widthMm - (bayCount + 1) * panelThickness(WR-003)) / bayCount"
+    );
+    const doorZoneDmm = envWDmm - 2 * revealDmm - (doorCount - 1) * revealDmm;
+    if (doorZoneDmm <= 0 || doorZoneDmm % doorCount !== 0) {
+      throw new ClosureError(
+        `Door finished width does not close exactly: ${doorZoneDmm / 10}mm over ${doorCount} doors.`,
+        "doors.finishedWidthMm"
+      );
+    }
+    const doorWDmm = doorZoneDmm / doorCount;
+    const doorFinishedWidthMm = record(
+      "doors.finishedWidthMm",
+      doorWDmm,
+      ["doorRevealMm"],
+      "(envelope.widthMm - 2*reveal(WR-008) - (doorCount-1)*reveal(WR-008)) / doorCount"
+    );
+    const doorHDmm = carcassHDmm - 2 * revealDmm;
+    if (doorHDmm <= 0) throw new ClosureError("Door finished height does not close.", "doors.finishedHeightMm");
+    const doorFinishedHeightMm = record(
+      "doors.finishedHeightMm",
+      doorHDmm,
+      ["doorRevealMm"],
+      "carcass.heightMm - topReveal(WR-008) - bottomReveal(WR-008)"
+    );
+    const fixedShelfDDmm = carcassDDmm - shelfRearSetbackDmm;
+    const fixedShelfDepthMm = record(
+      "component.fixedShelf.depthMm",
+      fixedShelfDDmm,
+      ["fixedShelfRearSetbackMm"],
+      "carcass.depthMm - fixedShelfRearSetback"
+    );
+    const adjShelfDDmm = fixedShelfDDmm - 2 * adjFrontSetbackDmm;
+    const adjShelfDepthMm = record(
+      "component.adjustableShelf.depthMm",
+      adjShelfDDmm,
+      ["fixedShelfRearSetbackMm", "adjustableShelfFrontSetbackMm"],
+      "fixedShelfDepth - 2 * adjustableShelfFrontSetback"
+    );
+    const bays = bayLayouts.map((layout, index) => {
+      const nn = pad2(index + 1);
+      const components = [];
+      components.push({
+        id: `shelf-fix-b${nn}`,
+        type: "SHELF_FIXED",
+        clearOpeningAboveMm: fromDeciMm(topOpeningDmm),
+        thicknessMm: fromDeciMm(panelTDmm),
+        depthMm: fixedShelfDepthMm
+      });
+      if (layout === BAY_LAYOUT.LONG_HANGING) {
+        components.push({
+          id: `rail-long-b${nn}`,
+          type: "HANGING_RAIL_LONG",
+          offsetBelowShelfMm: fromDeciMm(railOffsetDmm),
+          targetClearDropMm: fromDeciMm(longDropDmm)
+        });
+      } else if (layout === BAY_LAYOUT.SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES) {
+        components.push({
+          id: `rail-short-b${nn}`,
+          type: "HANGING_RAIL_SHORT",
+          offsetBelowShelfMm: fromDeciMm(railOffsetDmm),
+          targetClearDropMm: fromDeciMm(shortDropDmm)
+        });
+        components.push({
+          id: `shelf-adj-b${nn}-1`,
+          type: "SHELF_ADJUSTABLE",
+          clearDropAboveMm: fromDeciMm(shortDropDmm),
+          thicknessMm: fromDeciMm(panelTDmm),
+          depthMm: adjShelfDepthMm
+        });
+        components.push({
+          id: `shelf-adj-b${nn}-2`,
+          type: "SHELF_ADJUSTABLE",
+          clearOpeningAboveMm: fromDeciMm(shelfOpeningDmm),
+          thicknessMm: fromDeciMm(panelTDmm),
+          depthMm: adjShelfDepthMm
+        });
+      } else {
+        throw new Error(`Unsupported bay layout "${layout}".`);
+      }
+      return { id: `bay-${nn}`, index, clearWidthMm: bayClearWidthMm, components };
+    });
+    const materials = materialsFor(finishType);
+    const spec = {
+      schemaVersion: FURNISPEC_SCHEMA_VERSION,
+      specId,
+      revision,
+      unit: "mm",
+      furnitureType: "wardrobe",
+      wardrobeType: "straight_hinged",
+      constructionStyle: resolve("constructionStyle"),
+      finishType,
+      status,
+      // Hard safety invariants. Not parameters.
+      qualificationStatus: QUALIFICATION_STATUS.WORKSHOP_REVIEW_NOT_CNC_QUALIFIED,
+      envelope: {
+        widthMm: fromDeciMm(envWDmm),
+        heightMm: fromDeciMm(envHDmm),
+        depthMm: fromDeciMm(envDDmm)
+      },
+      plinth: {
+        heightMm: fromDeciMm(plinthHDmm),
+        frontRecessMm: resolve("plinthFrontRecessMm"),
+        sideInsetMm: resolve("plinthSideInsetMm"),
+        sideInsetStatus: SIDE_INSET_STATUS.BEKZOD_APPROVED
+      },
+      carcass: {
+        heightMm: carcassHeightMm,
+        depthMm: carcassDepthMm,
+        panelThicknessMm: fromDeciMm(panelTDmm),
+        backThicknessMm: fromDeciMm(backTDmm),
+        grooveWidthMm: resolve("grooveWidthMm"),
+        grooveDepthMm: resolve("grooveDepthMm"),
+        grooveRearDatumMm: resolve("grooveRearDatumMm")
+      },
+      bays,
+      doors: {
+        count: doorCount,
+        thicknessMm: fromDeciMm(panelTDmm),
+        bumperGapMm: fromDeciMm(bumperDmm),
+        finishedWidthMm: doorFinishedWidthMm,
+        finishedHeightMm: doorFinishedHeightMm,
+        reveals: {
+          topMm: fromDeciMm(revealDmm),
+          bottomMm: fromDeciMm(revealDmm),
+          leftMm: fromDeciMm(revealDmm),
+          rightMm: fromDeciMm(revealDmm),
+          interDoorMm: fromDeciMm(revealDmm)
+        }
+      },
+      materials,
+      edgeBanding: {
+        frontVisibleMm: resolve("edgeBandFrontVisibleMm"),
+        rearUnbandedMm: resolve("edgeBandRearUnbandedMm"),
+        doorPerimeterMm: resolve("edgeBandDoorPerimeterMm")
+      },
+      clearancePolicy: {
+        adjustableShelf: {
+          sideClearanceMm: resolve("adjustableShelfSideClearanceMm"),
+          frontSetbackMm: resolve("adjustableShelfFrontSetbackMm")
+        },
+        backPanel: {
+          grooveRootAllowanceMm: resolve("grooveRootAllowanceMm")
+        }
+      },
+      hardware: {
+        hinges: {
+          type: resolve("hingeType"),
+          countPerDoor: resolve("hingeCountPerDoor"),
+          totalCount: resolve("hingeCountPerDoor") * doorCount,
+          status: HARDWARE_APPROVAL_STATUS.BLOCKED_PENDING_HARDWARE_APPROVAL,
+          note: "HARDWARE_SKU_PENDING_BEKZOD_CONFIRMATION"
+        },
+        shelfPins: {
+          type: resolve("shelfPinType"),
+          pitchMm: resolve("shelfPinPitchMm"),
+          status: HARDWARE_APPROVAL_STATUS.BLOCKED_PENDING_HARDWARE_APPROVAL
+        },
+        joinery: {
+          type: resolve("joineryType"),
+          status: HARDWARE_APPROVAL_STATUS.BLOCKED_PENDING_HARDWARE_APPROVAL
+        },
+        hangingRails: {
+          type: resolve("hangingRailType"),
+          status: HARDWARE_APPROVAL_STATUS.PREVIEW_ONLY
+        }
+      },
+      machiningPolicy: {
+        backGroove: MACHINING_POLICY.APPROVED,
+        // Hard-wired. No caller can approve drilling from this path.
+        drilling: MACHINING_POLICY.BLOCKED_PENDING_HARDWARE_APPROVAL
+      }
+    };
+    return { spec, derivations };
+  }
+
+  // src/lib/furnispec/normalize.js
+  function normalizeValue(val, path = "root") {
+    if (val === null || val === void 0) {
+      return val;
+    }
+    if (typeof val === "number") {
+      if (!Number.isFinite(val)) return val;
+      const dmm = toDeciMm(val, path);
+      return fromDeciMm(dmm);
+    }
+    if (Array.isArray(val)) {
+      return val.map((item, idx) => normalizeValue(item, `${path}[${idx}]`));
+    }
+    if (typeof val === "object") {
+      const sortedKeys = Object.keys(val).sort();
+      const result = {};
+      for (const key of sortedKeys) {
+        result[key] = normalizeValue(val[key], `${path}.${key}`);
+      }
+      return result;
+    }
+    return val;
+  }
+  function normalizeFurniSpec(spec) {
+    return normalizeValue(spec, "spec");
+  }
+  function serializeCanonicalJson(spec) {
+    const normalized = normalizeFurniSpec(spec);
+    return JSON.stringify(normalized, null, 2);
+  }
+
+  // src/lib/conversation/fingerprint.js
+  var K = Object.freeze([
+    1116352408,
+    1899447441,
+    3049323471,
+    3921009573,
+    961987163,
+    1508970993,
+    2453635748,
+    2870763221,
+    3624381080,
+    310598401,
+    607225278,
+    1426881987,
+    1925078388,
+    2162078206,
+    2614888103,
+    3248222580,
+    3835390401,
+    4022224774,
+    264347078,
+    604807628,
+    770255983,
+    1249150122,
+    1555081692,
+    1996064986,
+    2554220882,
+    2821834349,
+    2952996808,
+    3210313671,
+    3336571891,
+    3584528711,
+    113926993,
+    338241895,
+    666307205,
+    773529912,
+    1294757372,
+    1396182291,
+    1695183700,
+    1986661051,
+    2177026350,
+    2456956037,
+    2730485921,
+    2820302411,
+    3259730800,
+    3345764771,
+    3516065817,
+    3600352804,
+    4094571909,
+    275423344,
+    430227734,
+    506948616,
+    659060556,
+    883997877,
+    958139571,
+    1322822218,
+    1537002063,
+    1747873779,
+    1955562222,
+    2024104815,
+    2227730452,
+    2361852424,
+    2428436474,
+    2756734187,
+    3204031479,
+    3329325298
+  ]);
+  var rotr = (x, n) => (x >>> n | x << 32 - n) >>> 0;
+  function sha256Hex(message) {
+    if (typeof message !== "string") throw new TypeError("sha256Hex expects a string.");
+    const input = new TextEncoder().encode(message);
+    const bitLength = input.length * 8;
+    const paddedLength = input.length + 72 >> 6 << 6;
+    const buffer = new Uint8Array(paddedLength);
+    buffer.set(input);
+    buffer[input.length] = 128;
+    const view = new DataView(buffer.buffer);
+    view.setUint32(paddedLength - 8, Math.floor(bitLength / 4294967296), false);
+    view.setUint32(paddedLength - 4, bitLength >>> 0, false);
+    let h0 = 1779033703, h1 = 3144134277, h2 = 1013904242, h3 = 2773480762;
+    let h4 = 1359893119, h5 = 2600822924, h6 = 528734635, h7 = 1541459225;
+    const w = new Uint32Array(64);
+    for (let offset = 0; offset < paddedLength; offset += 64) {
+      for (let i = 0; i < 16; i += 1) w[i] = view.getUint32(offset + i * 4, false);
+      for (let i = 16; i < 64; i += 1) {
+        const s0 = (rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ w[i - 15] >>> 3) >>> 0;
+        const s1 = (rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ w[i - 2] >>> 10) >>> 0;
+        w[i] = w[i - 16] + s0 + w[i - 7] + s1 >>> 0;
+      }
+      let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+      for (let i = 0; i < 64; i += 1) {
+        const S1 = (rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25)) >>> 0;
+        const ch = (e & f ^ ~e & g) >>> 0;
+        const temp1 = h + S1 + ch + K[i] + w[i] >>> 0;
+        const S0 = (rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22)) >>> 0;
+        const maj = (a & b ^ a & c ^ b & c) >>> 0;
+        const temp2 = S0 + maj >>> 0;
+        h = g;
+        g = f;
+        f = e;
+        e = d + temp1 >>> 0;
+        d = c;
+        c = b;
+        b = a;
+        a = temp1 + temp2 >>> 0;
+      }
+      h0 = h0 + a >>> 0;
+      h1 = h1 + b >>> 0;
+      h2 = h2 + c >>> 0;
+      h3 = h3 + d >>> 0;
+      h4 = h4 + e >>> 0;
+      h5 = h5 + f >>> 0;
+      h6 = h6 + g >>> 0;
+      h7 = h7 + h >>> 0;
+    }
+    return [h0, h1, h2, h3, h4, h5, h6, h7].map((x) => x.toString(16).padStart(8, "0")).join("");
+  }
+  var FINGERPRINT_ALGORITHM = "fs256:sha256(serializeCanonicalJson(furnispec))";
+  var FINGERPRINT_PREFIX = "fs256:";
+  function isFingerprint(value) {
+    return typeof value === "string" && /^fs256:[0-9a-f]{64}$/.test(value);
+  }
+
+  // src/lib/conversation/approval.js
+  var APPROVAL_ERROR = Object.freeze({
+    MISSING_PROPOSAL: "MISSING_PROPOSAL",
+    INVALID_PROPOSAL: "INVALID_PROPOSAL",
+    MISSING_APPROVAL: "MISSING_APPROVAL",
+    INVALID_APPROVAL_TYPE: "INVALID_APPROVAL_TYPE",
+    MISSING_APPROVED_BY: "MISSING_APPROVED_BY",
+    BLANK_APPROVED_BY: "BLANK_APPROVED_BY",
+    MISSING_PROPOSAL_ID: "MISSING_PROPOSAL_ID",
+    PROPOSAL_ID_MISMATCH: "PROPOSAL_ID_MISMATCH",
+    MISSING_PROPOSAL_REVISION: "MISSING_PROPOSAL_REVISION",
+    PROPOSAL_REVISION_MISMATCH: "PROPOSAL_REVISION_MISMATCH",
+    MISSING_PROPOSAL_FINGERPRINT: "MISSING_PROPOSAL_FINGERPRINT",
+    MALFORMED_PROPOSAL_FINGERPRINT: "MALFORMED_PROPOSAL_FINGERPRINT",
+    PROPOSAL_FINGERPRINT_MISMATCH: "PROPOSAL_FINGERPRINT_MISMATCH",
+    PROPOSAL_TAMPERED_SINCE_ISSUE: "PROPOSAL_TAMPERED_SINCE_ISSUE"
+  });
+  function fingerprintFurniSpec(spec) {
+    if (!spec || typeof spec !== "object" || Array.isArray(spec)) {
+      throw new TypeError("fingerprintFurniSpec expects a FurniSpec object.");
+    }
+    return FINGERPRINT_PREFIX + sha256Hex(serializeCanonicalJson(spec));
+  }
+  function createProposal(spec) {
+    const fingerprint = fingerprintFurniSpec(spec);
+    return Object.freeze({
+      specId: spec.specId,
+      revision: spec.revision,
+      status: spec.status,
+      fingerprint,
+      fingerprintAlgorithm: FINGERPRINT_ALGORITHM,
+      spec
+    });
+  }
+  function isPlainObject(value) {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  }
+  function validateApproval({ proposal, approval }) {
+    const errors = [];
+    const add = (code, field, message) => errors.push({ code, field, message });
+    if (proposal === null || proposal === void 0) {
+      add(APPROVAL_ERROR.MISSING_PROPOSAL, "proposal", "There is no proposal to approve.");
+      return { valid: false, errors, expectedFingerprint: null };
+    }
+    if (!isPlainObject(proposal) || !isPlainObject(proposal.spec)) {
+      add(APPROVAL_ERROR.INVALID_PROPOSAL, "proposal", "Proposal must be a record carrying the proposed FurniSpec.");
+      return { valid: false, errors, expectedFingerprint: null };
+    }
+    const expectedFingerprint = fingerprintFurniSpec(proposal.spec);
+    if (isFingerprint(proposal.fingerprint) && proposal.fingerprint !== expectedFingerprint) {
+      add(
+        APPROVAL_ERROR.PROPOSAL_TAMPERED_SINCE_ISSUE,
+        "proposal.spec",
+        "The proposed FurniSpec has changed since the proposal was issued. Re-issue the proposal and obtain a fresh approval."
+      );
+    }
+    if (approval === null || approval === void 0) {
+      add(APPROVAL_ERROR.MISSING_APPROVAL, "approval", "No approval was supplied. Geometry requires an explicit human approval record.");
+      return { valid: false, errors, expectedFingerprint };
+    }
+    if (!isPlainObject(approval)) {
+      add(
+        APPROVAL_ERROR.INVALID_APPROVAL_TYPE,
+        "approval",
+        `Approval must be a structured record, not ${Array.isArray(approval) ? "an array" : typeof approval}.`
+      );
+      return { valid: false, errors, expectedFingerprint };
+    }
+    if (!Object.prototype.hasOwnProperty.call(approval, "approvedBy")) {
+      add(APPROVAL_ERROR.MISSING_APPROVED_BY, "approval.approvedBy", "approvedBy is required \u2014 an approval must name the person giving it.");
+    } else if (typeof approval.approvedBy !== "string" || approval.approvedBy.trim() === "") {
+      add(APPROVAL_ERROR.BLANK_APPROVED_BY, "approval.approvedBy", "approvedBy must be a non-empty string.");
+    }
+    if (!Object.prototype.hasOwnProperty.call(approval, "proposalId")) {
+      add(APPROVAL_ERROR.MISSING_PROPOSAL_ID, "approval.proposalId", "proposalId is required.");
+    } else if (approval.proposalId !== proposal.specId) {
+      add(
+        APPROVAL_ERROR.PROPOSAL_ID_MISMATCH,
+        "approval.proposalId",
+        `Approval references spec "${String(approval.proposalId)}" but the proposal is "${proposal.specId}".`
+      );
+    }
+    if (!Object.prototype.hasOwnProperty.call(approval, "proposalRevision")) {
+      add(APPROVAL_ERROR.MISSING_PROPOSAL_REVISION, "approval.proposalRevision", "proposalRevision is required.");
+    } else if (!Number.isInteger(approval.proposalRevision) || approval.proposalRevision !== proposal.revision) {
+      add(
+        APPROVAL_ERROR.PROPOSAL_REVISION_MISMATCH,
+        "approval.proposalRevision",
+        `Approval references revision ${String(approval.proposalRevision)} but the proposal is revision ${proposal.revision}.`
+      );
+    }
+    if (!Object.prototype.hasOwnProperty.call(approval, "proposalFingerprint")) {
+      add(APPROVAL_ERROR.MISSING_PROPOSAL_FINGERPRINT, "approval.proposalFingerprint", "proposalFingerprint is required.");
+    } else if (!isFingerprint(approval.proposalFingerprint)) {
+      add(
+        APPROVAL_ERROR.MALFORMED_PROPOSAL_FINGERPRINT,
+        "approval.proposalFingerprint",
+        `proposalFingerprint must match ${FINGERPRINT_PREFIX}<64 lower-case hex chars>.`
+      );
+    } else if (approval.proposalFingerprint !== expectedFingerprint) {
+      add(
+        APPROVAL_ERROR.PROPOSAL_FINGERPRINT_MISMATCH,
+        "approval.proposalFingerprint",
+        "The approval does not match this proposal. It may belong to an earlier proposal, or the proposal changed after it was approved."
+      );
+    }
+    return { valid: errors.length === 0, errors, expectedFingerprint };
+  }
+
+  // src/lib/conversation/gapAnalysis.js
+  function analyseGaps(interpretation) {
+    const observations = interpretation?.observations ?? [];
+    const ambiguities = interpretation?.ambiguities ?? [];
+    const values = /* @__PURE__ */ new Map();
+    for (const obs of observations) values.set(obs.key, obs.value);
+    const gaps = [...ambiguities];
+    const alreadyFlagged = new Set(ambiguities.map((a) => a.key));
+    const has = (key) => values.has(key) && !alreadyFlagged.has(key);
+    const get = (key) => values.get(key);
+    for (const fact of REQUIRED_INTAKE_FACTS) {
+      if (has(fact.key) || alreadyFlagged.has(fact.key)) continue;
+      let proposal = null;
+      let proposalBasis = null;
+      let detail = `No ${fact.label} was supplied and no approved rule can supply it.`;
+      if (fact.key === "bayCount") {
+        detail = `No ${fact.label} was supplied. ${WARDROBE_RULES.bayCountForWidth.note} It cannot be inferred from the overall width.`;
+        proposalBasis = WARDROBE_RULES.bayCountForWidth.id;
+      } else if (fact.key === "doorCount" && has("bayCount")) {
+        proposal = get("bayCount") * 2;
+        proposalBasis = WARDROBE_RULES.doorsPerBay.id;
+        detail = `No ${fact.label} was supplied. ${WARDROBE_RULES.doorsPerBay.note} Two doors per bay is offered for confirmation only.`;
+      } else if (fact.key === "bayLayouts" && has("bayCount")) {
+        detail = `The interior layout of each of the ${get("bayCount")} bays was not described.`;
+      }
+      gaps.push(gap(fact.key, GAP_KIND.MISSING_REQUIRED_FACT, GAP_SEVERITY.BLOCKING, { detail, proposal, proposalBasis }));
+    }
+    if (has("finishType") && !SUPPORTED_FINISHES.includes(get("finishType"))) {
+      gaps.push(
+        gap("finishType", GAP_KIND.OUT_OF_SLICE, GAP_SEVERITY.BLOCKING, {
+          detail: `Finish "${get("finishType")}" has no Bekzod-approved material record in the first slice. Approved finishes: ${SUPPORTED_FINISHES.join(", ")}.`
+        })
+      );
+    }
+    if (has("bayCount") && has("bayLayouts")) {
+      const layouts = get("bayLayouts");
+      if (!Array.isArray(layouts) || layouts.length !== get("bayCount")) {
+        gaps.push(
+          gap("bayLayouts", GAP_KIND.CONFLICTING_FACT, GAP_SEVERITY.BLOCKING, {
+            detail: `${get("bayCount")} bays were requested but ${Array.isArray(layouts) ? layouts.length : 0} interior layout(s) were described. Each bay needs its own layout.`
+          })
+        );
+      }
+    }
+    if (has("envelope.widthMm") && has("bayCount")) {
+      const panelTDmm = toDeciMm(resolve("panelThicknessMm"), "panelThicknessMm");
+      const widthDmm = toDeciMm(get("envelope.widthMm"), "envelope.widthMm");
+      const bays = get("bayCount");
+      const internalDmm = widthDmm - (bays + 1) * panelTDmm;
+      if (internalDmm <= 0) {
+        gaps.push(
+          gap("bayCount", GAP_KIND.CONFLICTING_FACT, GAP_SEVERITY.BLOCKING, {
+            detail: `${bays} bays need ${(bays + 1) * panelTDmm / 10}mm of ${resolve("panelThicknessMm")}mm panel (rule ${ruleIdOf("panelThicknessMm")}), which does not fit inside an overall width of ${get("envelope.widthMm")}mm.`
+          })
+        );
+      } else if (internalDmm % bays !== 0) {
+        gaps.push(
+          gap("bayCount", GAP_KIND.UNRULED_DERIVATION, GAP_SEVERITY.BLOCKING, {
+            detail: `${internalDmm / 10}mm of clear width does not divide evenly into ${bays} bays. ${WARDROBE_RULES.unevenBayWidthDistribution.note}`,
+            proposalBasis: WARDROBE_RULES.unevenBayWidthDistribution.id
+          })
+        );
+      }
+    }
+    if (has("envelope.heightMm") && has("plinth.heightMm")) {
+      const panelTDmm = toDeciMm(resolve("panelThicknessMm"), "panelThicknessMm");
+      const carcassDmm = toDeciMm(get("envelope.heightMm"), "envelope.heightMm") - toDeciMm(get("plinth.heightMm"), "plinth.heightMm");
+      if (carcassDmm <= 2 * panelTDmm) {
+        gaps.push(
+          gap("plinth.heightMm", GAP_KIND.CONFLICTING_FACT, GAP_SEVERITY.BLOCKING, {
+            detail: `A ${get("plinth.heightMm")}mm plinth leaves ${carcassDmm / 10}mm of carcass inside a ${get("envelope.heightMm")}mm envelope, which cannot contain the top and bottom panels.`
+          })
+        );
+      }
+    }
+    if (has("envelope.depthMm")) {
+      const doorTDmm = toDeciMm(resolve("panelThicknessMm"), "doorThicknessMm");
+      const bumperDmm = toDeciMm(resolve("doorBumperGapMm"), "doorBumperGapMm");
+      const carcassDDmm = toDeciMm(get("envelope.depthMm"), "envelope.depthMm") - doorTDmm - bumperDmm;
+      if (carcassDDmm <= 0) {
+        gaps.push(
+          gap("envelope.depthMm", GAP_KIND.CONFLICTING_FACT, GAP_SEVERITY.BLOCKING, {
+            detail: `An overall depth of ${get("envelope.depthMm")}mm leaves no carcass once the ${resolve("panelThicknessMm")}mm door (${ruleIdOf("panelThicknessMm")}) and ${resolve("doorBumperGapMm")}mm bumper gap (${ruleIdOf("doorBumperGapMm")}) are removed.`
+          })
+        );
+      }
+    }
+    if (has("envelope.widthMm") && has("doorCount")) {
+      const revealDmm = toDeciMm(resolve("doorRevealMm"), "doorRevealMm");
+      const count = get("doorCount");
+      const widthDmm = toDeciMm(get("envelope.widthMm"), "envelope.widthMm");
+      const availableDmm = widthDmm - 2 * revealDmm - (count - 1) * revealDmm;
+      if (availableDmm <= 0) {
+        gaps.push(
+          gap("doorCount", GAP_KIND.CONFLICTING_FACT, GAP_SEVERITY.BLOCKING, {
+            detail: `${count} doors and their ${resolve("doorRevealMm")}mm reveals (${ruleIdOf("doorRevealMm")}) exceed the ${get("envelope.widthMm")}mm overall width.`
+          })
+        );
+      } else if (availableDmm % count !== 0) {
+        gaps.push(
+          gap("doorCount", GAP_KIND.UNRULED_DERIVATION, GAP_SEVERITY.BLOCKING, {
+            detail: `${availableDmm / 10}mm of door width does not divide evenly into ${count} doors. No approved rule distributes the remainder.`,
+            proposalBasis: WARDROBE_RULES.unevenBayWidthDistribution.id
+          })
+        );
+      }
+    }
+    return sortGaps(gaps);
+  }
+  function blockingGaps(gaps) {
+    return gaps.filter((g) => g.severity === GAP_SEVERITY.BLOCKING);
+  }
+
+  // src/lib/conversation/interpretDescription.js
+  var INTERPRETER_ID = "deterministic-phrase-interpreter/0.1";
+  var NUMBER_WORDS = Object.freeze({
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10
+  });
+  var HEDGE = "(?:about|around|roughly|approximately|approx\\.?|circa|~|some ?where around|or so|ish)";
+  var UNIT_TO_MM = Object.freeze({ mm: 1, millimetre: 1, millimeter: 1, cm: 10, centimetre: 10, centimeter: 10, m: 1e3, metre: 1e3, meter: 1e3 });
+  var DIMENSION_ROLES = Object.freeze([
+    { key: "envelope.widthMm", words: "(?:wide|width|across)" },
+    { key: "envelope.heightMm", words: "(?:high|tall|height)" },
+    { key: "envelope.depthMm", words: "(?:deep|depth)" }
+  ]);
+  var OUT_OF_SLICE_TERMS = Object.freeze([
+    { pattern: /\bsliding\b/i, detail: "Sliding-door manufacturing is deferred; the first slice builds straight hinged wardrobes only." },
+    { pattern: /\bcorner wardrobe\b|\bl-shaped\b/i, detail: "Corner wardrobes are deferred." },
+    { pattern: /\bcurved\b/i, detail: "Curved and freeform carcasses are deferred." },
+    { pattern: /\bkitchen\b/i, detail: "Kitchens are not yet a manufacturing product." },
+    { pattern: /\bwalk[- ]?in\b/i, detail: "Walk-in configurations are outside the first manufacturing slice." }
+  ]);
+  function parseCount(token) {
+    const lower = token.toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(NUMBER_WORDS, lower)) return NUMBER_WORDS[lower];
+    const n = Number(lower);
+    return Number.isInteger(n) && n > 0 ? n : null;
+  }
+  function toExactMm(magnitude, unitToken) {
+    const unitKey = (unitToken || "mm").toLowerCase().replace(/s$/, "").replace(/\./g, "");
+    const factor = UNIT_TO_MM[unitKey];
+    if (factor === void 0) return null;
+    try {
+      return fromDeciMm(toDeciMm(Number(magnitude) * factor, "dimension"));
+    } catch {
+      return null;
+    }
+  }
+  function interpretDescription(description) {
+    if (typeof description !== "string") {
+      throw new TypeError("interpretDescription expects a string description.");
+    }
+    const text = description;
+    const observations = [];
+    const ambiguities = [];
+    const seen = /* @__PURE__ */ new Set();
+    const push = (key, value, meta) => {
+      if (seen.has(key)) return;
+      seen.add(key);
+      observations.push(observation(key, value, OBSERVATION_ORIGIN.CUSTOMER_STATED, meta));
+    };
+    for (const role of DIMENSION_ROLES) {
+      const re = new RegExp(
+        `(${HEDGE}\\s+)?(\\d+(?:\\.\\d+)?)\\s*(mm|cm|m|millimetres?|millimeters?|centimetres?|centimeters?|metres?|meters?)?\\s*(?:\\w+\\s+){0,2}?${role.words}`,
+        "i"
+      );
+      const m = re.exec(text);
+      if (!m) continue;
+      const sourceText = m[0].trim();
+      const span = [m.index, m.index + m[0].length];
+      if (m[1]) {
+        ambiguities.push(
+          gap(role.key, GAP_KIND.AMBIGUOUS_FACT, GAP_SEVERITY.BLOCKING, {
+            detail: `"${sourceText}" is hedged. A manufacturing dimension must be exact.`,
+            sourceText
+          })
+        );
+        seen.add(role.key);
+        continue;
+      }
+      const mm = toExactMm(m[2], m[3]);
+      if (mm === null) {
+        ambiguities.push(
+          gap(role.key, GAP_KIND.AMBIGUOUS_FACT, GAP_SEVERITY.BLOCKING, {
+            detail: `"${sourceText}" cannot be represented exactly at 0.1mm precision. Silent rounding is forbidden.`,
+            sourceText
+          })
+        );
+        seen.add(role.key);
+        continue;
+      }
+      push(role.key, mm, { sourceText, sourceSpan: span });
+    }
+    const plinthRe = new RegExp(
+      `(?:(${HEDGE})\\s+)?(?:(\\d+(?:\\.\\d+)?)\\s*(mm|cm|m)?\\s*(?:high\\s+)?plinth|plinth\\s+(?:of\\s+|at\\s+)?(\\d+(?:\\.\\d+)?)\\s*(mm|cm|m)?)`,
+      "i"
+    );
+    const pm = plinthRe.exec(text);
+    if (pm) {
+      const sourceText = pm[0].trim();
+      if (pm[1]) {
+        ambiguities.push(
+          gap("plinth.heightMm", GAP_KIND.AMBIGUOUS_FACT, GAP_SEVERITY.BLOCKING, {
+            detail: `"${sourceText}" is hedged. Plinth height sets the carcass height and must be exact.`,
+            sourceText
+          })
+        );
+        seen.add("plinth.heightMm");
+      } else {
+        const mm = toExactMm(pm[2] ?? pm[4], pm[3] ?? pm[5]);
+        if (mm !== null) push("plinth.heightMm", mm, { sourceText, sourceSpan: [pm.index, pm.index + pm[0].length] });
+      }
+    }
+    const bayRe = /(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:equal\s+|separate\s+)?bays?\b/i;
+    const bm = bayRe.exec(text);
+    if (bm) {
+      const n = parseCount(bm[1]);
+      if (n !== null) push("bayCount", n, { sourceText: bm[0].trim(), sourceSpan: [bm.index, bm.index + bm[0].length] });
+    }
+    const doorRe = /(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:\w+\s+){0,2}?doors?\b/i;
+    const dm = doorRe.exec(text);
+    if (dm) {
+      const n = parseCount(dm[1]);
+      if (n !== null) push("doorCount", n, { sourceText: dm[0].trim(), sourceSpan: [dm.index, dm.index + dm[0].length] });
+    }
+    const finishRe = /\b(melamine|painted|lacquered|veneer(?:ed)?)\b/i;
+    const fm = finishRe.exec(text);
+    if (fm) {
+      const raw = fm[1].toLowerCase();
+      const finish = raw.startsWith("melamine") ? "melamine" : raw.startsWith("veneer") ? "veneer" : "painted";
+      push("finishType", finish, { sourceText: fm[0], sourceSpan: [fm.index, fm.index + fm[0].length] });
+    }
+    const layoutPatterns = [
+      { layout: BAY_LAYOUT.LONG_HANGING, re: /\b(?:full[- ]?(?:height|length)\s+hanging|long\s+hanging|full\s+hanging)\b/gi },
+      { layout: BAY_LAYOUT.SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES, re: /\bshort\s+hanging\b/gi }
+    ];
+    const layoutHits = [];
+    for (const { layout, re } of layoutPatterns) {
+      let hit;
+      while ((hit = re.exec(text)) !== null) {
+        layoutHits.push({ index: hit.index, layout, sourceText: hit[0] });
+      }
+    }
+    layoutHits.sort((a, b) => a.index - b.index);
+    if (layoutHits.length > 0) {
+      push(
+        "bayLayouts",
+        layoutHits.map((h) => h.layout),
+        { sourceText: layoutHits.map((h) => h.sourceText).join(" | "), sourceSpan: [layoutHits[0].index, layoutHits[layoutHits.length - 1].index + layoutHits[layoutHits.length - 1].sourceText.length] }
+      );
+    }
+    const unmatchedIntent = [];
+    for (const term of OUT_OF_SLICE_TERMS) {
+      const om = term.pattern.exec(text);
+      if (om) {
+        unmatchedIntent.push(om[0]);
+        ambiguities.push(
+          gap("furnitureScope", GAP_KIND.OUT_OF_SLICE, GAP_SEVERITY.BLOCKING, {
+            detail: term.detail,
+            sourceText: om[0]
+          })
+        );
+      }
+    }
+    return {
+      interpreterId: INTERPRETER_ID,
+      observations,
+      ambiguities,
+      unmatchedIntent
+    };
+  }
+
+  // src/lib/conversation/proposalAdapter.js
+  var ADAPTER_KIND = Object.freeze({
+    DETERMINISTIC: "DETERMINISTIC",
+    LLM: "LLM"
+  });
+  var PROPOSAL_ADAPTER_CONTRACT = Object.freeze({
+    requiredMethods: Object.freeze(["interpret"]),
+    /** Method names an adapter must NEVER expose — the trust boundary in code. */
+    forbiddenMethods: Object.freeze([
+      "approve",
+      "approveProposal",
+      "buildPartGraph",
+      "buildStructuralPartGraph",
+      "generateGeometry",
+      "assembleFurniSpec"
+    ]),
+    returns: "{ observations: Observation[], ambiguities: Gap[], unmatchedIntent: string[] }"
+  });
+  function assertProposalOnly(adapter) {
+    if (!adapter || typeof adapter !== "object") throw new TypeError("A proposal adapter must be an object.");
+    for (const method of PROPOSAL_ADAPTER_CONTRACT.requiredMethods) {
+      if (typeof adapter[method] !== "function") {
+        throw new Error(`Proposal adapter "${adapter.id ?? "anonymous"}" is missing required method ${method}().`);
+      }
+    }
+    for (const method of PROPOSAL_ADAPTER_CONTRACT.forbiddenMethods) {
+      if (typeof adapter[method] === "function") {
+        throw new Error(
+          `Proposal adapter "${adapter.id ?? "anonymous"}" exposes ${method}(). An adapter may only propose; approval and geometry are outside its authority.`
+        );
+      }
+    }
+    return adapter;
+  }
+  function createDeterministicPhraseAdapter() {
+    return assertProposalOnly({
+      id: "deterministic-phrase-interpreter/0.1",
+      kind: ADAPTER_KIND.DETERMINISTIC,
+      liveModel: null,
+      interpret(description) {
+        return interpretDescription(description);
+      }
+    });
+  }
+
+  // src/lib/conversation/questions.js
+  var PHRASING = Object.freeze({
+    "envelope.widthMm": "How wide should the wardrobe be, wall to wall, in millimetres?",
+    "envelope.heightMm": "What is the finished overall height in millimetres, floor to top?",
+    "envelope.depthMm": "How deep should it be in millimetres, including the doors?",
+    "plinth.heightMm": "How high should the plinth be in millimetres?",
+    bayCount: "How many bays should the wardrobe be divided into?",
+    doorCount: "How many hinged doors across the front?",
+    finishType: "Which finish: melamine, painted or veneer?",
+    bayLayouts: "What goes inside each bay, left to right? Options in this slice: full-height hanging, or short hanging over two adjustable shelves.",
+    furnitureScope: "This request falls outside the straight hinged wardrobe we can build today. Shall we proceed with a straight hinged wardrobe instead?"
+  });
+  var KIND_PREFIX = Object.freeze({
+    [GAP_KIND.AMBIGUOUS_FACT]: "That measurement was approximate, and a cut panel needs an exact one.",
+    [GAP_KIND.CONFLICTING_FACT]: "Those two details do not fit together.",
+    [GAP_KIND.UNRULED_DERIVATION]: "This needs a decision from the workshop, not a guess.",
+    [GAP_KIND.OUT_OF_SLICE]: "That is outside what we can manufacture today."
+  });
+  var LAYOUT_LABELS = Object.freeze({
+    [BAY_LAYOUT.LONG_HANGING]: "full-height hanging with a shelf over the top",
+    [BAY_LAYOUT.SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES]: "short hanging over two adjustable shelves, with a shelf over the top"
+  });
+  function questionFor(gapRecord) {
+    const base = PHRASING[gapRecord.key] ?? `Could you confirm ${gapRecord.key}?`;
+    const prefix = KIND_PREFIX[gapRecord.kind];
+    let question = prefix ? `${prefix} ${base}` : base;
+    if (gapRecord.proposal !== null && gapRecord.proposal !== void 0) {
+      question += ` We would suggest ${JSON.stringify(gapRecord.proposal)} \u2014 can you confirm?`;
+    }
+    return Object.freeze({
+      key: gapRecord.key,
+      severity: gapRecord.severity,
+      kind: gapRecord.kind,
+      question,
+      why: gapRecord.detail,
+      proposal: gapRecord.proposal ?? null,
+      proposalBasis: gapRecord.proposalBasis ?? null
+    });
+  }
+  function questionsFor(gaps) {
+    return gaps.map(questionFor);
+  }
+
+  // src/lib/conversation/componentRequests.js
+  var REQUEST_VERB = "add|put|fit|install|include|want|need|like|love|have|give|get|use|with|featuring";
+  var NEGATION = /\b(no|not|n't|never|without|none|don't|dont|do\s+not|does\s+not|doesn't|won't|will\s+not|can't|cannot|rather\s+not|instead\s+of|skip|drop|remove|delete|take\s+out|get\s+rid|no\s+need|unless)\b/i;
+  var REFERENCE_FRAMING = /\b(you\s+(?:showed|mentioned|suggested|said)|the\s+ones?\s+(?:you|in)|showroom|catalogue|catalog|last\s+time|earlier|previous|other\s+wardrobe|like\s+the\s+one)\b/i;
+  var GAP = "(?:\\s+(?:up\\s+to|a|an|the|some|any|more|extra|another|about|around|at\\s+least|\\d+|one|two|three|four|five|six|couple|few|pair|of|my|our|it|its))*(?:\\s+[a-z-]+){0,2}\\s+";
+  var COMPONENT_WORDS = Object.freeze([
+    {
+      noun: "drawers?|drawer\\s+bank|chest\\s+of\\s+drawers",
+      componentType: COMPONENT_TYPES.DRAWER_BANK,
+      customerWord: "drawers"
+    }
+  ]);
+  var UNMODELLED_WORDS = Object.freeze([
+    { noun: "handles?|knobs?|pulls?", customerWord: "handles" },
+    { noun: "mirrors?|mirrored\\s+doors?", customerWord: "a mirror" },
+    { noun: "lighting|lights|led\\s+strips?|leds?|spotlights?|light\\s+strips?", customerWord: "lighting" },
+    { noun: "locks?|lockable", customerWord: "a lock" },
+    { noun: "shoe\\s+racks?|tie\\s+racks?|trouser\\s+racks?|baskets?|pull-?out\\s+racks?", customerWord: "racks and baskets" },
+    { noun: "soft[-\\s]?close|push[-\\s]?to[-\\s]?open", customerWord: "soft-close hardware" }
+  ]);
+  function toClauses(text) {
+    return text.split(/[;.!?]+|,\s*|\s+\band\b\s+|\s+\bbut\b\s+|\s+\bthen\b\s+|\s+\balso\b\s+|\s+\bhowever\b\s+/i).map((c) => c.trim()).filter(Boolean);
+  }
+  function clauseRequests(clause, noun) {
+    const governed = new RegExp(`\\b(?:${REQUEST_VERB})\\b${GAP}(?:${noun})\\b`, "i");
+    if (governed.test(clause)) return true;
+    const quantified = new RegExp(`\\b(?:\\d+|two|three|four|five|six)\\s+(?:[a-z-]+\\s+){0,2}?(?:${noun})\\b`, "i");
+    return quantified.test(clause);
+  }
+  function detectUnsupportedComponentRequest(text) {
+    if (typeof text !== "string" || !text.trim()) return null;
+    const unsupported = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const clause of toClauses(text)) {
+      if (NEGATION.test(clause) || REFERENCE_FRAMING.test(clause)) continue;
+      for (const { noun, componentType, customerWord } of COMPONENT_WORDS) {
+        if (seen.has(customerWord) || !clauseRequests(clause, noun)) continue;
+        const policy = COMPONENT_REPRESENTATION_POLICY[componentType];
+        if (!policy || policy.outcome !== COMPONENT_OUTCOME.UNSUPPORTED) continue;
+        seen.add(customerWord);
+        unsupported.push({
+          request: customerWord,
+          componentType,
+          code: policy.diagnosticCode ?? COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED,
+          reason: policy.customerMessage,
+          engineeringReason: policy.reason,
+          alternative: policy.suggestedAlternative ? policy.suggestedAlternative.summary : null,
+          alternativeApplied: false
+        });
+      }
+      for (const { noun, customerWord } of UNMODELLED_WORDS) {
+        if (seen.has(customerWord) || !clauseRequests(clause, noun)) continue;
+        seen.add(customerWord);
+        unsupported.push({
+          request: customerWord,
+          componentType: null,
+          code: COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED,
+          reason: `I can't add ${customerWord} to the design yet. Your wardrobe is unchanged.`,
+          engineeringReason: `"${customerWord}" has no representation in FurniSpec v0.1 \u2014 it is neither a cut part nor an approved hardware item.`,
+          alternative: null,
+          alternativeApplied: false
+        });
+      }
+    }
+    if (unsupported.length === 0) return null;
+    return {
+      unsupported,
+      error: unsupported.map((u) => u.alternative ? `${u.reason} If you'd like, I can use ${u.alternative}.` : u.reason).join(" ")
+    };
+  }
+
+  // src/lib/conversation/clarifyInput.js
+  var ACCEPTED_DIMENSION_UNITS = Object.freeze({
+    // Millimetre variants (factor to dmm = 10, factor to mm = 1)
+    "": { factorDmm: 10n, factorMm: 1, baseUnit: "mm" },
+    mm: { factorDmm: 10n, factorMm: 1, baseUnit: "mm" },
+    millimetre: { factorDmm: 10n, factorMm: 1, baseUnit: "mm" },
+    millimetres: { factorDmm: 10n, factorMm: 1, baseUnit: "mm" },
+    millimeter: { factorDmm: 10n, factorMm: 1, baseUnit: "mm" },
+    millimeters: { factorDmm: 10n, factorMm: 1, baseUnit: "mm" },
+    // Centimetre variants (factor to dmm = 100, factor to mm = 10)
+    cm: { factorDmm: 100n, factorMm: 10, baseUnit: "cm" },
+    centimetre: { factorDmm: 100n, factorMm: 10, baseUnit: "cm" },
+    centimetres: { factorDmm: 100n, factorMm: 10, baseUnit: "cm" },
+    centimeter: { factorDmm: 100n, factorMm: 10, baseUnit: "cm" },
+    centimeters: { factorDmm: 100n, factorMm: 10, baseUnit: "cm" },
+    // Metre variants (factor to dmm = 10000, factor to mm = 1000)
+    m: { factorDmm: 10000n, factorMm: 1e3, baseUnit: "m" },
+    metre: { factorDmm: 10000n, factorMm: 1e3, baseUnit: "m" },
+    metres: { factorDmm: 10000n, factorMm: 1e3, baseUnit: "m" },
+    meter: { factorDmm: 10000n, factorMm: 1e3, baseUnit: "m" },
+    meters: { factorDmm: 10000n, factorMm: 1e3, baseUnit: "m" }
+  });
+  var HEDGE_PATTERN = /(?:~|\b(?:about|around|roughly|approx(?:imately)?|or so)\b)/i;
+  var WORD_NUMS = Object.freeze({
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10
+  });
+  function parseDimension(rawVal) {
+    if (typeof rawVal !== "string") {
+      return { ok: false, error: "Dimension input must be a string." };
+    }
+    const str = rawVal.trim();
+    if (str.length === 0) {
+      return { ok: false, error: "Please enter a valid numeric dimension in millimetres (e.g. 1800 or 1.8m)." };
+    }
+    if (str.startsWith("-")) {
+      return { ok: false, error: "Negative dimensions are not permitted. Dimension must be a positive number." };
+    }
+    if (HEDGE_PATTERN.test(str)) {
+      return { ok: false, error: "Measurements must be exact. Approximate values are not permitted." };
+    }
+    const match = /^\+?(?:(\d+)(?:\.(\d+))?|\.(\d+))\s*([a-zA-Z]+)?$/i.exec(str);
+    if (!match) {
+      return { ok: false, error: "Please enter a valid numeric dimension in millimetres (e.g. 1800 or 1.8m)." };
+    }
+    const intStr = match[1] ?? "0";
+    const fracStr = match[2] ?? match[3] ?? "";
+    const unitRaw = (match[4] ?? "").toLowerCase();
+    const unitDef = ACCEPTED_DIMENSION_UNITS[unitRaw];
+    if (!unitDef) {
+      return { ok: false, error: "Please enter a valid numeric dimension in millimetres (e.g. 1800 or 1.8m)." };
+    }
+    const intPart = BigInt(intStr);
+    const fracLen = BigInt(fracStr.length);
+    const multiplier = unitDef.factorDmm;
+    let totalDmm;
+    if (fracLen === 0n) {
+      totalDmm = intPart * multiplier;
+    } else {
+      const divisor = 10n ** fracLen;
+      const fracPart = BigInt(fracStr);
+      const fracDmmScaled = fracPart * multiplier;
+      if (fracDmmScaled % divisor !== 0n) {
+        return { ok: false, error: "Precision finer than 0.1mm is not supported." };
+      }
+      totalDmm = intPart * multiplier + fracDmmScaled / divisor;
+    }
+    if (totalDmm <= 0n) {
+      return { ok: false, error: "Dimension must be a positive number greater than zero." };
+    }
+    const finalMm = Number(totalDmm) / 10;
+    const isPlainMm = unitRaw === "" || unitRaw === "mm";
+    return {
+      ok: true,
+      value: finalMm,
+      convertedText: !isPlainMm ? `${finalMm} mm` : null
+    };
+  }
+  function parseAndValidateClarifyInput(gapKey, rawVal, currentBayCount = 2) {
+    if (rawVal === void 0 || rawVal === null) {
+      return { ok: false, error: "Please enter an answer." };
+    }
+    if (typeof rawVal === "string" && rawVal.trim().length === 0) {
+      return { ok: false, error: "Please enter an answer." };
+    }
+    if (gapKey.endsWith("Mm")) {
+      return parseDimension(typeof rawVal === "string" ? rawVal : String(rawVal));
+    }
+    const v = typeof rawVal === "string" ? rawVal.trim() : rawVal;
+    if (gapKey === "bayCount" || gapKey === "doorCount") {
+      const label = gapKey === "bayCount" ? "Bay" : "Door";
+      if (typeof v === "string" && HEDGE_PATTERN.test(v)) {
+        return { ok: false, error: "Counts must be exact integers." };
+      }
+      if (typeof v === "string") {
+        const lower = v.toLowerCase();
+        if (WORD_NUMS[lower] !== void 0) {
+          return { ok: true, value: WORD_NUMS[lower] };
+        }
+        if (!/^\+?\d+$/.test(v)) {
+          return { ok: false, error: `${label} count must be a positive whole number (e.g. 2, 4).` };
+        }
+        const n = parseInt(v, 10);
+        if (n <= 0) {
+          return { ok: false, error: "Count must be at least 1." };
+        }
+        return { ok: true, value: n };
+      }
+      if (typeof v === "number") {
+        if (!Number.isInteger(v) || v <= 0) {
+          return { ok: false, error: `${label} count must be a positive whole number (e.g. 2, 4).` };
+        }
+        return { ok: true, value: v };
+      }
+      return { ok: false, error: `${label} count must be a positive whole number (e.g. 2, 4).` };
+    }
+    if (gapKey === "finishType") {
+      if (typeof v === "string") {
+        const lower = v.toLowerCase();
+        if (lower.includes("melamine")) return { ok: true, value: "melamine" };
+        if (lower.includes("painted") || lower.includes("paint")) return { ok: true, value: "painted" };
+        if (lower.includes("veneer")) return { ok: true, value: "veneer" };
+        return { ok: true, value: lower };
+      }
+      return { ok: true, value: v };
+    }
+    if (gapKey === "bayLayouts") {
+      if (Array.isArray(v)) {
+        if (v.length === 0) {
+          return { ok: false, error: "Please select an interior layout for each bay." };
+        }
+        for (let i = 0; i < v.length; i++) {
+          if (!v[i]) {
+            return { ok: false, error: `Please select an interior layout for Bay ${i + 1}.` };
+          }
+        }
+        return { ok: true, value: v };
+      }
+      if (typeof v === "string" && v.startsWith("[") && v.endsWith("]")) {
+        try {
+          const arr = JSON.parse(v);
+          if (Array.isArray(arr) && arr.length > 0) {
+            for (let i = 0; i < arr.length; i++) {
+              if (!arr[i]) {
+                return { ok: false, error: `Please select an interior layout for Bay ${i + 1}.` };
+              }
+            }
+            return { ok: true, value: arr };
+          }
+        } catch (_e) {
+        }
+      }
+      return { ok: false, error: "Please use the bay selectors below to choose each bay layout." };
+    }
+    return { ok: true, value: v };
+  }
+
+  // src/lib/conversation/pipeline.js
+  var PIPELINE_STAGE = Object.freeze({
+    NEEDS_CLARIFICATION: "NEEDS_CLARIFICATION",
+    UNSUPPORTED_REQUEST: "UNSUPPORTED_REQUEST",
+    VALIDATION_FAILED: "VALIDATION_FAILED",
+    READY_FOR_REVIEW: "READY_FOR_REVIEW",
+    DRAFT_PREVIEW: "DRAFT_PREVIEW",
+    APPROVED_FOR_PREVIEW: "APPROVED_FOR_PREVIEW"
+  });
+  var APPROVAL_STATE = Object.freeze({
+    NOT_APPROVED: "NOT_APPROVED",
+    APPROVAL_REJECTED: "APPROVAL_REJECTED",
+    APPROVED: "APPROVED"
+  });
+  var MAX_RESOLUTION_ROUNDS = 8;
+  function proposeWardrobe({ description, answers = {}, specId, revision = 1, adapter = createDeterministicPhraseAdapter() }) {
+    assertProposalOnly(adapter);
+    const rawDescription = description ?? "";
+    const interpretation = adapter.interpret(rawDescription);
+    let observations = [...interpretation.observations];
+    let ambiguities = [...interpretation.ambiguities];
+    const answeredKeys = [];
+    for (let round = 0; round < MAX_RESOLUTION_ROUNDS; round += 1) {
+      const currentGaps = analyseGaps({ observations, ambiguities });
+      const answerable = blockingGaps(currentGaps).filter(
+        (g) => Object.prototype.hasOwnProperty.call(answers, g.key)
+      );
+      if (answerable.length === 0) break;
+      for (const g of answerable) {
+        observations = observations.filter((o) => o.key !== g.key);
+        ambiguities = ambiguities.filter((a) => a.key !== g.key);
+        observations.push(
+          observation(g.key, answers[g.key], OBSERVATION_ORIGIN.CUSTOMER_CONFIRMED, {
+            sourceText: `answer to: ${g.key}`
+          })
+        );
+        answeredKeys.push(g.key);
+      }
+    }
+    const gaps = analyseGaps({ observations, ambiguities });
+    const questions = questionsFor(gaps);
+    const open = blockingGaps(gaps);
+    const outOfSlice = gaps.filter((g) => g.kind === GAP_KIND.OUT_OF_SLICE);
+    const base = {
+      adapterId: adapter.id,
+      adapterKind: adapter.kind,
+      interpretation,
+      observations,
+      gaps,
+      questions,
+      answeredKeys,
+      spec: null,
+      derivations: null,
+      validation: null,
+      proposal: null,
+      approval: null,
+      approvalValidation: null,
+      partGraph: null,
+      partGraphValidation: null
+    };
+    if (outOfSlice.length > 0) {
+      return { ...base, stage: PIPELINE_STAGE.UNSUPPORTED_REQUEST, safety: preApprovalSafety(null) };
+    }
+    if (open.length > 0) {
+      return { ...base, stage: PIPELINE_STAGE.NEEDS_CLARIFICATION, safety: preApprovalSafety(null) };
+    }
+    const facts = Object.fromEntries(observations.map((o) => [o.key, o.value]));
+    let assembled;
+    try {
+      assembled = assembleFurniSpec({ facts, gaps, specId, revision, status: SPEC_STATUS.PROPOSED });
+    } catch (err) {
+      if (err instanceof AssemblyBlockedError) {
+        return { ...base, stage: PIPELINE_STAGE.NEEDS_CLARIFICATION, safety: preApprovalSafety(null) };
+      }
+      throw err;
+    }
+    const validation = validateFurniSpec(assembled.spec);
+    if (!validation.valid) {
+      return {
+        ...base,
+        stage: PIPELINE_STAGE.VALIDATION_FAILED,
+        spec: assembled.spec,
+        derivations: assembled.derivations,
+        validation,
+        safety: preApprovalSafety(assembled.spec)
+      };
+    }
+    const proposal = createProposal(assembled.spec);
+    return {
+      ...base,
+      stage: PIPELINE_STAGE.READY_FOR_REVIEW,
+      spec: assembled.spec,
+      // status PROPOSED
+      derivations: assembled.derivations,
+      validation,
+      proposal,
+      safety: preApprovalSafety(assembled.spec)
+    };
+  }
+  function approveAndPreview({ proposal, approval }) {
+    const approvalValidation = validateApproval({ proposal, approval });
+    if (!approvalValidation.valid) {
+      return {
+        stage: proposal ? PIPELINE_STAGE.READY_FOR_REVIEW : PIPELINE_STAGE.NEEDS_CLARIFICATION,
+        proposal: proposal ?? null,
+        approval: approval ?? null,
+        approvalValidation,
+        spec: proposal?.spec ?? null,
+        validation: null,
+        partGraph: null,
+        partGraphValidation: null,
+        safety: preApprovalSafety(proposal?.spec ?? null, APPROVAL_STATE.APPROVAL_REJECTED)
+      };
+    }
+    const approvedSpec = { ...proposal.spec, status: SPEC_STATUS.APPROVED };
+    const validation = validateFurniSpec(approvedSpec);
+    if (!validation.valid) {
+      return {
+        stage: PIPELINE_STAGE.VALIDATION_FAILED,
+        proposal,
+        approval,
+        approvalValidation,
+        spec: approvedSpec,
+        validation,
+        partGraph: null,
+        partGraphValidation: null,
+        safety: preApprovalSafety(approvedSpec, APPROVAL_STATE.APPROVAL_REJECTED)
+      };
+    }
+    const partGraph = buildStructuralPartGraph(approvedSpec);
+    const partGraphValidation = validatePartGraph(partGraph);
+    const unrepresentable = unrepresentableComponents(partGraph);
+    if (unrepresentable) {
+      return {
+        stage: PIPELINE_STAGE.UNSUPPORTED_REQUEST,
+        proposal,
+        approval,
+        approvalValidation,
+        spec: null,
+        validation,
+        partGraph: null,
+        partGraphValidation: null,
+        unsupported: unrepresentable.unsupported,
+        error: unrepresentable.customerMessage,
+        safety: preApprovalSafety(null, APPROVAL_STATE.APPROVAL_REJECTED)
+      };
+    }
+    return {
+      stage: PIPELINE_STAGE.APPROVED_FOR_PREVIEW,
+      proposal,
+      approval,
+      approvalValidation,
+      approvedFingerprint: approvalValidation.expectedFingerprint,
+      spec: approvedSpec,
+      validation,
+      partGraph,
+      partGraphValidation,
+      safety: approvedSafety(approvedSpec, partGraph, approval)
+    };
+  }
+  function runConversationToWardrobe({ description, answers = {}, specId, revision = 1, approval = null, adapter }) {
+    const proposed = proposeWardrobe({ description, answers, specId, revision, ...adapter ? { adapter } : {} });
+    if (proposed.stage !== PIPELINE_STAGE.READY_FOR_REVIEW || approval === null || approval === void 0) {
+      return proposed;
+    }
+    const previewed = approveAndPreview({ proposal: proposed.proposal, approval });
+    return { ...proposed, ...previewed };
+  }
+  function unrepresentableComponents(partGraph) {
+    const outcomes = partGraph?.componentOutcomes ?? [];
+    const blocked = outcomes.filter((e) => e.outcome === COMPONENT_OUTCOME.UNSUPPORTED);
+    if (blocked.length === 0) return null;
+    const unsupported = unsupportedComponentsForCustomer(outcomes);
+    const customerMessage = unsupported.map((u) => u.alternative ? `${u.reason} If you'd like, I can use ${u.alternative}.` : u.reason).join(" ");
+    return { unsupported, customerMessage };
+  }
+  function previewDraftWardrobe({
+    description,
+    answers = {},
+    initialObservations = null,
+    specId,
+    revision = 1,
+    adapter = createDeterministicPhraseAdapter()
+  }) {
+    assertProposalOnly(adapter);
+    let observations = [];
+    let ambiguities = [];
+    let interpretation = null;
+    if (Array.isArray(initialObservations) && initialObservations.length > 0) {
+      observations = [...initialObservations];
+    } else {
+      const rawDescription = description ?? "";
+      interpretation = adapter.interpret(rawDescription);
+      observations = [...interpretation.observations];
+      ambiguities = [...interpretation.ambiguities];
+    }
+    const gaps = analyseGaps({ observations, ambiguities });
+    const outOfSlice = gaps.filter((g) => g.kind === GAP_KIND.OUT_OF_SLICE);
+    if (outOfSlice.length > 0) {
+      return {
+        stage: PIPELINE_STAGE.UNSUPPORTED_REQUEST,
+        interpretation,
+        observations,
+        gaps,
+        spec: null,
+        proposal: null,
+        partGraph: null,
+        safety: preApprovalSafety(null)
+      };
+    }
+    for (const [key, value] of Object.entries(answers)) {
+      observations = observations.filter((o) => o.key !== key);
+      observations.push(
+        observation(key, value, OBSERVATION_ORIGIN.CUSTOMER_CONFIRMED, {
+          sourceText: `refinement for: ${key}`
+        })
+      );
+    }
+    const existingKeys = new Set(observations.map((o) => o.key));
+    for (const requiredKey of REQUIRED_INTAKE_KEYS) {
+      if (!existingKeys.has(requiredKey)) {
+        const defaultValue = BEKZOD_APPROVED_DEFAULTS[requiredKey];
+        observations.push(
+          observation(requiredKey, defaultValue, OBSERVATION_ORIGIN.DEFAULTED, {
+            sourceText: `Bekzod-approved default for ${requiredKey}`
+          })
+        );
+      }
+    }
+    const facts = Object.fromEntries(observations.map((o) => [o.key, o.value]));
+    const origins = Object.fromEntries(observations.map((o) => [o.key, o.origin]));
+    const effectiveSpecId = specId || `furnispec-draft-${Math.floor(1e3 + Math.random() * 9e3)}`;
+    let assembled;
+    try {
+      assembled = assembleFurniSpec({
+        facts,
+        gaps: [],
+        // All facts resolved or defaulted
+        specId: effectiveSpecId,
+        revision,
+        status: SPEC_STATUS.PROPOSED
+        // STRICTLY PROPOSED
+      });
+    } catch (err) {
+      return {
+        stage: PIPELINE_STAGE.VALIDATION_FAILED,
+        error: err.message,
+        observations,
+        origins,
+        spec: null,
+        proposal: null,
+        partGraph: null,
+        safety: preApprovalSafety(null)
+      };
+    }
+    const validation = validateFurniSpec(assembled.spec);
+    if (!validation.valid) {
+      return {
+        stage: PIPELINE_STAGE.VALIDATION_FAILED,
+        spec: assembled.spec,
+        derivations: assembled.derivations,
+        validation,
+        observations,
+        origins,
+        proposal: null,
+        partGraph: null,
+        safety: preApprovalSafety(assembled.spec)
+      };
+    }
+    const proposal = createProposal(assembled.spec);
+    const partGraph = buildStructuralPartGraph(assembled.spec);
+    const partGraphValidation = validatePartGraph(partGraph);
+    const unrepresentable = unrepresentableComponents(partGraph);
+    if (unrepresentable) {
+      return {
+        stage: PIPELINE_STAGE.UNSUPPORTED_REQUEST,
+        interpretation,
+        observations,
+        gaps,
+        spec: null,
+        proposal: null,
+        partGraph: null,
+        partGraphValidation: null,
+        unsupported: unrepresentable.unsupported,
+        error: unrepresentable.customerMessage,
+        safety: preApprovalSafety(null)
+      };
+    }
+    return {
+      stage: PIPELINE_STAGE.DRAFT_PREVIEW,
+      previewType: "DRAFT_PREVIEW",
+      spec: assembled.spec,
+      proposal,
+      partGraph,
+      partGraphValidation,
+      observations,
+      origins,
+      facts,
+      derivations: assembled.derivations,
+      validation,
+      safety: draftPreviewSafety(assembled.spec, partGraph)
+    };
+  }
+  var UNIT_RE_STR = "(?:mm|millimetres?|millimeters?|cm|centimetres?|centimeters?|m|metres?|meters?)";
+  var NUM_RE_STR = "[+-]?\\s*(?:\\d+(?:\\.\\d+)?|\\.\\d+)";
+  function extractDimension(text, axis) {
+    let trailingWords;
+    let leadingWords;
+    if (axis === "width") {
+      trailingWords = "(?:wide|width)";
+      leadingWords = "width";
+    } else if (axis === "height") {
+      trailingWords = "(?:high|tall|height)";
+      leadingWords = "height";
+    } else if (axis === "depth") {
+      trailingWords = "(?:deep|depth)";
+      leadingWords = "depth";
+    }
+    const m1 = text.match(new RegExp(`(?:(?:make|set)\\s+(?:it\\s+)?)?(${NUM_RE_STR}\\s*${UNIT_RE_STR}?)\\s*${trailingWords}\\b`, "i"));
+    if (m1 && m1[1]) return m1[1].trim();
+    const m2 = text.match(new RegExp(`\\b${leadingWords}\\s*(?:to|is|of|:|=)?\\s*(${NUM_RE_STR}\\s*${UNIT_RE_STR}?)\\b`, "i"));
+    if (m2 && m2[1]) return m2[1].trim();
+    return null;
+  }
+  function parseConversationalCommand(text, currentFacts = {}) {
+    if (typeof text !== "string" || !text.trim()) return null;
+    const t = text.trim();
+    const unsupportedRequest = detectUnsupportedComponentRequest(t);
+    if (unsupportedRequest) {
+      return {
+        error: unsupportedRequest.error,
+        unsupported: unsupportedRequest.unsupported
+      };
+    }
+    const widthRaw = extractDimension(t, "width");
+    if (widthRaw !== null) {
+      const parsedDim = parseDimension(widthRaw);
+      if (!parsedDim.ok) {
+        return {
+          error: parsedDim.error || "Invalid width dimension."
+        };
+      }
+      const widthMm = parsedDim.value;
+      return {
+        changes: { "envelope.widthMm": widthMm },
+        assistantReply: `Updated width to ${widthMm} mm.`
+      };
+    }
+    const heightRaw = extractDimension(t, "height");
+    if (heightRaw !== null) {
+      const parsedDim = parseDimension(heightRaw);
+      if (!parsedDim.ok) {
+        return {
+          error: parsedDim.error || "Invalid height dimension."
+        };
+      }
+      const heightMm = parsedDim.value;
+      return {
+        changes: { "envelope.heightMm": heightMm },
+        assistantReply: `Updated height to ${heightMm} mm.`
+      };
+    }
+    const depthRaw = extractDimension(t, "depth");
+    if (depthRaw !== null) {
+      const parsedDim = parseDimension(depthRaw);
+      if (!parsedDim.ok) {
+        return {
+          error: parsedDim.error || "Invalid depth dimension."
+        };
+      }
+      const depthMm = parsedDim.value;
+      return {
+        changes: { "envelope.depthMm": depthMm },
+        assistantReply: `Updated depth to ${depthMm} mm.`
+      };
+    }
+    const isExplicitTwoShelvesSwitch = (text2) => {
+      if (/\b(?:all\s+shelves|shelves\s+(?:in|on)\s+both)\b/i.test(text2)) return false;
+      const patterns = [
+        /\b(?:switch|change|convert|set|configure|use)\s+(?:the\s+)?(?:left|right|bay\s*[12])\s+(?:bay\s+)?(?:to\s+)?(?:short\s+hanging(?:\s+with)?\s+)?(?:two|2)\s+shelves\b/i,
+        /\b(?:switch|change|convert|set|configure|use)\s+(?:short\s+hanging(?:\s+with)?\s+)?(?:two|2)\s+shelves\s+(?:on|in)\s+(?:the\s+)?(?:left|right|bay\s*[12])\b/i,
+        /\b(?:two|2)\s+shelves\s+(?:on|in)\s+(?:the\s+)?(?:left|right|bay\s*[12])\b/i,
+        /\b(?:short\s+hanging(?:\s+with)?\s+(?:two|2)\s+shelves)\s+(?:on|in)\s+(?:the\s+)?(?:left|right|bay\s*[12])\b/i,
+        /\b(?:switch|change|convert|set|configure)\s+(?:the\s+)?(?:left|right|bay\s*[12])\s+(?:bay\s+)?to\s+(?:shelves|short\s+hanging)\b/i,
+        /\b(?:yes[,\s]+)?(?:switch|change|use)\s+(?:the\s+)?(?:left|right)\s+(?:bay\s+)?(?:to\s+)?(?:two|2)\s+shelves\b/i
+      ];
+      return patterns.some((p) => p.test(text2));
+    };
+    if (isExplicitTwoShelvesSwitch(t)) {
+      const currentBays = currentFacts.bayCount || 2;
+      const layouts = currentFacts.bayLayouts ? [...currentFacts.bayLayouts] : ["LONG_HANGING", "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"];
+      const isLeft = /\b(?:left|bay\s*1)\b/i.test(t);
+      const isRight = /\b(?:right|bay\s*2)\b/i.test(t);
+      const targetBayIdx = isLeft ? 0 : isRight ? 1 : 0;
+      const baySide = targetBayIdx === 0 ? "left" : "right";
+      if (targetBayIdx >= currentBays) {
+        return {
+          error: `Cannot modify bay ${targetBayIdx + 1} because this wardrobe only has ${currentBays} bay${currentBays > 1 ? "s" : ""}.`
+        };
+      }
+      if (layouts[targetBayIdx] === "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES") {
+        return {
+          error: `The ${baySide} bay is already configured as short hanging with two adjustable shelves.`
+        };
+      }
+      layouts[targetBayIdx] = "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES";
+      return {
+        changes: { bayLayouts: layouts },
+        assistantReply: `Configured the ${baySide} bay as short hanging with two adjustable shelves.`
+      };
+    }
+    const SHELF_INTENT = new RegExp(
+      [
+        "\\badd\\s+(?:another\\s+|more\\s+|a\\s+|an\\s+|\\d+\\s+|two\\s+|three\\s+)?shelv(?:es|ing)?\\b",
+        "\\badd\\s+(?:another\\s+|more\\s+)?shelf\\b",
+        "\\bmore\\s+shelves\\b",
+        "\\ball\\s+shelves\\b",
+        "\\b(?:use|switch|change|configure|want|need|with|give)\\b[^.]*\\bshelv(?:es|ing)\\b",
+        "\\b(?:\\d+|one|two|three|four)\\s+shelves\\b",
+        "\\bshelves\\s+(?:in|on)\\s+both\\b"
+      ].join("|"),
+      "i"
+    );
+    if (SHELF_INTENT.test(t)) {
+      if (/all\s+shelves|shelves\s+(?:in|on)\s+both\s+(?:bays|sides)/i.test(t)) {
+        const currentBays2 = currentFacts.bayCount || 2;
+        const currentLayouts = currentFacts.bayLayouts || [];
+        const allAlreadyShelves = currentLayouts.length === currentBays2 && currentLayouts.every((l) => l === "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES");
+        if (allAlreadyShelves) {
+          return {
+            error: `All ${currentBays2} bays are already configured with short hanging and two adjustable shelves.`
+          };
+        }
+        const layouts2 = Array(currentBays2).fill("SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES");
+        return {
+          changes: { bayLayouts: layouts2 },
+          assistantReply: `Configured all ${currentBays2} bays with short hanging and two adjustable shelves.`
+        };
+      }
+      const currentBays = currentFacts.bayCount || 2;
+      const layouts = currentFacts.bayLayouts ? [...currentFacts.bayLayouts] : ["LONG_HANGING", "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"];
+      const isLeft = /\b(?:left|bay\s*1)\b/i.test(t);
+      const isRight = /\b(?:right|bay\s*2)\b/i.test(t);
+      let targetBayIdx;
+      if (isLeft) {
+        targetBayIdx = 0;
+      } else if (isRight) {
+        targetBayIdx = 1;
+      } else {
+        targetBayIdx = layouts.findIndex((l) => l === "LONG_HANGING");
+        if (targetBayIdx === -1) {
+          return {
+            error: `All bays already have the maximum supported shelving for this manufacturing slice (2 adjustable shelves per bay + top fixed shelf). You can switch a bay to full-height long hanging if desired.`
+          };
+        }
+      }
+      if (targetBayIdx >= currentBays) {
+        return {
+          error: `Cannot modify bay ${targetBayIdx + 1} because this wardrobe only has ${currentBays} bay${currentBays > 1 ? "s" : ""}.`
+        };
+      }
+      const currentBayLayout = layouts[targetBayIdx];
+      const baySide = targetBayIdx === 0 ? "left" : "right";
+      const otherSide = targetBayIdx === 0 ? "right" : "left";
+      if (currentBayLayout === "LONG_HANGING") {
+        return {
+          error: `Adding a single shelf to full-height long hanging is not supported in this manufacturing slice. The supported shelving layout is short hanging with two adjustable shelves. To use this layout, reply 'switch ${baySide} bay to short hanging with two shelves' or 'use two shelves on the ${baySide}'.`
+        };
+      }
+      return {
+        error: `The ${baySide} bay already has the maximum supported shelving for this manufacturing slice (2 adjustable shelves + top fixed shelf). You can change the ${otherSide} bay to shelves or switch back to full-height long hanging.`
+      };
+    }
+    if (/\b(?:all\s+hanging|hanging\s+(?:in|on)\s+both\s+(?:bays|sides)|full\s+hanging\s+(?:in|on)\s+both)\b/i.test(t)) {
+      const currentBays = currentFacts.bayCount || 2;
+      const currentLayouts = currentFacts.bayLayouts || [];
+      const allAlreadyHanging = currentLayouts.length === currentBays && currentLayouts.every((l) => l === "LONG_HANGING");
+      if (allAlreadyHanging) {
+        return {
+          error: `All ${currentBays} bays are already configured with full-height long hanging.`
+        };
+      }
+      const layouts = Array(currentBays).fill("LONG_HANGING");
+      return {
+        changes: { bayLayouts: layouts },
+        assistantReply: `Configured all ${currentBays} bays with full-height long hanging.`
+      };
+    }
+    if (/\b(?:hanging|full[- ]?hanging|long\s+hanging)\b/i.test(t)) {
+      const currentBays = currentFacts.bayCount || 2;
+      const layouts = currentFacts.bayLayouts ? [...currentFacts.bayLayouts] : ["LONG_HANGING", "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"];
+      const isLeft = /\b(?:left|bay\s*1)\b/i.test(t);
+      const isRight = /\b(?:right|bay\s*2)\b/i.test(t);
+      if (isLeft || isRight) {
+        const targetBayIdx = isLeft ? 0 : 1;
+        const baySide = targetBayIdx === 0 ? "left" : "right";
+        if (layouts[targetBayIdx] === "LONG_HANGING") {
+          return {
+            error: `The ${baySide} bay is already configured for full-height long hanging.`
+          };
+        }
+        layouts[targetBayIdx] = "LONG_HANGING";
+        return {
+          changes: { bayLayouts: layouts },
+          assistantReply: `Configured the ${baySide} bay for full-height long hanging.`
+        };
+      }
+    }
+    const bayMatch = t.match(/(?:make\s+it\s+)?(\d+)\s*bays?/i);
+    if (bayMatch) {
+      const count = parseInt(bayMatch[1], 10);
+      if (count >= 1 && count <= 6) {
+        const layouts = Array(count).fill("SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES");
+        layouts[0] = "LONG_HANGING";
+        return {
+          changes: {
+            bayCount: count,
+            doorCount: count * 2,
+            bayLayouts: layouts
+          },
+          assistantReply: `Updated to ${count} bays with ${count * 2} hinged doors.`
+        };
+      }
+    }
+    const FINISH_WORDS = "oak|walnut|white|grey|taupe|cream|black|navy|sage|ash";
+    const SCOPED_PART = /\b(door|doors|handle|handles|shelf|shelves|drawer|drawers|rail|rails|interior|inside|back|plinth|trim|edge|edges|frame|top|side|sides)\b/i;
+    const matMatch = t.match(new RegExp(`\\b(${FINISH_WORDS})\\b`, "i"));
+    if (matMatch) {
+      const mat = matMatch[1].toLowerCase();
+      const beforeColour = t.slice(0, matMatch.index);
+      const afterColour = t.slice(matMatch.index + matMatch[1].length);
+      const scopedAfter = SCOPED_PART.test(afterColour);
+      const scopedBefore = SCOPED_PART.test(beforeColour);
+      if (scopedAfter || scopedBefore) {
+        const named = (afterColour.match(SCOPED_PART) || beforeColour.match(SCOPED_PART))[1].toLowerCase();
+        if (/\b(add|fit|install|include|put|attach|give\s+it)\b/i.test(beforeColour)) {
+          return {
+            error: `I can't add ${named} to the design yet. Your wardrobe is unchanged \u2014 you can still change its size, layout or finish.`
+          };
+        }
+        return {
+          error: `I can only change the finish of the whole wardrobe at the moment, not just the ${named}. Your design is unchanged \u2014 say "make it ${mat}" if you'd like the whole wardrobe in ${mat}.`
+        };
+      }
+      const explicitFinishWord = /finish|material|colour|color|paint/i.test(t);
+      const colourIsTheRequest = /(?:make|paint|change|switch|turn|do|have|want|like|use|try|in|to)\b[^.]*$/i.test(beforeColour) && /^[\s,.!?]*(please|thanks|thank you)?[\s,.!?]*$/i.test(afterColour);
+      if (explicitFinishWord || colourIsTheRequest) {
+        return {
+          changes: { materialKey: mat },
+          assistantReply: `Changed finish to ${mat}.`
+        };
+      }
+    }
+    return null;
+  }
+  function applyConversationalEdit({
+    currentObservations = [],
+    commandText,
+    specId,
+    revision = 1,
+    adapter = createDeterministicPhraseAdapter()
+  }) {
+    const currentFacts = Object.fromEntries(currentObservations.map((o) => [o.key, o.value]));
+    const parsed = parseConversationalCommand(commandText, currentFacts);
+    if (parsed && parsed.error) {
+      const parsedUnsupported = Array.isArray(parsed.unsupported) ? parsed.unsupported : [];
+      return {
+        ok: false,
+        kind: parsedUnsupported.length > 0 ? "UNSUPPORTED" : "REJECTED",
+        error: parsed.error,
+        ...parsedUnsupported.length > 0 ? { unsupported: parsedUnsupported } : {}
+      };
+    }
+    if (!parsed) {
+      const interpretation = adapter.interpret(commandText);
+      if (interpretation.observations.length === 0) {
+        return {
+          ok: false,
+          error: `Could not interpret modification from "${commandText}". Try e.g. "Make it 2000 mm wide" or "Add another shelf on the right".`
+        };
+      }
+      const newKeys = new Set(interpretation.observations.map((o) => o.key));
+      const mergedObservations = [
+        ...currentObservations.filter((o) => !newKeys.has(o.key)),
+        ...interpretation.observations
+      ];
+      const draft2 = previewDraftWardrobe({
+        description: "",
+        answers: Object.fromEntries(mergedObservations.map((o) => [o.key, o.value])),
+        specId,
+        revision: revision + 1,
+        adapter
+      });
+      if (!draft2.spec || !draft2.partGraph || draft2.validation && !draft2.validation.valid) {
+        return {
+          ok: false,
+          error: draft2.error || draft2.validation?.errors?.map((e) => e.message).join("; ") || "Failed to generate valid wardrobe geometry for this change.",
+          // Carry the structured refusal so the browser can show the reason and
+          // the offered alternative, rather than a generic failure string.
+          ...draft2.unsupported ? { unsupported: draft2.unsupported } : {}
+        };
+      }
+      if (draft2.partGraphValidation && !draft2.partGraphValidation.valid) {
+        return {
+          ok: false,
+          error: draft2.partGraphValidation.errors?.join("; ") || "Generated part graph validation failed."
+        };
+      }
+      return {
+        ok: true,
+        assistantReply: `Updated wardrobe design (Revision ${revision + 1}).`,
+        ...draft2
+      };
+    }
+    const materialKey = parsed.changes.materialKey;
+    const changes = { ...parsed.changes };
+    delete changes.materialKey;
+    const newObservations = currentObservations.filter((o) => !Object.prototype.hasOwnProperty.call(changes, o.key)).concat(
+      Object.entries(changes).map(
+        ([k, v]) => observation(k, v, OBSERVATION_ORIGIN.CUSTOMER_STATED, { sourceText: commandText })
+      )
+    );
+    const draft = previewDraftWardrobe({
+      initialObservations: newObservations,
+      specId,
+      revision: revision + 1,
+      adapter
+    });
+    if (!draft.spec || !draft.partGraph || draft.validation && !draft.validation.valid) {
+      return {
+        ok: false,
+        error: draft.error || draft.validation?.errors?.map((e) => e.message).join("; ") || "Failed to generate valid wardrobe geometry for this change.",
+        // Carry the structured refusal so the browser can show the reason and
+        // the offered alternative, rather than a generic failure string.
+        ...draft.unsupported ? { unsupported: draft.unsupported } : {}
+      };
+    }
+    if (draft.partGraphValidation && !draft.partGraphValidation.valid) {
+      return {
+        ok: false,
+        error: draft.partGraphValidation.errors?.join("; ") || "Generated part graph validation failed."
+      };
+    }
+    return {
+      ok: true,
+      assistantReply: `${parsed.assistantReply} (Revision ${revision + 1})`,
+      materialKey,
+      ...draft
+    };
+  }
+  function draftPreviewSafety(spec, partGraph) {
+    const drillingOperations = (partGraph?.operations ?? []).filter((op) => /DRILL|BORE|HINGE_CUP|PIN_HOLE/i.test(op.type));
+    return {
+      approvalState: APPROVAL_STATE.NOT_APPROVED,
+      previewAuthorized: true,
+      draftPreview: true,
+      workshopApproved: false,
+      geometryGenerated: true,
+      cncQualified: false,
+      specQualificationStatus: spec?.qualificationStatus ?? null,
+      partGraphQualificationStatus: partGraph?.qualificationStatus ?? null,
+      cncQualificationAsserted: false,
+      drillingPolicy: spec?.machiningPolicy?.drilling ?? null,
+      drillingOperationCount: drillingOperations.length,
+      drillingBlocked: spec?.machiningPolicy?.drilling === "BLOCKED_PENDING_HARDWARE_APPROVAL" && drillingOperations.length === 0,
+      hardwareStatuses: spec ? hardwareStatusesOf(spec) : {},
+      approvedOperationTypes: [],
+      note: "DRAFT PREVIEW ONLY \u2014 NOT APPROVED FOR WORKSHOP. Geometry rendered from Bekzod-approved defaults with status PROPOSED. Approval is required before CNC or production."
+    };
+  }
+  function preApprovalSafety(spec, approvalState = APPROVAL_STATE.NOT_APPROVED) {
+    return {
+      approvalState,
+      previewAuthorized: false,
+      geometryGenerated: false,
+      cncQualified: false,
+      specQualificationStatus: spec?.qualificationStatus ?? null,
+      partGraphQualificationStatus: null,
+      drillingPolicy: spec?.machiningPolicy?.drilling ?? null,
+      drillingOperationCount: 0,
+      drillingBlocked: spec ? spec.machiningPolicy?.drilling === "BLOCKED_PENDING_HARDWARE_APPROVAL" : true,
+      hardwareStatuses: spec ? hardwareStatusesOf(spec) : {},
+      approvedOperationTypes: [],
+      note: "No geometry exists. Nothing in this report describes approved manufacturing output."
+    };
+  }
+  function approvedSafety(spec, partGraph, approval) {
+    const drillingOperations = (partGraph?.operations ?? []).filter((op) => /DRILL|BORE|HINGE_CUP|PIN_HOLE/i.test(op.type));
+    return {
+      approvalState: APPROVAL_STATE.APPROVED,
+      approvedBy: approval.approvedBy,
+      previewAuthorized: true,
+      geometryGenerated: true,
+      cncQualified: false,
+      specQualificationStatus: spec.qualificationStatus,
+      partGraphQualificationStatus: partGraph?.qualificationStatus ?? null,
+      cncQualificationAsserted: spec.qualificationStatus === QUALIFICATION_STATUS.WORKSHOP_REVIEW_NOT_CNC_QUALIFIED && partGraph?.qualificationStatus === QUALIFICATION_STATUS.WORKSHOP_REVIEW_NOT_CNC_QUALIFIED,
+      drillingPolicy: spec.machiningPolicy?.drilling ?? null,
+      drillingOperationCount: drillingOperations.length,
+      drillingBlocked: spec.machiningPolicy?.drilling === "BLOCKED_PENDING_HARDWARE_APPROVAL" && drillingOperations.length === 0,
+      hardwareStatuses: hardwareStatusesOf(spec),
+      approvedOperationTypes: [...new Set((partGraph?.operations ?? []).map((op) => op.type))].sort(),
+      note: "Workshop review only. Approval authorises a preview, never a machine."
+    };
+  }
+  function hardwareStatusesOf(spec) {
+    return Object.fromEntries(Object.entries(spec.hardware ?? {}).map(([k, v]) => [k, v?.status ?? "UNKNOWN"]));
   }
 
   // src/lib/adapters/browserBridge.js
@@ -1721,5 +4268,48 @@ var PartGraphBridge = (() => {
       doorCount: builder.doorObjs.length
     };
   }
+  function loadApprovedPartGraph(builder, partGraph) {
+    if (!builder || !builder.scene) {
+      throw new Error("Builder and Builder.scene are required.");
+    }
+    if (!partGraph || !Array.isArray(partGraph.parts)) {
+      throw new Error("loadApprovedPartGraph requires a valid PartGraph with parts array.");
+    }
+    builder.clear();
+    const THREE2 = typeof window !== "undefined" && window.THREE || globalThis.THREE;
+    const furnitureGroup = partGraphToThree(partGraph, { threeInstance: THREE2 });
+    const env = partGraph.summary?.envelope;
+    const envW = (env?.widthDmm ?? 18e3) * DMM_TO_THREE;
+    const envH = (env?.heightDmm ?? 24e3) * DMM_TO_THREE;
+    const envD = (env?.depthDmm ?? 6e3) * DMM_TO_THREE;
+    furnitureGroup.position.set(-envW / 2, -envH / 2, -envD / 2);
+    builder.attach(furnitureGroup);
+    builder.doorObjs = [];
+    if (Array.isArray(furnitureGroup.userData?.doorPivots)) {
+      builder.doorObjs.push(...furnitureGroup.userData.doorPivots);
+    }
+    const fl = builder.scene.getObjectByName("floor");
+    if (fl) {
+      fl.position.y = -envH / 2 - 1e-3;
+    }
+    builder.camDist = 4.8;
+    builder.rotY = Math.PI - 0.42;
+    builder.rotX = 0.06;
+    builder.lookAtZ = 0;
+    const currentMat = builder.parametricMat || "white";
+    updateParametricMaterial(builder, currentMat);
+    return {
+      partGraph,
+      furnitureGroup,
+      envelope: {
+        widthMm: envW * 1e3,
+        heightMm: envH * 1e3,
+        depthMm: envD * 1e3
+      },
+      partCount: partGraph.parts.length,
+      doorCount: builder.doorObjs.length
+    };
+  }
+  var loadDraftPartGraph = loadApprovedPartGraph;
   return __toCommonJS(browserBridge_exports);
 })();

@@ -1,0 +1,149 @@
+{
+  "revision": 1,
+  "widthMm": 1800,
+  "heightMm": 2400,
+  "depthMm": 600,
+  "finishType": "melamine",
+  "bayCount": 2,
+  "doorCount": 4,
+  "fingerprint": "fs256:d1369ad41eb1d746359f2252d4254d7a92fd7bf3a642f2b81b39a3741de0bd1b",
+  "proposalId": "furnispec-ai-wardrobe-5276",
+  "parametricMat": "white",
+  "structural": 19,
+  "preview": 2,
+  "rails": [
+    {
+      "name": "preview_RAIL_LONG_B01",
+      "color": 12633806,
+      "tubeType": "OVAL_TUBE_15X30"
+    },
+    {
+      "name": "preview_RAIL_SHORT_B02",
+      "color": 12633806,
+      "tubeType": "OVAL_TUBE_15X30"
+    }
+  ],
+  "panelMaterials": [
+    {
+      "partId": "CARC_TOP",
+      "role": "TOP_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "color": 15921644
+    },
+    {
+      "partId": "CARC_BOT",
+      "role": "BOTTOM_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "color": 15921644
+    },
+    {
+      "partId": "CARC_SIDE_L",
+      "role": "SIDE_PANEL_LEFT",
+      "materialCode": "MEL_WHITE_18",
+      "color": 15921644
+    },
+    {
+      "partId": "CARC_SIDE_R",
+      "role": "SIDE_PANEL_RIGHT",
+      "materialCode": "MEL_WHITE_18",
+      "color": 15921644
+    },
+    {
+      "partId": "CARC_DIV_01",
+      "role": "DIVIDER_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "color": 15921644
+    },
+    {
+      "partId": "SHELF_FIX_B01",
+      "role": "FIXED_SHELF",
+      "materialCode": "MEL_WHITE_18",
+      "color": 15921644
+    },
+    {
+      "partId": "SHELF_FIX_B02",
+      "role": "FIXED_SHELF",
+      "materialCode": "MEL_WHITE_18",
+      "color": 15921644
+    },
+    {
+      "partId": "SHELF_ADJ_B02_2",
+      "role": "ADJUSTABLE_SHELF",
+      "materialCode": "MEL_WHITE_18",
+      "color": 15921644
+    },
+    {
+      "partId": "SHELF_ADJ_B02_1",
+      "role": "ADJUSTABLE_SHELF",
+      "materialCode": "MEL_WHITE_18",
+      "color": 15921644
+    },
+    {
+      "partId": "BACK_PANEL_01",
+      "role": "BACK_PANEL",
+      "materialCode": "HDF_WHITE_6",
+      "color": 15065557
+    },
+    {
+      "partId": "DOOR_01",
+      "role": "DOOR_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "color": 15921644
+    },
+    {
+      "partId": "DOOR_02",
+      "role": "DOOR_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "color": 15921644
+    },
+    {
+      "partId": "DOOR_03",
+      "role": "DOOR_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "color": 15921644
+    },
+    {
+      "partId": "DOOR_04",
+      "role": "DOOR_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "color": 15921644
+    },
+    {
+      "partId": "PLINTH_FRONT",
+      "role": "PLINTH_FRONT_FASCIA",
+      "materialCode": "MEL_WHITE_18",
+      "color": 11908273
+    },
+    {
+      "partId": "PLINTH_REAR",
+      "role": "PLINTH_REAR_RAIL",
+      "materialCode": "MEL_WHITE_18",
+      "color": 11908273
+    },
+    {
+      "partId": "PLINTH_SIDE_L",
+      "role": "PLINTH_SIDE_RETURN_LEFT",
+      "materialCode": "MEL_WHITE_18",
+      "color": 11908273
+    },
+    {
+      "partId": "PLINTH_SIDE_R",
+      "role": "PLINTH_SIDE_RETURN_RIGHT",
+      "materialCode": "MEL_WHITE_18",
+      "color": 11908273
+    },
+    {
+      "partId": "PLINTH_CROSS_C",
+      "role": "PLINTH_CROSS_STRETCHER",
+      "materialCode": "MEL_WHITE_18",
+      "color": 11908273
+    }
+  ],
+  "groupBox": {
+    "widthM": 1.8,
+    "heightM": 2.4,
+    "depthM": 0.6
+  },
+  "revWidthLabel": "1800 mm",
+  "revRevisionLabel": "1"
+}

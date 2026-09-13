@@ -1,0 +1,12 @@
+10c8c30 docs(integ): integration map + Antigravity rail handoff
+0c3d298 integ: include main engineering safety-net (CI/AGENTS/ADR)
+af322c6 integ: merge EXP-01 hanging-rail previews into visible-designer
+5f416ce exp(EXP-01): tubeType resolution, assumed dims, serialization evidence
+206ee06 feat(visible-designer): complete unified Design with AI customer journey and live model integration
+28f8677 exp: PREVIEW_ONLY hanging-rail visuals on PartGraph path (EXP-01)
+dc94bda Merge pull request #1 from xalimovbeka99-commits/chore/engineering-safety-net
+067c174 chore: add engineering safety net for multi-agent FurniAI
+f58fe2b chore: merge backend live designer verification scripts from claude
+7472f82 test(g5): reach the real Anthropic API from the sandbox and pin the blocker
+337c7bf feat(ai-transport): connect unified Design with AI chat to Claude transport and handle all 6 outcomes
+41e890e test(g5): verify POST /api/design/propose end to end against a real server
