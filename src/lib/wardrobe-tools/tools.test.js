@@ -205,7 +205,7 @@ describe("component_move contract", () => {
 });
 
 describe("adversarial / invariant inputs — every one is REJECTED, never silently fixed", () => {
-  const created = () => run("wardrobe_create", null, { widthMm: 2400, heightMm: 2600, depthMm: 600 }).model;
+  const created = () => run("wardrobe_create", null, { widthMm: 900, heightMm: 2600, depthMm: 600 }).model;
 
   test("negative width", () => {
     expect(run("wardrobe_resize", created(), { widthMm: -100 }).success).toBe(false);
@@ -309,10 +309,11 @@ describe("full sequence: create -> add sections -> add components -> resize -> m
     expect(step.model.sections.find((s) => s.id === leftId).widthMm).toBe(700);
     model = step.model;
 
-    const thirdShelf = model.sections.find((s) => s.id === leftId).components[2];
-    step = run("component_move", model, { componentId: thirdShelf.id, axis: "z", deltaMm: 125 });
+    const shelvesLeft = model.sections.find((s) => s.id === leftId).components;
+    const topShelf = shelvesLeft[shelvesLeft.length - 1];
+    step = run("component_move", model, { componentId: topShelf.id, axis: "z", deltaMm: 125 });
     expect(step.success).toBe(true);
-    expect(step.newZ).toBe(thirdShelf.positionMm + 125);
+    expect(step.newZ).toBe(topShelf.positionMm + 125);
     model = step.model;
 
     const firstShelfId = model.sections.find((s) => s.id === leftId).components[0].id;

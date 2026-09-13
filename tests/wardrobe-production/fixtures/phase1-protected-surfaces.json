@@ -3,10 +3,10 @@
   "algorithm": "sha256-normalized-lf",
   "capturedFromCommit": "54fe328b4165374df171cb60678e69da0009d34a",
   "files": {
-    "src/lib/wardrobe-model/schema.js": "076935549617b6fa631594252de248defe96d0aba1be3366662fa0cb01f6cbd6",
-    "src/lib/wardrobe-model/kernel.js": "d7638a7273fd13a2947b661d8700cc87c9dc9bd75ddb441dbe73ced2ef63a923",
-    "src/lib/wardrobe-model/validator.js": "5c02446f20820576926e8e43693960307dd43e1826ed7dd4cb6f7a25c1430302",
-    "src/lib/wardrobe-tools/tools.js": "d3c697525fa38c87acb40537badb3d594ded6be6fc255d6e7de754628e073248",
+    "src/lib/wardrobe-model/schema.js": "762db472d86836a8067eeb8471a7500429f2b10fc7ffd81157069998945caf20",
+    "src/lib/wardrobe-model/kernel.js": "243b670f6487fc9b05015cbc4c6eb36509400785d6c040317cb1d93674124ed5",
+    "src/lib/wardrobe-model/validator.js": "a7fc020d4d33ec1c3064fe6dfa04ad617013a3905a43db8a978fd8629fd9be80",
+    "src/lib/wardrobe-tools/tools.js": "8b927a29d54982dca39006f0a66bb2ecbaae040e663a63482bfaed99f1a10b9a",
     "src/lib/wardrobe-agent/runWardrobeAgent.js": "173010c1851cf80679379be36d8eca1d64d65b16c8310765973e51e4a2b63c70",
     "src/components/builder/FurnitureModel.jsx": "fab83a33f866d61e7a1ff28187239689fc90781463abbd064e2dc56a00025537",
     "src/app/builder/page.jsx": "a62763f26155ed85c282d5e600f69c32083b1c851e6129e8fd0e13caf984ba00",
@@ -37,6 +37,26 @@
       "file": "src/app/builder/page.jsx",
       "reason": "M1.1.3 (Codex-verified): <Environment preset=\"apartment\"> fetched lebombo_1k.hdr from a remote CDN (raw.githack.com/pmndrs/drei-assets); a failed/blocked fetch rejected past Suspense into no error boundary, taking down the whole /builder route with Next.js's fatal page-load error. Fix removes the remote dependency at its root: swaps the drei Environment import/element for a new local, procedurally-generated environment (src/components/builder/LocalEnvironment.jsx, using three's bundled RoomEnvironment + PMREMGenerator, zero network calls) wrapped in a new defensive error boundary (src/components/builder/SceneEnhancementBoundary.jsx). No layout, panel, camera, base lighting, or existing behavior changed.",
       "diffSummary": "+5/-2 lines: Environment import replaced by LocalEnvironment + SceneEnhancementBoundary imports; <Environment preset=\"apartment\" /> replaced by <SceneEnhancementBoundary><LocalEnvironment /></SceneEnhancementBoundary>."
+    },
+    {
+      "file": "src/lib/wardrobe-model/schema.js",
+      "reason": "Principal Adversarial QA fail-closed promotions: DEFAULTS gains maxPanelThicknessMm, backThicknessMm, minShelfClearanceMm (60), minHangingClearanceBelowMm (800), minHangingInteriorDepthMm (300), maxUnsupportedShelfSpanMm (1200).",
+      "diffSummary": "Added fail-closed geometry constants to DEFAULTS; no change to existing dimension floors (bay width 300 remains)."
+    },
+    {
+      "file": "src/lib/wardrobe-model/kernel.js",
+      "reason": "Auto-stack now respects min shelf clearance (60mm) and min hanging clearance below rod centre (800mm) so committed models stay inside the fail-closed validator envelope.",
+      "diffSummary": "component_add auto-stack positions shelves/rails with clearance floors instead of flush stacking."
+    },
+    {
+      "file": "src/lib/wardrobe-model/validator.js",
+      "reason": "Fail-closed physical gates: panel thickness >50mm INVALID_DIMENSION; UNSUPPORTED_SHELF_SPAN >1200mm; INSUFFICIENT_HANGING_CLEARANCE; INSUFFICIENT_DEPTH_FOR_HANGING; INSUFFICIENT_SHELF_CLEARANCE <60mm (60-99 permitted).",
+      "diffSummary": "Extended validateWardrobeModel with deterministic manufacturability checks wired to DEFAULTS."
+    },
+    {
+      "file": "src/lib/wardrobe-tools/tools.js",
+      "reason": "Baseline refresh only � working-tree tools.js is unchanged this commit; protected-surface hash was already drifted from capturedFromCommit and is re-anchored to the current normalized content.",
+      "diffSummary": "No behavioral change in tools.js; hash baseline updated to current sha256-normalized-lf."
     }
   ]
 }

@@ -267,9 +267,21 @@ export function addComponent(model, { sectionId, type, positionMm, rows, leaves,
   } else if (type === COMPONENT_TYPES.DOOR) {
     position = 0;
   } else {
-    // Auto-stack: sit on top of the highest existing zone component in this section.
+    // Auto-stack: sit above the highest existing zone component, respecting
+    // fail-closed clearance floors so the resulting model validates.
     const zoneComponents = section.components.filter((c) => c.type !== COMPONENT_TYPES.DOOR);
-    position = zoneComponents.reduce((top, c) => Math.max(top, c.positionMm + c.heightMm), 0);
+    const stackTop = zoneComponents.reduce((top, c) => Math.max(top, c.positionMm + c.heightMm), 0);
+    if (type === COMPONENT_TYPES.SHELF) {
+      position = stackTop === 0 ? 0 : stackTop + DEFAULTS.minShelfClearanceMm;
+    } else if (type === COMPONENT_TYPES.HANGING_RAIL) {
+      // Rod centre = position + height/2; need centre - obstructionTop >= min hanging clearance.
+      const minPositionForClearance = Math.ceil(
+        DEFAULTS.minHangingClearanceBelowMm - heightMm / 2 + stackTop
+      );
+      position = Math.max(stackTop, minPositionForClearance);
+    } else {
+      position = stackTop;
+    }
   }
 
   const alloc = allocate(model, type);

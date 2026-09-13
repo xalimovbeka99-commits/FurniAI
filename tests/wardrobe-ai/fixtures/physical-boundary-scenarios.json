@@ -1,7 +1,7 @@
 {
-  "fixtureVersion": "wardrobe-ai-physical-boundary/1",
+  "fixtureVersion": "wardrobe-ai-physical-boundary/2",
   "status": "ACTIVE",
-  "notes": "Direct-mutation / structural edge cases that the tool harness cannot seed (panel thickness) plus clearance audit labels.",
+  "notes": "Direct-mutation / structural edge cases (panel thickness envelope) plus clearance audit labels.",
   "cases": [
     {
       "id": "panel-thickness-zero",
@@ -30,11 +30,11 @@
       "mutation": {
         "panelThicknessMm": 100
       },
-      "expectedError": "INVALID_PANEL_THICKNESS",
+      "expectedError": "INVALID_DIMENSION",
       "metadata": {
-        "enforcement": "aspirational",
+        "enforcement": "enforced",
         "category": "panel-thickness",
-        "notes": "100mm carcass panels are physically extreme / unbuildable for this product line; validator only requires panelThicknessMm > 0 today."
+        "notes": "Fail-closed: carcass/panel thickness > 50mm is INVALID_DIMENSION (realistic envelope 12-50mm)."
       }
     }
   ]

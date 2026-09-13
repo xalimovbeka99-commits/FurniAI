@@ -245,8 +245,8 @@ describe("eval: creation — hanging rails", () => {
       { toolCalls: [{ name: "wardrobe_create", input: { widthMm: 1000, heightMm: 2600, depthMm: 600 } }] },
       {
         toolCalls: [
-          { name: "component_add", input: { sectionId: "section-01", type: "HANGING_RAIL", positionMm: 100 } },
-          { name: "component_add", input: { sectionId: "section-01", type: "HANGING_RAIL", positionMm: 1300 } },
+          { name: "component_add", input: { sectionId: "section-01", type: "HANGING_RAIL", positionMm: 780 } },
+          { name: "component_add", input: { sectionId: "section-01", type: "HANGING_RAIL", positionMm: 1700 } },
         ],
       },
       { text: "Added double hanging." },

@@ -10,7 +10,7 @@ import {
   updateComponent,
   KernelError,
 } from "./kernel.js";
-import { COMPONENT_TYPES } from "./schema.js";
+import { COMPONENT_TYPES, DEFAULTS } from "./schema.js";
 
 describe("createWardrobe", () => {
   test("identical input produces an identical model, 100 times", () => {
@@ -192,7 +192,7 @@ describe("addComponent / moveComponent / removeComponent / updateComponent", () 
     model = addComponent(model, { sectionId, type: COMPONENT_TYPES.SHELF, positionMm: 0 });
     model = addComponent(model, { sectionId, type: COMPONENT_TYPES.SHELF });
     const [first, second] = model.sections[0].components;
-    expect(second.positionMm).toBe(first.positionMm + first.heightMm);
+    expect(second.positionMm).toBe(first.positionMm + first.heightMm + DEFAULTS.minShelfClearanceMm);
   });
 
   test("adding 4 drawers creates one DRAWER_BANK component with rows: 4", () => {

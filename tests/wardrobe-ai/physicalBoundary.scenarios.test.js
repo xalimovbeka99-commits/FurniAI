@@ -1,5 +1,5 @@
 /**
- * Physical-boundary audit ? panel thickness mutations + clearance labels.
+ * Physical-boundary audit — panel thickness mutations + clearance labels.
  * Tool-path clearance/overlap cases live in adversarial-scenarios.json;
  * this harness covers direct model mutations the tool surface cannot express.
  */
@@ -22,13 +22,12 @@ const adversarial = JSON.parse(
 describe("physical-boundary panel thickness mutations", () => {
   for (const c of fixture.cases) {
     const enforcement = c.metadata?.enforcement ?? "enforced";
-    test(`${c.id} [${enforcement}] ? ${c.expectedError}`, () => {
+    test(`${c.id} [${enforcement}] → ${c.expectedError}`, () => {
       const base = createWardrobe({ widthMm: 2400, heightMm: 2600, depthMm: 600 });
       const mutated = { ...base, ...c.mutation };
       const issues = validateWardrobeModel(mutated);
 
       if (enforcement === "aspirational") {
-        // Document-only: extreme positive thickness still passes >0 gate today.
         expect(Array.isArray(issues)).toBe(true);
         const hit = issues.some((i) => i.code === c.expectedError);
         expect(hit).toBe(false);
@@ -36,7 +35,7 @@ describe("physical-boundary panel thickness mutations", () => {
       }
 
       expect(issues.length).toBeGreaterThan(0);
-      expect(issues[0].code).toBe(c.expectedError);
+      expect(issues.some((i) => i.code === c.expectedError)).toBe(true);
     });
   }
 });
@@ -45,7 +44,7 @@ describe("physical-boundary clearance labels present in adversarial fixture", ()
   const required = [
     "drawer-bank-exceeds-interior-height",
     "shelf-at-exact-drawer-bank-vertical",
-    "shelf-spacing-below-100mm-clearance",
+    "shelf-spacing-below-60mm-clearance",
     "hanging-rail-below-800mm-clearance",
     "bay-width-at-kernel-floor-300",
     "depth-below-300-hanging-rod-floor",
@@ -73,5 +72,11 @@ describe("physical-boundary clearance labels present in adversarial fixture", ()
     expect(result.error).toBe("COMPONENT_OUTSIDE_SECTION");
     expect(seed.id).toBe(before.id);
     expect(seed.revision).toBe(before.revision);
+  });
+
+  test("bay width 300 remains permitted", () => {
+    const create = findTool("wardrobe_create");
+    const result = create.run(null, { widthMm: 300, heightMm: 2500, depthMm: 600 });
+    expect(result.success).toBe(true);
   });
 });

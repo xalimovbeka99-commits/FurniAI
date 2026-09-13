@@ -1,9 +1,13 @@
-﻿/**
+/**
  * Adversarial fixture harness — executes tests/wardrobe-ai/fixtures/adversarial-scenarios.json
  * against the real wardrobe tools / agent loop.
  *
  * Fail-closed contract (enforced cases):
  *   success === false, expectedError matches, model + revision unchanged when a seed exists.
+ *
+ * Permitted cases (metadata.enforcement === "permitted" or expectedSuccess):
+ *   success === true; used to lock in floors that must remain allowed (e.g. bay width 300,
+ *   shelf spacing 60-99mm).
  *
  * Aspirational cases are recorded in the fixture with metadata.enforcement === "aspirational"
  * and are asserted only as documentation (they must still not throw / crash the harness).
@@ -94,7 +98,8 @@ describe("adversarial-scenarios fixture harness", () => {
 
   for (const c of fixture.cases) {
     const enforcement = c.metadata?.enforcement ?? "enforced";
-    test(`${c.id} [${enforcement}] → ${c.expectedError}`, async () => {
+    const label = c.expectedError || (c.expectedSuccess ? "success" : "doc");
+    test(`${c.id} [${enforcement}] → ${label}`, async () => {
       const seedModel = buildSeed(c.seed);
       const before = snapshotIdentity(seedModel);
 
@@ -108,6 +113,17 @@ describe("adversarial-scenarios fixture harness", () => {
           expect(result).toBeTruthy();
           expect(typeof result.success).toBe("boolean");
         }
+        return;
+      }
+
+      if (enforcement === "permitted" || c.expectedSuccess) {
+        expect(c.request, `${c.id} needs request`).toBeTruthy();
+        const tool = findTool(c.request.tool);
+        expect(tool, `unknown tool ${c.request.tool}`).toBeTruthy();
+        const args = resolvePlaceholders(c.request.arguments, seedModel);
+        const result = tool.run(seedModel, args);
+        expect(result.success).toBe(true);
+        expect(result.model).toBeTruthy();
         return;
       }
 

@@ -1,5 +1,5 @@
 {
-  "fixtureVersion": "wardrobe-ai-adversarial/3",
+  "fixtureVersion": "wardrobe-ai-adversarial/4",
   "status": "ACTIVE",
   "defaultExpected": {
     "success": false,
@@ -325,9 +325,9 @@
       },
       "expectedError": "UNSUPPORTED_SHELF_SPAN",
       "metadata": {
-        "enforcement": "aspirational",
+        "enforcement": "enforced",
         "category": "impossible-span",
-        "notes": "constructionValidator warns on long spans for the legacy cfg path; wardrobe-model validator does not yet fail-closed on unsupported shelf span."
+        "notes": "Fail-closed at 1200mm continuous shelf span without a vertical partition. 4000mm single bay still fails under the tightened rule."
       }
     },
     {
@@ -718,8 +718,8 @@
       }
     },
     {
-      "id": "shelf-spacing-below-100mm-clearance",
-      "prompt": "Place two shelves with less than 100mm clear spacing.",
+      "id": "shelf-spacing-below-60mm-clearance",
+      "prompt": "Place two shelves with less than 60mm clear spacing.",
       "seed": {
         "widthMm": 900,
         "heightMm": 2600,
@@ -742,9 +742,9 @@
       },
       "expectedError": "INSUFFICIENT_SHELF_CLEARANCE",
       "metadata": {
-        "enforcement": "aspirational",
+        "enforcement": "enforced",
         "category": "physical-clearance",
-        "notes": "Validator only rejects zone overlap (>0.5mm). Gap shelves (50mm centers, 18mm zones) currently commit. Product min clearance 100mm is not enforced."
+        "notes": "Fail-closed: clear gap between shelf zones must be >= 60mm. Positions 500 and 550 yield ~32mm clear (shelf zone 18mm). Gaps 60-99mm remain permissible."
       }
     },
     {
@@ -765,9 +765,9 @@
       },
       "expectedError": "INSUFFICIENT_HANGING_CLEARANCE",
       "metadata": {
-        "enforcement": "aspirational",
+        "enforcement": "enforced",
         "category": "physical-clearance",
-        "notes": "Rail zone is only 40mm; positionMm is height from floor. Clearance below = 200mm << 800mm product rule. Kernel currently accepts."
+        "notes": "Fail-closed: rod-centre clearance below must be >= 800mm to next obstruction (floor here). positionMm 200 => rod centre ~220mm."
       }
     },
     {
@@ -780,28 +780,35 @@
           "depthMm": 600
         }
       },
-      "expectedError": "INVALID_DIMENSION",
+      "expectedError": null,
       "metadata": {
-        "enforcement": "aspirational",
+        "enforcement": "permitted",
         "category": "oob-dims",
-        "notes": "Kernel min width is 300mm (create succeeds). Product/slide-hardware floor is ~400mm. Case documents the gap; see oob-width-under-400-aspirational-policy."
-      }
+        "notes": "KEEP PERMISSIBLE: bay/wardrobe width minimum stays 300mm (narrow accessory bays OK). Create at 300 must succeed."
+      },
+      "expectedSuccess": true
     },
     {
       "id": "depth-below-300-hanging-rod-floor",
       "request": {
-        "tool": "wardrobe_create",
+        "tool": "component_add",
         "arguments": {
-          "widthMm": 2000,
-          "heightMm": 2500,
-          "depthMm": 250
+          "sectionId": "$section0",
+          "type": "HANGING_RAIL",
+          "positionMm": 1600
         }
       },
-      "expectedError": "INVALID_DIMENSION",
+      "expectedError": "INSUFFICIENT_DEPTH_FOR_HANGING",
       "metadata": {
-        "enforcement": "aspirational",
-        "category": "oob-dims",
-        "notes": "Kernel min depth is 200mm so 250 succeeds. Hanging-rod product floor ~300mm is not fail-closed."
+        "enforcement": "enforced",
+        "category": "physical-clearance",
+        "notes": "Kernel allows depth 200-1200. Fail-closed only when a hanging rod is present and interior depth (outer - back) < 300mm. 250-5=245."
+      },
+      "prompt": "Add a hanging rail in a wardrobe shallower than the hanging-rod depth floor.",
+      "seed": {
+        "widthMm": 900,
+        "heightMm": 2500,
+        "depthMm": 250
       }
     },
     {
@@ -819,6 +826,91 @@
         "enforcement": "enforced",
         "category": "oob-dims",
         "notes": "Duplicate of depth-above-max; kept as explicit sheet-yield boundary label for physical-boundary audit."
+      }
+    },
+    {
+      "id": "shelf-spacing-60mm-permitted",
+      "prompt": "Place two shelves with exactly 60mm clear spacing.",
+      "seed": {
+        "widthMm": 900,
+        "heightMm": 2600,
+        "depthMm": 600,
+        "components": [
+          {
+            "section": 0,
+            "type": "SHELF",
+            "positionMm": 500
+          }
+        ]
+      },
+      "request": {
+        "tool": "component_add",
+        "arguments": {
+          "sectionId": "$section0",
+          "type": "SHELF",
+          "positionMm": 578
+        }
+      },
+      "expectedSuccess": true,
+      "expectedError": null,
+      "metadata": {
+        "enforcement": "permitted",
+        "category": "physical-clearance",
+        "notes": "Clear gap = 578 - (500+18) = 60mm — minimum allowed shelf spacing."
+      }
+    },
+    {
+      "id": "shelf-spacing-99mm-permitted",
+      "prompt": "Place two shelves with 99mm clear spacing.",
+      "seed": {
+        "widthMm": 900,
+        "heightMm": 2600,
+        "depthMm": 600,
+        "components": [
+          {
+            "section": 0,
+            "type": "SHELF",
+            "positionMm": 500
+          }
+        ]
+      },
+      "request": {
+        "tool": "component_add",
+        "arguments": {
+          "sectionId": "$section0",
+          "type": "SHELF",
+          "positionMm": 617
+        }
+      },
+      "expectedSuccess": true,
+      "expectedError": null,
+      "metadata": {
+        "enforcement": "permitted",
+        "category": "physical-clearance",
+        "notes": "Clear gap = 617 - (500+18) = 99mm — within the 60-99 permissible band (not the old aspirational 100mm floor)."
+      }
+    },
+    {
+      "id": "unsupported-shelf-span-just-over-1200",
+      "prompt": "Add a shelf in a single bay just over 1200mm wide.",
+      "seed": {
+        "widthMm": 1237,
+        "heightMm": 2600,
+        "depthMm": 600
+      },
+      "request": {
+        "tool": "component_add",
+        "arguments": {
+          "sectionId": "$section0",
+          "type": "SHELF",
+          "positionMm": 1200
+        }
+      },
+      "expectedError": "UNSUPPORTED_SHELF_SPAN",
+      "metadata": {
+        "enforcement": "enforced",
+        "category": "impossible-span",
+        "notes": "Outer 1237 => clear bay 1237-36=1201mm > 1200 fail-closed span limit."
       }
     }
   ]
