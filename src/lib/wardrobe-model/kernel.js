@@ -302,6 +302,12 @@ export function addComponent(model, { sectionId, type, positionMm, rows, leaves,
 
   let fields = {};
   if (type === COMPONENT_TYPES.DRAWER_BANK) {
+    if (rows !== undefined && Number(rows) < 0) {
+      fail(
+        "INVALID_INPUT",
+        `Cannot add a negative number of drawers (got ${rows}).`
+      );
+    }
     fields.rows = rows === undefined ? 3 : assertIntegerCount(rows, "rows", DEFAULTS.minDrawerRows, DEFAULTS.maxDrawerRows);
     if (section.widthMm < DEFAULTS.minDrawerBayClearWidthMm) {
       fail(
