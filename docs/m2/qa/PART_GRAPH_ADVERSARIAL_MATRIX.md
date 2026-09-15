@@ -1,20 +1,32 @@
-# PartGraph adversarial QA matrix (volumetric + boring + production preflight)
+﻿# PartGraph adversarial QA matrix (volumetric + boring + production preflight)
 
 **Date:** 2026-09-15 (Asia/Dubai)  
-**Branch:** `test/adversarial-part-graph`  
+**Branch (locked suite):** `test/adversarial-part-graph`  
+**Approved tip (PINNED):** `a8cb899f3ed1824c84eae2653550ec988958287b`  
 **Checkout:** `C:\Users\xalim\FurniAI-F1-Claude-Handoff`  
-**Base tip:** `cb5f110627e1df589101f416fb34299ebb092bc0`
+**Base tip (F1 freeze lineage — DO NOT ALTER):** `cb5f110627e1df589101f416fb34299ebb092bc0`  
 **Engineering SHA:** `e08e3f66ce2b3370921adf4d0aa45d7a865de9eb`  
 **Scope:** Adversarial PartGraph collision / boring audits + production geometry preflight.  
 **Do not:** merge main, deploy production, or move F1 freeze tip on `integ/f1-claude-handoff`.
+
+## Ready status (integration reconciliation)
+
+| Gate | Status |
+|---|---|
+| Adversarial suite (35 tests) | **LOCKED** @ `a8cb899` — standby |
+| Claude Code `integ/part-graph-compiler` | **AWAITING** — not on origin |
+| Drawer-pack contract asserts | **PREPARED** on `test/adversarial-drawer-pack-contract` (does not move pinned tip) |
+| `main` / production | **UNTOUCHED** |
+| F1 lineage `cb5f110` | **UNTOUCHED** |
 
 ## Tracking intent
 
 | Branch / surface | Status | Notes |
 |---|---|---|
-| `test/adversarial-part-graph` | **This work** | Adversarial tests + `boringDepthAudit` helper; push via Integration fetch→push |
-| `integ/part-graph-compiler` | **Not on origin yet** | Tracking intent only — compiler integration branch is planned; not created/pushed here |
-| `integ/f1-claude-handoff` | **Frozen tip left alone** | QA stays on `test/adversarial-part-graph` |
+| `test/adversarial-part-graph` | **PINNED @ a8cb899** | All 35 adversarial tests green; fail-closed boring depth asserts guard stock |
+| `test/adversarial-drawer-pack-contract` | **Contract prep** | Synthetic DRAWER_* audits for Claude reconciliation; branched from `a8cb899` |
+| `integ/part-graph-compiler` | **Not on origin yet** | Stand by for Claude Code publish |
+| `integ/f1-claude-handoff` | **Frozen tip left alone** | `cb5f110` lineage must not be altered by this QA work |
 
 ## PASSED vs REJECTED matrix
 
@@ -40,6 +52,25 @@
 | Production preview: negative panel thickness (injected part size) | `assertProductionGeometry` | **REJECTED** | `NON_POSITIVE_PART_SIZE` |
 | Production preview: zero dimensions | `buildCutList` / pack / `assertProductionGeometry` | **REJECTED** | `GEOMETRY_VALIDATION_FAILED` |
 
+## Drawer-pack contract (prepared for Claude compiler)
+
+Target roles when `integ/part-graph-compiler` lands:
+
+`DRAWER_FRONT`, `DRAWER_SIDE_L`, `DRAWER_SIDE_R`, `DRAWER_BACK`, `DRAWER_BOTTOM`
+
+| Contract | Policy | Fail code(s) | Surface |
+|---|---|---|---|
+| Ball-bearing side runner clearance | **Exactly 12.7 mm per side** | `DRAWER_BALL_BEARING_CLEARANCE_LEFT` / `_RIGHT` | `drawerPackContract.js` |
+| Concealed undermount | **21 mm total** width reduction | `DRAWER_UNDERMOUNT_REDUCTION_MISMATCH` | same |
+| Perimeter reveal | Flag any edge **< 1.5 mm** vs neighbour facades/gables | `DRAWER_FRONT_REVEAL_TOO_SMALL` | same |
+| Bottom panel thickness | **Minimum 6 mm** (sag under load) | `DRAWER_BOTTOM_TOO_THIN` | same |
+| Golden PartGraph without roles | Remain **ASPIRATIONAL** (not a silent pass) | `auditDrawerPack` → `status: ASPIRATIONAL` | contract test |
+
+Deliverables (side branch `test/adversarial-drawer-pack-contract`):
+
+- `src/lib/partgraph/drawerPackContract.js`
+- `tests/part-graph/drawerPack.contract.test.js`
+
 ## Enforced vs aspirational (current PartGraph)
 
 | Concern | Enforced on current PartGraph? | Notes |
@@ -48,11 +79,12 @@
 | Shelf ↔ gable face-contact policy | **ENFORCED** (geometry + collision gate) | Fixed shelves span bay clear width |
 | Drawer box slide gap | **ASPIRATIONAL** | No drawer parts on PartGraph path; synthetic audit in QA only |
 | Drawer front perimeter reveal 1.5–2.0 mm | **ASPIRATIONAL** | Same — synthetic audit only |
+| Ball-bearing 12.7 mm / undermount 21 mm / bottom ≥6 mm | **CONTRACT PREPARED** | Ready to bind when Claude emits DRAWER_* roles |
 | Hardware boring depth / diameter limits | **ENFORCED via QA helper** (`boringDepthAudit.js`) | Does **not** unlock CNC; production drilling remains BLOCKED |
 | Groove ∩ cam/line-bore conflict | **ENFORCED via QA helper** | Fail-closed on synthetic conflicting ops |
 | Production geometry NaN / zero / non-positive size | **ENFORCED** | `ProductionPreviewError` |
 
-## Deliverables
+## Deliverables (pinned suite @ a8cb899)
 
 - `tests/part-graph/panelCollisions.test.js`
 - `tests/part-graph/boringAudit.test.js`
@@ -60,12 +92,13 @@
 - Extended `src/lib/production.test.js` preflight cases
 - Vitest include: `tests/part-graph/**/*.test.js`
 - CI triggers extended for `test/adversarial-part-graph`
+- `docs/m2/qa/PART_GRAPH_ADVERSARIAL_MATRIX.md` (this file — tip `a8cb899`)
 
 ## Push pattern
 
-Worktree origin → local Integration (`C:\Users\xalim\FurniAI-Integration`) → GitHub `xalimovbeka99-commits/FurniAI` (Integration fetch→push). Leave `integ/f1-claude-handoff` tip unchanged.
+Worktree origin → local Integration (`C:\Users\xalim\FurniAI-Integration`) → GitHub `xalimovbeka99-commits/FurniAI` (Integration fetch→push). Leave `integ/f1-claude-handoff` tip unchanged. Keep `test/adversarial-part-graph` **pinned** at `a8cb899`.
 
-## Vitest evidence (2026-09-15 Asia/Dubai)
+## Vitest evidence (2026-09-15 Asia/Dubai) — pinned suite
 
 Command: `npx vitest run tests/part-graph/panelCollisions.test.js tests/part-graph/boringAudit.test.js src/lib/production.test.js`
 
@@ -77,3 +110,5 @@ Command: `npx vitest run tests/part-graph/panelCollisions.test.js tests/part-gra
 | **Total this run** | **35 passed / 0 failed** | **?91** (?25 required) |
 
 CI: `.github/workflows/ci.yml` triggers extended for `test/adversarial-part-graph`.
+
+**Reference commit for locked suite:** `a8cb899f3ed1824c84eae2653550ec988958287b`
