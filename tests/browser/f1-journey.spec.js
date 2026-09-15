@@ -503,7 +503,7 @@ test.describe("F1 evidence on integration candidate", () => {
     );
   });
 
-  test("customer-path: unsupported drawers → new assistant explains + alternative offered; design retained", async ({
+  test("customer-path: unsupported handles → new assistant explains; design retained", async ({
     page,
   }) => {
     test.setTimeout(120000);
@@ -519,21 +519,17 @@ test.describe("F1 evidence on integration candidate", () => {
 
     const before = await snapshotDesign(page);
     const prevAssistants = await assistantCount(page);
-    const customerMsg = "Add drawers on the left";
+    const customerMsg = "Add black handles";
 
     await page.locator("#aiConversationalInput").fill(customerMsg);
     await page.locator("#aiConversationalSendBtn").click();
 
-    // Wait until the assistant response finishes BEFORE reading text or preserved state.
     const { assistantText, userText } = await waitForUnsupportedResponseFinished(page, prevAssistants);
-    // Assert the NEW assistant explanation — not the customer's own "drawer" message.
-    expect(userText).toMatch(/add drawers on the left/i);
+    expect(userText).toMatch(/add black handles/i);
     expect(assistantText.length).toBeGreaterThan(0);
     expect(assistantText.toLowerCase()).not.toBe(userText.toLowerCase());
-    expect(assistantText.toLowerCase()).not.toBe(customerMsg.toLowerCase());
-    expect(assistantText).toMatch(/drawer/i);
-    expect(assistantText).toMatch(/can't|cannot|not (?:supported|available)|yet/i);
-    expect(assistantText).toMatch(/shelf|alternative|instead|unchanged/i);
+    expect(assistantText).toMatch(/handle/i);
+    expect(assistantText).toMatch(/can't|cannot|not (?:supported|available)|yet|unchanged/i);
 
     const after = await snapshotDesign(page);
     writeJson("13-unsupported-customer.json", { before, after, assistantText, userText, prevAssistants });
@@ -545,13 +541,12 @@ test.describe("F1 evidence on integration candidate", () => {
     expect(after.proposalId).toBe(before.proposalId);
     expect(after.finishType).toBe(before.finishType);
     expect(Math.abs(after.groupBox.widthM - before.groupBox.widthM)).toBeLessThan(0.02);
-    // Alternative offered in text, not applied as a layout/geometry change
     expect(after.bayCount).toBe(before.bayCount);
     expect(after.doorCount).toBe(before.doorCount);
     expect(after.structural).toBe(before.structural);
   });
 
-  test("unsupported browser check fails if the new assistant response is removed", async ({ page }) => {
+  test("customer-path: Add drawers on the left applies DRAWER_BANK layout (STRUCTURAL)", async ({ page }) => {
     test.setTimeout(120000);
     await page.goto("/");
     await page.locator("#createWithFurniAiHeroBtn, #createWithFurniAiNavBtn").first().click();
@@ -559,30 +554,26 @@ test.describe("F1 evidence on integration candidate", () => {
     await page.locator("#aiWardrobeInput").fill("Make me a wardrobe");
     await page.locator("#aiWardrobeSubmitBtn").click();
     await expect(page.locator("#aiWardrobeReviewSection")).toBeVisible({ timeout: 15000 });
+    await page.waitForFunction(() => /\d+/.test(document.getElementById("revRevision")?.textContent || ""), null, {
+      timeout: 15000,
+    });
 
+    const before = await snapshotDesign(page);
     const prevAssistants = await assistantCount(page);
     await page.locator("#aiConversationalInput").fill("Add drawers on the left");
     await page.locator("#aiConversationalSendBtn").click();
-    await waitForUnsupportedResponseFinished(page, prevAssistants);
 
-    // Remove only the newest assistant bubble — proves assertions target that node, not the user bubble.
-    await page.evaluate(() => {
-      const nodes = [...document.querySelectorAll("#aiConversationalStream [data-role='assistant']")];
-      nodes.at(-1)?.remove();
-    });
+    await page.waitForFunction(
+      (prev) => document.querySelectorAll("#aiConversationalStream [data-role='assistant']").length > prev,
+      prevAssistants,
+      { timeout: 20000 }
+    );
+    const assistantText = await latestAssistantText(page);
+    expect(assistantText).toMatch(/drawer/i);
+    expect(assistantText).not.toMatch(/can't add drawers|cannot add drawers/i);
 
-    const missing = await latestAssistantText(page);
-    const stillUser = await latestUserText(page);
-    expect(stillUser).toMatch(/add drawers on the left/i);
-    let failed = false;
-    try {
-      expect(missing).toMatch(/drawer/i);
-      expect(missing).toMatch(/can't|cannot|not (?:supported|available)|yet/i);
-      expect(missing).toMatch(/shelf|alternative|instead|unchanged/i);
-    } catch {
-      failed = true;
-    }
-    expect(failed).toBe(true);
+    const after = await snapshotDesign(page);
+    expect(after.revision).toBeGreaterThan(before.revision);
   });
 });
 

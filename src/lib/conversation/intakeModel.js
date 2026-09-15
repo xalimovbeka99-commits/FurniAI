@@ -63,6 +63,8 @@ export const GAP_SEVERITY = Object.freeze({
 export const BAY_LAYOUT = Object.freeze({
   LONG_HANGING: "LONG_HANGING",
   SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES: "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES",
+  /** Bottom drawer bank (STRUCTURAL DRAWER_* pack) with short hanging above. */
+  DRAWER_BANK_WITH_SHORT_HANGING: "DRAWER_BANK_WITH_SHORT_HANGING",
 });
 
 /** Finishes the first slice has an approved material for. */

@@ -97,7 +97,7 @@ export const DESIGN_ENGINE_CAPABILITIES = Object.freeze({
     "Handles, hinges and other hardware as placed, drillable objects.",
     "Drawer runner / System 32 hole CNC machining (geometry approved; drilling BLOCKED).",
     "A finish applied to one part rather than the whole wardrobe.",
-    "Per-shelf editing and explicit bay targeting beyond the two supported bay layouts.",
+    "Per-shelf editing beyond the supported bay layouts (hanging, shelves, drawer bank).",
     "Sliding, corner and walk-in wardrobes.",
     "Any furniture family other than wardrobes.",
   ]),
