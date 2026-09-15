@@ -256,12 +256,35 @@ describe("projectionEngine — SVG Drawing Sheet Generation & Title Block", () =
     expect(svg).toContain('id="view_cross_section"');
     expect(svg).toContain('id="view_plan_top_down"');
 
-    // Material schedule
+    // Material schedule (top right)
     expect(svg).toContain('id="material_legend"');
-    expect(svg).toContain("18.0 mm Melamine Faced Board");
+    expect(svg).toContain("18.0 mm MFC");
     expect(svg).toContain("6.0 mm HDF Insert into 7.0 mm Groove");
     expect(svg).toContain("1.0 mm ABS");
     expect(svg).toContain("0.4 mm Melamine");
+  });
+
+  it("verifies that text dimension values in SVG match PartGraph coordinate values exactly", () => {
+    const svg = generateShopDrawingsSVG(goldenPartGraph);
+
+    // Front elevation width matches total width (1800 mm)
+    const expectedWidth = (goldenPartGraph.metadata?.envelope?.widthMm || 1800);
+    expect(svg).toContain(`${expectedWidth} mm (Wall-to-Wall)`);
+    expect(svg).toContain(`${expectedWidth} mm (Carcass)`);
+
+    // Front elevation height matches total height (2400 mm)
+    const expectedHeight = (goldenPartGraph.metadata?.envelope?.heightMm || 2400);
+    expect(svg).toContain(`${expectedHeight} mm (Height)`);
+
+    // Bay widths match clear bay widths
+    expect(svg).toContain("Bay 1: 873 mm");
+    expect(svg).toContain("Bay 2: 873 mm");
+
+    // Cross-section depth matches carcass depth (580 mm) and total depth (600 mm)
+    expect(svg).toContain("600 mm (Total Depth)");
+    expect(svg).toContain("580 mm (Carcass Depth)");
+    expect(svg).toContain("20 mm (Groove)");
+    expect(svg).toContain("100 mm (Plinth)");
   });
 
   it("supports ISO A4 sheet sizing", () => {

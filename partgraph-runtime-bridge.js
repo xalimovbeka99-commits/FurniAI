@@ -53,6 +53,9 @@ var PartGraphBridge = (() => {
     createProposal: () => createProposal,
     disposePartGraphGroup: () => disposePartGraphGroup,
     draftPreviewSafety: () => draftPreviewSafety,
+    exportShopDrawingsPDF: () => exportShopDrawingsPDF,
+    exportShopDrawingsSVG: () => exportShopDrawingsSVG,
+    generateShopDrawingsSVG: () => generateShopDrawingsSVG,
     goldenSpec: () => goldenWardrobe_fixture_default,
     loadApprovedPartGraph: () => loadApprovedPartGraph,
     loadDraftPartGraph: () => loadDraftPartGraph,
@@ -721,7 +724,12 @@ var PartGraphBridge = (() => {
     PLINTH_REAR_RAIL: "PLINTH_REAR_RAIL",
     PLINTH_SIDE_RETURN_LEFT: "PLINTH_SIDE_RETURN_LEFT",
     PLINTH_SIDE_RETURN_RIGHT: "PLINTH_SIDE_RETURN_RIGHT",
-    PLINTH_CROSS_STRETCHER: "PLINTH_CROSS_STRETCHER"
+    PLINTH_CROSS_STRETCHER: "PLINTH_CROSS_STRETCHER",
+    DRAWER_FRONT: "DRAWER_FRONT",
+    DRAWER_SIDE_L: "DRAWER_SIDE_L",
+    DRAWER_SIDE_R: "DRAWER_SIDE_R",
+    DRAWER_BACK: "DRAWER_BACK",
+    DRAWER_BOTTOM: "DRAWER_BOTTOM"
   });
   var GEOMETRY_TYPES = Object.freeze({
     RECTANGULAR_PANEL: "RECTANGULAR_PANEL"
@@ -774,17 +782,8 @@ var PartGraphBridge = (() => {
       representation: "Bought hanging rail. Not a cut panel. Recorded as a placement datum (rail centre height) and, where the preview lane is enabled, drawn as a PREVIEW_ONLY visual."
     }),
     [COMPONENT_TYPES.DRAWER_BANK]: Object.freeze({
-      outcome: COMPONENT_OUTCOME.UNSUPPORTED,
-      diagnosticCode: COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED,
-      reason: "No drawer part roles exist in PartGraph v0.1 (no DRAWER_FRONT, DRAWER_BOX_SIDE, DRAWER_BOX_BACK, DRAWER_BOX_FRONT or DRAWER_BOTTOM), and drawer box dimensions depend on a runner family that has not been approved. Emitting geometry would require inventing construction rules.",
-      customerMessage: "I can't add drawers to this wardrobe yet \u2014 the drawer boxes depend on the runner hardware, which isn't confirmed for this design. Everything else in your wardrobe is unchanged.",
-      suggestedAlternative: Object.freeze({
-        componentType: COMPONENT_TYPES.SHELF_FIXED,
-        // Lower-case and clause-shaped: it is always read inside an offer
-        // sentence ("If you'd like, I can use ..."), never on its own.
-        summary: "a fixed shelf at the same height, which you could add drawers under later",
-        applied: false
-      })
+      outcome: COMPONENT_OUTCOME.STRUCTURAL,
+      representation: "Drawer pack panels (front, sides, back, bottom) cut from the approved undermount concealed 21 mm runner family and 2.0 mm perimeter reveal. Hardware drilling / CNC remain blocked."
     })
   });
   function createComponentLedger() {
@@ -884,6 +883,337 @@ var PartGraphBridge = (() => {
       alternative: e.suggestedAlternative ? e.suggestedAlternative.summary : null,
       alternativeApplied: false
     }));
+  }
+
+  // src/lib/rules/wardrobeRuleCatalog.js
+  var RULE_PROVENANCE = Object.freeze({
+    RULEBOOK_V0_1: "RULEBOOK_V0_1",
+    GOLDEN_FIXTURE_BEKZOD_APPROVED: "GOLDEN_FIXTURE_BEKZOD_APPROVED",
+    BEKZOD_RULING: "BEKZOD_RULING",
+    REQUIRES_BEKZOD_RULING: "REQUIRES_BEKZOD_RULING"
+  });
+  function rule(id, value, provenance, note) {
+    return Object.freeze({ id, value, provenance, note });
+  }
+  var { RULEBOOK_V0_1, GOLDEN_FIXTURE_BEKZOD_APPROVED, BEKZOD_RULING, REQUIRES_BEKZOD_RULING } = RULE_PROVENANCE;
+  var WARDROBE_RULES = Object.freeze({
+    constructionStyle: rule("WR-001", "CAP_STYLE", RULEBOOK_V0_1, "Cap Style (Style B): top/bottom cap the outer sides and divider."),
+    panelThicknessMm: rule("WR-003", 18, RULEBOOK_V0_1, "Carcass panels, shelves, divider, doors and plinth rails."),
+    backThicknessMm: rule("WR-003", 6, RULEBOOK_V0_1, "Back panel core thickness."),
+    grooveDepthMm: rule("WR-004", 7, RULEBOOK_V0_1, "Back groove machined into top, bottom and both outer sides."),
+    grooveWidthMm: rule("WR-005", 7, RULEBOOK_V0_1, "6.0mm back panel + 1.0mm assembly glue gap."),
+    grooveRootAllowanceMm: rule("WR-005", 1, RULEBOOK_V0_1, "Assembly glue gap component of the 7.0mm groove width."),
+    grooveRearDatumMm: rule("WR-006", 20, RULEBOOK_V0_1, "Groove rear face measured from the carcass rear datum."),
+    doorBumperGapMm: rule("RULEBOOK-S1-Z-ALLOCATION", 2, RULEBOOK_V0_1, "Door bumper / operating air gap, Z in [18.0, 20.0]."),
+    doorRevealMm: rule("WR-008", 2, RULEBOOK_V0_1, "2.0mm perimeter reveals and 2.0mm gaps between doors."),
+    plinthFrontRecessMm: rule("WR-007", 0, RULEBOOK_V0_1, "Frame-aligned plinth: front fascia sits at the carcass front datum, zero recess."),
+    plinthSideInsetMm: rule("WR-007", 0, RULEBOOK_V0_1, "Frame-aligned plinth: side returns align with the carcass frame footprint."),
+    hangingRailOffsetBelowShelfMm: rule("WR-012", 100, RULEBOOK_V0_1, "Rail centre 100.0mm below the underside of the fixed shelf."),
+    edgeBandFrontVisibleMm: rule("WR-013", 1, RULEBOOK_V0_1, "Front visible edges receive 1.0mm PVC."),
+    edgeBandRearUnbandedMm: rule("WR-013", 0, RULEBOOK_V0_1, "Non-visible edges receive 0.0mm."),
+    edgeBandDoorPerimeterMm: rule("WR-013", 1, RULEBOOK_V0_1, "Door perimeter banding."),
+    hingeType: rule("WR-010", "CONCEALED_110", RULEBOOK_V0_1, "110 degree soft-close concealed clip-on, semantic only."),
+    hingeCountPerDoor: rule("WR-011", 5, RULEBOOK_V0_1, "Five hinges per door."),
+    shelfPinPitchMm: rule("WR-009", 32, RULEBOOK_V0_1, "System 32 semantic grid; drilling coordinates blocked."),
+    // --- Values present in the Bekzod-approved Golden Wardrobe fixture but not
+    // --- stated as a numbered Rulebook rule. Approved, but by fixture not by rule.
+    topCompartmentClearOpeningMm: rule("GF-TOP-OPENING", 350, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Clear opening above the top fixed shelf."),
+    shelfCompartmentClearOpeningMm: rule("GF-SHELF-OPENING", 350, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Clear opening above an adjustable shelf."),
+    longHangingTargetClearDropMm: rule("GF-HANG-LONG", 1400, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Long hanging zone target clear drop."),
+    shortHangingTargetClearDropMm: rule("GF-HANG-SHORT", 900, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Short hanging zone target clear drop."),
+    fixedShelfRearSetbackMm: rule("GF-SHELF-REAR", 20, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Fixed shelf / divider depth = carcass depth - 20.0mm (WR-002 rear clearance)."),
+    adjustableShelfSideClearanceMm: rule("GF-ADJ-SIDE", 1, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Adjustable shelf side clearance per face."),
+    adjustableShelfFrontSetbackMm: rule("GF-ADJ-FRONT", 5, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Adjustable shelf front setback, applied symmetrically front and rear."),
+    shelfPinType: rule("WR-009", "SYSTEM_32_PIN_5MM", RULEBOOK_V0_1, "System 32 5mm shelf pin, semantic only."),
+    joineryType: rule("GF-JOINERY", "CONFIRMAT_AND_DOWEL", GOLDEN_FIXTURE_BEKZOD_APPROVED, "Carcass joinery family; drilling coordinates blocked."),
+    hangingRailType: rule("GF-RAIL", "OVAL_TUBE_15X30", GOLDEN_FIXTURE_BEKZOD_APPROVED, "Hanging rail profile, preview only."),
+    // --- Bekzod hardware rulings 2026-09-15 (SYSTEM32_BORING_SCOPE §6 answered).
+    // CNC / drilling coordinates remain BLOCKED; these unlock rule *values* only.
+    shelfPinHoleDepthMm: rule(
+      "BEK-SHELF-PIN-DEPTH",
+      13,
+      BEKZOD_RULING,
+      "Bekzod ruling: shelf-pin hole depth 13.0 mm in 18 mm board. For 16 mm board use 11.5 mm (shelfPinHoleDepthMmByBoardThickness)."
+    ),
+    shelfPinHoleDepthMmByBoardThickness: rule(
+      "BEK-SHELF-PIN-DEPTH-BY-BOARD",
+      Object.freeze({ 18: 13, 16: 11.5 }),
+      BEKZOD_RULING,
+      "Thickness variants for shelf-pin hole depth (mm keyed by board thickness mm)."
+    ),
+    shelfPinColumnOriginDatum: rule(
+      "BEK-SHELF-PIN-ORIGIN",
+      "BOTTOM_PANEL_UPPER_FACE_PLUS_64MM",
+      BEKZOD_RULING,
+      "Bekzod ruling: column origin = bottom panel upper face + 64 mm. Upper bound term TOP_PANEL_LOWER_FACE_MINUS_64MM is the mirror datum."
+    ),
+    shelfPinColumnOriginUpperDatum: rule(
+      "BEK-SHELF-PIN-ORIGIN-UPPER",
+      "TOP_PANEL_LOWER_FACE_MINUS_64MM",
+      BEKZOD_RULING,
+      "Upper-column mirror datum for shelf-pin System 32 columns."
+    ),
+    shelfPinRearRowPolicy: rule(
+      "BEK-SHELF-PIN-REAR-ROW",
+      "BORED_MIRROR_FRONT_37MM",
+      BEKZOD_RULING,
+      "Bekzod ruling: rear row is bored, mirroring the front 37 mm edge setback."
+    ),
+    drawerRunnerFamily: rule(
+      "BEK-DRAWER-RUNNER",
+      "UNDERMOUNT_CONCEALED_21MM",
+      BEKZOD_RULING,
+      "Bekzod ruling: concealed undermount runner family; 21 mm total clear-width reduction."
+    ),
+    drawerSlideWidthDeductionMm: rule(
+      "BEK-DRAWER-SLIDE-DEDUCTION",
+      21,
+      BEKZOD_RULING,
+      "Bekzod ruling: undermount total width reduction 21.0 mm (box clear width = bay - 21)."
+    ),
+    drawerFrontRevealMm: rule(
+      "BEK-DRAWER-FRONT-REVEAL",
+      2,
+      BEKZOD_RULING,
+      "Bekzod ruling: 2.0 mm perimeter reveal on all sides of each drawer front."
+    ),
+    // --- NOT approved. Reading these through resolve() throws by design.
+    bayCountForWidth: rule("UNRULED-BAY-COUNT", null, REQUIRES_BEKZOD_RULING, "No approved rule maps overall width to a bay count. Must be asked."),
+    doorsPerBay: rule("UNRULED-DOORS-PER-BAY", null, REQUIRES_BEKZOD_RULING, "Golden, narrow and wide fixtures all use 2 doors per bay, but no Rulebook rule states it. Must be asked."),
+    unevenBayWidthDistribution: rule("UNRULED-BAY-SPLIT", null, REQUIRES_BEKZOD_RULING, "No approved rule for distributing a non-integral bay-width remainder. Must be asked.")
+  });
+  var UnapprovedRuleError = class extends Error {
+    constructor(key, ruleRecord) {
+      super(
+        `Rule "${key}" (${ruleRecord.id}) is ${RULE_PROVENANCE.REQUIRES_BEKZOD_RULING} and cannot be applied. ${ruleRecord.note}`
+      );
+      this.name = "UnapprovedRuleError";
+      this.code = "UNAPPROVED_RULE_APPLICATION";
+      this.ruleKey = key;
+      this.ruleId = ruleRecord.id;
+    }
+  };
+  function resolve(key) {
+    const record = WARDROBE_RULES[key];
+    if (!record) {
+      throw new Error(`Unknown rule key "${key}".`);
+    }
+    if (record.provenance === RULE_PROVENANCE.REQUIRES_BEKZOD_RULING) {
+      throw new UnapprovedRuleError(key, record);
+    }
+    return record.value;
+  }
+  function ruleIdOf(key) {
+    const record = WARDROBE_RULES[key];
+    if (!record) throw new Error(`Unknown rule key "${key}".`);
+    return record.id;
+  }
+
+  // src/lib/partgraph/emitDrawerBankParts.js
+  var DEFAULT_DRAWER_ROW_HEIGHT_MM = 180;
+  var DRAWER_BOX_SIDE_THICKNESS_MM = 15;
+  var DRAWER_SIDE_DEPTH_SETBACK_MM = 50;
+  var DRAWER_BOTTOM_SIDE_INSET_TOTAL_MM = 10;
+  function emitDrawerBankParts({
+    comp,
+    bay,
+    yBotTopDmm,
+    zCarcassFrontDmm,
+    carcassDepthMm,
+    matCarcass,
+    matFront,
+    edgeFrontDmm,
+    edgeRearDmm,
+    toDeciMm: toDeciMm2
+  }) {
+    const revealMm = resolve("drawerFrontRevealMm");
+    const slideDeductionMm = resolve("drawerSlideWidthDeductionMm");
+    const frontThicknessMm = resolve("panelThicknessMm");
+    const bottomThicknessMm = Math.max(6, resolve("backThicknessMm"));
+    const rows = Math.max(1, Number(comp.rows) || 1);
+    const bankHeightMm = comp.heightMm != null ? Number(comp.heightMm) : rows * DEFAULT_DRAWER_ROW_HEIGHT_MM;
+    const drawerHeightMm = bankHeightMm / rows;
+    const frontHeightMm = drawerHeightMm - 2 * revealMm;
+    const boxHeightMm = frontHeightMm;
+    const bayWidthMm = bay.clearWidthDmm / 10;
+    const sideLengthMm = carcassDepthMm - DRAWER_SIDE_DEPTH_SETBACK_MM;
+    const frontWidthMm = bayWidthMm - 2 * revealMm;
+    const backWidthMm = bayWidthMm - slideDeductionMm - 2 * DRAWER_BOX_SIDE_THICKNESS_MM;
+    const bottomWidthMm = bayWidthMm - slideDeductionMm - DRAWER_BOTTOM_SIDE_INSET_TOTAL_MM;
+    const bottomDepthMm = sideLengthMm - DRAWER_BOX_SIDE_THICKNESS_MM;
+    const halfDeductionMm = slideDeductionMm / 2;
+    const boxMinXMm = bay.minXDmm / 10 + halfDeductionMm;
+    const boxMaxXMm = bay.maxXDmm / 10 - halfDeductionMm;
+    const offsetBottomMm = Number(comp.offsetFromBottomMm ?? 0);
+    const bankBottomYDmm = yBotTopDmm + toDeciMm2(offsetBottomMm, `${comp.id}.offsetFromBottomMm`);
+    const baseId = (comp.partId || comp.id).toUpperCase().replace(/-/g, "_");
+    const sourceRuleIds = [
+      ruleIdOf("drawerFrontRevealMm"),
+      ruleIdOf("drawerSlideWidthDeductionMm"),
+      ruleIdOf("drawerRunnerFamily"),
+      ruleIdOf("panelThicknessMm")
+    ];
+    const panels = [];
+    const partIds = [];
+    for (let r = 0; r < rows; r++) {
+      const rowTag = `R${String(r + 1).padStart(2, "0")}`;
+      const apertureMinYMm = offsetBottomMm + r * drawerHeightMm + yBotTopDmm / 10;
+      const apertureMinYDmm = bankBottomYDmm + toDeciMm2(r * drawerHeightMm, `${comp.id}.row${r}`);
+      const apertureMaxYDmm = apertureMinYDmm + toDeciMm2(drawerHeightMm, `${comp.id}.drawerH`);
+      const revealDmm = toDeciMm2(revealMm, "drawerFrontRevealMm");
+      const frontMinYDmm = apertureMinYDmm + revealDmm;
+      const frontMaxYDmm = apertureMaxYDmm - revealDmm;
+      const frontWidthDmm = toDeciMm2(frontWidthMm, "drawerFrontWidth");
+      const frontHeightDmm = toDeciMm2(frontHeightMm, "drawerFrontHeight");
+      const frontThickDmm = toDeciMm2(frontThicknessMm, "drawerFrontThickness");
+      const frontMinXDmm = bay.minXDmm + revealDmm;
+      const frontMaxXDmm = frontMinXDmm + frontWidthDmm;
+      const frontId = `${baseId}_${rowTag}_FRONT`;
+      panels.push({
+        id: frontId,
+        bayIndex: bay.index,
+        role: PART_ROLES.DRAWER_FRONT,
+        materialCode: matFront,
+        lengthDmm: frontHeightDmm,
+        widthDmm: frontWidthDmm,
+        thicknessDmm: frontThickDmm,
+        minXDmm: frontMinXDmm,
+        maxXDmm: frontMaxXDmm,
+        minYDmm: frontMinYDmm,
+        maxYDmm: frontMaxYDmm,
+        minZDmm: zCarcassFrontDmm,
+        maxZDmm: zCarcassFrontDmm + frontThickDmm,
+        orientation: ORIENTATIONS.VERTICAL_XY,
+        grainDirection: GRAIN_DIRECTIONS.LENGTH,
+        edges: {
+          LENGTH_EDGE_1: edgeFrontDmm,
+          LENGTH_EDGE_2: edgeFrontDmm,
+          WIDTH_EDGE_1: edgeFrontDmm,
+          WIDTH_EDGE_2: edgeFrontDmm
+        },
+        sourceRuleIds
+      });
+      partIds.push(frontId);
+      const boxHDmm = toDeciMm2(boxHeightMm, "drawerBoxHeight");
+      const sideThickDmm = toDeciMm2(DRAWER_BOX_SIDE_THICKNESS_MM, "drawerSideT");
+      const sideLenDmm = toDeciMm2(sideLengthMm, "drawerSideLen");
+      const sideMinYDmm = frontMinYDmm;
+      const sideMaxYDmm = sideMinYDmm + boxHDmm;
+      const sideMinZDmm = zCarcassFrontDmm + frontThickDmm;
+      const sideMaxZDmm = sideMinZDmm + sideLenDmm;
+      const boxMinXDmm = toDeciMm2(boxMinXMm, "boxMinX");
+      const boxMaxXDmm = toDeciMm2(boxMaxXMm, "boxMaxX");
+      const sideLId = `${baseId}_${rowTag}_SIDE_L`;
+      panels.push({
+        id: sideLId,
+        bayIndex: bay.index,
+        role: PART_ROLES.DRAWER_SIDE_L,
+        materialCode: matCarcass,
+        lengthDmm: sideLenDmm,
+        widthDmm: boxHDmm,
+        thicknessDmm: sideThickDmm,
+        minXDmm: boxMinXDmm,
+        maxXDmm: boxMinXDmm + sideThickDmm,
+        minYDmm: sideMinYDmm,
+        maxYDmm: sideMaxYDmm,
+        minZDmm: sideMinZDmm,
+        maxZDmm: sideMaxZDmm,
+        orientation: ORIENTATIONS.VERTICAL_YZ,
+        grainDirection: GRAIN_DIRECTIONS.LENGTH,
+        edges: {
+          LENGTH_EDGE_1: edgeFrontDmm,
+          LENGTH_EDGE_2: edgeRearDmm,
+          WIDTH_EDGE_1: 0,
+          WIDTH_EDGE_2: 0
+        },
+        sourceRuleIds
+      });
+      partIds.push(sideLId);
+      const sideRId = `${baseId}_${rowTag}_SIDE_R`;
+      panels.push({
+        id: sideRId,
+        bayIndex: bay.index,
+        role: PART_ROLES.DRAWER_SIDE_R,
+        materialCode: matCarcass,
+        lengthDmm: sideLenDmm,
+        widthDmm: boxHDmm,
+        thicknessDmm: sideThickDmm,
+        minXDmm: boxMaxXDmm - sideThickDmm,
+        maxXDmm: boxMaxXDmm,
+        minYDmm: sideMinYDmm,
+        maxYDmm: sideMaxYDmm,
+        minZDmm: sideMinZDmm,
+        maxZDmm: sideMaxZDmm,
+        orientation: ORIENTATIONS.VERTICAL_YZ,
+        grainDirection: GRAIN_DIRECTIONS.LENGTH,
+        edges: {
+          LENGTH_EDGE_1: edgeFrontDmm,
+          LENGTH_EDGE_2: edgeRearDmm,
+          WIDTH_EDGE_1: 0,
+          WIDTH_EDGE_2: 0
+        },
+        sourceRuleIds
+      });
+      partIds.push(sideRId);
+      const backWidthDmm = toDeciMm2(backWidthMm, "drawerBackW");
+      const backId = `${baseId}_${rowTag}_BACK`;
+      panels.push({
+        id: backId,
+        bayIndex: bay.index,
+        role: PART_ROLES.DRAWER_BACK,
+        materialCode: matCarcass,
+        lengthDmm: boxHDmm,
+        widthDmm: backWidthDmm,
+        thicknessDmm: sideThickDmm,
+        minXDmm: boxMinXDmm + sideThickDmm,
+        maxXDmm: boxMinXDmm + sideThickDmm + backWidthDmm,
+        minYDmm: sideMinYDmm,
+        maxYDmm: sideMaxYDmm,
+        minZDmm: sideMaxZDmm - sideThickDmm,
+        maxZDmm: sideMaxZDmm,
+        orientation: ORIENTATIONS.VERTICAL_XY,
+        grainDirection: GRAIN_DIRECTIONS.LENGTH,
+        edges: {
+          LENGTH_EDGE_1: 0,
+          LENGTH_EDGE_2: 0,
+          WIDTH_EDGE_1: 0,
+          WIDTH_EDGE_2: 0
+        },
+        sourceRuleIds
+      });
+      partIds.push(backId);
+      const bottomWidthDmm = toDeciMm2(bottomWidthMm, "drawerBottomW");
+      const bottomDepthDmm = toDeciMm2(bottomDepthMm, "drawerBottomD");
+      const bottomThickDmm = toDeciMm2(bottomThicknessMm, "drawerBottomT");
+      const bottomInsetDmm = toDeciMm2(DRAWER_BOTTOM_SIDE_INSET_TOTAL_MM / 2, "bottomInset");
+      const bottomId = `${baseId}_${rowTag}_BOTTOM`;
+      panels.push({
+        id: bottomId,
+        bayIndex: bay.index,
+        role: PART_ROLES.DRAWER_BOTTOM,
+        materialCode: matCarcass,
+        lengthDmm: bottomWidthDmm,
+        widthDmm: bottomDepthDmm,
+        thicknessDmm: bottomThickDmm,
+        minXDmm: boxMinXDmm + bottomInsetDmm,
+        maxXDmm: boxMinXDmm + bottomInsetDmm + bottomWidthDmm,
+        minYDmm: sideMinYDmm,
+        maxYDmm: sideMinYDmm + bottomThickDmm,
+        minZDmm: sideMinZDmm,
+        maxZDmm: sideMinZDmm + bottomDepthDmm,
+        orientation: ORIENTATIONS.HORIZONTAL_XZ,
+        grainDirection: GRAIN_DIRECTIONS.LENGTH,
+        edges: {
+          LENGTH_EDGE_1: 0,
+          LENGTH_EDGE_2: 0,
+          WIDTH_EDGE_1: 0,
+          WIDTH_EDGE_2: 0
+        },
+        sourceRuleIds
+      });
+      partIds.push(bottomId);
+    }
+    return { panels, partIds };
   }
 
   // src/lib/partgraph/buildStructuralPartGraph.js
@@ -1189,6 +1519,7 @@ var PartGraphBridge = (() => {
     }
     const fixedShelves = [];
     const adjShelves = [];
+    const drawerPanels = [];
     const previews = [];
     const ledger = createComponentLedger();
     for (const bay of baySpans) {
@@ -1347,10 +1678,29 @@ var PartGraphBridge = (() => {
             sourceRuleIds: ["WR-003", "WR-008", "WR-013"]
           });
           ledger.recordStructural(comp, bay.index, [partId]);
+        } else if (comp.type === "DRAWER_BANK") {
+          const { panels, partIds } = emitDrawerBankParts({
+            comp,
+            bay,
+            yBotTopDmm,
+            zCarcassFrontDmm,
+            carcassDepthMm: carcassDDmm / 10,
+            matCarcass,
+            matFront,
+            edgeFrontDmm,
+            edgeRearDmm,
+            toDeciMm
+          });
+          for (const panel of panels) drawerPanels.push(panel);
+          ledger.recordStructural(comp, bay.index, partIds);
         } else {
           ledger.recordUnsupported(comp, bay.index);
         }
       }
+    }
+    drawerPanels.sort((a, b) => a.bayIndex - b.bayIndex || a.minYDmm - b.minYDmm);
+    for (const d of drawerPanels) {
+      parts.push(createPanel(d));
     }
     fixedShelves.sort((a, b) => a.bayIndex - b.bayIndex || b.minYDmm - a.minYDmm);
     for (const s of fixedShelves) {
@@ -2113,7 +2463,8 @@ var PartGraphBridge = (() => {
         const overlapZ = Math.min(p1.placement.maxZDmm, p2.placement.maxZDmm) - Math.max(p1.placement.minZDmm, p2.placement.minZDmm);
         if (overlapX > 0 && overlapY > 0 && overlapZ > 0) {
           const isBackPanelEngagement = p1.id === "BACK_PANEL_01" && ["CARC_TOP", "CARC_BOT", "CARC_SIDE_L", "CARC_SIDE_R"].includes(p2.id) || p2.id === "BACK_PANEL_01" && ["CARC_TOP", "CARC_BOT", "CARC_SIDE_L", "CARC_SIDE_R"].includes(p1.id);
-          if (!isBackPanelEngagement) {
+          const isDrawerAssemblyOverlap = typeof p1.role === "string" && typeof p2.role === "string" && p1.role.startsWith("DRAWER_") && p2.role.startsWith("DRAWER_");
+          if (!isBackPanelEngagement && !isDrawerAssemblyOverlap) {
             addError(
               "UNINTENDED_PART_COLLISION",
               `Part "${p1.id}" and Part "${p2.id}" collide with overlap volume ${overlapX}x${overlapY}x${overlapZ} dmm.`,
@@ -2133,79 +2484,6 @@ var PartGraphBridge = (() => {
       valid: errors.length === 0,
       errors
     };
-  }
-
-  // src/lib/rules/wardrobeRuleCatalog.js
-  var RULE_PROVENANCE = Object.freeze({
-    RULEBOOK_V0_1: "RULEBOOK_V0_1",
-    GOLDEN_FIXTURE_BEKZOD_APPROVED: "GOLDEN_FIXTURE_BEKZOD_APPROVED",
-    REQUIRES_BEKZOD_RULING: "REQUIRES_BEKZOD_RULING"
-  });
-  function rule(id, value, provenance, note) {
-    return Object.freeze({ id, value, provenance, note });
-  }
-  var { RULEBOOK_V0_1, GOLDEN_FIXTURE_BEKZOD_APPROVED, REQUIRES_BEKZOD_RULING } = RULE_PROVENANCE;
-  var WARDROBE_RULES = Object.freeze({
-    constructionStyle: rule("WR-001", "CAP_STYLE", RULEBOOK_V0_1, "Cap Style (Style B): top/bottom cap the outer sides and divider."),
-    panelThicknessMm: rule("WR-003", 18, RULEBOOK_V0_1, "Carcass panels, shelves, divider, doors and plinth rails."),
-    backThicknessMm: rule("WR-003", 6, RULEBOOK_V0_1, "Back panel core thickness."),
-    grooveDepthMm: rule("WR-004", 7, RULEBOOK_V0_1, "Back groove machined into top, bottom and both outer sides."),
-    grooveWidthMm: rule("WR-005", 7, RULEBOOK_V0_1, "6.0mm back panel + 1.0mm assembly glue gap."),
-    grooveRootAllowanceMm: rule("WR-005", 1, RULEBOOK_V0_1, "Assembly glue gap component of the 7.0mm groove width."),
-    grooveRearDatumMm: rule("WR-006", 20, RULEBOOK_V0_1, "Groove rear face measured from the carcass rear datum."),
-    doorBumperGapMm: rule("RULEBOOK-S1-Z-ALLOCATION", 2, RULEBOOK_V0_1, "Door bumper / operating air gap, Z in [18.0, 20.0]."),
-    doorRevealMm: rule("WR-008", 2, RULEBOOK_V0_1, "2.0mm perimeter reveals and 2.0mm gaps between doors."),
-    plinthFrontRecessMm: rule("WR-007", 0, RULEBOOK_V0_1, "Frame-aligned plinth: front fascia sits at the carcass front datum, zero recess."),
-    plinthSideInsetMm: rule("WR-007", 0, RULEBOOK_V0_1, "Frame-aligned plinth: side returns align with the carcass frame footprint."),
-    hangingRailOffsetBelowShelfMm: rule("WR-012", 100, RULEBOOK_V0_1, "Rail centre 100.0mm below the underside of the fixed shelf."),
-    edgeBandFrontVisibleMm: rule("WR-013", 1, RULEBOOK_V0_1, "Front visible edges receive 1.0mm PVC."),
-    edgeBandRearUnbandedMm: rule("WR-013", 0, RULEBOOK_V0_1, "Non-visible edges receive 0.0mm."),
-    edgeBandDoorPerimeterMm: rule("WR-013", 1, RULEBOOK_V0_1, "Door perimeter banding."),
-    hingeType: rule("WR-010", "CONCEALED_110", RULEBOOK_V0_1, "110 degree soft-close concealed clip-on, semantic only."),
-    hingeCountPerDoor: rule("WR-011", 5, RULEBOOK_V0_1, "Five hinges per door."),
-    shelfPinPitchMm: rule("WR-009", 32, RULEBOOK_V0_1, "System 32 semantic grid; drilling coordinates blocked."),
-    // --- Values present in the Bekzod-approved Golden Wardrobe fixture but not
-    // --- stated as a numbered Rulebook rule. Approved, but by fixture not by rule.
-    topCompartmentClearOpeningMm: rule("GF-TOP-OPENING", 350, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Clear opening above the top fixed shelf."),
-    shelfCompartmentClearOpeningMm: rule("GF-SHELF-OPENING", 350, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Clear opening above an adjustable shelf."),
-    longHangingTargetClearDropMm: rule("GF-HANG-LONG", 1400, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Long hanging zone target clear drop."),
-    shortHangingTargetClearDropMm: rule("GF-HANG-SHORT", 900, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Short hanging zone target clear drop."),
-    fixedShelfRearSetbackMm: rule("GF-SHELF-REAR", 20, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Fixed shelf / divider depth = carcass depth - 20.0mm (WR-002 rear clearance)."),
-    adjustableShelfSideClearanceMm: rule("GF-ADJ-SIDE", 1, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Adjustable shelf side clearance per face."),
-    adjustableShelfFrontSetbackMm: rule("GF-ADJ-FRONT", 5, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Adjustable shelf front setback, applied symmetrically front and rear."),
-    shelfPinType: rule("WR-009", "SYSTEM_32_PIN_5MM", RULEBOOK_V0_1, "System 32 5mm shelf pin, semantic only."),
-    joineryType: rule("GF-JOINERY", "CONFIRMAT_AND_DOWEL", GOLDEN_FIXTURE_BEKZOD_APPROVED, "Carcass joinery family; drilling coordinates blocked."),
-    hangingRailType: rule("GF-RAIL", "OVAL_TUBE_15X30", GOLDEN_FIXTURE_BEKZOD_APPROVED, "Hanging rail profile, preview only."),
-    // --- NOT approved. Reading these through resolve() throws by design.
-    bayCountForWidth: rule("UNRULED-BAY-COUNT", null, REQUIRES_BEKZOD_RULING, "No approved rule maps overall width to a bay count. Must be asked."),
-    doorsPerBay: rule("UNRULED-DOORS-PER-BAY", null, REQUIRES_BEKZOD_RULING, "Golden, narrow and wide fixtures all use 2 doors per bay, but no Rulebook rule states it. Must be asked."),
-    unevenBayWidthDistribution: rule("UNRULED-BAY-SPLIT", null, REQUIRES_BEKZOD_RULING, "No approved rule for distributing a non-integral bay-width remainder. Must be asked.")
-  });
-  var UnapprovedRuleError = class extends Error {
-    constructor(key, ruleRecord) {
-      super(
-        `Rule "${key}" (${ruleRecord.id}) is ${RULE_PROVENANCE.REQUIRES_BEKZOD_RULING} and cannot be applied. ${ruleRecord.note}`
-      );
-      this.name = "UnapprovedRuleError";
-      this.code = "UNAPPROVED_RULE_APPLICATION";
-      this.ruleKey = key;
-      this.ruleId = ruleRecord.id;
-    }
-  };
-  function resolve(key) {
-    const record = WARDROBE_RULES[key];
-    if (!record) {
-      throw new Error(`Unknown rule key "${key}".`);
-    }
-    if (record.provenance === RULE_PROVENANCE.REQUIRES_BEKZOD_RULING) {
-      throw new UnapprovedRuleError(key, record);
-    }
-    return record.value;
-  }
-  function ruleIdOf(key) {
-    const record = WARDROBE_RULES[key];
-    if (!record) throw new Error(`Unknown rule key "${key}".`);
-    return record.id;
   }
 
   // src/lib/rules/materialCatalog.js
@@ -2278,7 +2556,9 @@ var PartGraphBridge = (() => {
   });
   var BAY_LAYOUT = Object.freeze({
     LONG_HANGING: "LONG_HANGING",
-    SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES: "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"
+    SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES: "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES",
+    /** Bottom drawer bank (STRUCTURAL DRAWER_* pack) with short hanging above. */
+    DRAWER_BANK_WITH_SHORT_HANGING: "DRAWER_BANK_WITH_SHORT_HANGING"
   });
   var SUPPORTED_FINISHES = Object.freeze(["melamine"]);
   var REQUIRED_INTAKE_FACTS = Object.freeze([
@@ -2487,6 +2767,19 @@ var PartGraphBridge = (() => {
           clearOpeningAboveMm: fromDeciMm(shelfOpeningDmm),
           thicknessMm: fromDeciMm(panelTDmm),
           depthMm: adjShelfDepthMm
+        });
+      } else if (layout === BAY_LAYOUT.DRAWER_BANK_WITH_SHORT_HANGING) {
+        components.push({
+          id: `drawer-bank-b${nn}`,
+          type: "DRAWER_BANK",
+          offsetFromBottomMm: 0,
+          rows: 3
+        });
+        components.push({
+          id: `rail-short-b${nn}`,
+          type: "HANGING_RAIL_SHORT",
+          offsetBelowShelfMm: fromDeciMm(railOffsetDmm),
+          targetClearDropMm: fromDeciMm(shortDropDmm)
         });
       } else {
         throw new Error(`Unsupported bay layout "${layout}".`);
@@ -3185,7 +3478,7 @@ var PartGraphBridge = (() => {
     bayCount: "How many bays should the wardrobe be divided into?",
     doorCount: "How many hinged doors across the front?",
     finishType: "Which finish: melamine, painted or veneer?",
-    bayLayouts: "What goes inside each bay, left to right? Options in this slice: full-height hanging, or short hanging over two adjustable shelves.",
+    bayLayouts: "What goes inside each bay, left to right? Options in this slice: full-height hanging, short hanging over two adjustable shelves, or a drawer bank with short hanging above.",
     furnitureScope: "This request falls outside the straight hinged wardrobe we can build today. Shall we proceed with a straight hinged wardrobe instead?"
   });
   var KIND_PREFIX = Object.freeze({
@@ -3196,7 +3489,8 @@ var PartGraphBridge = (() => {
   });
   var LAYOUT_LABELS = Object.freeze({
     [BAY_LAYOUT.LONG_HANGING]: "full-height hanging with a shelf over the top",
-    [BAY_LAYOUT.SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES]: "short hanging over two adjustable shelves, with a shelf over the top"
+    [BAY_LAYOUT.SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES]: "short hanging over two adjustable shelves, with a shelf over the top",
+    [BAY_LAYOUT.DRAWER_BANK_WITH_SHORT_HANGING]: "drawer bank at the bottom with short hanging above, and a shelf over the top"
   });
   function questionFor(gapRecord) {
     const base = PHRASING[gapRecord.key] ?? `Could you confirm ${gapRecord.key}?`;
@@ -3789,6 +4083,48 @@ var PartGraphBridge = (() => {
         unsupported: unsupportedRequest.unsupported
       };
     }
+    const DRAWER_INTENT = new RegExp(
+      [
+        "\\b(?:add|put|fit|install|include|want|need|like|have|give|get)\\b[\\s\\S]{0,48}\\bdrawers?\\b",
+        "\\b(?:\\d+|two|three|four|five|six)\\s+(?:[a-z-]+\\s+){0,2}?drawers?\\b",
+        "\\bdrawer\\s+bank\\b",
+        "\\bchest\\s+of\\s+drawers\\b"
+      ].join("|"),
+      "i"
+    );
+    const DRAWER_NEGATION = /\b(no|not|n't|never|without|don't|dont|do\s+not)\b/i;
+    if (DRAWER_INTENT.test(t) && !DRAWER_NEGATION.test(t)) {
+      const currentBays = currentFacts.bayCount || 2;
+      const layouts = currentFacts.bayLayouts ? [...currentFacts.bayLayouts] : ["LONG_HANGING", "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"];
+      while (layouts.length < currentBays) {
+        layouts.push("SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES");
+      }
+      const isLeft = /\b(?:left|bay\s*1)\b/i.test(t);
+      const isRight = /\b(?:right|bay\s*2)\b/i.test(t);
+      let targetBayIdx;
+      if (isLeft) targetBayIdx = 0;
+      else if (isRight) targetBayIdx = 1;
+      else {
+        targetBayIdx = layouts.findIndex((l) => l !== "DRAWER_BANK_WITH_SHORT_HANGING");
+        if (targetBayIdx === -1) targetBayIdx = 0;
+      }
+      if (targetBayIdx >= currentBays) {
+        return {
+          error: `Cannot modify bay ${targetBayIdx + 1} because this wardrobe only has ${currentBays} bay${currentBays > 1 ? "s" : ""}.`
+        };
+      }
+      const baySide = targetBayIdx === 0 ? "left" : targetBayIdx === 1 ? "right" : `bay ${targetBayIdx + 1}`;
+      if (layouts[targetBayIdx] === "DRAWER_BANK_WITH_SHORT_HANGING") {
+        return {
+          error: `The ${baySide} bay already has a drawer bank with short hanging above.`
+        };
+      }
+      layouts[targetBayIdx] = "DRAWER_BANK_WITH_SHORT_HANGING";
+      return {
+        changes: { bayLayouts: layouts },
+        assistantReply: `Added a drawer bank to the ${baySide} bay (with short hanging above).`
+      };
+    }
     const widthRaw = extractDimension(t, "width");
     if (widthRaw !== null) {
       const parsedDim = parseDimension(widthRaw);
@@ -4162,6 +4498,761 @@ var PartGraphBridge = (() => {
   }
   function hardwareStatusesOf(spec) {
     return Object.fromEntries(Object.entries(spec.hardware ?? {}).map(([k, v]) => [k, v?.status ?? "UNKNOWN"]));
+  }
+
+  // src/lib/drawing/projectionEngine.js
+  var SHEET_SIZES = Object.freeze({
+    A3: { widthMm: 420, heightMm: 297, marginMm: 10 },
+    A4: { widthMm: 297, heightMm: 210, marginMm: 8 }
+  });
+  function extractPanelDatums(part) {
+    const p = part.placement || {};
+    return {
+      id: part.id,
+      role: String(part.role || ""),
+      minX: (p.minXDmm ?? 0) / 10,
+      maxX: (p.maxXDmm ?? 0) / 10,
+      minY: (p.minYDmm ?? 0) / 10,
+      maxY: (p.maxYDmm ?? 0) / 10,
+      minZ: (p.minZDmm ?? 0) / 10,
+      maxZ: (p.maxZDmm ?? 0) / 10,
+      width: ((p.maxXDmm ?? 0) - (p.minXDmm ?? 0)) / 10,
+      height: ((p.maxYDmm ?? 0) - (p.minYDmm ?? 0)) / 10,
+      depth: ((p.maxZDmm ?? 0) - (p.minZDmm ?? 0)) / 10,
+      rawPart: part
+    };
+  }
+  function analyzePartGraphStructure(partGraph, options = {}) {
+    const parts = Array.isArray(partGraph?.parts) ? partGraph.parts : [];
+    const panels = parts.map(extractPanelDatums);
+    let minCarcassX = Infinity, maxCarcassX = -Infinity;
+    let minCarcassY = Infinity, maxCarcassY = -Infinity;
+    let minCarcassZ = Infinity, maxCarcassZ = -Infinity;
+    for (const p of panels) {
+      if (!p.role.startsWith("FILLER_") && !p.role.startsWith("PLINTH_") && p.role !== "DOOR_PANEL" && p.role !== "DOOR" && !p.role.startsWith("DRAWER_")) {
+        minCarcassX = Math.min(minCarcassX, p.minX);
+        maxCarcassX = Math.max(maxCarcassX, p.maxX);
+        minCarcassY = Math.min(minCarcassY, p.minY);
+        maxCarcassY = Math.max(maxCarcassY, p.maxY);
+        minCarcassZ = Math.min(minCarcassZ, p.minZ);
+        maxCarcassZ = Math.max(maxCarcassZ, p.maxZ);
+      }
+    }
+    let plinthHeightMm = 100;
+    const plinthParts = panels.filter((p) => p.role.includes("PLINTH"));
+    if (plinthParts.length > 0) {
+      plinthHeightMm = Math.max(...plinthParts.map((p) => p.maxY));
+    }
+    if (!Number.isFinite(minCarcassX)) minCarcassX = 0;
+    if (!Number.isFinite(maxCarcassX)) maxCarcassX = 1800;
+    if (!Number.isFinite(minCarcassY)) minCarcassY = plinthHeightMm;
+    if (!Number.isFinite(maxCarcassY)) maxCarcassY = 2400;
+    if (!Number.isFinite(minCarcassZ)) minCarcassZ = 20;
+    if (!Number.isFinite(maxCarcassZ)) maxCarcassZ = 600;
+    const carcassWidthMm = maxCarcassX - minCarcassX;
+    const totalHeightMm = Math.max(maxCarcassY, minCarcassY + (maxCarcassY - minCarcassY));
+    const carcassHeightMm = maxCarcassY - plinthHeightMm;
+    const carcassDepthMm = maxCarcassZ - minCarcassZ;
+    const totalDepthMm = maxCarcassZ;
+    const scribeLeftMm = Number(partGraph.scribeLeftMm ?? options.scribeLeftMm ?? 0);
+    const scribeRightMm = Number(partGraph.scribeRightMm ?? options.scribeRightMm ?? 0);
+    const roomWidthMm = carcassWidthMm + scribeLeftMm + scribeRightMm;
+    const dividers = panels.filter(
+      (p) => p.role === "DIVIDER" || p.role === PART_ROLES.DIVIDER_PANEL
+    ).sort((a, b) => a.minX - b.minX);
+    const leftGable = panels.find(
+      (p) => p.role === "GABLE_L" || p.role === "SIDE_PANEL_LEFT" || p.role === "GABLE" && p.minX < carcassWidthMm / 2
+    );
+    const gableThickness = leftGable ? leftGable.width : 18;
+    const bays = [];
+    const verticalBoundaries = [
+      minCarcassX + gableThickness,
+      ...dividers.flatMap((d) => [d.minX, d.maxX]),
+      maxCarcassX - gableThickness
+    ];
+    for (let i = 0; i < verticalBoundaries.length - 1; i += 2) {
+      const bayLeft = verticalBoundaries[i];
+      const bayRight = verticalBoundaries[i + 1];
+      bays.push({
+        bayIndex: bays.length + 1,
+        minX: bayLeft,
+        maxX: bayRight,
+        widthMm: Math.round((bayRight - bayLeft) * 10) / 10
+      });
+    }
+    return {
+      panels,
+      bounds: {
+        minCarcassX,
+        maxCarcassX,
+        minCarcassY,
+        maxCarcassY,
+        minCarcassZ,
+        maxCarcassZ,
+        carcassWidthMm,
+        totalHeightMm,
+        carcassHeightMm,
+        carcassDepthMm,
+        totalDepthMm,
+        plinthHeightMm,
+        scribeLeftMm,
+        scribeRightMm,
+        roomWidthMm,
+        gableThickness
+      },
+      bays,
+      dividers
+    };
+  }
+  function projectOrthographicViews(partGraph, options = {}) {
+    const structure = analyzePartGraphStructure(partGraph, options);
+    const { panels, bounds, bays } = structure;
+    const frontElevationPanels = [];
+    for (const p of panels) {
+      let strokeClass = "carcass-stroke";
+      let fillClass = "panel-fill";
+      let isDashed = false;
+      let isRevealOutline = false;
+      if (p.role.includes("PLINTH")) {
+        strokeClass = "plinth-stroke";
+        fillClass = "plinth-fill";
+      } else if (p.role === PART_ROLES.ADJUSTABLE_SHELF || p.role === "SHELF_ADJ") {
+        isDashed = true;
+        fillClass = "shelf-adj-fill";
+      } else if (p.role === PART_ROLES.DRAWER_FRONT || p.role === "DRAWER_FRONT") {
+        fillClass = "drawer-front-fill";
+        isRevealOutline = true;
+      } else if (p.role.startsWith("DRAWER_") && p.role !== "DRAWER_FRONT") {
+        continue;
+      } else if (p.role === "DOOR_PANEL" || p.role === "DOOR") {
+        continue;
+      }
+      frontElevationPanels.push({
+        id: p.id,
+        role: p.role,
+        x: p.minX,
+        y: p.minY,
+        width: p.width,
+        height: p.height,
+        strokeClass,
+        fillClass,
+        isDashed,
+        isRevealOutline
+      });
+    }
+    if (bounds.scribeLeftMm > 0) {
+      frontElevationPanels.push({
+        id: "FILLER_LEFT",
+        role: "FILLER_LEFT",
+        x: bounds.minCarcassX - bounds.scribeLeftMm,
+        y: 0,
+        width: bounds.scribeLeftMm,
+        height: bounds.totalHeightMm,
+        strokeClass: "scribe-stroke",
+        fillClass: "scribe-fill",
+        isDashed: false
+      });
+    }
+    if (bounds.scribeRightMm > 0) {
+      frontElevationPanels.push({
+        id: "FILLER_RIGHT",
+        role: "FILLER_RIGHT",
+        x: bounds.maxCarcassX,
+        y: 0,
+        width: bounds.scribeRightMm,
+        height: bounds.totalHeightMm,
+        strokeClass: "scribe-stroke",
+        fillClass: "scribe-fill",
+        isDashed: false
+      });
+    }
+    const frontDimensions = [
+      {
+        axis: "X",
+        tier: "OVERALL",
+        start: bounds.minCarcassX - bounds.scribeLeftMm,
+        end: bounds.maxCarcassX + bounds.scribeRightMm,
+        elevation: bounds.totalHeightMm + 90,
+        label: `${bounds.roomWidthMm} mm (Wall-to-Wall)`
+      },
+      {
+        axis: "X",
+        tier: "CARCASS",
+        start: bounds.minCarcassX,
+        end: bounds.maxCarcassX,
+        elevation: bounds.totalHeightMm + 45,
+        label: `${bounds.carcassWidthMm} mm (Carcass)`
+      },
+      {
+        axis: "Y",
+        tier: "SUB",
+        start: 0,
+        end: bounds.plinthHeightMm,
+        elevation: bounds.minCarcassX - bounds.scribeLeftMm - 45,
+        label: `${bounds.plinthHeightMm} mm`
+      },
+      {
+        axis: "Y",
+        tier: "OVERALL",
+        start: 0,
+        end: bounds.totalHeightMm,
+        elevation: bounds.minCarcassX - bounds.scribeLeftMm - 90,
+        label: `${bounds.totalHeightMm} mm (Height)`
+      }
+    ];
+    for (const bay of bays) {
+      frontDimensions.push({
+        axis: "X",
+        tier: "BAYS",
+        start: bay.minX,
+        end: bay.maxX,
+        elevation: -45,
+        label: `Bay ${bay.bayIndex}: ${bay.widthMm} mm`
+      });
+    }
+    const drawerFrontPanels = panels.filter((p) => p.role === "DRAWER_FRONT" || p.role === PART_ROLES.DRAWER_FRONT);
+    for (const df of drawerFrontPanels) {
+      frontDimensions.push({
+        axis: "Y",
+        tier: "DRAWER_FRONT",
+        start: df.minY,
+        end: df.maxY,
+        elevation: df.maxX + 35,
+        label: `${Math.round(df.height * 10) / 10} mm (DF)`
+      });
+    }
+    const crossSectionPanels = [];
+    crossSectionPanels.push({
+      id: "SEC_TOP",
+      role: "TOP_PANEL",
+      z: bounds.minCarcassZ,
+      y: bounds.totalHeightMm - bounds.gableThickness,
+      depth: bounds.carcassDepthMm,
+      thickness: bounds.gableThickness
+    });
+    crossSectionPanels.push({
+      id: "SEC_BOT",
+      role: "BOTTOM_PANEL",
+      z: bounds.minCarcassZ,
+      y: bounds.plinthHeightMm,
+      depth: bounds.carcassDepthMm,
+      thickness: bounds.gableThickness
+    });
+    crossSectionPanels.push({
+      id: "SEC_PLINTH_F",
+      role: "PLINTH_FRONT",
+      z: bounds.minCarcassZ,
+      y: 0,
+      depth: bounds.gableThickness,
+      thickness: bounds.plinthHeightMm
+    });
+    crossSectionPanels.push({
+      id: "SEC_PLINTH_R",
+      role: "PLINTH_REAR",
+      z: bounds.maxCarcassZ - bounds.gableThickness,
+      y: 0,
+      depth: bounds.gableThickness,
+      thickness: bounds.plinthHeightMm
+    });
+    crossSectionPanels.push({
+      id: "SEC_BACK",
+      role: "BACK_PANEL",
+      z: bounds.maxCarcassZ - 20 - 6,
+      y: bounds.plinthHeightMm + 7,
+      depth: 6,
+      thickness: bounds.carcassHeightMm - 14,
+      isHatched: true
+    });
+    const shelves = panels.filter(
+      (p) => p.role.includes("SHELF") && p.role !== "TOP_PANEL" && p.role !== "BOTTOM_PANEL"
+    );
+    for (const s of shelves) {
+      crossSectionPanels.push({
+        id: `SEC_${s.id}`,
+        role: s.role,
+        z: s.minZ,
+        y: s.minY,
+        depth: s.depth,
+        thickness: s.height,
+        isDashed: s.role.includes("ADJ")
+      });
+    }
+    const drawerFronts = panels.filter((p) => p.role === "DRAWER_FRONT" || p.role === PART_ROLES.DRAWER_FRONT);
+    for (const df of drawerFronts) {
+      crossSectionPanels.push({
+        id: `SEC_DF_${df.id}`,
+        role: "DRAWER_FRONT",
+        z: 0,
+        y: df.minY,
+        depth: 18,
+        thickness: df.height
+      });
+      const boxDepth = Math.max(350, bounds.carcassDepthMm - 80);
+      crossSectionPanels.push({
+        id: `SEC_DBOX_${df.id}`,
+        role: "DRAWER_BOX",
+        z: 20,
+        y: df.minY + 15,
+        depth: boxDepth,
+        thickness: Math.max(100, df.height - 40),
+        isInternalBox: true
+      });
+    }
+    const crossSectionDimensions = [
+      {
+        axis: "Z",
+        tier: "OVERALL",
+        start: 0,
+        end: bounds.totalDepthMm,
+        elevation: bounds.totalHeightMm + 45,
+        label: `${bounds.totalDepthMm} mm (Total Depth)`
+      },
+      {
+        axis: "Z",
+        tier: "CARCASS",
+        start: bounds.minCarcassZ,
+        end: bounds.maxCarcassZ,
+        elevation: bounds.totalHeightMm + 15,
+        label: `${bounds.carcassDepthMm} mm (Carcass Depth)`
+      },
+      {
+        axis: "Z",
+        tier: "GROOVE",
+        start: bounds.maxCarcassZ - 20,
+        end: bounds.maxCarcassZ,
+        elevation: bounds.plinthHeightMm + 50,
+        label: "20 mm (Groove)"
+      },
+      {
+        axis: "Y",
+        tier: "PLINTH_DATUM",
+        start: 0,
+        end: bounds.plinthHeightMm,
+        elevation: -20,
+        label: `${bounds.plinthHeightMm} mm (Plinth)`
+      }
+    ];
+    const rails = panels.filter((p) => p.role.includes("RAIL"));
+    for (const r of rails) {
+      const railZ = r.minZ > 0 ? (r.minZ + r.maxZ) / 2 : bounds.minCarcassZ + bounds.carcassDepthMm / 2;
+      const railY = (r.minY + r.maxY) / 2;
+      crossSectionPanels.push({
+        id: `SEC_${r.id}`,
+        role: "HANGING_RAIL",
+        z: railZ - 12.5,
+        y: railY - 12.5,
+        depth: 25,
+        thickness: 25,
+        isCircle: true
+      });
+      crossSectionDimensions.push({
+        axis: "Y",
+        tier: "RAIL_DROP",
+        start: railY,
+        end: bounds.totalHeightMm - bounds.gableThickness,
+        elevation: bounds.totalDepthMm + 25,
+        label: `${Math.round((bounds.totalHeightMm - bounds.gableThickness - railY) * 10) / 10} mm (Rail Drop)`
+      });
+    }
+    const planPanels = [];
+    planPanels.push({
+      id: "PLAN_GABLE_L",
+      x: bounds.minCarcassX,
+      z: bounds.minCarcassZ,
+      width: bounds.gableThickness,
+      depth: bounds.carcassDepthMm
+    });
+    planPanels.push({
+      id: "PLAN_GABLE_R",
+      x: bounds.maxCarcassX - bounds.gableThickness,
+      z: bounds.minCarcassZ,
+      width: bounds.gableThickness,
+      depth: bounds.carcassDepthMm
+    });
+    for (const d of structure.dividers) {
+      planPanels.push({
+        id: `PLAN_${d.id}`,
+        x: d.minX,
+        z: d.minZ,
+        width: d.width,
+        depth: d.depth
+      });
+    }
+    planPanels.push({
+      id: "PLAN_BACK",
+      x: bounds.minCarcassX + bounds.gableThickness / 2,
+      z: bounds.maxCarcassZ - 26,
+      width: bounds.carcassWidthMm - bounds.gableThickness,
+      depth: 6
+    });
+    if (bounds.scribeLeftMm > 0) {
+      planPanels.push({
+        id: "PLAN_SCRIBE_L",
+        x: bounds.minCarcassX - bounds.scribeLeftMm,
+        z: bounds.minCarcassZ,
+        width: bounds.scribeLeftMm,
+        depth: 18,
+        isScribe: true
+      });
+    }
+    if (bounds.scribeRightMm > 0) {
+      planPanels.push({
+        id: "PLAN_SCRIBE_R",
+        x: bounds.maxCarcassX,
+        z: bounds.minCarcassZ,
+        width: bounds.scribeRightMm,
+        depth: 18,
+        isScribe: true
+      });
+    }
+    const planDimensions = [
+      {
+        axis: "X",
+        tier: "ROOM",
+        start: bounds.minCarcassX - bounds.scribeLeftMm,
+        end: bounds.maxCarcassX + bounds.scribeRightMm,
+        elevation: -30,
+        label: `${bounds.roomWidthMm} mm`
+      },
+      {
+        axis: "Z",
+        tier: "DEPTH",
+        start: bounds.minCarcassZ,
+        end: bounds.maxCarcassZ,
+        elevation: bounds.maxCarcassX + bounds.scribeRightMm + 30,
+        label: `${bounds.carcassDepthMm} mm`
+      }
+    ];
+    return {
+      sourceSpecId: partGraph.sourceSpecId || "furnispec-wardrobe",
+      revision: partGraph.revision ?? options.revision ?? 1,
+      bounds,
+      bays,
+      views: {
+        frontElevation: {
+          panels: frontElevationPanels,
+          dimensions: frontDimensions
+        },
+        crossSection: {
+          panels: crossSectionPanels,
+          dimensions: crossSectionDimensions
+        },
+        plan: {
+          panels: planPanels,
+          dimensions: planDimensions
+        }
+      }
+    };
+  }
+  function renderDimensionSVG(x1, y1, x2, y2, text, options = {}) {
+    const { isVertical = false, tickSize = 2, textOffset = 2.5 } = options;
+    let out = "";
+    out += `<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" class="dim-line" />
+`;
+    if (isVertical) {
+      out += `<line x1="${(x1 - tickSize).toFixed(2)}" y1="${(y1 + tickSize).toFixed(2)}" x2="${(x1 + tickSize).toFixed(2)}" y2="${(y1 - tickSize).toFixed(2)}" class="dim-tick" />
+`;
+      out += `<line x1="${(x2 - tickSize).toFixed(2)}" y1="${(y2 + tickSize).toFixed(2)}" x2="${(x2 + tickSize).toFixed(2)}" y2="${(y2 - tickSize).toFixed(2)}" class="dim-tick" />
+`;
+      const midY = (y1 + y2) / 2;
+      out += `<text x="${(x1 - textOffset).toFixed(2)}" y="${midY.toFixed(2)}" class="dim-text" text-anchor="middle" transform="rotate(-90 ${(x1 - textOffset).toFixed(2)} ${midY.toFixed(2)})">${text}</text>
+`;
+    } else {
+      out += `<line x1="${(x1 - tickSize).toFixed(2)}" y1="${(y1 + tickSize).toFixed(2)}" x2="${(x1 + tickSize).toFixed(2)}" y2="${(y1 - tickSize).toFixed(2)}" class="dim-tick" />
+`;
+      out += `<line x1="${(x2 - tickSize).toFixed(2)}" y1="${(y2 + tickSize).toFixed(2)}" x2="${(x2 + tickSize).toFixed(2)}" y2="${(y2 - tickSize).toFixed(2)}" class="dim-tick" />
+`;
+      const midX = (x1 + x2) / 2;
+      out += `<text x="${midX.toFixed(2)}" y="${(y1 - textOffset).toFixed(2)}" class="dim-text" text-anchor="middle">${text}</text>
+`;
+    }
+    return out;
+  }
+  function generateShopDrawingsSVG(partGraph, options = {}) {
+    const sheet = SHEET_SIZES[options.sheetSize || "A3"] || SHEET_SIZES.A3;
+    const proj = projectOrthographicViews(partGraph, options);
+    const { bounds, views } = proj;
+    const sheetW = sheet.widthMm;
+    const sheetH = sheet.heightMm;
+    const m = sheet.marginMm;
+    const scaleElevation = Math.min(200 / (bounds.roomWidthMm + 180), 200 / (bounds.totalHeightMm + 180));
+    const scaleSection = Math.min(130 / (bounds.totalDepthMm + 100), 75 / (bounds.totalHeightMm + 100));
+    const scalePlan = Math.min(130 / (bounds.roomWidthMm + 80), 50 / (bounds.totalDepthMm + 60));
+    let svg = `<?xml version="1.0" encoding="UTF-8"?>
+`;
+    svg += `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${sheetW} ${sheetH}" width="${sheetW}mm" height="${sheetH}mm">
+`;
+    svg += `  <defs>
+    <style>
+      .sheet-border { fill: none; stroke: #111827; stroke-width: 0.7; }
+      .sheet-margin { fill: none; stroke: #4b5563; stroke-width: 0.35; }
+      .grid-line { stroke: #e5e7eb; stroke-width: 0.2; }
+      .title-block-border { fill: #f9fafb; stroke: #111827; stroke-width: 0.5; }
+      .title-block-grid { stroke: #9ca3af; stroke-width: 0.25; }
+      .title-main { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: 700; font-size: 3.5px; fill: #111827; }
+      .title-sub { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 2.2px; fill: #4b5563; }
+      .title-val { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: 600; font-size: 2.4px; fill: #1f2937; }
+      .view-header { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: 700; font-size: 3.0px; fill: #1e3a8a; }
+      .view-scale { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 2.0px; fill: #6b7280; }
+      .carcass-stroke { fill: #fefce8; stroke: #1e293b; stroke-width: 0.35; }
+      .plinth-stroke { fill: #f3f4f6; stroke: #374151; stroke-width: 0.35; }
+      .scribe-stroke { fill: #f1f5f9; stroke: #475569; stroke-width: 0.35; stroke-dasharray: 1.5, 0.8; }
+      .shelf-adj-fill { fill: #eff6ff; stroke: #2563eb; stroke-width: 0.3; stroke-dasharray: 2.0, 1.0; }
+      .drawer-front-fill { fill: #fdf4ff; stroke: #7e22ce; stroke-width: 0.35; }
+      .reveal-outline { fill: none; stroke: #6b21a8; stroke-width: 0.25; }
+      .section-cut-hatch { fill: #e0e7ff; stroke: #1e3a8a; stroke-width: 0.35; }
+      .internal-box { fill: #fffbeb; stroke: #b45309; stroke-width: 0.25; stroke-dasharray: 2.0, 1.0; }
+      .dim-line { stroke: #2563eb; stroke-width: 0.22; }
+      .dim-tick { stroke: #1d4ed8; stroke-width: 0.35; }
+      .dim-text { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: 600; font-size: 2.1px; fill: #1e40af; }
+      .legend-title { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: 700; font-size: 2.4px; fill: #111827; }
+      .legend-item { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 1.9px; fill: #374151; }
+    </style>
+  </defs>
+`;
+    svg += `  <!-- ISO A3 Drawing Sheet Border -->
+`;
+    svg += `  <rect x="0" y="0" width="${sheetW}" height="${sheetH}" fill="#ffffff" />
+`;
+    svg += `  <rect x="${m}" y="${m}" width="${sheetW - 2 * m}" height="${sheetH - 2 * m}" class="sheet-margin" />
+`;
+    svg += `  <rect x="${m + 2}" y="${m + 2}" width="${sheetW - 2 * m - 4}" height="${sheetH - 2 * m - 4}" class="sheet-border" />
+`;
+    const feX = m + 22;
+    const feY = sheetH - m - 42;
+    svg += `
+  <!-- VIEW A: FRONT ELEVATION (OPEN CARCASS) -->
+`;
+    svg += `  <g id="view_front_elevation">
+`;
+    svg += `    <text x="${feX}" y="${m + 16}" class="view-header">VIEW A: FRONT ELEVATION (OPEN CARCASS)</text>
+`;
+    svg += `    <text x="${feX}" y="${m + 20}" class="view-scale">SCALE 1:${Math.round(1 / scaleElevation)} (ALL RUNNING DIMS IN MM)</text>
+`;
+    for (const p of views.frontElevation.panels) {
+      const px = feX + (p.x + bounds.scribeLeftMm) * scaleElevation;
+      const py = feY - (p.y + p.height) * scaleElevation;
+      const pw = p.width * scaleElevation;
+      const ph = p.height * scaleElevation;
+      const cls = p.isRevealOutline ? "drawer-front-fill" : p.isDashed ? "shelf-adj-fill" : p.strokeClass;
+      svg += `    <rect id="${p.id}" x="${px.toFixed(2)}" y="${py.toFixed(2)}" width="${pw.toFixed(2)}" height="${ph.toFixed(2)}" class="${cls}" />
+`;
+      if (p.isRevealOutline) {
+        svg += `    <rect x="${(px + 0.4).toFixed(2)}" y="${(py + 0.4).toFixed(2)}" width="${Math.max(0.1, pw - 0.8).toFixed(2)}" height="${Math.max(0.1, ph - 0.8).toFixed(2)}" class="reveal-outline" />
+`;
+      }
+    }
+    for (const d of views.frontElevation.dimensions) {
+      if (d.axis === "X") {
+        const x1 = feX + (d.start + bounds.scribeLeftMm) * scaleElevation;
+        const x2 = feX + (d.end + bounds.scribeLeftMm) * scaleElevation;
+        const dimY = feY - d.elevation * scaleElevation;
+        svg += `    ${renderDimensionSVG(x1, dimY, x2, dimY, d.label, { isVertical: false })}`;
+        svg += `    <line x1="${x1.toFixed(2)}" y1="${(dimY + 1.5).toFixed(2)}" x2="${x1.toFixed(2)}" y2="${feY.toFixed(2)}" stroke="#93c5fd" stroke-width="0.15" stroke-dasharray="1.0, 0.5" />
+`;
+        svg += `    <line x1="${x2.toFixed(2)}" y1="${(dimY + 1.5).toFixed(2)}" x2="${x2.toFixed(2)}" y2="${feY.toFixed(2)}" stroke="#93c5fd" stroke-width="0.15" stroke-dasharray="1.0, 0.5" />
+`;
+      } else if (d.axis === "Y") {
+        const y1 = feY - d.start * scaleElevation;
+        const y2 = feY - d.end * scaleElevation;
+        const dimX = feX + (d.elevation + bounds.scribeLeftMm) * scaleElevation;
+        svg += `    ${renderDimensionSVG(dimX, y1, dimX, y2, d.label, { isVertical: true })}`;
+        svg += `    <line x1="${dimX.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${feX.toFixed(2)}" y2="${y1.toFixed(2)}" stroke="#93c5fd" stroke-width="0.15" stroke-dasharray="1.0, 0.5" />
+`;
+        svg += `    <line x1="${dimX.toFixed(2)}" y1="${y2.toFixed(2)}" x2="${feX.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="#93c5fd" stroke-width="0.15" stroke-dasharray="1.0, 0.5" />
+`;
+      }
+    }
+    svg += `  </g>
+`;
+    const csX = sheetW - m - 146;
+    const csY = m + 218;
+    svg += `
+  <!-- VIEW B: CROSS-SECTION A-A -->
+`;
+    svg += `  <g id="view_cross_section">
+`;
+    svg += `    <text x="${csX}" y="${m + 148}" class="view-header">VIEW B: CROSS-SECTION A-A (SIDE PROFILE)</text>
+`;
+    svg += `    <text x="${csX}" y="${m + 152}" class="view-scale">SCALE 1:${Math.round(1 / scaleSection)} (CARCASS DEPTH &amp; BACK GROOVE)</text>
+`;
+    for (const p of views.crossSection.panels) {
+      const px = csX + p.z * scaleSection;
+      const py = csY - (p.y + p.thickness) * scaleSection;
+      const pw = p.depth * scaleSection;
+      const ph = p.thickness * scaleSection;
+      const cls = p.isInternalBox ? "internal-box" : p.isHatched ? "section-cut-hatch" : "carcass-stroke";
+      svg += `    <rect id="${p.id}" x="${px.toFixed(2)}" y="${py.toFixed(2)}" width="${pw.toFixed(2)}" height="${ph.toFixed(2)}" class="${cls}" />
+`;
+    }
+    for (const d of views.crossSection.dimensions) {
+      const x1 = csX + d.start * scaleSection;
+      const x2 = csX + d.end * scaleSection;
+      const dimY = csY - d.elevation * scaleSection;
+      svg += `    ${renderDimensionSVG(x1, dimY, x2, dimY, d.label, { isVertical: false })}`;
+    }
+    svg += `  </g>
+`;
+    const pvX = sheetW - m - 146;
+    const pvY = m + 80;
+    svg += `
+  <!-- VIEW C: PLAN VIEW (TOP-DOWN) -->
+`;
+    svg += `  <g id="view_plan_top_down">
+`;
+    svg += `    <text x="${pvX}" y="${m + 68}" class="view-header">VIEW C: PLAN VIEW (TOP-DOWN)</text>
+`;
+    svg += `    <text x="${pvX}" y="${m + 72}" class="view-scale">SCALE 1:${Math.round(1 / scalePlan)} (WALL SCRIBES &amp; GABLES)</text>
+`;
+    for (const p of views.plan.panels) {
+      const px = pvX + (p.x + bounds.scribeLeftMm) * scalePlan;
+      const py = pvY + (p.z - bounds.minCarcassZ) * scalePlan;
+      const pw = p.width * scalePlan;
+      const ph = p.depth * scalePlan;
+      const cls = p.isScribe ? "scribe-stroke" : "carcass-stroke";
+      svg += `    <rect id="${p.id}" x="${px.toFixed(2)}" y="${py.toFixed(2)}" width="${pw.toFixed(2)}" height="${ph.toFixed(2)}" class="${cls}" />
+`;
+    }
+    svg += `  </g>
+`;
+    const legX = sheetW - m - 146;
+    const legY = m + 14;
+    const carcassCode = partGraph.metadata?.materials?.carcass?.code || "W980_SM_WHITE_18";
+    const facadeCode = partGraph.metadata?.materials?.fronts?.code || "H3303_ST10_OAK_18";
+    svg += `
+  <!-- MATERIAL & HARDWARE SCHEDULE (TOP RIGHT) -->
+`;
+    svg += `  <g id="material_legend">
+`;
+    svg += `    <rect x="${legX}" y="${legY}" width="144" height="46" fill="#f8fafc" stroke="#64748b" stroke-width="0.3" rx="1.0" />
+`;
+    svg += `    <text x="${legX + 4}" y="${legY + 6}" class="legend-title">MATERIAL &amp; HARDWARE SCHEDULE</text>
+`;
+    svg += `    <text x="${legX + 4}" y="${legY + 12}" class="legend-item">\u2022 CARCASS STOCK: ${carcassCode} (18.0 mm MFC)</text>
+`;
+    svg += `    <text x="${legX + 4}" y="${legY + 18}" class="legend-item">\u2022 FACADE STOCK: ${facadeCode} (18.0 mm MFC)</text>
+`;
+    svg += `    <text x="${legX + 4}" y="${legY + 24}" class="legend-item">\u2022 BACK PANEL: 6.0 mm HDF Insert into 7.0 mm Groove</text>
+`;
+    svg += `    <text x="${legX + 4}" y="${legY + 30}" class="legend-item">\u2022 DRAWER PACK: 15.0 mm Sides/Back, 6.0 mm Bottom, 18.0 mm Front</text>
+`;
+    svg += `    <text x="${legX + 4}" y="${legY + 36}" class="legend-item">\u2022 EDGE-BANDING (1.0 mm ABS): All exposed carcass front edges &amp; facades</text>
+`;
+    svg += `    <text x="${legX + 4}" y="${legY + 42}" class="legend-item">\u2022 EDGE-BANDING (0.4 mm Melamine): Shelves front face (adjustable)</text>
+`;
+    svg += `  </g>
+`;
+    const tbX = sheetW - m - 146;
+    const tbY = sheetH - m - 56;
+    const tbW = 144;
+    const tbH = 52;
+    const dateStr = options.date || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+    svg += `
+  <!-- TITLE BLOCK (BOTTOM RIGHT) -->
+`;
+    svg += `  <g id="title_block">
+`;
+    svg += `    <rect x="${tbX}" y="${tbY}" width="${tbW}" height="${tbH}" class="title-block-border" />
+`;
+    svg += `    <line x1="${tbX}" y1="${tbY + 13}" x2="${tbX + tbW}" y2="${tbY + 13}" class="title-block-grid" />
+`;
+    svg += `    <line x1="${tbX}" y1="${tbY + 31}" x2="${tbX + tbW}" y2="${tbY + 31}" class="title-block-grid" />
+`;
+    svg += `    <line x1="${tbX + 72}" y1="${tbY + 13}" x2="${tbX + 72}" y2="${tbY + tbH}" class="title-block-grid" />
+`;
+    svg += `    <!-- Project & Organization Header -->
+`;
+    svg += `    <text x="${tbX + 4}" y="${tbY + 5}" class="title-main">${options.projectName || "FurniAI Engineering Systems"}</text>
+`;
+    svg += `    <text x="${tbX + 4}" y="${tbY + 10}" class="title-sub">AUTOMATED SHOP DRAWING &amp; FABRICATION SPECIFICATION</text>
+`;
+    svg += `    <!-- Design ID & Revision -->
+`;
+    svg += `    <text x="${tbX + 4}" y="${tbY + 18}" class="title-sub">DESIGN ID:</text>
+`;
+    svg += `    <text x="${tbX + 4}" y="${tbY + 24}" class="title-val">${proj.sourceSpecId}</text>
+`;
+    svg += `    <text x="${tbX + 76}" y="${tbY + 18}" class="title-sub">REVISION:</text>
+`;
+    svg += `    <text x="${tbX + 76}" y="${tbY + 24}" class="title-val">Rev ${proj.revision}</text>
+`;
+    svg += `    <!-- Drawing Status & Scale -->
+`;
+    svg += `    <text x="${tbX + 4}" y="${tbY + 37}" class="title-sub">QUALIFICATION STATUS:</text>
+`;
+    svg += `    <text x="${tbX + 4}" y="${tbY + 43}" class="title-val">WORKSHOP REVIEW (NOT CNC)</text>
+`;
+    svg += `    <text x="${tbX + 76}" y="${tbY + 37}" class="title-sub">SHEET SIZE / DATE:</text>
+`;
+    svg += `    <text x="${tbX + 76}" y="${tbY + 43}" class="title-val">${sheet.widthMm}x${sheet.heightMm} mm (A3) | ${dateStr}</text>
+`;
+    svg += `    <text x="${tbX + 4}" y="${tbY + 49}" class="title-sub">UNITS:</text>
+`;
+    svg += `    <text x="${tbX + 16}" y="${tbY + 49}" class="title-val">MILLIMETRES (mm)</text>
+`;
+    svg += `    <text x="${tbX + 76}" y="${tbY + 49}" class="title-sub">ACCURACY: \xB10.5 mm</text>
+`;
+    svg += `  </g>
+`;
+    svg += `</svg>
+`;
+    return svg;
+  }
+  function exportShopDrawingsSVG(partGraph, filename, options = {}) {
+    const svgContent = generateShopDrawingsSVG(partGraph, options);
+    const name = filename || `${partGraph.sourceSpecId || "wardrobe"}-shop-drawings.svg`;
+    if (typeof window !== "undefined" && typeof document !== "undefined") {
+      const blob = new Blob([svgContent], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+    return {
+      filename: name,
+      mimeType: "image/svg+xml",
+      content: svgContent
+    };
+  }
+  function exportShopDrawingsPDF(partGraph, filename, options = {}) {
+    const svgContent = generateShopDrawingsSVG(partGraph, options);
+    const name = filename || `${partGraph.sourceSpecId || "wardrobe"}-shop-drawings.pdf`;
+    if (typeof window !== "undefined" && typeof document !== "undefined") {
+      const printWindow = window.open("", "_blank");
+      if (printWindow) {
+        printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>${name}</title>
+            <style>
+              @page { size: A3 landscape; margin: 0; }
+              body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background: #fff; }
+              svg { width: 100vw; height: 100vh; max-width: 420mm; max-height: 297mm; }
+            </style>
+          </head>
+          <body>
+            ${svgContent}
+            <script>
+              window.onload = function() {
+                window.print();
+              };
+            <\/script>
+          </body>
+        </html>
+      `);
+        printWindow.document.close();
+      }
+    }
+    return {
+      filename: name,
+      mimeType: "application/pdf",
+      content: svgContent
+    };
   }
 
   // src/lib/adapters/browserBridge.js

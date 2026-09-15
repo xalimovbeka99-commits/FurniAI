@@ -31,6 +31,11 @@ import {
   parseDimension,
   ACCEPTED_DIMENSION_UNITS,
 } from "../conversation/clarifyInput.js";
+import {
+  generateShopDrawingsSVG,
+  exportShopDrawingsSVG,
+  exportShopDrawingsPDF,
+} from "../drawing/projectionEngine.js";
 
 export {
   goldenSpec,
@@ -56,6 +61,9 @@ export {
   parseAndValidateClarifyInput,
   parseDimension,
   ACCEPTED_DIMENSION_UNITS,
+  generateShopDrawingsSVG,
+  exportShopDrawingsSVG,
+  exportShopDrawingsPDF,
 };
 
 const FALLBACK_MAT = {

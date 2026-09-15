@@ -285,6 +285,19 @@ export function projectOrthographicViews(partGraph, options = {}) {
     });
   }
 
+  // Running drawer front height dimensions
+  const drawerFrontPanels = panels.filter((p) => p.role === "DRAWER_FRONT" || p.role === PART_ROLES.DRAWER_FRONT);
+  for (const df of drawerFrontPanels) {
+    frontDimensions.push({
+      axis: "Y",
+      tier: "DRAWER_FRONT",
+      start: df.minY,
+      end: df.maxY,
+      elevation: df.maxX + 35,
+      label: `${Math.round(df.height * 10) / 10} mm (DF)`,
+    });
+  }
+
   // 2. CROSS-SECTION PROJECTION (Section A-A, looking side profile)
   const crossSectionPanels = [];
   crossSectionPanels.push({
@@ -391,7 +404,39 @@ export function projectOrthographicViews(partGraph, options = {}) {
       elevation: bounds.plinthHeightMm + 50,
       label: "20 mm (Groove)",
     },
+    {
+      axis: "Y",
+      tier: "PLINTH_DATUM",
+      start: 0,
+      end: bounds.plinthHeightMm,
+      elevation: -20,
+      label: `${bounds.plinthHeightMm} mm (Plinth)`,
+    },
   ];
+
+  // Hanging rail cross-section & drop datum
+  const rails = panels.filter((p) => p.role.includes("RAIL"));
+  for (const r of rails) {
+    const railZ = r.minZ > 0 ? (r.minZ + r.maxZ) / 2 : bounds.minCarcassZ + bounds.carcassDepthMm / 2;
+    const railY = (r.minY + r.maxY) / 2;
+    crossSectionPanels.push({
+      id: `SEC_${r.id}`,
+      role: "HANGING_RAIL",
+      z: railZ - 12.5,
+      y: railY - 12.5,
+      depth: 25,
+      thickness: 25,
+      isCircle: true,
+    });
+    crossSectionDimensions.push({
+      axis: "Y",
+      tier: "RAIL_DROP",
+      start: railY,
+      end: bounds.totalHeightMm - bounds.gableThickness,
+      elevation: bounds.totalDepthMm + 25,
+      label: `${Math.round((bounds.totalHeightMm - bounds.gableThickness - railY) * 10) / 10} mm (Rail Drop)`,
+    });
+  }
 
   // 3. PLAN VIEW PROJECTION (Top-Down Horizontal Cut)
   const planPanels = [];
@@ -610,13 +655,13 @@ export function generateShopDrawingsSVG(partGraph, options = {}) {
   }
   svg += `  </g>\n`;
 
-  // VIEW B: CROSS-SECTION A-A
-  const csX = sheetW - m - 145;
-  const csY = m + 140;
+  // VIEW B: CROSS-SECTION A-A (Right column, middle)
+  const csX = sheetW - m - 146;
+  const csY = m + 218;
   svg += `\n  <!-- VIEW B: CROSS-SECTION A-A -->\n`;
   svg += `  <g id="view_cross_section">\n`;
-  svg += `    <text x="${csX}" y="${m + 80}" class="view-header">VIEW B: CROSS-SECTION A-A (SIDE PROFILE)</text>\n`;
-  svg += `    <text x="${csX}" y="${m + 84}" class="view-scale">SCALE 1:${Math.round(1 / scaleSection)} (CARCASS DEPTH &amp; BACK GROOVE)</text>\n`;
+  svg += `    <text x="${csX}" y="${m + 148}" class="view-header">VIEW B: CROSS-SECTION A-A (SIDE PROFILE)</text>\n`;
+  svg += `    <text x="${csX}" y="${m + 152}" class="view-scale">SCALE 1:${Math.round(1 / scaleSection)} (CARCASS DEPTH &amp; BACK GROOVE)</text>\n`;
 
   for (const p of views.crossSection.panels) {
     const px = csX + p.z * scaleSection;
@@ -635,13 +680,13 @@ export function generateShopDrawingsSVG(partGraph, options = {}) {
   }
   svg += `  </g>\n`;
 
-  // VIEW C: PLAN VIEW (TOP-DOWN)
-  const pvX = sheetW - m - 145;
-  const pvY = m + 32;
+  // VIEW C: PLAN VIEW (Right column, below material schedule)
+  const pvX = sheetW - m - 146;
+  const pvY = m + 80;
   svg += `\n  <!-- VIEW C: PLAN VIEW (TOP-DOWN) -->\n`;
   svg += `  <g id="view_plan_top_down">\n`;
-  svg += `    <text x="${pvX}" y="${m + 16}" class="view-header">VIEW C: PLAN VIEW (TOP-DOWN)</text>\n`;
-  svg += `    <text x="${pvX}" y="${m + 20}" class="view-scale">SCALE 1:${Math.round(1 / scalePlan)} (WALL SCRIBES &amp; GABLES)</text>\n`;
+  svg += `    <text x="${pvX}" y="${m + 68}" class="view-header">VIEW C: PLAN VIEW (TOP-DOWN)</text>\n`;
+  svg += `    <text x="${pvX}" y="${m + 72}" class="view-scale">SCALE 1:${Math.round(1 / scalePlan)} (WALL SCRIBES &amp; GABLES)</text>\n`;
 
   for (const p of views.plan.panels) {
     const px = pvX + (p.x + bounds.scribeLeftMm) * scalePlan;
@@ -653,54 +698,57 @@ export function generateShopDrawingsSVG(partGraph, options = {}) {
   }
   svg += `  </g>\n`;
 
-  // MATERIAL LEGEND & EDGE-BANDING SCHEDULE
-  const legX = sheetW - m - 150;
-  const legY = sheetH - m - 110;
-  svg += `\n  <!-- MATERIAL & HARDWARE SCHEDULE -->\n`;
+  // MATERIAL & EDGE-BANDING SCHEDULE (Top-Right)
+  const legX = sheetW - m - 146;
+  const legY = m + 14;
+  const carcassCode = partGraph.metadata?.materials?.carcass?.code || "W980_SM_WHITE_18";
+  const facadeCode = partGraph.metadata?.materials?.fronts?.code || "H3303_ST10_OAK_18";
+
+  svg += `\n  <!-- MATERIAL & HARDWARE SCHEDULE (TOP RIGHT) -->\n`;
   svg += `  <g id="material_legend">\n`;
-  svg += `    <rect x="${legX}" y="${legY}" width="146" height="46" fill="#f8fafc" stroke="#64748b" stroke-width="0.3" rx="1.0" />\n`;
+  svg += `    <rect x="${legX}" y="${legY}" width="144" height="46" fill="#f8fafc" stroke="#64748b" stroke-width="0.3" rx="1.0" />\n`;
   svg += `    <text x="${legX + 4}" y="${legY + 6}" class="legend-title">MATERIAL &amp; HARDWARE SCHEDULE</text>\n`;
-  svg += `    <text x="${legX + 4}" y="${legY + 12}" class="legend-item">• CARCASS &amp; GABLES: 18.0 mm Melamine Faced Board (MFC)</text>\n`;
-  svg += `    <text x="${legX + 4}" y="${legY + 18}" class="legend-item">• BACK PANEL: 6.0 mm HDF Insert into 7.0 mm Groove</text>\n`;
-  svg += `    <text x="${legX + 4}" y="${legY + 24}" class="legend-item">• DRAWER PACK: 15.0 mm Sides/Back, 6.0 mm Bottom, 18.0 mm Front</text>\n`;
-  svg += `    <text x="${legX + 4}" y="${legY + 30}" class="legend-item">• EDGE-BANDING (1.0 mm ABS): All exposed carcass front edges</text>\n`;
-  svg += `    <text x="${legX + 4}" y="${legY + 36}" class="legend-item">• EDGE-BANDING (0.4 mm Melamine): Adjustable shelves front face</text>\n`;
-  svg += `    <text x="${legX + 4}" y="${legY + 42}" class="legend-item">• HARDWARE: Undermount Concealed Runners (21 mm slide clearance)</text>\n`;
+  svg += `    <text x="${legX + 4}" y="${legY + 12}" class="legend-item">• CARCASS STOCK: ${carcassCode} (18.0 mm MFC)</text>\n`;
+  svg += `    <text x="${legX + 4}" y="${legY + 18}" class="legend-item">• FACADE STOCK: ${facadeCode} (18.0 mm MFC)</text>\n`;
+  svg += `    <text x="${legX + 4}" y="${legY + 24}" class="legend-item">• BACK PANEL: 6.0 mm HDF Insert into 7.0 mm Groove</text>\n`;
+  svg += `    <text x="${legX + 4}" y="${legY + 30}" class="legend-item">• DRAWER PACK: 15.0 mm Sides/Back, 6.0 mm Bottom, 18.0 mm Front</text>\n`;
+  svg += `    <text x="${legX + 4}" y="${legY + 36}" class="legend-item">• EDGE-BANDING (1.0 mm ABS): All exposed carcass front edges &amp; facades</text>\n`;
+  svg += `    <text x="${legX + 4}" y="${legY + 42}" class="legend-item">• EDGE-BANDING (0.4 mm Melamine): Shelves front face (adjustable)</text>\n`;
   svg += `  </g>\n`;
 
-  // TITLE BLOCK
-  const tbX = sheetW - m - 150;
-  const tbY = sheetH - m - 58;
-  const tbW = 146;
-  const tbH = 54;
+  // TITLE BLOCK (Bottom-Right)
+  const tbX = sheetW - m - 146;
+  const tbY = sheetH - m - 56;
+  const tbW = 144;
+  const tbH = 52;
   const dateStr = options.date || new Date().toISOString().split("T")[0];
 
-  svg += `\n  <!-- TITLE BLOCK -->\n`;
+  svg += `\n  <!-- TITLE BLOCK (BOTTOM RIGHT) -->\n`;
   svg += `  <g id="title_block">\n`;
   svg += `    <rect x="${tbX}" y="${tbY}" width="${tbW}" height="${tbH}" class="title-block-border" />\n`;
-  svg += `    <line x1="${tbX}" y1="${tbY + 14}" x2="${tbX + tbW}" y2="${tbY + 14}" class="title-block-grid" />\n`;
-  svg += `    <line x1="${tbX}" y1="${tbY + 32}" x2="${tbX + tbW}" y2="${tbY + 32}" class="title-block-grid" />\n`;
-  svg += `    <line x1="${tbX + 73}" y1="${tbY + 14}" x2="${tbX + 73}" y2="${tbY + tbH}" class="title-block-grid" />\n`;
+  svg += `    <line x1="${tbX}" y1="${tbY + 13}" x2="${tbX + tbW}" y2="${tbY + 13}" class="title-block-grid" />\n`;
+  svg += `    <line x1="${tbX}" y1="${tbY + 31}" x2="${tbX + tbW}" y2="${tbY + 31}" class="title-block-grid" />\n`;
+  svg += `    <line x1="${tbX + 72}" y1="${tbY + 13}" x2="${tbX + 72}" y2="${tbY + tbH}" class="title-block-grid" />\n`;
 
   svg += `    <!-- Project & Organization Header -->\n`;
-  svg += `    <text x="${tbX + 4}" y="${tbY + 6}" class="title-main">${options.projectName || "FurniAI Engineering Systems"}</text>\n`;
-  svg += `    <text x="${tbX + 4}" y="${tbY + 11}" class="title-sub">AUTOMATED SHOP DRAWING &amp; FABRICATION SPECIFICATION</text>\n`;
+  svg += `    <text x="${tbX + 4}" y="${tbY + 5}" class="title-main">${options.projectName || "FurniAI Engineering Systems"}</text>\n`;
+  svg += `    <text x="${tbX + 4}" y="${tbY + 10}" class="title-sub">AUTOMATED SHOP DRAWING &amp; FABRICATION SPECIFICATION</text>\n`;
 
   svg += `    <!-- Design ID & Revision -->\n`;
-  svg += `    <text x="${tbX + 4}" y="${tbY + 19}" class="title-sub">DESIGN ID:</text>\n`;
-  svg += `    <text x="${tbX + 4}" y="${tbY + 25}" class="title-val">${proj.sourceSpecId}</text>\n`;
-  svg += `    <text x="${tbX + 77}" y="${tbY + 19}" class="title-sub">REVISION:</text>\n`;
-  svg += `    <text x="${tbX + 77}" y="${tbY + 25}" class="title-val">Rev ${proj.revision}</text>\n`;
+  svg += `    <text x="${tbX + 4}" y="${tbY + 18}" class="title-sub">DESIGN ID:</text>\n`;
+  svg += `    <text x="${tbX + 4}" y="${tbY + 24}" class="title-val">${proj.sourceSpecId}</text>\n`;
+  svg += `    <text x="${tbX + 76}" y="${tbY + 18}" class="title-sub">REVISION:</text>\n`;
+  svg += `    <text x="${tbX + 76}" y="${tbY + 24}" class="title-val">Rev ${proj.revision}</text>\n`;
 
   svg += `    <!-- Drawing Status & Scale -->\n`;
-  svg += `    <text x="${tbX + 4}" y="${tbY + 38}" class="title-sub">QUALIFICATION STATUS:</text>\n`;
-  svg += `    <text x="${tbX + 4}" y="${tbY + 44}" class="title-val">WORKSHOP REVIEW (NOT CNC)</text>\n`;
-  svg += `    <text x="${tbX + 77}" y="${tbY + 38}" class="title-sub">SHEET SIZE / DATE:</text>\n`;
-  svg += `    <text x="${tbX + 77}" y="${tbY + 44}" class="title-val">${sheet.widthMm}x${sheet.heightMm} mm (A3) | ${dateStr}</text>\n`;
+  svg += `    <text x="${tbX + 4}" y="${tbY + 37}" class="title-sub">QUALIFICATION STATUS:</text>\n`;
+  svg += `    <text x="${tbX + 4}" y="${tbY + 43}" class="title-val">WORKSHOP REVIEW (NOT CNC)</text>\n`;
+  svg += `    <text x="${tbX + 76}" y="${tbY + 37}" class="title-sub">SHEET SIZE / DATE:</text>\n`;
+  svg += `    <text x="${tbX + 76}" y="${tbY + 43}" class="title-val">${sheet.widthMm}x${sheet.heightMm} mm (A3) | ${dateStr}</text>\n`;
 
-  svg += `    <text x="${tbX + 4}" y="${tbY + 50}" class="title-sub">UNITS:</text>\n`;
-  svg += `    <text x="${tbX + 16}" y="${tbY + 50}" class="title-val">MILLIMETRES (mm)</text>\n`;
-  svg += `    <text x="${tbX + 77}" y="${tbY + 50}" class="title-sub">ACCURACY: ±0.5 mm</text>\n`;
+  svg += `    <text x="${tbX + 4}" y="${tbY + 49}" class="title-sub">UNITS:</text>\n`;
+  svg += `    <text x="${tbX + 16}" y="${tbY + 49}" class="title-val">MILLIMETRES (mm)</text>\n`;
+  svg += `    <text x="${tbX + 76}" y="${tbY + 49}" class="title-sub">ACCURACY: ±0.5 mm</text>\n`;
   svg += `  </g>\n`;
 
   svg += `</svg>\n`;

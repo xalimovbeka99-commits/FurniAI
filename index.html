@@ -646,8 +646,9 @@ footer ul a:hover{opacity:1;color:var(--brass)}
       <span class="p-pill alert">CNC: NOT QUALIFIED</span>
     </div>
     <div class="b-nav">
-      <button class="btn sm ghost" id="createWithFurniAiBldBtn" onclick="go('#/build/ai-wardrobe')" style="margin-right:8px">âœ¦ Design with AI</button>
-      <button class="b-nav-btn" id="bPrev">â—</button><span class="b-nav-pos" id="bPos">1 / 10</span><button class="b-nav-btn" id="bNext">â–·</button>
+      <button class="btn sm ghost" id="btnExportShopDrawings" onclick="handleExportShopDrawings()" style="margin-right:8px" title="Export 2D technical vector drawings">Export Shop Drawings (SVG)</button>
+      <button class="btn sm ghost" id="createWithFurniAiBldBtn" onclick="go('#/build/ai-wardrobe')" style="margin-right:8px">✧ Design with AI</button>
+      <button class="b-nav-btn" id="bPrev">◀</button><span class="b-nav-pos" id="bPos">1 / 10</span><button class="b-nav-btn" id="bNext">▶</button>
     </div>
   </div>
   <div class="b-main show-left">
@@ -3133,6 +3134,16 @@ function bindImageAttach(attachBtnId,fileInputId,previewId,thumbId,removeId,setP
   });
   if(removeBtn)removeBtn.addEventListener('click',()=>{setPending(null);if(preview)preview.hidden=true});
 }
+
+window.handleExportShopDrawings = function() {
+  if (globalThis.PartGraphBridge && typeof globalThis.PartGraphBridge.exportShopDrawingsSVG === 'function') {
+    const partGraph = globalThis.currentPartGraph || (globalThis.PartGraphBridge.buildStructuralPartGraph && globalThis.PartGraphBridge.buildStructuralPartGraph(globalThis.PartGraphBridge.goldenSpec));
+    globalThis.PartGraphBridge.exportShopDrawingsSVG(partGraph, 'furniai-shop-drawings.svg');
+  } else {
+    console.warn('PartGraphBridge.exportShopDrawingsSVG not available');
+  }
+};
+
 async function aiSendMessage(text,targetMsgsId,isDrawer,image){
   // Scoped to M1: only an already-active wardrobe routes to the canonical
   // Wardrobe AI bridge. Every other furniture type (kitchen, vanity,
