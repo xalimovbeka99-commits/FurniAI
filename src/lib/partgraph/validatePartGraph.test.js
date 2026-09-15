@@ -22,7 +22,7 @@ describe("PartGraph v0.1 Validator Suite", () => {
     // silently missing a panel. Roles are the kernel/adapter contract, so an
     // undeclared one is a validation failure.
     const partGraph = buildStructuralPartGraph(fixture);
-    partGraph.parts[0].role = "DRAWER_FRONT"; // plausible, but not declared yet
+    partGraph.parts[0].role = "NOT_A_REAL_ROLE"; // plausible-looking, but not declared
     const result = validatePartGraph(partGraph);
     expect(result.valid).toBe(false);
     expect(result.errors.some((e) => e.code === "INVALID_PART_ROLE")).toBe(true);

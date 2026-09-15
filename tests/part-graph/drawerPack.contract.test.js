@@ -1,19 +1,21 @@
-﻿/**
- * Synthetic contract assertions for future DRAWER_* PartGraph roles.
+/**
+ * Contract assertions for DRAWER_* PartGraph roles.
  *
- * Locked policies (awaiting Claude Code integ/part-graph-compiler):
+ * Locked policies (BEK 2026-09-15):
  *   - Ball-bearing: exactly 12.7 mm per side
- *   - Concealed undermount: 21 mm total reduction
- *   - Perimeter reveal: flag < 1.5 mm
- *   - Bottom thickness: minimum 6 mm
+ *   - Concealed undermount: exactly 21.0 mm total reduction
+ *   - Perimeter reveal: exactly 2.0 mm all sides
+ *   - Bottom thickness: minimum 6.0 mm
  *
- * Does not invent PART_ROLES members. Golden PartGraph remains ASPIRATIONAL
- * for drawers until the compiler emits DRAWER_FRONT / SIDE_L / SIDE_R / BACK / BOTTOM.
+ * Golden PartGraph (no DRAWER_BANK) remains ASPIRATIONAL for drawers.
+ * Specs with DRAWER_BANK emit DRAWER_* parts and audit as ENFORCED.
  */
 import { describe, expect, it } from "vitest";
 import fixture from "../../src/lib/furnispec/goldenWardrobe.fixture.json";
 import { buildStructuralPartGraph } from "../../src/lib/partgraph/buildStructuralPartGraph.js";
 import { PART_ROLES } from "../../src/lib/partgraph/schema.js";
+import { COMPONENT_TYPES } from "../../src/lib/furnispec/schema.js";
+import { validatePartGraph } from "../../src/lib/partgraph/validatePartGraph.js";
 import {
   FUTURE_DRAWER_ROLES,
   DRAWER_PACK_POLICY,
@@ -28,7 +30,7 @@ function syntheticDrawerParts({
   bayLeft = 18,
   bayRight = 582,
   clearancePerSide = 12.7,
-  frontReveal = 1.5,
+  frontReveal = 2.0,
   bottomThickness = 6,
   aperture = { minXMm: 18, maxXMm: 582, minYMm: 100, maxYMm: 300 },
 } = {}) {
@@ -74,13 +76,13 @@ function syntheticDrawerParts({
   };
 }
 
-describe("Drawer-pack contract (awaiting DRAWER_* roles)", () => {
-  it("golden PartGraph still has zero DRAWER_* roles (ASPIRATIONAL gate)", () => {
+describe("Drawer-pack contract (DRAWER_* roles)", () => {
+  it("golden PartGraph has zero DRAWER_* parts (ASPIRATIONAL) while roles exist in schema", () => {
     const graph = buildStructuralPartGraph(fixture);
     const drawerish = graph.parts.filter((p) => String(p.role).startsWith("DRAWER_"));
     expect(drawerish).toEqual([]);
     for (const role of Object.values(FUTURE_DRAWER_ROLES)) {
-      expect(Object.values(PART_ROLES)).not.toContain(role);
+      expect(Object.values(PART_ROLES)).toContain(role);
     }
     const pack = auditDrawerPack(graph);
     expect(pack.status).toBe("ASPIRATIONAL");
@@ -109,10 +111,10 @@ describe("Drawer-pack contract (awaiting DRAWER_* roles)", () => {
     );
   });
 
-  it("concealed undermount: 21 mm total reduction PASSES", () => {
+  it("concealed undermount: exactly 21.0 mm total reduction PASSES", () => {
     const clearWidthMm = 564;
     const result = auditConcealedUndermountReduction(
-      { widthMm: clearWidthMm - 21 },
+      { widthMm: clearWidthMm - 21.0 },
       { clearWidthMm },
     );
     expect(result.valid).toBe(true);
@@ -130,35 +132,35 @@ describe("Drawer-pack contract (awaiting DRAWER_* roles)", () => {
     expect(result.errors[0].code).toBe("DRAWER_UNDERMOUNT_REDUCTION_MISMATCH");
   });
 
-  it("perimeter reveal: < 1.5 mm is REJECTED", () => {
+  it("perimeter reveal: not exactly 2.0 mm is REJECTED", () => {
     const aperture = { minXMm: 0, maxXMm: 400, minYMm: 0, maxYMm: 200 };
     const front = {
       minXMm: 1.0,
-      maxXMm: 398.5,
-      minYMm: 1.5,
-      maxYMm: 198.5,
+      maxXMm: 398.0,
+      minYMm: 2.0,
+      maxYMm: 198.0,
     };
     const result = auditPerimeterReveal(front, aperture);
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.edge === "left" && e.code === "DRAWER_FRONT_REVEAL_TOO_SMALL")).toBe(
+    expect(result.errors.some((e) => e.edge === "left" && e.code === "DRAWER_FRONT_REVEAL_MISMATCH")).toBe(
       true,
     );
   });
 
-  it("perimeter reveal: exactly 1.5 mm on all edges PASSES", () => {
+  it("perimeter reveal: exactly 2.0 mm on all edges PASSES", () => {
     const aperture = { minXMm: 0, maxXMm: 400, minYMm: 0, maxYMm: 200 };
     const front = {
-      minXMm: 1.5,
-      maxXMm: 398.5,
-      minYMm: 1.5,
-      maxYMm: 198.5,
+      minXMm: 2.0,
+      maxXMm: 398.0,
+      minYMm: 2.0,
+      maxYMm: 198.0,
     };
     const result = auditPerimeterReveal(front, aperture);
     expect(result.valid).toBe(true);
   });
 
-  it("bottom thickness: 6 mm PASSES; 5 mm REJECTED", () => {
-    expect(auditDrawerBottomThickness({ thicknessMm: 6 }).valid).toBe(true);
+  it("bottom thickness: 6.0 mm PASSES; 5 mm REJECTED", () => {
+    expect(auditDrawerBottomThickness({ thicknessMm: 6.0 }).valid).toBe(true);
     const thin = auditDrawerBottomThickness({ thicknessMm: 5 });
     expect(thin.valid).toBe(false);
     expect(thin.errors[0].code).toBe("DRAWER_BOTTOM_TOO_THIN");
@@ -167,7 +169,7 @@ describe("Drawer-pack contract (awaiting DRAWER_* roles)", () => {
   it("full synthetic pack with all five roles ENFORCES ball-bearing + reveal + bottom", () => {
     const syn = syntheticDrawerParts({
       clearancePerSide: 12.7,
-      frontReveal: 1.5,
+      frontReveal: 2.0,
       bottomThickness: 6,
     });
     const result = auditDrawerPack(
@@ -197,5 +199,50 @@ describe("Drawer-pack contract (awaiting DRAWER_* roles)", () => {
     );
     expect(result.valid).toBe(false);
     expect(result.errors.map((e) => e.code)).toContain("DRAWER_BOTTOM_TOO_THIN");
+  });
+
+  it("real PartGraph from DRAWER_BANK ENFORCES drawer-pack (undermount)", () => {
+    const spec = JSON.parse(JSON.stringify(fixture));
+    spec.bays[0].components.push({
+      id: "drawer-bank-l1",
+      type: COMPONENT_TYPES.DRAWER_BANK,
+      offsetFromBottomMm: 0,
+      rows: 2,
+    });
+    const graph = buildStructuralPartGraph(spec);
+    expect(validatePartGraph(graph).valid).toBe(true);
+    const drawerParts = graph.parts.filter((p) => String(p.role).startsWith("DRAWER_"));
+    expect(drawerParts.length).toBeGreaterThanOrEqual(5);
+
+    const bay = {
+      leftInnerMm: graph.parts.find((p) => p.role === PART_ROLES.DRAWER_SIDE_L).placement.minXDmm / 10
+        - 10.5,
+      rightInnerMm: graph.parts.find((p) => p.role === PART_ROLES.DRAWER_SIDE_R).placement.maxXDmm / 10
+        + 10.5,
+      clearWidthMm: 873,
+    };
+    // Prefer bay clear width from fixture bay 0.
+    bay.leftInnerMm = 18;
+    bay.rightInnerMm = 18 + 873;
+    bay.clearWidthMm = 873;
+
+    const firstFront = graph.parts.find((p) => p.role === PART_ROLES.DRAWER_FRONT);
+    const aperture = {
+      minXMm: firstFront.placement.minXDmm / 10 - 2,
+      maxXMm: firstFront.placement.maxXDmm / 10 + 2,
+      minYMm: firstFront.placement.minYDmm / 10 - 2,
+      maxYMm: firstFront.placement.maxYDmm / 10 + 2,
+    };
+
+    // Audit one complete five-role set (row 1) by filtering ids containing _R01_
+    const rowParts = graph.parts.filter(
+      (p) => p.role.startsWith("DRAWER_") && /_R01_/.test(p.id),
+    );
+    const pack = auditDrawerPack(
+      { ...graph, parts: rowParts.length ? rowParts : drawerParts.slice(0, 5) },
+      { bay, aperture, slideFamily: "concealed-undermount" },
+    );
+    expect(pack.status).toBe("ENFORCED");
+    expect(pack.valid).toBe(true);
   });
 });

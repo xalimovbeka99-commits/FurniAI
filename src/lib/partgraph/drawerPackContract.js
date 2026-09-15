@@ -1,38 +1,39 @@
-﻿/**
- * Drawer-pack contract audits (aspirational until Claude lands DRAWER_* roles).
+/**
+ * Drawer-pack contract audits.
  *
- * Target roles (compiler contract — not in PART_ROLES v0.1 yet):
+ * Roles (in PART_ROLES):
  *   DRAWER_FRONT, DRAWER_SIDE_L, DRAWER_SIDE_R, DRAWER_BACK, DRAWER_BOTTOM
  *
- * Policies (BEK adversarial QA, 2026-09-15):
+ * Policies (BEK rulings 2026-09-15):
  *   - Ball-bearing slides: exactly 12.7 mm clearance per side
- *   - Concealed undermount: 21 mm total width reduction (box clear width)
- *   - Perimeter reveal: flag any drawer front < 1.5 mm vs neighbour facades/gables
- *   - Bottom panel thickness: minimum 6 mm
+ *   - Concealed undermount: exactly 21.0 mm total width reduction
+ *   - Perimeter reveal: exactly 2.0 mm all sides
+ *   - Bottom panel thickness: minimum 6.0 mm
  *
- * CNC / drilling remain BLOCKED. These helpers do not invent PART_ROLES members.
+ * CNC / drilling remain BLOCKED.
  */
+import { PART_ROLES } from "./schema.js";
+
 export const FUTURE_DRAWER_ROLES = Object.freeze({
-  DRAWER_FRONT: "DRAWER_FRONT",
-  DRAWER_SIDE_L: "DRAWER_SIDE_L",
-  DRAWER_SIDE_R: "DRAWER_SIDE_R",
-  DRAWER_BACK: "DRAWER_BACK",
-  DRAWER_BOTTOM: "DRAWER_BOTTOM",
+  DRAWER_FRONT: PART_ROLES.DRAWER_FRONT,
+  DRAWER_SIDE_L: PART_ROLES.DRAWER_SIDE_L,
+  DRAWER_SIDE_R: PART_ROLES.DRAWER_SIDE_R,
+  DRAWER_BACK: PART_ROLES.DRAWER_BACK,
+  DRAWER_BOTTOM: PART_ROLES.DRAWER_BOTTOM,
 });
 
 export const DRAWER_PACK_POLICY = Object.freeze({
   BALL_BEARING_SIDE_CLEARANCE_MM: 12.7,
-  CONCEALED_UNDERMOUNT_TOTAL_REDUCTION_MM: 21,
-  MIN_PERIMETER_REVEAL_MM: 1.5,
-  MIN_BOTTOM_THICKNESS_MM: 6,
+  CONCEALED_UNDERMOUNT_TOTAL_REDUCTION_MM: 21.0,
+  PERIMETER_REVEAL_MM: 2.0,
+  /** @deprecated use PERIMETER_REVEAL_MM — kept as alias during transition */
+  MIN_PERIMETER_REVEAL_MM: 2.0,
+  MIN_BOTTOM_THICKNESS_MM: 6.0,
 });
 
 /**
  * Side runner clearance for standard ball-bearing slides.
  * Expects exactly 12.7 mm per side between box outer faces and bay inner faces.
- * @param {{ minXMm: number, maxXMm: number }} box
- * @param {{ leftInnerMm: number, rightInnerMm: number }} bay
- * @param {{ toleranceMm?: number }} [opts]
  */
 export function auditBallBearingSideClearance(box, bay, { toleranceMm = 0.05 } = {}) {
   const errors = [];
@@ -63,10 +64,7 @@ export function auditBallBearingSideClearance(box, bay, { toleranceMm = 0.05 } =
 }
 
 /**
- * Concealed undermount: drawer box width must be bay clear width − 21 mm total.
- * @param {{ widthMm: number }} box
- * @param {{ clearWidthMm: number }} bay
- * @param {{ toleranceMm?: number }} [opts]
+ * Concealed undermount: drawer box width must be bay clear width − 21.0 mm total.
  */
 export function auditConcealedUndermountReduction(box, bay, { toleranceMm = 0.05 } = {}) {
   const errors = [];
@@ -88,13 +86,11 @@ export function auditConcealedUndermountReduction(box, bay, { toleranceMm = 0.05
 }
 
 /**
- * Perimeter reveal vs neighbour facades / gables. Flag any edge < 1.5 mm.
- * @param {{ minXMm: number, maxXMm: number, minYMm: number, maxYMm: number }} front
- * @param {{ minXMm: number, maxXMm: number, minYMm: number, maxYMm: number }} aperture
+ * Perimeter reveal vs neighbour facades / gables. Exactly 2.0 mm on every edge.
  */
-export function auditPerimeterReveal(front, aperture) {
+export function auditPerimeterReveal(front, aperture, { toleranceMm = 0.05 } = {}) {
   const errors = [];
-  const min = DRAWER_PACK_POLICY.MIN_PERIMETER_REVEAL_MM;
+  const target = DRAWER_PACK_POLICY.PERIMETER_REVEAL_MM;
   const gaps = {
     left: front.minXMm - aperture.minXMm,
     right: aperture.maxXMm - front.maxXMm,
@@ -102,13 +98,13 @@ export function auditPerimeterReveal(front, aperture) {
     top: aperture.maxYMm - front.maxYMm,
   };
   for (const [edge, gap] of Object.entries(gaps)) {
-    if (gap < min) {
+    if (Math.abs(gap - target) > toleranceMm) {
       errors.push({
-        code: "DRAWER_FRONT_REVEAL_TOO_SMALL",
-        message: `${edge} reveal ${gap} mm < ${min} mm`,
+        code: "DRAWER_FRONT_REVEAL_MISMATCH",
+        message: `${edge} reveal ${gap} mm != ${target} mm (±${toleranceMm})`,
         edge,
         actualMm: gap,
-        minMm: min,
+        expectedMm: target,
       });
     }
   }
@@ -116,8 +112,7 @@ export function auditPerimeterReveal(front, aperture) {
 }
 
 /**
- * Drawer bottom panel thickness ≥ 6 mm.
- * @param {{ thicknessMm: number, role?: string }} bottom
+ * Drawer bottom panel thickness ≥ 6.0 mm.
  */
 export function auditDrawerBottomThickness(bottom) {
   const errors = [];
@@ -133,11 +128,22 @@ export function auditDrawerBottomThickness(bottom) {
   return { valid: errors.length === 0, errors };
 }
 
+function dmmToMm(v) {
+  return typeof v === "number" ? v / 10 : undefined;
+}
+
+function readCoord(part, keyMm, keyDmm) {
+  if (part == null) return undefined;
+  if (part[keyMm] != null) return part[keyMm];
+  if (part.placement?.[keyMm] != null) return part.placement[keyMm];
+  if (part.placement?.[keyDmm] != null) return dmmToMm(part.placement[keyDmm]);
+  return undefined;
+}
+
 /**
- * When a PartGraph (or synthetic pack) exposes FUTURE_DRAWER_ROLES, run all
+ * When a PartGraph (or synthetic pack) exposes DRAWER_* roles, run all
  * drawer-pack audits. Missing roles → ASPIRATIONAL skip payload (not a pass).
- * @param {{ parts: Array<{ role: string, finished?: { thicknessMm?: number }, placement?: object, raw?: object }> }} graph
- * @param {{ bay?: object, aperture?: object, slideFamily?: 'ball-bearing'|'concealed-undermount' }} ctx
+ * Real PartGraph (deci-mm / partGraphVersion) → ENFORCED; synthetic → ENFORCED_SYNTHETIC.
  */
 export function auditDrawerPack(graph, ctx = {}) {
   const byRole = Object.fromEntries(
@@ -166,14 +172,13 @@ export function auditDrawerPack(graph, ctx = {}) {
   const front = byRole.DRAWER_FRONT;
 
   const box = ctx.box || {
-    minXMm: sideL.placement?.minXMm ?? sideL.minXMm,
-    maxXMm: sideR.placement?.maxXMm ?? sideR.maxXMm,
+    minXMm: readCoord(sideL, "minXMm", "minXDmm"),
+    maxXMm: readCoord(sideR, "maxXMm", "maxXDmm"),
     widthMm:
-      (sideR.placement?.maxXMm ?? sideR.maxXMm) -
-      (sideL.placement?.minXMm ?? sideL.minXMm),
+      readCoord(sideR, "maxXMm", "maxXDmm") - readCoord(sideL, "minXMm", "minXDmm"),
   };
 
-  const slideFamily = ctx.slideFamily || "ball-bearing";
+  const slideFamily = ctx.slideFamily || "concealed-undermount";
   if (slideFamily === "ball-bearing" && ctx.bay) {
     const r = auditBallBearingSideClearance(box, ctx.bay);
     errors.push(...r.errors);
@@ -188,10 +193,10 @@ export function auditDrawerPack(graph, ctx = {}) {
 
   if (ctx.aperture && front) {
     const frontRect = {
-      minXMm: front.placement?.minXMm ?? front.minXMm,
-      maxXMm: front.placement?.maxXMm ?? front.maxXMm,
-      minYMm: front.placement?.minYMm ?? front.minYMm,
-      maxYMm: front.placement?.maxYMm ?? front.maxYMm,
+      minXMm: readCoord(front, "minXMm", "minXDmm"),
+      maxXMm: readCoord(front, "maxXMm", "maxXDmm"),
+      minYMm: readCoord(front, "minYMm", "minYDmm"),
+      maxYMm: readCoord(front, "maxYMm", "maxYDmm"),
     };
     const r = auditPerimeterReveal(frontRect, ctx.aperture);
     errors.push(...r.errors);
@@ -199,13 +204,16 @@ export function auditDrawerPack(graph, ctx = {}) {
 
   const thicknessMm =
     bottom.finished?.thicknessMm ??
+    (bottom.finished?.thicknessDmm != null ? dmmToMm(bottom.finished.thicknessDmm) : undefined) ??
     bottom.thicknessMm ??
+    (bottom.raw?.thicknessDmm != null ? dmmToMm(bottom.raw.thicknessDmm) : undefined) ??
     bottom.raw?.thicknessMm;
   const rBottom = auditDrawerBottomThickness({ thicknessMm, role: bottom.role });
   errors.push(...rBottom.errors);
 
+  const isRealGraph = Boolean(graph.partGraphVersion || graph.unitScale === "deci-mm");
   return {
-    status: "ENFORCED_SYNTHETIC",
+    status: isRealGraph ? "ENFORCED" : "ENFORCED_SYNTHETIC",
     valid: errors.length === 0,
     errors,
     presentRoles: present,

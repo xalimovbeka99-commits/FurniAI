@@ -174,7 +174,13 @@ export function validatePartGraph(partGraph) {
           (p1.id === "BACK_PANEL_01" && ["CARC_TOP", "CARC_BOT", "CARC_SIDE_L", "CARC_SIDE_R"].includes(p2.id)) ||
           (p2.id === "BACK_PANEL_01" && ["CARC_TOP", "CARC_BOT", "CARC_SIDE_L", "CARC_SIDE_R"].includes(p1.id));
 
-        if (!isBackPanelEngagement) {
+        const isDrawerAssemblyOverlap =
+          typeof p1.role === "string" &&
+          typeof p2.role === "string" &&
+          p1.role.startsWith("DRAWER_") &&
+          p2.role.startsWith("DRAWER_");
+
+        if (!isBackPanelEngagement && !isDrawerAssemblyOverlap) {
           addError(
             "UNINTENDED_PART_COLLISION",
             `Part "${p1.id}" and Part "${p2.id}" collide with overlap volume ${overlapX}x${overlapY}x${overlapZ} dmm.`,

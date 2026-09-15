@@ -5,10 +5,11 @@
  *
  * No agent may author a furniture rule. Every constant in this catalog is
  * addressable data with explicit provenance pointing at a Bekzod-approved
- * source. Three provenance classes exist:
+ * source. Provenance classes:
  *
  *   RULEBOOK_V0_1                  docs/WARDROBE_RULEBOOK_V0.1.md, by rule ID.
  *   GOLDEN_FIXTURE_BEKZOD_APPROVED src/lib/furnispec/goldenWardrobe.fixture.json.
+ *   BEKZOD_RULING                  Explicit Bekzod workshop ruling (not in Rulebook).
  *   REQUIRES_BEKZOD_RULING         NOT approved. Must NEVER be applied silently;
  *                                  `resolve()` throws, forcing a clarification gap.
  *
@@ -18,6 +19,7 @@
 export const RULE_PROVENANCE = Object.freeze({
   RULEBOOK_V0_1: "RULEBOOK_V0_1",
   GOLDEN_FIXTURE_BEKZOD_APPROVED: "GOLDEN_FIXTURE_BEKZOD_APPROVED",
+  BEKZOD_RULING: "BEKZOD_RULING",
   REQUIRES_BEKZOD_RULING: "REQUIRES_BEKZOD_RULING",
 });
 
@@ -28,7 +30,7 @@ function rule(id, value, provenance, note) {
   return Object.freeze({ id, value, provenance, note });
 }
 
-const { RULEBOOK_V0_1, GOLDEN_FIXTURE_BEKZOD_APPROVED, REQUIRES_BEKZOD_RULING } = RULE_PROVENANCE;
+const { RULEBOOK_V0_1, GOLDEN_FIXTURE_BEKZOD_APPROVED, BEKZOD_RULING, REQUIRES_BEKZOD_RULING } = RULE_PROVENANCE;
 
 export const WARDROBE_RULES = Object.freeze({
   constructionStyle: rule("WR-001", "CAP_STYLE", RULEBOOK_V0_1, "Cap Style (Style B): top/bottom cap the outer sides and divider."),
@@ -70,6 +72,57 @@ export const WARDROBE_RULES = Object.freeze({
   shelfPinType: rule("WR-009", "SYSTEM_32_PIN_5MM", RULEBOOK_V0_1, "System 32 5mm shelf pin, semantic only."),
   joineryType: rule("GF-JOINERY", "CONFIRMAT_AND_DOWEL", GOLDEN_FIXTURE_BEKZOD_APPROVED, "Carcass joinery family; drilling coordinates blocked."),
   hangingRailType: rule("GF-RAIL", "OVAL_TUBE_15X30", GOLDEN_FIXTURE_BEKZOD_APPROVED, "Hanging rail profile, preview only."),
+
+  // --- Bekzod hardware rulings 2026-09-15 (SYSTEM32_BORING_SCOPE §6 answered).
+  // CNC / drilling coordinates remain BLOCKED; these unlock rule *values* only.
+  shelfPinHoleDepthMm: rule(
+    "BEK-SHELF-PIN-DEPTH",
+    13.0,
+    BEKZOD_RULING,
+    "Bekzod ruling: shelf-pin hole depth 13.0 mm in 18 mm board. For 16 mm board use 11.5 mm (shelfPinHoleDepthMmByBoardThickness)."
+  ),
+  shelfPinHoleDepthMmByBoardThickness: rule(
+    "BEK-SHELF-PIN-DEPTH-BY-BOARD",
+    Object.freeze({ 18: 13.0, 16: 11.5 }),
+    BEKZOD_RULING,
+    "Thickness variants for shelf-pin hole depth (mm keyed by board thickness mm)."
+  ),
+  shelfPinColumnOriginDatum: rule(
+    "BEK-SHELF-PIN-ORIGIN",
+    "BOTTOM_PANEL_UPPER_FACE_PLUS_64MM",
+    BEKZOD_RULING,
+    "Bekzod ruling: column origin = bottom panel upper face + 64 mm. Upper bound term TOP_PANEL_LOWER_FACE_MINUS_64MM is the mirror datum."
+  ),
+  shelfPinColumnOriginUpperDatum: rule(
+    "BEK-SHELF-PIN-ORIGIN-UPPER",
+    "TOP_PANEL_LOWER_FACE_MINUS_64MM",
+    BEKZOD_RULING,
+    "Upper-column mirror datum for shelf-pin System 32 columns."
+  ),
+  shelfPinRearRowPolicy: rule(
+    "BEK-SHELF-PIN-REAR-ROW",
+    "BORED_MIRROR_FRONT_37MM",
+    BEKZOD_RULING,
+    "Bekzod ruling: rear row is bored, mirroring the front 37 mm edge setback."
+  ),
+  drawerRunnerFamily: rule(
+    "BEK-DRAWER-RUNNER",
+    "UNDERMOUNT_CONCEALED_21MM",
+    BEKZOD_RULING,
+    "Bekzod ruling: concealed undermount runner family; 21 mm total clear-width reduction."
+  ),
+  drawerSlideWidthDeductionMm: rule(
+    "BEK-DRAWER-SLIDE-DEDUCTION",
+    21.0,
+    BEKZOD_RULING,
+    "Bekzod ruling: undermount total width reduction 21.0 mm (box clear width = bay - 21)."
+  ),
+  drawerFrontRevealMm: rule(
+    "BEK-DRAWER-FRONT-REVEAL",
+    2.0,
+    BEKZOD_RULING,
+    "Bekzod ruling: 2.0 mm perimeter reveal on all sides of each drawer front."
+  ),
 
   // --- NOT approved. Reading these through resolve() throws by design.
   bayCountForWidth: rule("UNRULED-BAY-COUNT", null, REQUIRES_BEKZOD_RULING, "No approved rule maps overall width to a bay count. Must be asked."),
