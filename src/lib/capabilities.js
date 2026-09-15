@@ -31,7 +31,7 @@ import { EDITABLE_KEYS } from "./ai-designer/designEditSchema.js";
  * outcomes, an editable key is added or removed, a boundary moves. Not bumped
  * for wording.
  */
-export const CAPABILITY_DESCRIPTION_VERSION = "capabilities/0.1";
+export const CAPABILITY_DESCRIPTION_VERSION = "capabilities/0.2";
 
 function componentTypesWithOutcome(outcome) {
   return Object.freeze(
@@ -94,8 +94,8 @@ export const DESIGN_ENGINE_CAPABILITIES = Object.freeze({
    * limitation of the design engine today, not a rendering gap.
    */
   notSupportedYet: Object.freeze([
-    "Drawers of any kind (no drawer part roles; runner family unapproved).",
     "Handles, hinges and other hardware as placed, drillable objects.",
+    "Drawer runner / System 32 hole CNC machining (geometry approved; drilling BLOCKED).",
     "A finish applied to one part rather than the whole wardrobe.",
     "Per-shelf editing and explicit bay targeting beyond the two supported bay layouts.",
     "Sliding, corner and walk-in wardrobes.",
@@ -113,14 +113,15 @@ export function describeCapabilitiesForCustomer() {
       "Design a straight wardrobe with hinged doors from a short description.",
       "Change the overall width, height and depth.",
       "Choose between the supported bay layouts.",
+      "Add drawer banks cut to the approved undermount pack.",
       "Change the finish of the whole wardrobe.",
       "Undo a change and go back to the previous version.",
     ],
     cannotDoYet: [
-      "Add drawers.",
       "Add handles or other hardware.",
       "Finish one part differently from the rest.",
       "Produce workshop drawings or cutting files.",
+      "Export CNC drilling for drawer runners or System 32 holes.",
     ],
   };
 }

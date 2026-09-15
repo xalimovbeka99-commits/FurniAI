@@ -77,13 +77,13 @@ describe("through the published transport — proposeDesignChange", () => {
       fetchImpl: null,
     });
 
-  it("answers 'Add drawers' as UNSUPPORTED, not as a rejection or an outage", async () => {
-    // Before this existed, "Add drawers" matched no branch, fell through to
+  it("answers 'Add handles' as UNSUPPORTED, not as a rejection or an outage", async () => {
+    // Before this existed, "Add handles" matched no branch, fell through to
     // the model, and with no provider reachable came back as
     // DESIGNER_UNAVAILABLE — telling the customer to try again at something
     // that will never work.
     const design = activeDesign();
-    const res = await ask("Add drawers", design);
+    const res = await ask("Add handles", design);
 
     expect(res.kind).toBe(RESULT_KIND.UNSUPPORTED);
     expect(res.source).toBe(RESULT_SOURCE.DETERMINISTIC);
@@ -91,26 +91,25 @@ describe("through the published transport — proposeDesignChange", () => {
   });
 
   it("returns an explanation a customer can act on", async () => {
-    const res = await ask("Add four drawers on the left", activeDesign());
+    const res = await ask("Add black handles", activeDesign());
 
-    expect(res.error).toMatch(/drawers/i);
+    expect(res.error).toMatch(/handles?/i);
     expect(res.error).toMatch(/unchanged/i);
     // Ordinary language only — no enum names, no engineering units.
     expect(res.error).not.toMatch(/[A-Z]{3,}_[A-Z]/);
-    expect(res.error).not.toMatch(/dmm|PartGraph|FurniSpec|DRAWER_BANK/);
+    expect(res.error).not.toMatch(/dmm|PartGraph|FurniSpec/);
   });
 
   it("carries the structured unsupported[] the browser renders", async () => {
     // index.html branches on `kind === 'UNSUPPORTED'` and reads
     // `u.reason` / `u.alternative`. Losing this shape loses the explanation.
-    const res = await ask("Add drawers", activeDesign());
+    const res = await ask("Add handles", activeDesign());
 
     expect(Array.isArray(res.unsupported)).toBe(true);
     expect(res.unsupported).toHaveLength(1);
     const [item] = res.unsupported;
-    expect(item.componentType).toBe(COMPONENT_TYPES.DRAWER_BANK);
+    expect(item.componentType).toBeNull();
     expect(item.reason).toBeTruthy();
-    expect(item.alternative).toBeTruthy();
     expect(item.alternativeApplied).toBe(false);
   });
 
@@ -118,7 +117,7 @@ describe("through the published transport — proposeDesignChange", () => {
     const design = activeDesign();
     const before = snapshotOf(design);
 
-    const res = await ask("Add drawers", design);
+    const res = await ask("Add handles", design);
 
     // No replacement geometry comes back at all...
     expect(res.spec ?? null).toBeNull();
@@ -133,19 +132,18 @@ describe("through the published transport — proposeDesignChange", () => {
     const design = activeDesign();
     const shelvesBefore = design.partGraph.parts.filter((p) => p.role.includes("SHELF")).length;
 
-    const res = await ask("Add drawers", design);
+    const res = await ask("Add handles", design);
 
     expect(res.partGraph ?? null).toBeNull();
     expect(res.unsupported[0].alternativeApplied).toBe(false);
     expect(design.partGraph.parts.filter((p) => p.role.includes("SHELF")).length).toBe(shelvesBefore);
-    // The alternative is offered in words, and only in words.
-    expect(res.error).toMatch(/if you'd like/i);
+    expect(res.error).toMatch(/handle/i);
   });
 
   it("keeps a following supported edit working normally", async () => {
     // A refusal must not wedge the session. The very next edit still applies.
     const design = activeDesign();
-    await ask("Add drawers", design);
+    await ask("Add handles", design);
     const next = await ask("Make it 2000 mm wide", design);
 
     expect(next.kind).toBe(RESULT_KIND.DESIGN_UPDATED);
@@ -176,38 +174,33 @@ describe("through the published transport — proposeDesignChange", () => {
   }
 });
 
-describe("through the pipeline edit entry — applyConversationalEdit", () => {
+describe("through the pipeline edit entry � applyConversationalEdit", () => {
   it("refuses with structured unsupported[] and returns no geometry", () => {
     const design = activeDesign();
     const before = snapshotOf(design);
 
     const result = applyConversationalEdit({
       currentObservations: design.observations,
-      commandText: "Add drawers to the left bay",
+      commandText: "Add handles",
       specId: SPEC_ID,
       revision: design.spec.revision,
     });
 
     expect(result.ok).toBe(false);
-    expect(result.unsupported?.[0]?.componentType).toBe(COMPONENT_TYPES.DRAWER_BANK);
+    expect(result.kind).toBe("UNSUPPORTED");
+    expect(result.unsupported?.[0]?.componentType).toBeNull();
+    expect(result.unsupported?.[0]?.reason).toMatch(/handle/i);
+    expect(result.unsupported?.[0]?.alternativeApplied).toBe(false);
     expect(result.spec ?? null).toBeNull();
     expect(result.partGraph ?? null).toBeNull();
     expect(snapshotOf(design)).toBe(before);
   });
 });
 
-describe("the kernel boundary — a spec the kernel cannot fully build is never previewed", () => {
+describe("the kernel boundary � DRAWER_BANK is structural and previews", () => {
   /**
-   * No customer path can put a DRAWER_BANK into a spec today:
-   * `assembleFurniSpec` emits only shelves and rails, and throws on an unknown
-   * bay layout. The exposure is therefore latent, not live — it opens the
-   * moment a new bay layout, a model edit, or F2's component editing can
-   * introduce a component the kernel cannot build.
-   *
-   * `approveAndPreview` takes an externally supplied spec, so it is a real
-   * entry point that can carry one today, and it is the strictest boundary in
-   * the system. If the guard holds here it holds everywhere the same check
-   * runs.
+   * After BEK drawer emission, DRAWER_BANK is COMPONENT_OUTCOME.STRUCTURAL.
+   * approveAndPreview must emit DRAWER_* parts; CNC/drilling stay blocked.
    */
   function approvedProposalWithDrawerBank() {
     const spec = clone(fixture);
@@ -230,28 +223,26 @@ describe("the kernel boundary — a spec the kernel cannot fully build is never 
     };
   }
 
-  it("refuses to preview it even when a human explicitly approved it", () => {
-    // An approval cannot make an unbuildable component buildable. Previewing
-    // it would show a wardrobe that is missing a part the approver signed off.
+  it("previews an approved DRAWER_BANK with structural DRAWER_* parts", () => {
     const { proposal, approval } = approvedProposalWithDrawerBank();
     const result = approveAndPreview({ proposal, approval });
 
-    expect(result.stage).toBe(PIPELINE_STAGE.UNSUPPORTED_REQUEST);
-    expect(result.partGraph ?? null).toBeNull();
-    expect(result.spec ?? null).toBeNull();
-    expect(result.unsupported?.[0]?.componentType).toBe(COMPONENT_TYPES.DRAWER_BANK);
-    expect(result.error).toMatch(/drawers/i);
+    expect(result.stage).toBe(PIPELINE_STAGE.APPROVED_FOR_PREVIEW);
+    expect(result.partGraph).toBeTruthy();
+    const drawerParts = result.partGraph.parts.filter((p) => String(p.role).startsWith("DRAWER_"));
+    expect(drawerParts.length).toBeGreaterThan(0);
+    expect(result.partGraph.parts.some((p) => p.role === "DRAWER_FRONT")).toBe(true);
   });
 
-  it("keeps machining blocked on the refusal path", () => {
+  it("keeps machining blocked even when drawer geometry is emitted", () => {
     const { proposal, approval } = approvedProposalWithDrawerBank();
     const result = approveAndPreview({ proposal, approval });
+    expect(result.stage).toBe(PIPELINE_STAGE.APPROVED_FOR_PREVIEW);
     expect(result.safety?.cncQualified ?? false).toBe(false);
+    expect(result.partGraph.qualificationStatus).toBe("WORKSHOP_REVIEW_NOT_CNC_QUALIFIED");
   });
 
-  it("still previews the same spec normally once the component is removed", () => {
-    // Proves the refusal is caused by the component and nothing else — the
-    // control case for the test above.
+  it("still previews the baseline golden wardrobe without a drawer bank", () => {
     const { proposal } = approvedProposalWithDrawerBank();
     const cleaned = clone(proposal.spec);
     cleaned.bays[0].components = cleaned.bays[0].components.filter(
@@ -272,37 +263,20 @@ describe("the kernel boundary — a spec the kernel cannot fully build is never 
     expect(result.partGraph.parts).toHaveLength(19);
   });
 });
-
 describe("one wording, one source", () => {
-  it("uses the component policy's customer message, not a hand-written copy", async () => {
-    // If these ever diverge, a customer gets one explanation from the parser
-    // and a different one from the kernel for the same limitation.
-    const policyMessage = COMPONENT_REPRESENTATION_POLICY[COMPONENT_TYPES.DRAWER_BANK].customerMessage;
-
+  it("uses one deterministic wording for unmodelled hardware refusals", async () => {
+    // DRAWER_BANK is STRUCTURAL (no customerMessage). Unmodelled hardware
+    // (handles) still refuses with a single deterministic reason string.
     const viaTransport = await proposeDesignChange({
-      message: "Add drawers",
+      message: "Add handles",
       currentObservations: activeDesign().observations,
       specId: SPEC_ID,
       revision: 1,
       fetchImpl: null,
     });
-    expect(viaTransport.unsupported[0].reason).toBe(policyMessage);
-
-    const { proposal } = (() => {
-      const spec = clone(fixture);
-      spec.bays[0].components.push({ id: "db", type: COMPONENT_TYPES.DRAWER_BANK, offsetFromBottomMm: 0, rows: 2 });
-      return { proposal: createProposal(spec) };
-    })();
-    const viaKernel = approveAndPreview({
-      proposal,
-      approval: {
-        approvedBy: "bekzod",
-        proposalId: proposal.specId,
-        proposalRevision: proposal.revision,
-        proposalFingerprint: proposal.fingerprint,
-      },
-    });
-    expect(viaKernel.unsupported[0].reason).toBe(policyMessage);
+    expect(viaTransport.kind).toBe(RESULT_KIND.UNSUPPORTED);
+    expect(viaTransport.unsupported[0].reason).toMatch(/handle/i);
+    expect(viaTransport.unsupported[0].alternativeApplied).toBe(false);
   });
 });
 
@@ -368,13 +342,14 @@ describe("false positives — an intent word and a component word are not a requ
     });
   }
 
-  it("still refuses when the same sentence really does request drawers", async () => {
+  it("still refuses when the same sentence really does request handles", async () => {
     // The control for the deferrals above: negation handling must not have
     // simply disabled detection.
     const design = activeDesign();
-    const res = await ask("I want drawers on the left", design);
+    const res = await ask("I want handles on the left", design);
     expect(res.kind).toBe(RESULT_KIND.UNSUPPORTED);
-    expect(res.unsupported[0].componentType).toBe(COMPONENT_TYPES.DRAWER_BANK);
+    expect(res.unsupported[0].componentType).toBeNull();
+    expect(res.unsupported[0].reason).toMatch(/handle/i);
   });
 
   it("keeps a supported edit that merely mentions an existing feature", async () => {
@@ -399,3 +374,4 @@ describe("false positives — an intent word and a component word are not a requ
     expect(snapshotOf(design)).toBe(before);
   });
 });
+

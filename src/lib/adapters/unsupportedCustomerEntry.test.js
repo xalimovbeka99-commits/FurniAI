@@ -10,7 +10,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { previewDraftWardrobe, applyConversationalEdit, PIPELINE_STAGE } from "../conversation/pipeline.js";
 import { proposeDesignChange, RESULT_KIND, RESULT_SOURCE } from "./aiDesignerTransport.js";
-import { COMPONENT_TYPES } from "../furnispec/schema.js";
 import { COMPONENT_REPRESENTATION_POLICY } from "../partgraph/componentOutcomes.js";
 
 const SPEC_ID = "spec-unsupported-entry-01";
@@ -29,11 +28,11 @@ describe("unsupported request through proposeDesignChange (customer entry)", () 
     const beforeFingerprint = before.proposal?.fingerprint;
 
     const fetchImpl = vi.fn(async () => {
-      throw new Error("model must not be consulted for a known unsupported drawer request");
+      throw new Error("model must not be consulted for a known unsupported hardware request");
     });
 
     const res = await proposeDesignChange({
-      message: "Add drawers on the left",
+      message: "Add black handles",
       currentObservations: before.observations,
       specId: SPEC_ID,
       revision: beforeRev,
@@ -45,15 +44,12 @@ describe("unsupported request through proposeDesignChange (customer entry)", () 
     expect(res.source).toBe(RESULT_SOURCE.DETERMINISTIC);
     expect(res.kind).toBe(RESULT_KIND.UNSUPPORTED);
     expect(res.error).toBeTruthy();
-    expect(res.error).toMatch(/drawer/i);
+    expect(res.error).toMatch(/handle/i);
     expect(Array.isArray(res.unsupported)).toBe(true);
     expect(res.unsupported.length).toBeGreaterThan(0);
-    expect(res.unsupported[0].componentType).toBe(COMPONENT_TYPES.DRAWER_BANK);
-    expect(res.unsupported[0].reason).toBe(
-      COMPONENT_REPRESENTATION_POLICY[COMPONENT_TYPES.DRAWER_BANK].customerMessage
-    );
+    expect(res.unsupported[0].componentType).toBeNull();
+    expect(res.unsupported[0].reason).toMatch(/handle/i);
     expect(res.unsupported[0].alternativeApplied).toBe(false);
-    expect(res.unsupported[0].alternative).toBeTruthy();
 
     // Not successful fulfillment: no replacement geometry / revision
     expect(res.spec).toBeUndefined();
@@ -67,7 +63,7 @@ describe("unsupported request through proposeDesignChange (customer entry)", () 
     expect(before.proposal?.fingerprint).toBe(beforeFingerprint);
   });
 
-  it("applyConversationalEdit refuses jewellery-drawer request the same way", () => {
+  it("applyConversationalEdit refuses lock request the same way", () => {
     const before = previewDraftWardrobe({
       description: "A wardrobe 1800 mm wide and 2400 mm high",
       specId: SPEC_ID,
@@ -75,13 +71,14 @@ describe("unsupported request through proposeDesignChange (customer entry)", () 
     });
     const result = applyConversationalEdit({
       currentObservations: before.observations,
-      commandText: "Add a jewellery drawer with velvet inserts and a lock",
+      commandText: "Add a lock to the doors",
       specId: SPEC_ID,
       revision: before.spec.revision,
     });
     expect(result.ok).toBe(false);
     expect(result.kind).toBe("UNSUPPORTED");
     expect(result.unsupported?.[0]?.alternativeApplied).toBe(false);
+    expect(result.unsupported?.[0]?.reason).toMatch(/lock/i);
     expect(result.spec).toBeUndefined();
     expect(result.partGraph).toBeUndefined();
   });
