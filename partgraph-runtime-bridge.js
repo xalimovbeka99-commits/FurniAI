@@ -48,13 +48,22 @@ var PartGraphBridge = (() => {
     PIPELINE_STAGE: () => PIPELINE_STAGE,
     applyConversationalEdit: () => applyConversationalEdit,
     approveAndPreview: () => approveAndPreview,
+    buildCutListRows: () => buildCutListRows,
     buildStructuralPartGraph: () => buildStructuralPartGraph,
+    compileCabinetDxfPackage: () => compileCabinetDxfPackage,
+    compileNestingManifest: () => compileNestingManifest,
+    compilePanelToDxf: () => compilePanelToDxf,
     createDeterministicPhraseAdapter: () => createDeterministicPhraseAdapter,
     createProposal: () => createProposal,
+    createZipBuffer: () => createZipBuffer,
     disposePartGraphGroup: () => disposePartGraphGroup,
     draftPreviewSafety: () => draftPreviewSafety,
+    exportCabinetDxfZip: () => exportCabinetDxfZip,
+    exportCutListCSV: () => exportCutListCSV,
     exportShopDrawingsPDF: () => exportShopDrawingsPDF,
     exportShopDrawingsSVG: () => exportShopDrawingsSVG,
+    formatNestingReport: () => formatNestingReport,
+    generateCutListCsv: () => generateCutListCsv,
     generateShopDrawingsSVG: () => generateShopDrawingsSVG,
     goldenSpec: () => goldenWardrobe_fixture_default,
     loadApprovedPartGraph: () => loadApprovedPartGraph,
@@ -5252,6 +5261,1112 @@ var PartGraphBridge = (() => {
       filename: name,
       mimeType: "application/pdf",
       content: svgContent
+    };
+  }
+
+  // src/lib/production/dxfCompiler.js
+  var DXF_LAYERS = Object.freeze({
+    OUTLINE_CONTOUR: "OUTLINE_CONTOUR",
+    GROOVE_BACK_PANEL: "GROOVE_BACK_PANEL",
+    DRILL_SYSTEM_32: "DRILL_SYSTEM_32"
+  });
+  var GROOVE_HOST_ROLES = /* @__PURE__ */ new Set([
+    PART_ROLES.TOP_PANEL,
+    PART_ROLES.BOTTOM_PANEL,
+    PART_ROLES.SIDE_PANEL_LEFT,
+    PART_ROLES.SIDE_PANEL_RIGHT
+  ]);
+  var SYSTEM32_HOST_ROLES = /* @__PURE__ */ new Set([
+    PART_ROLES.SIDE_PANEL_LEFT,
+    PART_ROLES.SIDE_PANEL_RIGHT,
+    PART_ROLES.DIVIDER_PANEL
+  ]);
+  var GROOVE_WIDTH_MM_MIN = 7;
+  var GROOVE_WIDTH_MM_MAX = 8.5;
+  var GROOVE_DEPTH_MM_MIN = 7;
+  var GROOVE_DEPTH_MM_MAX = 10;
+  var SYSTEM32_DIAMETER_MM = 5;
+  var SYSTEM32_DEPTH_DEFAULT_MM = 13;
+  function isSystem32DrillingApproved(options = {}) {
+    const explicit = options.approveSystem32Drilling === true || options.approveDrilling === true || options.emitSystem32 === true;
+    const status = options.qualificationStatus ?? options.partGraph?.qualificationStatus ?? null;
+    return explicit === true && status === "CNC_QUALIFIED";
+  }
+  function compilePanelToDxf(panel, options = {}) {
+    if (!panel || typeof panel !== "object") {
+      throw new Error("compilePanelToDxf requires a panel object.");
+    }
+    const dims = resolvePanelDimsMm(panel);
+    const { lengthMm: L, widthMm: W } = dims;
+    if (!(L > 0) || !(W > 0)) {
+      throw new Error(`Panel "${panel.id || "?"}" has non-positive flat dimensions.`);
+    }
+    const layers = /* @__PURE__ */ new Set([DXF_LAYERS.OUTLINE_CONTOUR]);
+    const entities = [];
+    const outline = [
+      [0, 0],
+      [L, 0],
+      [L, W],
+      [0, W],
+      [0, 0]
+    ];
+    entities.push(...polylineEntity(DXF_LAYERS.OUTLINE_CONTOUR, outline));
+    const groove = resolveGrooveSpec(panel, options, dims);
+    if (groove) {
+      layers.add(DXF_LAYERS.GROOVE_BACK_PANEL);
+      const groovePoly = buildInsetGroovePolyline(L, W, groove);
+      assertPolylineInsideOutline(groovePoly, L, W);
+      entities.push(
+        ...commentEntity(
+          `GROOVE_BACK_PANEL widthMm=${fmt(groove.widthMm)} depthMm=${fmt(groove.depthMm)} rearSetbackMm=${fmt(groove.rearSetbackMm)}`
+        )
+      );
+      entities.push(...polylineEntity(DXF_LAYERS.GROOVE_BACK_PANEL, groovePoly));
+      entities.push(...xdataFurniai([
+        ["grooveWidthMm", String(groove.widthMm)],
+        ["grooveDepthMm", String(groove.depthMm)],
+        ["grooveRearSetbackMm", String(groove.rearSetbackMm)]
+      ]));
+    }
+    const drillOk = isSystem32DrillingApproved(options);
+    if (drillOk && isSystem32Host(panel)) {
+      layers.add(DXF_LAYERS.DRILL_SYSTEM_32);
+      const depthMm = resolveSystem32DepthMm(options);
+      const holes = resolveSystem32Holes(panel, dims, options);
+      entities.push(
+        ...commentEntity(
+          `DRILL_SYSTEM_32 diameterMm=${SYSTEM32_DIAMETER_MM} depthMm=${fmt(depthMm)} count=${holes.length}`
+        )
+      );
+      for (const h of holes) {
+        assertPointInsideOutline(h.x, h.y, L, W, SYSTEM32_DIAMETER_MM / 2);
+        entities.push(...circleEntity(DXF_LAYERS.DRILL_SYSTEM_32, h.x, h.y, SYSTEM32_DIAMETER_MM / 2));
+      }
+      entities.push(...xdataFurniai([
+        ["drillDiameterMm", String(SYSTEM32_DIAMETER_MM)],
+        ["drillDepthMm", String(depthMm)]
+      ]));
+    }
+    return buildDxfDocument([...layers], entities);
+  }
+  function compileCabinetDxfPackage(partGraph, options = {}) {
+    if (!partGraph || typeof partGraph !== "object") {
+      throw new Error("compileCabinetDxfPackage requires a PartGraph object.");
+    }
+    const parts = Array.isArray(partGraph.parts) ? partGraph.parts : [];
+    const operations = Array.isArray(partGraph.operations) ? partGraph.operations : [];
+    const packageOptions = {
+      ...options,
+      partGraph,
+      qualificationStatus: options.qualificationStatus ?? partGraph.qualificationStatus ?? null
+    };
+    const out = [];
+    for (const panel of parts) {
+      if (!isMachinablePanel(panel)) continue;
+      const panelOps = operations.filter((op) => op && op.hostPartId === panel.id);
+      const dxfContent = compilePanelToDxf(panel, {
+        ...packageOptions,
+        operations: panelOps.length ? panelOps : packageOptions.operations
+      });
+      out.push({
+        filename: safeDxfFilename(panel.id),
+        dxfContent,
+        metadata: buildPanelMetadata(panel)
+      });
+    }
+    return out;
+  }
+  function isMachinablePanel(panel) {
+    if (!panel || typeof panel !== "object") return false;
+    if (panel.machinable === false || panel.nonMachinable === true) return false;
+    if (panel.geometryType && panel.geometryType !== GEOMETRY_TYPES.RECTANGULAR_PANEL) {
+      return false;
+    }
+    if (panel.group === "accessory" || panel.previewOnly === true) return false;
+    return Boolean(panel.finished || panel.lengthMm != null && panel.widthMm != null);
+  }
+  function resolvePanelDimsMm(panel) {
+    if (panel.finished && panel.finished.lengthDmm != null) {
+      return {
+        lengthMm: fromDeciMm(panel.finished.lengthDmm),
+        widthMm: fromDeciMm(panel.finished.widthDmm),
+        thicknessMm: fromDeciMm(panel.finished.thicknessDmm)
+      };
+    }
+    const lengthMm = Number(panel.lengthMm ?? panel.length);
+    const widthMm = Number(panel.widthMm ?? panel.width);
+    const thicknessMm = Number(panel.thicknessMm ?? panel.thickness ?? 18);
+    return { lengthMm, widthMm, thicknessMm };
+  }
+  function buildPanelMetadata(panel) {
+    const dims = resolvePanelDimsMm(panel);
+    const edges = panel.edges || {};
+    const toMm = (dmm) => {
+      if (dmm == null) return 0;
+      if (typeof dmm === "number" && Number.isInteger(dmm)) return fromDeciMm(dmm);
+      return Number(dmm) || 0;
+    };
+    return {
+      partId: panel.id ?? null,
+      role: panel.role ?? null,
+      boardThicknessMm: dims.thicknessMm,
+      materialCode: panel.materialCode ?? null,
+      grainDirection: panel.grainDirection ?? null,
+      edgeBanding: {
+        L1: toMm(edges.LENGTH_EDGE_1),
+        L2: toMm(edges.LENGTH_EDGE_2),
+        W1: toMm(edges.WIDTH_EDGE_1),
+        W2: toMm(edges.WIDTH_EDGE_2)
+      },
+      finishedMm: {
+        length: dims.lengthMm,
+        width: dims.widthMm,
+        thickness: dims.thicknessMm
+      }
+    };
+  }
+  function safeDxfFilename(id) {
+    const base = String(id || "panel").replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "panel";
+    return `${base}.dxf`;
+  }
+  function resolveGrooveSpec(panel, options, dims) {
+    const ops = options.operations || options.partGraph?.operations?.filter((o) => o.hostPartId === panel.id) || [];
+    const grooveOp = ops.find(
+      (o) => o && (o.type === "BACK_GROOVE" || o.type === "GROOVE")
+    );
+    const isBackInsert = panel.role === PART_ROLES.BACK_PANEL;
+    if (isBackInsert && !grooveOp && panel.hasBackGroove !== true && !panel.backGroove) {
+      return null;
+    }
+    const roleIsHost = GROOVE_HOST_ROLES.has(panel.role);
+    const explicitMeta = panel.hasBackGroove === true || panel.backGroove != null;
+    if (!grooveOp && !roleIsHost && !explicitMeta && !options.forceGroove) {
+      return null;
+    }
+    let widthMm = Number(
+      options.grooveWidthMm ?? grooveOp?.widthMm ?? (grooveOp?.widthDmm != null ? fromDeciMm(grooveOp.widthDmm) : null) ?? panel.backGroove?.widthMm ?? safeResolve("grooveWidthMm", 7)
+    );
+    let depthMm = Number(
+      options.grooveDepthMm ?? grooveOp?.depthMm ?? (grooveOp?.depthDmm != null ? fromDeciMm(grooveOp.depthDmm) : null) ?? panel.backGroove?.depthMm ?? safeResolve("grooveDepthMm", 7)
+    );
+    const rearSetbackMm = Number(
+      options.grooveRearSetbackMm ?? panel.backGroove?.rearSetbackMm ?? safeResolve("grooveRearDatumMm", 20)
+    );
+    widthMm = clamp(widthMm, GROOVE_WIDTH_MM_MIN, GROOVE_WIDTH_MM_MAX);
+    depthMm = clamp(depthMm, GROOVE_DEPTH_MM_MIN, GROOVE_DEPTH_MM_MAX);
+    const maxWidth = Math.max(0.5, dims.widthMm - 2 * 0.5);
+    if (widthMm > maxWidth) widthMm = maxWidth;
+    return { widthMm, depthMm, rearSetbackMm };
+  }
+  function buildInsetGroovePolyline(lengthMm, widthMm, groove) {
+    const inset = 0.5;
+    const half = groove.widthMm / 2;
+    let cy = widthMm - groove.rearSetbackMm - half;
+    const minCy = inset + half;
+    const maxCy = widthMm - inset - half;
+    cy = clamp(cy, minCy, maxCy);
+    const x0 = inset;
+    const x1 = lengthMm - inset;
+    const y0 = cy - half;
+    const y1 = cy + half;
+    return [
+      [x0, y0],
+      [x1, y0],
+      [x1, y1],
+      [x0, y1],
+      [x0, y0]
+    ];
+  }
+  function assertPolylineInsideOutline(verts, L, W) {
+    const eps = 1e-6;
+    for (const [x, y] of verts) {
+      if (x < -eps || y < -eps || x > L + eps || y > W + eps) {
+        throw new Error(
+          `Groove vertex (${x}, ${y}) crosses outer outline 0..${L} \xD7 0..${W}.`
+        );
+      }
+    }
+  }
+  function assertPointInsideOutline(x, y, L, W, radius = 0) {
+    const eps = 1e-6;
+    if (x - radius < -eps || y - radius < -eps || x + radius > L + eps || y + radius > W + eps) {
+      throw new Error(
+        `Hole at (${x}, ${y}) r=${radius} crosses outer outline 0..${L} \xD7 0..${W}.`
+      );
+    }
+  }
+  function isSystem32Host(panel) {
+    if (panel.system32Host === true) return true;
+    if (panel.role && SYSTEM32_HOST_ROLES.has(panel.role)) return true;
+    if (Array.isArray(panel.system32Holes) || panel.emitSystem32 === true) return true;
+    return false;
+  }
+  function resolveSystem32DepthMm(options) {
+    if (Number.isFinite(options.system32DepthMm)) return options.system32DepthMm;
+    return safeResolve("shelfPinHoleDepthMm", SYSTEM32_DEPTH_DEFAULT_MM);
+  }
+  function resolveSystem32Holes(panel, dims, options) {
+    if (Array.isArray(options.system32Holes) && options.system32Holes.length) {
+      return options.system32Holes.map((h) => ({ x: Number(h.x), y: Number(h.y) }));
+    }
+    if (Array.isArray(panel.system32Holes) && panel.system32Holes.length) {
+      return panel.system32Holes.map((h) => ({ x: Number(h.x), y: Number(h.y) }));
+    }
+    const pitchMm = safeResolve("shelfPinPitchMm", 32);
+    const frontSetbackMm = 37;
+    const originFromBottomMm = 64;
+    const radius = SYSTEM32_DIAMETER_MM / 2;
+    const margin = radius + 0.5;
+    const { lengthMm: L, widthMm: W } = dims;
+    const colsY = [frontSetbackMm, W - frontSetbackMm].filter(
+      (y) => y >= margin && y <= W - margin
+    );
+    const holes = [];
+    for (let x = originFromBottomMm; x <= L - margin; x += pitchMm) {
+      if (x < margin) continue;
+      for (const y of colsY) {
+        holes.push({ x: round1(x), y: round1(y) });
+      }
+    }
+    return holes;
+  }
+  function safeResolve(key, fallback) {
+    try {
+      const v = resolve(key);
+      return v == null ? fallback : v;
+    } catch {
+      return fallback;
+    }
+  }
+  function buildDxfDocument(layerNames, entityLines) {
+    const lines = [];
+    const push = (...xs) => {
+      for (const x of xs) lines.push(String(x));
+    };
+    push("0", "SECTION", "2", "HEADER");
+    push("9", "$ACADVER", "1", "AC1009");
+    push("9", "$INSUNITS", "70", "4");
+    push("9", "$MEASUREMENT", "70", "1");
+    push("0", "ENDSEC");
+    push("0", "SECTION", "2", "TABLES");
+    push("0", "TABLE", "2", "LAYER", "70", String(layerNames.length));
+    for (const name of layerNames) {
+      push(
+        "0",
+        "LAYER",
+        "2",
+        name,
+        "70",
+        "0",
+        "62",
+        String(layerColor(name)),
+        "6",
+        "CONTINUOUS"
+      );
+    }
+    push("0", "ENDTAB");
+    push("0", "TABLE", "2", "APPID", "70", "1");
+    push("0", "APPID", "2", "FURNIAI", "70", "0");
+    push("0", "ENDTAB");
+    push("0", "ENDSEC");
+    push("0", "SECTION", "2", "ENTITIES");
+    for (const line of entityLines) push(line);
+    push("0", "ENDSEC");
+    push("0", "EOF");
+    return `${lines.join("\n")}
+`;
+  }
+  function layerColor(name) {
+    switch (name) {
+      case DXF_LAYERS.OUTLINE_CONTOUR:
+        return 7;
+      case DXF_LAYERS.GROOVE_BACK_PANEL:
+        return 2;
+      case DXF_LAYERS.DRILL_SYSTEM_32:
+        return 3;
+      default:
+        return 7;
+    }
+  }
+  function polylineEntity(layer, vertices) {
+    const lines = [];
+    lines.push("0", "POLYLINE", "8", layer, "66", "1", "70", "1");
+    for (const [x, y] of vertices) {
+      lines.push("0", "VERTEX", "8", layer, "10", fmt(x), "20", fmt(y), "30", "0.0");
+    }
+    lines.push("0", "SEQEND", "8", layer);
+    return lines;
+  }
+  function circleEntity(layer, cx, cy, radius) {
+    return [
+      "0",
+      "CIRCLE",
+      "8",
+      layer,
+      "10",
+      fmt(cx),
+      "20",
+      fmt(cy),
+      "30",
+      "0.0",
+      "40",
+      fmt(radius)
+    ];
+  }
+  function commentEntity(text) {
+    return ["999", String(text)];
+  }
+  function xdataFurniai(pairs) {
+    const lines = ["1001", "FURNIAI"];
+    for (const [k, v] of pairs) {
+      lines.push("1000", `${k}=${v}`);
+    }
+    return lines;
+  }
+  function clamp(n, lo, hi) {
+    return Math.min(hi, Math.max(lo, n));
+  }
+  function fmt(n) {
+    const x = Number(n);
+    if (!Number.isFinite(x)) return "0.0";
+    const rounded = Math.round(x * 1e3) / 1e3;
+    let s = rounded.toFixed(3);
+    s = s.replace(/\.?0+$/, "");
+    if (!s.includes(".")) s = `${s}.0`;
+    return s;
+  }
+  function round1(n) {
+    return Math.round(Number(n) * 10) / 10;
+  }
+
+  // src/lib/production/nestingCompiler.js
+  var STOCK_SHEETS = Object.freeze([
+    Object.freeze({ id: "SHEET_2440x1220", lengthMm: 2440, widthMm: 1220 }),
+    Object.freeze({ id: "SHEET_2800x2070", lengthMm: 2800, widthMm: 2070 })
+  ]);
+  var DEFAULT_KERF_MM = 3.5;
+  var DEFAULT_PERIMETER_TRIM_MM = 15;
+  var CUT_LIST_CSV_COLUMNS = Object.freeze([
+    "Part ID",
+    "Role",
+    "Material",
+    "Cut Length (mm)",
+    "Cut Width (mm)",
+    "Thickness (mm)",
+    "Qty",
+    "Grain",
+    "Band L1",
+    "Band L2",
+    "Band W1",
+    "Band W2"
+  ]);
+  function normalizeGrainDirection(grain) {
+    if (grain == null || grain === "") return GRAIN_DIRECTIONS.NONE;
+    const g = String(grain).trim().toUpperCase();
+    if (g === "LENGTHWISE" || g === GRAIN_DIRECTIONS.LENGTH || g === "L") {
+      return GRAIN_DIRECTIONS.LENGTH;
+    }
+    if (g === GRAIN_DIRECTIONS.WIDTH || g === "W") {
+      return GRAIN_DIRECTIONS.WIDTH;
+    }
+    if (g === GRAIN_DIRECTIONS.NONE || g === "NO_GRAIN" || g === "-") {
+      return GRAIN_DIRECTIONS.NONE;
+    }
+    return g;
+  }
+  function allowedOrientations(grainNormalized) {
+    const g = normalizeGrainDirection(grainNormalized);
+    if (g === GRAIN_DIRECTIONS.NONE) return ["natural", "rotated"];
+    if (g === GRAIN_DIRECTIONS.LENGTH || g === GRAIN_DIRECTIONS.WIDTH) {
+      return ["natural"];
+    }
+    return ["natural"];
+  }
+  function isMachinablePanel2(panel) {
+    if (!panel || typeof panel !== "object") return false;
+    if (panel.machinable === false || panel.nonMachinable === true) return false;
+    if (panel.geometryType && panel.geometryType !== GEOMETRY_TYPES.RECTANGULAR_PANEL) {
+      return false;
+    }
+    if (panel.group === "accessory" || panel.previewOnly === true) return false;
+    return Boolean(panel.finished || panel.raw || panel.lengthMm != null && panel.widthMm != null);
+  }
+  function edgeToMm(dmm) {
+    if (dmm == null) return 0;
+    if (typeof dmm === "number" && Number.isInteger(dmm)) return fromDeciMm(dmm);
+    return Number(dmm) || 0;
+  }
+  function resolveCutPanelMm(panel) {
+    const edges = panel.edges || {};
+    const band = {
+      L1: edgeToMm(edges.LENGTH_EDGE_1),
+      L2: edgeToMm(edges.LENGTH_EDGE_2),
+      W1: edgeToMm(edges.WIDTH_EDGE_1),
+      W2: edgeToMm(edges.WIDTH_EDGE_2)
+    };
+    let cutLengthMm;
+    let cutWidthMm;
+    let thicknessMm;
+    let finishedLengthMm;
+    let finishedWidthMm;
+    if (panel.raw && panel.raw.lengthDmm != null) {
+      cutLengthMm = fromDeciMm(panel.raw.lengthDmm);
+      cutWidthMm = fromDeciMm(panel.raw.widthDmm);
+      thicknessMm = fromDeciMm(panel.raw.thicknessDmm ?? panel.finished?.thicknessDmm ?? 180);
+    } else if (panel.finished && panel.finished.lengthDmm != null) {
+      finishedLengthMm = fromDeciMm(panel.finished.lengthDmm);
+      finishedWidthMm = fromDeciMm(panel.finished.widthDmm);
+      thicknessMm = fromDeciMm(panel.finished.thicknessDmm);
+      cutLengthMm = finishedLengthMm - band.W1 - band.W2;
+      cutWidthMm = finishedWidthMm - band.L1 - band.L2;
+    } else {
+      cutLengthMm = Number(panel.cutLengthMm ?? panel.lengthMm ?? panel.length);
+      cutWidthMm = Number(panel.cutWidthMm ?? panel.widthMm ?? panel.width);
+      thicknessMm = Number(panel.thicknessMm ?? panel.thickness ?? 18);
+    }
+    if (panel.finished && panel.finished.lengthDmm != null) {
+      finishedLengthMm = fromDeciMm(panel.finished.lengthDmm);
+      finishedWidthMm = fromDeciMm(panel.finished.widthDmm);
+    } else {
+      finishedLengthMm = cutLengthMm + band.W1 + band.W2;
+      finishedWidthMm = cutWidthMm + band.L1 + band.L2;
+    }
+    const grain = normalizeGrainDirection(panel.grainDirection);
+    const qty = Math.max(1, Number(panel.quantity ?? panel.qty ?? 1) || 1);
+    return {
+      partId: panel.id ?? null,
+      role: panel.role ?? null,
+      material: panel.materialCode ?? panel.material ?? "",
+      cutLengthMm,
+      cutWidthMm,
+      thicknessMm,
+      finishedLengthMm,
+      finishedWidthMm,
+      qty,
+      grain,
+      grainRaw: panel.grainDirection ?? GRAIN_DIRECTIONS.NONE,
+      band
+    };
+  }
+  function csvEscape(v) {
+    const s = String(v ?? "");
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+  function roundMm(n, digits = 1) {
+    const f = 10 ** digits;
+    return Math.round(Number(n) * f) / f;
+  }
+  function buildCutListRows(partGraph) {
+    if (!partGraph || typeof partGraph !== "object") {
+      throw new Error("buildCutListRows requires a PartGraph object.");
+    }
+    const parts = Array.isArray(partGraph.parts) ? partGraph.parts : [];
+    const rows = [];
+    for (const panel of parts) {
+      if (!isMachinablePanel2(panel)) continue;
+      const r = resolveCutPanelMm(panel);
+      if (!(r.cutLengthMm > 0) || !(r.cutWidthMm > 0)) {
+        throw new Error(
+          `Panel "${r.partId || "?"}" has non-positive cut dimensions (${r.cutLengthMm}\xD7${r.cutWidthMm}).`
+        );
+      }
+      rows.push({
+        partId: r.partId,
+        role: r.role,
+        material: r.material,
+        cutLengthMm: roundMm(r.cutLengthMm),
+        cutWidthMm: roundMm(r.cutWidthMm),
+        thicknessMm: roundMm(r.thicknessMm),
+        qty: r.qty,
+        grain: r.grain,
+        bandL1: roundMm(r.band.L1),
+        bandL2: roundMm(r.band.L2),
+        bandW1: roundMm(r.band.W1),
+        bandW2: roundMm(r.band.W2)
+      });
+    }
+    return rows;
+  }
+  function generateCutListCsv(partGraph) {
+    const rows = buildCutListRows(partGraph);
+    const lines = [CUT_LIST_CSV_COLUMNS.join(",")];
+    for (const r of rows) {
+      lines.push(
+        [
+          csvEscape(r.partId),
+          csvEscape(r.role),
+          csvEscape(r.material),
+          r.cutLengthMm,
+          r.cutWidthMm,
+          r.thicknessMm,
+          r.qty,
+          csvEscape(r.grain),
+          r.bandL1,
+          r.bandL2,
+          r.bandW1,
+          r.bandW2
+        ].join(",")
+      );
+    }
+    return lines.join("\n");
+  }
+  function sumEdgeBandingLinearMeters(cutRows) {
+    const acc = /* @__PURE__ */ new Map();
+    const add = (thicknessMm, lengthMm, qty) => {
+      if (!(thicknessMm > 0) || !(lengthMm > 0)) return;
+      const t = roundMm(thicknessMm, 2);
+      acc.set(t, (acc.get(t) || 0) + lengthMm * qty);
+    };
+    for (const r of cutRows) {
+      add(r.bandL1, r.cutLengthMm, r.qty);
+      add(r.bandL2, r.cutLengthMm, r.qty);
+      add(r.bandW1, r.cutWidthMm, r.qty);
+      add(r.bandW2, r.cutWidthMm, r.qty);
+    }
+    const out = {};
+    for (const [t, mm] of [...acc.entries()].sort((a, b) => a[0] - b[0])) {
+      out[String(t)] = roundMm(mm / 1e3, 4);
+    }
+    return out;
+  }
+  function expandNestItems(cutRows) {
+    const items = [];
+    for (const r of cutRows) {
+      for (let i = 0; i < r.qty; i++) {
+        items.push({
+          instanceId: `${r.partId}#${i + 1}`,
+          partId: r.partId,
+          role: r.role,
+          grain: r.grain,
+          lengthMm: r.cutLengthMm,
+          widthMm: r.cutWidthMm,
+          areaMm2: r.cutLengthMm * r.cutWidthMm
+        });
+      }
+    }
+    return items;
+  }
+  function placementCandidates(item) {
+    const orients = allowedOrientations(item.grain);
+    const out = [];
+    for (const o of orients) {
+      if (o === "natural") {
+        out.push({
+          placedW: item.lengthMm,
+          placedH: item.widthMm,
+          orientation: "natural"
+        });
+      } else {
+        out.push({
+          placedW: item.widthMm,
+          placedH: item.lengthMm,
+          orientation: "rotated"
+        });
+      }
+    }
+    return out;
+  }
+  function aabbsOverlap(a, b, eps = 1e-6) {
+    return a.x < b.x + b.w - eps && a.x + a.w > b.x + eps && a.y < b.y + b.h - eps && a.y + a.h > b.y + eps;
+  }
+  function packFfdhShelves(items, sheet, options = {}) {
+    const kerfMm = options.kerfMm ?? DEFAULT_KERF_MM;
+    const trimMm = options.perimeterTrimMm ?? DEFAULT_PERIMETER_TRIM_MM;
+    const usableW = sheet.lengthMm - 2 * trimMm;
+    const usableH = sheet.widthMm - 2 * trimMm;
+    if (!(usableW > 0) || !(usableH > 0)) {
+      throw new Error(
+        `Stock ${sheet.id || "?"} usable area non-positive after ${trimMm}mm trim.`
+      );
+    }
+    const unplaced = [];
+    const placeable = [];
+    for (const item of items) {
+      const cands = placementCandidates(item).filter(
+        (c) => c.placedW <= usableW + 1e-9 && c.placedH <= usableH + 1e-9
+      );
+      if (cands.length === 0) {
+        unplaced.push({
+          ...item,
+          reason: `does not fit usable ${roundMm(usableW)}\xD7${roundMm(usableH)} mm on ${sheet.id || "sheet"} (grain=${item.grain})`
+        });
+      } else {
+        placeable.push({ item, cands });
+      }
+    }
+    placeable.sort((a, b) => {
+      const ah = Math.max(...a.cands.map((c) => c.placedH));
+      const bh = Math.max(...b.cands.map((c) => c.placedH));
+      if (bh !== ah) return bh - ah;
+      const aw = Math.max(...a.cands.map((c) => c.placedW));
+      const bw = Math.max(...b.cands.map((c) => c.placedW));
+      return bw - aw;
+    });
+    const sheets = [];
+    const newSheet = () => {
+      const s = { index: sheets.length, placements: [], shelves: [] };
+      sheets.push(s);
+      return s;
+    };
+    const newShelf = (sheetState, height) => {
+      const shelf = {
+        y: 0,
+        height,
+        cursorX: 0,
+        placements: []
+      };
+      if (sheetState.shelves.length === 0) {
+        shelf.y = 0;
+      } else {
+        const prev = sheetState.shelves[sheetState.shelves.length - 1];
+        shelf.y = prev.y + prev.height + kerfMm;
+      }
+      sheetState.shelves.push(shelf);
+      return shelf;
+    };
+    let current = newSheet();
+    for (const { item, cands } of placeable) {
+      let placed = false;
+      const ordered = [...cands].sort((a, b) => {
+        if (a.orientation === "natural" && b.orientation !== "natural") return -1;
+        if (b.orientation === "natural" && a.orientation !== "natural") return 1;
+        return b.placedH - a.placedH;
+      });
+      for (const cand of ordered) {
+        for (const shelf of current.shelves) {
+          if (cand.placedH > shelf.height + 1e-9) continue;
+          const needW = cand.placedW + (shelf.cursorX > 0 ? kerfMm : 0);
+          if (shelf.cursorX + needW <= usableW + 1e-9) {
+            const x = shelf.cursorX === 0 ? 0 : shelf.cursorX + kerfMm;
+            const placement = {
+              instanceId: item.instanceId,
+              partId: item.partId,
+              role: item.role,
+              grain: item.grain,
+              orientation: cand.orientation,
+              x: roundMm(x, 3),
+              y: roundMm(shelf.y, 3),
+              w: roundMm(cand.placedW, 3),
+              h: roundMm(cand.placedH, 3),
+              sheetIndex: current.index
+            };
+            shelf.placements.push(placement);
+            current.placements.push(placement);
+            shelf.cursorX = x + cand.placedW;
+            placed = true;
+            break;
+          }
+        }
+        if (placed) break;
+        const usedH = current.shelves.length === 0 ? 0 : current.shelves[current.shelves.length - 1].y + current.shelves[current.shelves.length - 1].height;
+        const gap2 = current.shelves.length === 0 ? 0 : kerfMm;
+        if (usedH + gap2 + cand.placedH <= usableH + 1e-9) {
+          const shelf = newShelf(current, cand.placedH);
+          shelf.height = cand.placedH;
+          const placement = {
+            instanceId: item.instanceId,
+            partId: item.partId,
+            role: item.role,
+            grain: item.grain,
+            orientation: cand.orientation,
+            x: 0,
+            y: roundMm(shelf.y, 3),
+            w: roundMm(cand.placedW, 3),
+            h: roundMm(cand.placedH, 3),
+            sheetIndex: current.index
+          };
+          shelf.placements.push(placement);
+          current.placements.push(placement);
+          shelf.cursorX = cand.placedW;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        current = newSheet();
+        let done = false;
+        for (const cand of ordered) {
+          if (cand.placedW > usableW + 1e-9 || cand.placedH > usableH + 1e-9) continue;
+          const shelf = newShelf(current, cand.placedH);
+          const placement = {
+            instanceId: item.instanceId,
+            partId: item.partId,
+            role: item.role,
+            grain: item.grain,
+            orientation: cand.orientation,
+            x: 0,
+            y: 0,
+            w: roundMm(cand.placedW, 3),
+            h: roundMm(cand.placedH, 3),
+            sheetIndex: current.index
+          };
+          shelf.placements.push(placement);
+          current.placements.push(placement);
+          shelf.cursorX = cand.placedW;
+          done = true;
+          break;
+        }
+        if (!done) {
+          unplaced.push({
+            ...item,
+            reason: `failed to pack on ${sheet.id || "sheet"} after new-sheet attempt`
+          });
+        }
+      }
+    }
+    while (sheets.length > 0 && sheets[sheets.length - 1].placements.length === 0) {
+      sheets.pop();
+    }
+    for (const s of sheets) {
+      const rects = s.placements.map((p) => ({ x: p.x, y: p.y, w: p.w, h: p.h, id: p.instanceId }));
+      for (let i = 0; i < rects.length; i++) {
+        for (let j = i + 1; j < rects.length; j++) {
+          if (aabbsOverlap(rects[i], rects[j])) {
+            throw new Error(
+              `Nesting overlap on ${sheet.id} sheet ${s.index}: ${rects[i].id} vs ${rects[j].id}`
+            );
+          }
+        }
+      }
+    }
+    const sheetCount = sheets.length;
+    const totalSheetAreaMm2 = sheetCount * sheet.lengthMm * sheet.widthMm;
+    const totalPanelAreaMm2 = items.filter((it) => !unplaced.some((u) => u.instanceId === it.instanceId)).reduce((a, it) => a + it.areaMm2, 0);
+    const yieldEfficiencyPct = totalSheetAreaMm2 > 0 ? roundMm(totalPanelAreaMm2 / totalSheetAreaMm2 * 100, 2) : 0;
+    return {
+      stock: {
+        id: sheet.id,
+        lengthMm: sheet.lengthMm,
+        widthMm: sheet.widthMm,
+        usableLengthMm: roundMm(usableW, 1),
+        usableWidthMm: roundMm(usableH, 1)
+      },
+      kerfMm,
+      perimeterTrimMm: trimMm,
+      sheets: sheets.map((s) => ({
+        index: s.index,
+        placements: s.placements
+      })),
+      sheetCount,
+      totalSheetAreaMm2,
+      totalPanelAreaMm2,
+      yieldEfficiencyPct,
+      unplaced
+    };
+  }
+  function scorePack(pack) {
+    const unplacedPenalty = (pack.unplaced?.length || 0) * 1e9;
+    const stockArea = pack.stock.lengthMm * pack.stock.widthMm;
+    return unplacedPenalty + pack.sheetCount * 1e6 - pack.yieldEfficiencyPct * 1e3 + stockArea;
+  }
+  function compileNestingManifest(partGraph, options = {}) {
+    if (!partGraph || typeof partGraph !== "object") {
+      throw new Error("compileNestingManifest requires a PartGraph object.");
+    }
+    const kerfMm = options.kerfMm ?? DEFAULT_KERF_MM;
+    const perimeterTrimMm = options.perimeterTrimMm ?? DEFAULT_PERIMETER_TRIM_MM;
+    const stockSheets = options.stockSheets ?? STOCK_SHEETS;
+    const cutRows = buildCutListRows(partGraph);
+    const items = expandNestItems(cutRows);
+    const edgeBandingLinearMetersByThicknessMm = sumEdgeBandingLinearMeters(cutRows);
+    const packsByStock = {};
+    let primary = null;
+    for (const stock of stockSheets) {
+      const pack = packFfdhShelves(items, stock, { kerfMm, perimeterTrimMm });
+      packsByStock[stock.id] = {
+        sheetCount: pack.sheetCount,
+        yieldEfficiencyPct: pack.yieldEfficiencyPct,
+        totalPanelAreaMm2: pack.totalPanelAreaMm2,
+        totalSheetAreaMm2: pack.totalSheetAreaMm2,
+        unplacedCount: pack.unplaced.length,
+        unplaced: pack.unplaced,
+        sheets: pack.sheets,
+        stock: pack.stock
+      };
+      if (!primary || scorePack(pack) < scorePack(primary)) {
+        primary = pack;
+      }
+    }
+    if (!primary) {
+      throw new Error("compileNestingManifest: no stock sheets configured.");
+    }
+    if (primary.unplaced.length > 0) {
+      const sample = primary.unplaced[0];
+      throw new Error(
+        `Nesting failed: ${primary.unplaced.length} part(s) do not fit any evaluated stock. Example: ${sample.instanceId} \u2014 ${sample.reason}`
+      );
+    }
+    return {
+      algorithm: "FFDH_SHELF",
+      algorithmNotes: "First-Fit Decreasing Height shelf packing with kerf gutters; guillotine-friendly horizontal shelves. Evaluates both stock families; primary = fewest sheets, then higher yield, then smaller sheet area.",
+      kerfMm,
+      perimeterTrimMm,
+      grainPolicy: {
+        LENGTH: "part length \u2016 sheet length (X); rotation rejected",
+        LENGTHWISE: "alias of LENGTH",
+        WIDTH: "part width \u2016 sheet width (Y); rotation rejected",
+        NONE: "rotation allowed"
+      },
+      cutList: cutRows,
+      edgeBandingLinearMetersByThicknessMm,
+      totalPanelAreaMm2: primary.totalPanelAreaMm2,
+      packsByStock,
+      primaryStockId: primary.stock.id,
+      sheetCount: primary.sheetCount,
+      yieldEfficiencyPct: primary.yieldEfficiencyPct,
+      totalSheetAreaMm2: primary.totalSheetAreaMm2,
+      sheets: primary.sheets,
+      stock: primary.stock
+    };
+  }
+
+  // src/lib/production/exportBridge.js
+  var CRC_TABLE = (() => {
+    const table = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) {
+        c = c & 1 ? 3988292384 ^ c >>> 1 : c >>> 1;
+      }
+      table[n] = c;
+    }
+    return table;
+  })();
+  function computeCrc32(bytes) {
+    let crc = 0 ^ -1;
+    for (let i = 0; i < bytes.length; i++) {
+      crc = crc >>> 8 ^ CRC_TABLE[(crc ^ bytes[i]) & 255];
+    }
+    return (crc ^ -1) >>> 0;
+  }
+  function createZipBuffer(files) {
+    const encoder = new TextEncoder();
+    const fileEntries = files.map((f) => {
+      const nameBytes = encoder.encode(f.name);
+      const dataBytes = typeof f.data === "string" ? encoder.encode(f.data) : f.data;
+      const crc = computeCrc32(dataBytes);
+      return { nameBytes, dataBytes, crc, size: dataBytes.length };
+    });
+    let totalSize = 0;
+    for (const f of fileEntries) {
+      totalSize += 30 + f.nameBytes.length + f.size;
+      totalSize += 46 + f.nameBytes.length;
+    }
+    totalSize += 22;
+    const buf = new Uint8Array(totalSize);
+    const view = new DataView(buf.buffer);
+    let offset = 0;
+    const centralDirOffsets = [];
+    for (const f of fileEntries) {
+      centralDirOffsets.push(offset);
+      view.setUint32(offset, 67324752, true);
+      view.setUint16(offset + 4, 10, true);
+      view.setUint16(offset + 6, 0, true);
+      view.setUint16(offset + 8, 0, true);
+      view.setUint16(offset + 10, 0, true);
+      view.setUint16(offset + 12, 0, true);
+      view.setUint32(offset + 14, f.crc, true);
+      view.setUint32(offset + 18, f.size, true);
+      view.setUint32(offset + 22, f.size, true);
+      view.setUint16(offset + 26, f.nameBytes.length, true);
+      view.setUint16(offset + 28, 0, true);
+      offset += 30;
+      buf.set(f.nameBytes, offset);
+      offset += f.nameBytes.length;
+      buf.set(f.dataBytes, offset);
+      offset += f.size;
+    }
+    const centralDirStart = offset;
+    for (let i = 0; i < fileEntries.length; i++) {
+      const f = fileEntries[i];
+      const localHeaderOffset = centralDirOffsets[i];
+      view.setUint32(offset, 33639248, true);
+      view.setUint16(offset + 4, 20, true);
+      view.setUint16(offset + 6, 10, true);
+      view.setUint16(offset + 8, 0, true);
+      view.setUint16(offset + 10, 0, true);
+      view.setUint16(offset + 12, 0, true);
+      view.setUint16(offset + 14, 0, true);
+      view.setUint32(offset + 16, f.crc, true);
+      view.setUint32(offset + 20, f.size, true);
+      view.setUint32(offset + 24, f.size, true);
+      view.setUint16(offset + 28, f.nameBytes.length, true);
+      view.setUint16(offset + 30, 0, true);
+      view.setUint16(offset + 32, 0, true);
+      view.setUint16(offset + 34, 0, true);
+      view.setUint16(offset + 36, 0, true);
+      view.setUint32(offset + 38, 0, true);
+      view.setUint32(offset + 42, localHeaderOffset, true);
+      offset += 46;
+      buf.set(f.nameBytes, offset);
+      offset += f.nameBytes.length;
+    }
+    const centralDirSize = offset - centralDirStart;
+    view.setUint32(offset, 101010256, true);
+    view.setUint16(offset + 4, 0, true);
+    view.setUint16(offset + 6, 0, true);
+    view.setUint16(offset + 8, fileEntries.length, true);
+    view.setUint16(offset + 10, fileEntries.length, true);
+    view.setUint32(offset + 12, centralDirSize, true);
+    view.setUint32(offset + 16, centralDirStart, true);
+    view.setUint16(offset + 20, 0, true);
+    return buf;
+  }
+  function triggerFileDownload(filename, mimeType, data) {
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return;
+    }
+    const blob = data instanceof Blob ? data : new Blob([data], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+  function exportCutListCSV(partGraph, filename) {
+    const csvContent = generateCutListCsv(partGraph);
+    const name = filename || `${partGraph?.sourceSpecId || "furniai"}-cut-list.csv`;
+    triggerFileDownload(name, "text/csv;charset=utf-8;", csvContent);
+    return {
+      filename: name,
+      mimeType: "text/csv",
+      content: csvContent
+    };
+  }
+  function exportCabinetDxfZip(partGraph, filename, options = {}) {
+    const dxfFiles = compileCabinetDxfPackage(partGraph, options);
+    const name = filename || `${partGraph?.sourceSpecId || "furniai"}-cnc-dxf.zip`;
+    const filesToZip = dxfFiles.map((f) => ({
+      name: f.filename,
+      data: f.dxfContent
+    }));
+    const manifestText = [
+      "============================================================",
+      "FurniAI CNC Fabrication Package \u2014 AutoCAD R12 DXF Layer Set",
+      "============================================================",
+      `Source Spec ID: ${partGraph?.sourceSpecId || "N/A"}`,
+      `Qualification Status: ${partGraph?.qualificationStatus || "WORKSHOP_REVIEW_NOT_CNC_QUALIFIED"}`,
+      `Total Machinable Panels: ${dxfFiles.length}`,
+      `Generated: ${(/* @__PURE__ */ new Date()).toISOString()}`,
+      "",
+      "LAYERS INCLUDED:",
+      "  - OUTLINE_CONTOUR: Closed perimeter polyline (outer dimension)",
+      "  - GROOVE_BACK_PANEL: Back panel insert groove toolpath (7.0 mm width)",
+      "  - DRILL_SYSTEM_32: Shelf pin holes (Fail-closed: requires CNC_QUALIFIED)",
+      "",
+      "PANEL FILES:",
+      ...dxfFiles.map((f) => `  * ${f.filename}`),
+      "============================================================"
+    ].join("\n");
+    filesToZip.push({
+      name: "README_CNC_PACKAGE.txt",
+      data: manifestText
+    });
+    const zipBuffer = createZipBuffer(filesToZip);
+    triggerFileDownload(name, "application/zip", zipBuffer);
+    return {
+      filename: name,
+      mimeType: "application/zip",
+      buffer: zipBuffer,
+      fileCount: dxfFiles.length
+    };
+  }
+  function formatNestingReport(manifest) {
+    if (!manifest || typeof manifest !== "object") {
+      throw new Error("formatNestingReport requires a compiled nesting manifest.");
+    }
+    const stockW = manifest.stock?.lengthMm || 2440;
+    const stockH = manifest.stock?.widthMm || 1220;
+    const totalSheetM2 = (manifest.totalSheetAreaMm2 / 1e6).toFixed(2);
+    const totalPanelM2 = (manifest.totalPanelAreaMm2 / 1e6).toFixed(2);
+    const yieldPct = manifest.yieldEfficiencyPct.toFixed(1);
+    const edgeBandingLines = [];
+    const bandingEntries = Object.entries(
+      manifest.edgeBandingLinearMetersByThicknessMm || {}
+    );
+    for (const [thickness, meters] of bandingEntries) {
+      const label = thickness === "1" || thickness === "1.0" ? "1.0 mm ABS (Front / Exposed Edges)" : `${thickness} mm Edge Tape`;
+      edgeBandingLines.push({
+        thicknessMm: Number(thickness),
+        label,
+        linearMeters: meters
+      });
+    }
+    const textLines = [
+      "============================================================",
+      "FurniAI Sheet Nesting & Material Optimization Report",
+      "============================================================",
+      `Stock Format:       ${manifest.primaryStockId} (${stockW} \xD7 ${stockH} mm)`,
+      `Required Sheets:    ${manifest.sheetCount} sheets`,
+      `Material Yield:     ${yieldPct}%`,
+      `Total Sheet Area:   ${totalSheetM2} m\xB2`,
+      `Net Panel Area:     ${totalPanelM2} m\xB2`,
+      `Kerf Width:         ${manifest.kerfMm} mm`,
+      `Perimeter Trim:     ${manifest.perimeterTrimMm} mm`,
+      "------------------------------------------------------------",
+      "EDGE-BANDING SCHEDULE:",
+      ...edgeBandingLines.map(
+        (e) => `  \u2022 ${e.label}: ${e.linearMeters.toFixed(2)} m`
+      ),
+      "------------------------------------------------------------",
+      `Total Parts Placed: ${manifest.cutList?.length || 0}`,
+      "============================================================"
+    ];
+    const html = `
+<div class="nesting-report-modal-content">
+  <div style="font-family:'Space Mono',monospace;font-size:11px;color:#888;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px;">Manufacturing Preflight</div>
+  <h3 style="margin:0 0 16px;font-size:18px;font-weight:700;color:#1C1E21;">Sheet Nesting &amp; Material Report</h3>
+
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;">
+    <div style="background:#F5F3EF;padding:12px;border-radius:8px;border:1px solid #E5E0D6;">
+      <div style="font-size:10.5px;color:#666;text-transform:uppercase;letter-spacing:.05em;">Sheets Required</div>
+      <div style="font-size:22px;font-weight:700;color:#1C1E21;margin-top:2px;">${manifest.sheetCount} <span style="font-size:12px;font-weight:400;color:#666;">sheets</span></div>
+      <div style="font-size:10px;color:#888;margin-top:2px;">${stockW} \xD7 ${stockH} mm</div>
+    </div>
+    <div style="background:#F5F3EF;padding:12px;border-radius:8px;border:1px solid #E5E0D6;">
+      <div style="font-size:10.5px;color:#666;text-transform:uppercase;letter-spacing:.05em;">Material Yield</div>
+      <div style="font-size:22px;font-weight:700;color:#00B4D8;margin-top:2px;">${yieldPct}%</div>
+      <div style="font-size:10px;color:#888;margin-top:2px;">${totalPanelM2} m\xB2 of ${totalSheetM2} m\xB2</div>
+    </div>
+    <div style="background:#F5F3EF;padding:12px;border-radius:8px;border:1px solid #E5E0D6;">
+      <div style="font-size:10.5px;color:#666;text-transform:uppercase;letter-spacing:.05em;">Cut Parts</div>
+      <div style="font-size:22px;font-weight:700;color:#1C1E21;margin-top:2px;">${manifest.cutList?.length || 0}</div>
+      <div style="font-size:10px;color:#888;margin-top:2px;">Kerf: ${manifest.kerfMm} mm</div>
+    </div>
+  </div>
+
+  <div style="margin-bottom:18px;">
+    <div style="font-size:11px;font-weight:600;color:#1C1E21;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">Edge-Banding Linear Meters</div>
+    <div style="background:#fff;border:1px solid #E5E0D6;border-radius:8px;padding:10px 14px;">
+      ${edgeBandingLines.map(
+      (e) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #F0ECE4;font-size:12px;">
+          <span style="color:#444;">${e.label}</span>
+          <strong style="font-family:'Space Mono',monospace;color:#1C1E21;">${e.linearMeters.toFixed(2)} m</strong>
+        </div>`
+    ).join("")}
+    </div>
+  </div>
+
+  <div style="font-size:10.5px;color:#888;line-height:1.4;">
+    Optimization: First-Fit Decreasing Height (FFDH) shelf packing. Guillotine cut compatible.
+  </div>
+</div>
+  `.trim();
+    return {
+      sheetCount: manifest.sheetCount,
+      primaryStockId: manifest.primaryStockId,
+      stockDimensionsMm: { length: stockW, width: stockH },
+      yieldEfficiencyPct: manifest.yieldEfficiencyPct,
+      totalSheetAreaM2: Number(totalSheetM2),
+      totalPanelAreaM2: Number(totalPanelM2),
+      edgeBanding: edgeBandingLines,
+      partsCount: manifest.cutList?.length || 0,
+      text: textLines.join("\n"),
+      html
     };
   }
 
