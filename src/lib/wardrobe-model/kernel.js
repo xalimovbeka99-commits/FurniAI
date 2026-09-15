@@ -303,6 +303,12 @@ export function addComponent(model, { sectionId, type, positionMm, rows, leaves,
   let fields = {};
   if (type === COMPONENT_TYPES.DRAWER_BANK) {
     fields.rows = rows === undefined ? 3 : assertIntegerCount(rows, "rows", DEFAULTS.minDrawerRows, DEFAULTS.maxDrawerRows);
+    if (section.widthMm < DEFAULTS.minDrawerBayClearWidthMm) {
+      fail(
+        "INSUFFICIENT_BAY_WIDTH_FOR_DRAWERS",
+        `Bay clear width ${section.widthMm}mm cannot accommodate undermount deduction (21mm) and drawer box side walls (need >= ${DEFAULTS.minDrawerBayClearWidthMm}mm).`
+      );
+    }
   }
   if (type === COMPONENT_TYPES.DOOR) {
     fields.leaves = leaves === undefined ? 1 : assertIntegerCount(leaves, "leaves", DEFAULTS.minDoorLeaves, DEFAULTS.maxDoorLeaves);
@@ -311,6 +317,13 @@ export function addComponent(model, { sectionId, type, positionMm, rows, leaves,
 
   const heightMm = type === COMPONENT_TYPES.DOOR ? interiorHeightMm(model) : zoneHeightMm(type, fields);
   const interiorH = interiorHeightMm(model);
+
+  if (type === COMPONENT_TYPES.DRAWER_BANK && heightMm > interiorH + 0.5) {
+    fail(
+      "INSUFFICIENT_VERTICAL_CLEARANCE",
+      `Drawer bank height ${heightMm}mm exceeds the ${interiorH}mm interior — not enough vertical clearance for ${fields.rows} drawer rows.`
+    );
+  }
 
   let position;
   if (positionMm !== undefined) {

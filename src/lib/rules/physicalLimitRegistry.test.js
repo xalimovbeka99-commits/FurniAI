@@ -90,11 +90,11 @@ describe("the drift guard", () => {
 });
 
 describe("provenance honesty", () => {
-  it("declares all five physical gates provisional, and none approved", () => {
+  it("declares all six physical gates provisional, and none approved", () => {
     // No approval for any of these exists in docs/WARDROBE_RULEBOOK_V0.1.md,
     // in the golden fixture, or anywhere else in the repository. Absent that,
     // provisional is the only accurate label.
-    expect(provisionalLimits()).toHaveLength(5);
+    expect(provisionalLimits()).toHaveLength(6);
     for (const limit of provisionalLimits()) {
       expect(limit.provenance).toBe(PHYSICAL_LIMIT_PROVENANCE.PROVISIONAL_PENDING_BEKZOD_REVIEW);
       expect(limit.id).toMatch(/^PL-\d{3}$/);
