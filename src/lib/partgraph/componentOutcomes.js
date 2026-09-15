@@ -84,24 +84,11 @@ export const COMPONENT_REPRESENTATION_POLICY = Object.freeze({
       "a PREVIEW_ONLY visual.",
   }),
   [COMPONENT_TYPES.DRAWER_BANK]: Object.freeze({
-    outcome: COMPONENT_OUTCOME.UNSUPPORTED,
-    diagnosticCode: COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED,
-    reason:
-      "No drawer part roles exist in PartGraph v0.1 (no DRAWER_FRONT, " +
-      "DRAWER_BOX_SIDE, DRAWER_BOX_BACK, DRAWER_BOX_FRONT or DRAWER_BOTTOM), " +
-      "and drawer box dimensions depend on a runner family that has not been " +
-      "approved. Emitting geometry would require inventing construction rules.",
-    customerMessage:
-      "I can't add drawers to this wardrobe yet — the drawer boxes depend on " +
-      "the runner hardware, which isn't confirmed for this design. Everything " +
-      "else in your wardrobe is unchanged.",
-    suggestedAlternative: Object.freeze({
-      componentType: COMPONENT_TYPES.SHELF_FIXED,
-      // Lower-case and clause-shaped: it is always read inside an offer
-      // sentence ("If you'd like, I can use ..."), never on its own.
-      summary: "a fixed shelf at the same height, which you could add drawers under later",
-      applied: false,
-    }),
+    outcome: COMPONENT_OUTCOME.STRUCTURAL,
+    representation:
+      "Drawer pack panels (front, sides, back, bottom) cut from the approved " +
+      "undermount concealed 21 mm runner family and 2.0 mm perimeter reveal. " +
+      "Hardware drilling / CNC remain blocked.",
   }),
 });
 

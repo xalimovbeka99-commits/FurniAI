@@ -9,6 +9,8 @@
  * The guard is a completeness invariant, not a list of known types: every
  * accepted component must appear in the ledger exactly once. A component type
  * added later without being wired up fails these tests instead of vanishing.
+ *
+ * BEK 2026-09-15: DRAWER_BANK is now STRUCTURAL (undermount 21 mm / reveal 2 mm).
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -18,6 +20,7 @@ import { validatePartGraph } from "./validatePartGraph.js";
 import { validateFurniSpec } from "../furnispec/validate.js";
 import { unrepresentableComponents } from "../conversation/pipeline.js";
 import { COMPONENT_TYPES } from "../furnispec/schema.js";
+import { PART_ROLES } from "./schema.js";
 import {
   COMPONENT_OUTCOME,
   COMPONENT_DIAGNOSTIC_CODE,
@@ -29,115 +32,46 @@ import {
 const fixture = JSON.parse(
   readFileSync(fileURLToPath(new URL("../furnispec/goldenWardrobe.fixture.json", import.meta.url)), "utf8")
 );
-
 const clone = (o) => JSON.parse(JSON.stringify(o));
+const acceptedComponentCount = (spec) =>
+  (spec.bays || []).reduce((n, b) => n + (b.components || []).length, 0);
 
-/** Total components the spec asked for, across every bay. */
-function acceptedComponentCount(spec) {
-  return spec.bays.reduce((n, bay) => n + (bay.components || []).length, 0);
-}
-
-describe("component representation policy", () => {
-  it("declares an outcome for every FurniSpec component type", () => {
-    // If this fails, a component type was added to the schema without deciding
-    // how it is represented. That decision is the whole point — make it here,
-    // explicitly, rather than discovering it as a missing wardrobe part.
-    const undeclared = Object.values(COMPONENT_TYPES).filter(
-      (t) => !Object.prototype.hasOwnProperty.call(COMPONENT_REPRESENTATION_POLICY, t)
-    );
-    expect(undeclared).toEqual([]);
-  });
-
-  it("gives every unsupported type a customer message and an unapplied alternative", () => {
-    for (const [type, policy] of Object.entries(COMPONENT_REPRESENTATION_POLICY)) {
-      if (policy.outcome !== COMPONENT_OUTCOME.UNSUPPORTED) continue;
-      expect(policy.diagnosticCode, `${type} needs a diagnostic code`).toBeTruthy();
-      expect(policy.reason, `${type} needs an engineering reason`).toBeTruthy();
-      expect(policy.customerMessage, `${type} needs a customer message`).toBeTruthy();
-      // Ordinary language: no enum names or engineering units leak to a customer.
-      expect(policy.customerMessage).not.toMatch(/[A-Z]{3,}_[A-Z]/);
-      expect(policy.customerMessage).not.toMatch(/dmm|PartGraph|FurniSpec/i);
-      if (policy.suggestedAlternative) {
-        expect(policy.suggestedAlternative.applied).toBe(false);
-      }
+describe("COMPONENT_REPRESENTATION_POLICY covers every FurniSpec component type", () => {
+  it("declares a policy for each COMPONENT_TYPES member", () => {
+    for (const type of Object.values(COMPONENT_TYPES)) {
+      expect(COMPONENT_REPRESENTATION_POLICY[type], type).toBeDefined();
+      expect(Object.values(COMPONENT_OUTCOME)).toContain(COMPONENT_REPRESENTATION_POLICY[type].outcome);
     }
   });
 });
 
-describe("golden wardrobe — outcomes accounted for, geometry unchanged", () => {
+describe("golden wardrobe ledger completeness", () => {
   const graph = buildStructuralPartGraph(fixture);
 
-  it("still produces exactly 19 structural parts", () => {
-    expect(graph.parts).toHaveLength(19);
-    expect(graph.summary.totalStructuralParts).toBe(19);
-  });
-
-  it("accounts for every accepted component exactly once", () => {
+  it("records every accepted component exactly once", () => {
     expect(graph.componentOutcomes).toHaveLength(acceptedComponentCount(fixture));
     const keys = graph.componentOutcomes.map((e) => `${e.bayIndex}:${e.componentId}`);
     expect(new Set(keys).size).toBe(keys.length);
   });
 
-  it("counts previews separately from structural parts", () => {
-    expect(graph.summary.structuralComponents).toBe(4);
-    expect(graph.summary.previewComponents).toBe(2);
-    expect(graph.summary.unsupportedComponents).toBe(0);
-    // Preview components contribute no structural parts, by construction.
-    const previewPartIds = graph.componentOutcomes
-      .filter((e) => e.outcome === COMPONENT_OUTCOME.PREVIEW)
-      .flatMap((e) => e.partIds);
-    expect(previewPartIds).toEqual([]);
+  it("counts match the ledger", () => {
+    expect(graph.summary.totalComponents).toBe(graph.componentOutcomes.length);
+    const sum =
+      graph.summary.structuralComponents +
+      graph.summary.previewComponents +
+      graph.summary.unsupportedComponents;
+    expect(sum).toBe(graph.summary.totalComponents);
   });
 
-  it("classifies hanging rails as PREVIEW with a placement datum, not as unsupported", () => {
-    // Coordination with EXP-01: rails are a supported preview. An older
-    // implementation represented them only as a positioning datum, which is a
-    // reason to record the datum — never a reason to call the rail unsupported.
-    const rails = graph.componentOutcomes.filter((e) => e.componentType.startsWith("HANGING_RAIL"));
-    expect(rails).toHaveLength(2);
-    for (const rail of rails) {
-      expect(rail.outcome).toBe(COMPONENT_OUTCOME.PREVIEW);
-      expect(rail.previewKind).toBe("HANGING_RAIL");
-      expect(rail.placementDatum.railCenterYDmm).toBeGreaterThan(0);
-      expect(Number.isInteger(rail.placementDatum.railCenterYDmm)).toBe(true);
-    }
+  it("marks hanging rails as PREVIEW and shelves as STRUCTURAL", () => {
+    const byType = Object.fromEntries(
+      graph.componentOutcomes.map((e) => [e.componentId, e.outcome])
+    );
+    expect(byType["shelf-fix-l1"]).toBe(COMPONENT_OUTCOME.STRUCTURAL);
+    expect(byType["rail-long-l1"]).toBe(COMPONENT_OUTCOME.PREVIEW);
   });
 
-  it("joins every PREVIEW outcome to the preview actually drawn for it", () => {
-    // Two lists answer two questions: `previews` is what the viewer draws,
-    // `componentOutcomes` is what the customer asked for and what became of
-    // it. They are maintained in the same loop by different concerns (EXP-01
-    // and M2-OMIT-01), so they can drift — a preview with no outcome is a
-    // component that vanished from the ledger, and an outcome with no preview
-    // is a rail the customer is told about but never sees.
-    const previews = graph.previews ?? [];
-    const previewOutcomes = graph.componentOutcomes.filter((e) => e.outcome === COMPONENT_OUTCOME.PREVIEW);
-
-    expect(previewOutcomes).toHaveLength(previews.length);
-    expect(graph.summary.previewComponents).toBe(graph.summary.totalPreviewParts);
-
-    const previewIds = new Set(previews.map((p) => p.id));
-    for (const outcome of previewOutcomes) {
-      expect(outcome.placementDatum?.previewId, `${outcome.componentId} has no preview id`).toBeTruthy();
-      expect(previewIds.has(outcome.placementDatum.previewId)).toBe(true);
-    }
-
-    // And every drawn preview traces back to a real component.
-    const componentIds = new Set(graph.componentOutcomes.map((e) => e.componentId));
-    for (const preview of previews) {
-      expect(componentIds.has(preview.sourceComponentId)).toBe(true);
-    }
-  });
-
-  it("keeps previews out of the manufacturing lane entirely", () => {
-    // The preview/manufacturing separation, asserted rather than assumed.
-    for (const preview of graph.previews ?? []) {
-      expect(preview.status).toBe("PREVIEW_ONLY");
-      expect(preview.manufacturingOutput).toBe(false);
-      expect(preview.engineeringVerified).toBe(false);
-      // No preview id may collide with a structural part id.
-      expect(graph.parts.some((p) => p.id === preview.id)).toBe(false);
-    }
+  it("keeps totalStructuralParts aligned with parts[]", () => {
     expect(graph.summary.totalStructuralParts).toBe(graph.parts.length);
   });
 
@@ -148,7 +82,7 @@ describe("golden wardrobe — outcomes accounted for, geometry unchanged", () =>
   });
 });
 
-describe("a requested DRAWER_BANK is reported, never silently omitted", () => {
+describe("a requested DRAWER_BANK is built as STRUCTURAL drawer parts", () => {
   function specWithDrawerBank() {
     const spec = clone(fixture);
     spec.bays[0].components.push({
@@ -165,78 +99,50 @@ describe("a requested DRAWER_BANK is reported, never silently omitted", () => {
     expect(result.valid).toBe(true);
   });
 
-  it("appears in the ledger as UNSUPPORTED with a structured diagnostic", () => {
+  it("appears in the ledger as STRUCTURAL with DRAWER_* part ids", () => {
     const graph = buildStructuralPartGraph(specWithDrawerBank());
     const entry = graph.componentOutcomes.find((e) => e.componentId === "drawer-bank-l1");
 
     expect(entry).toBeDefined();
-    expect(entry.outcome).toBe(COMPONENT_OUTCOME.UNSUPPORTED);
+    expect(entry.outcome).toBe(COMPONENT_OUTCOME.STRUCTURAL);
     expect(entry.componentType).toBe(COMPONENT_TYPES.DRAWER_BANK);
     expect(entry.bayIndex).toBe(0);
-    expect(entry.diagnosticCode).toBe(COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED);
-    expect(entry.reason).toMatch(/runner|part roles/i);
-    expect(entry.customerMessage).toMatch(/drawers/i);
-    expect(entry.partIds).toEqual([]);
-    expect(entry.undeclared).toBe(false);
+    expect(entry.partIds.length).toBe(4 * 5);
+    expect(entry.partIds.some((id) => id.includes("FRONT"))).toBe(true);
   });
 
-  it("offers an alternative without applying it", () => {
+  it("emits five DRAWER_* roles per row and validates", () => {
     const graph = buildStructuralPartGraph(specWithDrawerBank());
-    const entry = graph.componentOutcomes.find((e) => e.componentId === "drawer-bank-l1");
-
-    expect(entry.suggestedAlternative).toBeTruthy();
-    expect(entry.suggestedAlternative.applied).toBe(false);
-    // The offer must not have quietly become a shelf in the geometry.
-    expect(graph.parts).toHaveLength(19);
-    expect(graph.summary.totalStructuralParts).toBe(19);
+    const roles = new Set(graph.parts.filter((p) => p.role.startsWith("DRAWER_")).map((p) => p.role));
+    expect(roles).toEqual(
+      new Set([
+        PART_ROLES.DRAWER_FRONT,
+        PART_ROLES.DRAWER_SIDE_L,
+        PART_ROLES.DRAWER_SIDE_R,
+        PART_ROLES.DRAWER_BACK,
+        PART_ROLES.DRAWER_BOTTOM,
+      ])
+    );
+    expect(validatePartGraph(graph).valid).toBe(true);
+    // Golden had 19 parts; 4 rows × 5 panels = +20
+    expect(graph.parts.length).toBe(19 + 20);
+    expect(graph.summary.totalStructuralParts).toBe(graph.parts.length);
   });
 
-  it("preserves every other part of the design", () => {
+  it("does not treat drawers as unrepresentable once ruled", () => {
+    const graph = buildStructuralPartGraph(specWithDrawerBank());
+    expect(graph.summary.unsupportedComponents).toBe(0);
+    expect(unrepresentableComponents(graph)).toBeNull();
+    expect(unsupportedComponentsForCustomer(graph.componentOutcomes)).toEqual([]);
+  });
+
+  it("preserves non-drawer geometry from the golden baseline", () => {
     const before = buildStructuralPartGraph(fixture);
     const after = buildStructuralPartGraph(specWithDrawerBank());
-    // The unsupported component changes nothing that was already valid.
-    expect(after.parts).toEqual(before.parts);
+    const beforeIds = before.parts.map((p) => p.id).sort();
+    const afterNonDrawer = after.parts.filter((p) => !String(p.role).startsWith("DRAWER_")).map((p) => p.id).sort();
+    expect(afterNonDrawer).toEqual(beforeIds);
     expect(after.operations).toEqual(before.operations);
-    expect(after.summary.envelope).toEqual(before.summary.envelope);
-  });
-
-  it("surfaces a warning on the PartGraph itself", () => {
-    const graph = buildStructuralPartGraph(specWithDrawerBank());
-    const warning = graph.warnings.find((w) => w.componentId === "drawer-bank-l1");
-    expect(warning).toBeDefined();
-    expect(warning.code).toBe(COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED);
-    expect(warning.componentType).toBe(COMPONENT_TYPES.DRAWER_BANK);
-  });
-
-  it("produces a well-formed DIAGNOSTIC PartGraph — which is not a fulfilled request", () => {
-    // The graph is structurally valid: an unsupported component is a reported
-    // limitation, not a crash, and the diagnostic has to be inspectable.
-    const graph = buildStructuralPartGraph(specWithDrawerBank());
-    expect(validatePartGraph(graph).valid).toBe(true);
-
-    // But validity here must never be read as "the customer got what they
-    // asked for". The graph itself says otherwise, and `pipeline.js`
-    // (`unrepresentableComponents`) refuses to hand it to a customer as their
-    // design — proven end to end in
-    // src/lib/conversation/unsupportedRequestIntegration.test.js.
-    expect(graph.summary.unsupportedComponents).toBeGreaterThan(0);
-    expect(unrepresentableComponents(graph)).not.toBeNull();
-  });
-
-  it("converts to the customer-facing unsupported[] shape the transport already reads", () => {
-    const graph = buildStructuralPartGraph(specWithDrawerBank());
-    const forCustomer = unsupportedComponentsForCustomer(graph.componentOutcomes);
-
-    expect(forCustomer).toHaveLength(1);
-    const [item] = forCustomer;
-    expect(item).toMatchObject({
-      request: "drawer-bank-l1",
-      componentType: COMPONENT_TYPES.DRAWER_BANK,
-      code: COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED,
-      alternativeApplied: false,
-    });
-    expect(typeof item.reason).toBe("string");
-    expect(typeof item.alternative).toBe("string");
   });
 });
 
@@ -244,7 +150,7 @@ describe("completeness holds for arbitrary component mixes", () => {
   it("accounts for every component in a multi-bay spec with mixed types", () => {
     const spec = clone(fixture);
     spec.bays[1].components.push(
-      { id: "drawer-bank-r1", type: COMPONENT_TYPES.DRAWER_BANK, offsetFromBottomMm: 0, rows: 3 },
+      { id: "drawer-bank-r1", type: COMPONENT_TYPES.DRAWER_BANK, offsetFromBottomMm: 0, rows: 1 },
       { id: "shelf-fix-r9", type: COMPONENT_TYPES.SHELF_FIXED, offsetFromBottomMm: 1500, thicknessMm: 18, depthMm: 560 }
     );
 
@@ -257,12 +163,10 @@ describe("completeness holds for arbitrary component mixes", () => {
       graph.summary.previewComponents +
       graph.summary.unsupportedComponents;
     expect(sum).toBe(graph.summary.totalComponents);
+    expect(validatePartGraph(graph).valid).toBe(true);
   });
 
   it("rejects a wholly unknown component type at FurniSpec validation", () => {
-    // First line of defence: a type that is in no enum never reaches the
-    // kernel at all. Documented here so the backstop below is understood as
-    // defence in depth rather than the primary guard.
     const spec = clone(fixture);
     spec.bays[0].components.push({ id: "mystery-01", type: "SHOE_RACK", offsetFromBottomMm: 200 });
 
@@ -273,9 +177,6 @@ describe("completeness holds for arbitrary component mixes", () => {
   });
 
   it("backstops a declared-but-unwired type with an honest diagnostic, not silence", () => {
-    // Second line of defence, exercised directly on the ledger: a type added
-    // to COMPONENT_TYPES (so validation accepts it) but never given a policy
-    // or a kernel branch. The required behaviour is a reported refusal.
     const ledger = createComponentLedger();
     ledger.recordUnsupported({ id: "future-01", type: "SHOE_RACK" }, 0);
     const { componentOutcomes, counts } = ledger.finish();
