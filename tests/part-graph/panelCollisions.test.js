@@ -1,15 +1,13 @@
 /**
- * Adversarial QA — volumetric panel collision & clearance (PartGraph path).
+ * Adversarial QA â€” volumetric panel collision & clearance (PartGraph path).
  *
  * Enforced today via buildStructuralPartGraph + validatePartGraph:
  *   - solid panel AABB non-overlap (UNINTENDED_PART_COLLISION)
  *   - fixed shelves terminate at bay clear width (= inner gable/divider faces)
  *
- * Aspirational / not yet on PartGraph path (DRAWER_* roles absent from PART_ROLES):
- *   - drawer box slide-gap clearance
- *   - drawer-front perimeter reveal ≥ 1.5–2.0 mm
- * Those are proven with synthetic placement audits that fail closed when
- * injected geometry violates policy, without unlocking CNC or inventing roles.
+ * DRAWER_* PART_ROLES + DRAWER_BANK STRUCTURAL emission are live (emitDrawerBankParts).
+ * Supplemental synthetic audits below still prove slide-gap / reveal fail-closed
+ * without unlocking CNC machining coordinates.
  */
 import { describe, expect, it } from "vitest";
 import fixture from "../../src/lib/furnispec/goldenWardrobe.fixture.json";
@@ -38,7 +36,7 @@ function axisGap(a, b, axis) {
 
 /**
  * Synthetic drawer-front perimeter reveal audit (mm).
- * Not emitted by golden PartGraph — DRAWER_FRONT is not a PART_ROLES member.
+ * Not emitted by golden PartGraph â€” DRAWER_FRONT is not a PART_ROLES member.
  */
 function auditDrawerFrontRevealMm(front, carcassInner, { minRevealMm = 1.5, maxRevealMm = 2.0 } = {}) {
   const errors = [];
@@ -59,7 +57,7 @@ function auditDrawerFrontRevealMm(front, carcassInner, { minRevealMm = 1.5, maxR
       });
     }
     if (gap > maxRevealMm + 0.5) {
-      // soft upper band note — policy window is 1.5–2.0; >2.5 flagged
+      // soft upper band note â€” policy window is 1.5â€“2.0; >2.5 flagged
       errors.push({
         code: "DRAWER_FRONT_REVEAL_OUT_OF_BAND",
         message: `${name} reveal ${gap} mm exceeds ${maxRevealMm} mm policy band`,
@@ -223,7 +221,7 @@ describe("PartGraph adversarial panel collisions & clearance", () => {
         thicknessDmm: donor.finished.thicknessDmm,
       },
     });
-    // Reconcile bounding box for HORIZONTAL_XZ: X×Z match L×W, Y = thickness
+    // Reconcile bounding box for HORIZONTAL_XZ: XÃ—Z match LÃ—W, Y = thickness
     colliding.finished.lengthDmm = colliding.placement.maxXDmm - colliding.placement.minXDmm;
     colliding.finished.widthDmm = colliding.placement.maxZDmm - colliding.placement.minZDmm;
     colliding.raw = {
@@ -265,18 +263,23 @@ describe("PartGraph adversarial panel collisions & clearance", () => {
     ).toBe(true);
   });
 
-  it("documents drawer geometry is not yet on PartGraph path (no DRAWER_* roles)", () => {
+  it("documents DRAWER_* PART_ROLES are live; golden fixture still has no drawer bank", () => {
+    // BEK drawer emission landed: roles exist and DRAWER_BANK is STRUCTURAL when present.
+    // Golden wardrobe fixture has no DRAWER_BANK, so build emits none — contracts live in
+    // drawerPack.contract.test.js.
+    expect(PART_ROLES.DRAWER_FRONT).toBe("DRAWER_FRONT");
+    expect(PART_ROLES.DRAWER_SIDE_L).toBe("DRAWER_SIDE_L");
+    expect(PART_ROLES.DRAWER_SIDE_R).toBe("DRAWER_SIDE_R");
+    expect(PART_ROLES.DRAWER_BACK).toBe("DRAWER_BACK");
+    expect(PART_ROLES.DRAWER_BOTTOM).toBe("DRAWER_BOTTOM");
     const graph = buildStructuralPartGraph(fixture);
     const drawerRoles = graph.parts.filter((p) => String(p.role).startsWith("DRAWER"));
     expect(drawerRoles).toHaveLength(0);
-    expect(PART_ROLES.DRAWER_FRONT).toBeUndefined();
-    expect(PART_ROLES.DRAWER_BOX_SIDE).toBeUndefined();
-    // DRAWER_BANK remains unsupported (component outcomes), not structural
-    expect(graph.parts.every((p) => p.geometryType === undefined || p.role !== "DRAWER_BANK")).toBe(true);
+    expect(graph.parts.every((p) => p.role !== "DRAWER_BANK")).toBe(true);
   });
 
   it("synthetic intersecting drawer box is rejected by PartGraph collision audit (stand-in role)", () => {
-    // Drawer boxes are not emitted; inject a FIXED_SHELF-role stand-in that
+    // Inject a FIXED_SHELF-role stand-in that
     // intersects CARC_SIDE_L to prove the volumetric gate fail-closes.
     const graph = buildStructuralPartGraph(fixture);
     const sideL = graph.parts.find((p) => p.id === "CARC_SIDE_L");
@@ -344,7 +347,7 @@ describe("PartGraph adversarial panel collisions & clearance", () => {
     expect(good.gaps.rightGap).toBeGreaterThanOrEqual(12.5);
   });
 
-  it("synthetic drawer-front perimeter reveal audit enforces ≥1.5–2.0 mm band", () => {
+  it("synthetic drawer-front perimeter reveal audit enforces â‰¥1.5â€“2.0 mm band", () => {
     const carcassInner = { minXMm: 18, maxXMm: 1782, minYMm: 118, maxYMm: 2382 };
     const tooTight = auditDrawerFrontRevealMm(
       { minXMm: 18.5, maxXMm: 1781.5, minYMm: 118.5, maxYMm: 2381.5 },
@@ -382,7 +385,8 @@ describe("PartGraph adversarial panel collisions & clearance", () => {
     const oz =
       Math.min(back.placement.maxZDmm, top.placement.maxZDmm) -
       Math.max(back.placement.minZDmm, top.placement.minZDmm);
-    // Golden back engages grooves — positive overlap is intentional and allowed
+    // Golden back engages grooves â€” positive overlap is intentional and allowed
     expect(ox > 0 && oy > 0 && oz > 0).toBe(true);
   });
 });
+
