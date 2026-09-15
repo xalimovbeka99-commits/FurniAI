@@ -14,6 +14,7 @@ import StructurePanel from "@/components/builder/StructurePanel";
 import AppearancePanel from "@/components/builder/AppearancePanel";
 import FurnitureModel from "@/components/builder/FurnitureModel";
 import WardrobeAIPanel from "@/components/builder/WardrobeAIPanel";
+import ExportMenu from "@/components/builder/ExportMenu";
 import LocalEnvironment from "@/components/builder/LocalEnvironment";
 import SceneEnhancementBoundary from "@/components/builder/SceneEnhancementBoundary";
 import { useFurnitureStore } from "@/store/furnitureStore";
@@ -54,13 +55,16 @@ function BuilderContent() {
           <span className="bg-gradient-to-r from-[#C5A880] to-[#00B4D8] bg-clip-text text-transparent">AI</span>
           <span className="font-mono text-[10px] tracking-widest text-[#5C626E] uppercase font-normal ml-1.5 hidden sm:inline-block">Configurator</span>
         </div>
-        <button
-          type="button"
-          onClick={() => setAiPanelOpen((v) => !v)}
-          className="font-mono text-xs tracking-wider text-[#5C626E] hover:text-[#1C1E21] transition-colors"
-        >
-          {aiPanelOpen ? "Hide AI" : "Ask AI"}
-        </button>
+        <div className="flex items-center gap-3">
+          <ExportMenu />
+          <button
+            type="button"
+            onClick={() => setAiPanelOpen((v) => !v)}
+            className="font-mono text-xs tracking-wider text-[#5C626E] hover:text-[#1C1E21] transition-colors"
+          >
+            {aiPanelOpen ? "Hide AI" : "Ask AI"}
+          </button>
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">

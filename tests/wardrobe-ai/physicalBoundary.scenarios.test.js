@@ -69,7 +69,7 @@ describe("physical-boundary clearance labels present in adversarial fixture", ()
       rows: 5,
     });
     expect(result.success).toBe(false);
-    expect(result.error).toBe("COMPONENT_OUTSIDE_SECTION");
+    expect(result.error).toBe("INSUFFICIENT_VERTICAL_CLEARANCE");
     expect(seed.id).toBe(before.id);
     expect(seed.revision).toBe(before.revision);
   });

@@ -2,7 +2,7 @@
   "fixtureVersion": "wardrobe-ai-state-drift/1",
   "status": "ACTIVE",
   "identityField": "model.id",
-  "notes": "Wardrobe AI kernel identity is model.id; revision bumps only on successful tool commits. Panel thickness (panelThicknessMm) must not silently reset. Drawer banks are supported in wardrobe-tools (DRAWER_BANK); the PartGraph customer path still fail-closes drawers as UNSUPPORTED — this fixture exercises the wardrobe-agent/tool path where drawers are applicable.",
+  "notes": "Wardrobe AI kernel identity is model.id; revision bumps only on successful tool commits. Panel thickness (panelThicknessMm) must not silently reset. Drawer banks are supported in wardrobe-tools (DRAWER_BANK) and STRUCTURAL on the PartGraph customer path; this fixture exercises the wardrobe-agent/tool path.",
   "scenario": {
     "id": "state-drift-five-turn-revision",
     "turns": [

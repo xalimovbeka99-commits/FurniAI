@@ -85,13 +85,14 @@ function commit(model, mutate) {
     return { success: false, error: issues[0].code, message: issues[0].message, issues };
   }
 
-  const { _newSectionId, _newComponentId, ...clean } = nextModel;
+  const { _newSectionId, _newComponentId, _shiftedShelves, ...clean } = nextModel;
   const committed = { ...clean, revision: model.revision + 1 };
   return {
     success: true,
     ...extra,
     ...(_newSectionId ? { sectionId: _newSectionId } : {}),
     ...(_newComponentId ? { componentId: _newComponentId } : {}),
+    ...(_shiftedShelves ? { shiftedShelves: _shiftedShelves } : {}),
     model: committed,
     revision: committed.revision,
   };
@@ -263,7 +264,7 @@ export const WARDROBE_TOOLS = [
   }),
   defineTool({
     name: "component_add",
-    description: "Add a component to a section: SHELF, DRAWER_BANK, HANGING_RAIL, or DOOR. If positionMm is omitted, the component is stacked on top of the highest existing component in that section.",
+    description: "Add a component to a section: SHELF, DRAWER_BANK, HANGING_RAIL, or DOOR. If positionMm is omitted, the component is stacked on top of the highest existing component in that section. DRAWER_BANK emits structural drawer-pack panels via the PartGraph path (CNC drilling stays blocked). Overlapping low shelves are shifted above the drawer bank when there is room; otherwise the tool fails with INSUFFICIENT_VERTICAL_CLEARANCE.",
     inputSchema: {
       type: "object",
       properties: {

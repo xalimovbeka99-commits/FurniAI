@@ -216,6 +216,21 @@ export function assembleFurniSpec({ facts, gaps = [], specId, revision, status }
         thicknessMm: fromDeciMm(panelTDmm),
         depthMm: adjShelfDepthMm,
       });
+    } else if (layout === BAY_LAYOUT.DRAWER_BANK_WITH_SHORT_HANGING) {
+      // Bottom drawer bank (STRUCTURAL via emitDrawerBankParts) — no low
+      // adjustable shelves in the drawer zone (avoids UNINTENDED_PART_COLLISION).
+      components.push({
+        id: `drawer-bank-b${nn}`,
+        type: "DRAWER_BANK",
+        offsetFromBottomMm: 0,
+        rows: 3,
+      });
+      components.push({
+        id: `rail-short-b${nn}`,
+        type: "HANGING_RAIL_SHORT",
+        offsetBelowShelfMm: fromDeciMm(railOffsetDmm),
+        targetClearDropMm: fromDeciMm(shortDropDmm),
+      });
     } else {
       throw new Error(`Unsupported bay layout "${layout}".`);
     }

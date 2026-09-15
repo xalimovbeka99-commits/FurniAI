@@ -519,7 +519,12 @@ var AiDesignerTransport = (() => {
     PLINTH_REAR_RAIL: "PLINTH_REAR_RAIL",
     PLINTH_SIDE_RETURN_LEFT: "PLINTH_SIDE_RETURN_LEFT",
     PLINTH_SIDE_RETURN_RIGHT: "PLINTH_SIDE_RETURN_RIGHT",
-    PLINTH_CROSS_STRETCHER: "PLINTH_CROSS_STRETCHER"
+    PLINTH_CROSS_STRETCHER: "PLINTH_CROSS_STRETCHER",
+    DRAWER_FRONT: "DRAWER_FRONT",
+    DRAWER_SIDE_L: "DRAWER_SIDE_L",
+    DRAWER_SIDE_R: "DRAWER_SIDE_R",
+    DRAWER_BACK: "DRAWER_BACK",
+    DRAWER_BOTTOM: "DRAWER_BOTTOM"
   });
   var GEOMETRY_TYPES = Object.freeze({
     RECTANGULAR_PANEL: "RECTANGULAR_PANEL"
@@ -572,17 +577,8 @@ var AiDesignerTransport = (() => {
       representation: "Bought hanging rail. Not a cut panel. Recorded as a placement datum (rail centre height) and, where the preview lane is enabled, drawn as a PREVIEW_ONLY visual."
     }),
     [COMPONENT_TYPES.DRAWER_BANK]: Object.freeze({
-      outcome: COMPONENT_OUTCOME.UNSUPPORTED,
-      diagnosticCode: COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED,
-      reason: "No drawer part roles exist in PartGraph v0.1 (no DRAWER_FRONT, DRAWER_BOX_SIDE, DRAWER_BOX_BACK, DRAWER_BOX_FRONT or DRAWER_BOTTOM), and drawer box dimensions depend on a runner family that has not been approved. Emitting geometry would require inventing construction rules.",
-      customerMessage: "I can't add drawers to this wardrobe yet \u2014 the drawer boxes depend on the runner hardware, which isn't confirmed for this design. Everything else in your wardrobe is unchanged.",
-      suggestedAlternative: Object.freeze({
-        componentType: COMPONENT_TYPES.SHELF_FIXED,
-        // Lower-case and clause-shaped: it is always read inside an offer
-        // sentence ("If you'd like, I can use ..."), never on its own.
-        summary: "a fixed shelf at the same height, which you could add drawers under later",
-        applied: false
-      })
+      outcome: COMPONENT_OUTCOME.STRUCTURAL,
+      representation: "Drawer pack panels (front, sides, back, bottom) cut from the approved undermount concealed 21 mm runner family and 2.0 mm perimeter reveal. Hardware drilling / CNC remain blocked."
     })
   });
   function createComponentLedger() {
@@ -682,6 +678,337 @@ var AiDesignerTransport = (() => {
       alternative: e.suggestedAlternative ? e.suggestedAlternative.summary : null,
       alternativeApplied: false
     }));
+  }
+
+  // src/lib/rules/wardrobeRuleCatalog.js
+  var RULE_PROVENANCE = Object.freeze({
+    RULEBOOK_V0_1: "RULEBOOK_V0_1",
+    GOLDEN_FIXTURE_BEKZOD_APPROVED: "GOLDEN_FIXTURE_BEKZOD_APPROVED",
+    BEKZOD_RULING: "BEKZOD_RULING",
+    REQUIRES_BEKZOD_RULING: "REQUIRES_BEKZOD_RULING"
+  });
+  function rule(id, value, provenance, note) {
+    return Object.freeze({ id, value, provenance, note });
+  }
+  var { RULEBOOK_V0_1, GOLDEN_FIXTURE_BEKZOD_APPROVED, BEKZOD_RULING, REQUIRES_BEKZOD_RULING } = RULE_PROVENANCE;
+  var WARDROBE_RULES = Object.freeze({
+    constructionStyle: rule("WR-001", "CAP_STYLE", RULEBOOK_V0_1, "Cap Style (Style B): top/bottom cap the outer sides and divider."),
+    panelThicknessMm: rule("WR-003", 18, RULEBOOK_V0_1, "Carcass panels, shelves, divider, doors and plinth rails."),
+    backThicknessMm: rule("WR-003", 6, RULEBOOK_V0_1, "Back panel core thickness."),
+    grooveDepthMm: rule("WR-004", 7, RULEBOOK_V0_1, "Back groove machined into top, bottom and both outer sides."),
+    grooveWidthMm: rule("WR-005", 7, RULEBOOK_V0_1, "6.0mm back panel + 1.0mm assembly glue gap."),
+    grooveRootAllowanceMm: rule("WR-005", 1, RULEBOOK_V0_1, "Assembly glue gap component of the 7.0mm groove width."),
+    grooveRearDatumMm: rule("WR-006", 20, RULEBOOK_V0_1, "Groove rear face measured from the carcass rear datum."),
+    doorBumperGapMm: rule("RULEBOOK-S1-Z-ALLOCATION", 2, RULEBOOK_V0_1, "Door bumper / operating air gap, Z in [18.0, 20.0]."),
+    doorRevealMm: rule("WR-008", 2, RULEBOOK_V0_1, "2.0mm perimeter reveals and 2.0mm gaps between doors."),
+    plinthFrontRecessMm: rule("WR-007", 0, RULEBOOK_V0_1, "Frame-aligned plinth: front fascia sits at the carcass front datum, zero recess."),
+    plinthSideInsetMm: rule("WR-007", 0, RULEBOOK_V0_1, "Frame-aligned plinth: side returns align with the carcass frame footprint."),
+    hangingRailOffsetBelowShelfMm: rule("WR-012", 100, RULEBOOK_V0_1, "Rail centre 100.0mm below the underside of the fixed shelf."),
+    edgeBandFrontVisibleMm: rule("WR-013", 1, RULEBOOK_V0_1, "Front visible edges receive 1.0mm PVC."),
+    edgeBandRearUnbandedMm: rule("WR-013", 0, RULEBOOK_V0_1, "Non-visible edges receive 0.0mm."),
+    edgeBandDoorPerimeterMm: rule("WR-013", 1, RULEBOOK_V0_1, "Door perimeter banding."),
+    hingeType: rule("WR-010", "CONCEALED_110", RULEBOOK_V0_1, "110 degree soft-close concealed clip-on, semantic only."),
+    hingeCountPerDoor: rule("WR-011", 5, RULEBOOK_V0_1, "Five hinges per door."),
+    shelfPinPitchMm: rule("WR-009", 32, RULEBOOK_V0_1, "System 32 semantic grid; drilling coordinates blocked."),
+    // --- Values present in the Bekzod-approved Golden Wardrobe fixture but not
+    // --- stated as a numbered Rulebook rule. Approved, but by fixture not by rule.
+    topCompartmentClearOpeningMm: rule("GF-TOP-OPENING", 350, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Clear opening above the top fixed shelf."),
+    shelfCompartmentClearOpeningMm: rule("GF-SHELF-OPENING", 350, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Clear opening above an adjustable shelf."),
+    longHangingTargetClearDropMm: rule("GF-HANG-LONG", 1400, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Long hanging zone target clear drop."),
+    shortHangingTargetClearDropMm: rule("GF-HANG-SHORT", 900, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Short hanging zone target clear drop."),
+    fixedShelfRearSetbackMm: rule("GF-SHELF-REAR", 20, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Fixed shelf / divider depth = carcass depth - 20.0mm (WR-002 rear clearance)."),
+    adjustableShelfSideClearanceMm: rule("GF-ADJ-SIDE", 1, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Adjustable shelf side clearance per face."),
+    adjustableShelfFrontSetbackMm: rule("GF-ADJ-FRONT", 5, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Adjustable shelf front setback, applied symmetrically front and rear."),
+    shelfPinType: rule("WR-009", "SYSTEM_32_PIN_5MM", RULEBOOK_V0_1, "System 32 5mm shelf pin, semantic only."),
+    joineryType: rule("GF-JOINERY", "CONFIRMAT_AND_DOWEL", GOLDEN_FIXTURE_BEKZOD_APPROVED, "Carcass joinery family; drilling coordinates blocked."),
+    hangingRailType: rule("GF-RAIL", "OVAL_TUBE_15X30", GOLDEN_FIXTURE_BEKZOD_APPROVED, "Hanging rail profile, preview only."),
+    // --- Bekzod hardware rulings 2026-09-15 (SYSTEM32_BORING_SCOPE §6 answered).
+    // CNC / drilling coordinates remain BLOCKED; these unlock rule *values* only.
+    shelfPinHoleDepthMm: rule(
+      "BEK-SHELF-PIN-DEPTH",
+      13,
+      BEKZOD_RULING,
+      "Bekzod ruling: shelf-pin hole depth 13.0 mm in 18 mm board. For 16 mm board use 11.5 mm (shelfPinHoleDepthMmByBoardThickness)."
+    ),
+    shelfPinHoleDepthMmByBoardThickness: rule(
+      "BEK-SHELF-PIN-DEPTH-BY-BOARD",
+      Object.freeze({ 18: 13, 16: 11.5 }),
+      BEKZOD_RULING,
+      "Thickness variants for shelf-pin hole depth (mm keyed by board thickness mm)."
+    ),
+    shelfPinColumnOriginDatum: rule(
+      "BEK-SHELF-PIN-ORIGIN",
+      "BOTTOM_PANEL_UPPER_FACE_PLUS_64MM",
+      BEKZOD_RULING,
+      "Bekzod ruling: column origin = bottom panel upper face + 64 mm. Upper bound term TOP_PANEL_LOWER_FACE_MINUS_64MM is the mirror datum."
+    ),
+    shelfPinColumnOriginUpperDatum: rule(
+      "BEK-SHELF-PIN-ORIGIN-UPPER",
+      "TOP_PANEL_LOWER_FACE_MINUS_64MM",
+      BEKZOD_RULING,
+      "Upper-column mirror datum for shelf-pin System 32 columns."
+    ),
+    shelfPinRearRowPolicy: rule(
+      "BEK-SHELF-PIN-REAR-ROW",
+      "BORED_MIRROR_FRONT_37MM",
+      BEKZOD_RULING,
+      "Bekzod ruling: rear row is bored, mirroring the front 37 mm edge setback."
+    ),
+    drawerRunnerFamily: rule(
+      "BEK-DRAWER-RUNNER",
+      "UNDERMOUNT_CONCEALED_21MM",
+      BEKZOD_RULING,
+      "Bekzod ruling: concealed undermount runner family; 21 mm total clear-width reduction."
+    ),
+    drawerSlideWidthDeductionMm: rule(
+      "BEK-DRAWER-SLIDE-DEDUCTION",
+      21,
+      BEKZOD_RULING,
+      "Bekzod ruling: undermount total width reduction 21.0 mm (box clear width = bay - 21)."
+    ),
+    drawerFrontRevealMm: rule(
+      "BEK-DRAWER-FRONT-REVEAL",
+      2,
+      BEKZOD_RULING,
+      "Bekzod ruling: 2.0 mm perimeter reveal on all sides of each drawer front."
+    ),
+    // --- NOT approved. Reading these through resolve() throws by design.
+    bayCountForWidth: rule("UNRULED-BAY-COUNT", null, REQUIRES_BEKZOD_RULING, "No approved rule maps overall width to a bay count. Must be asked."),
+    doorsPerBay: rule("UNRULED-DOORS-PER-BAY", null, REQUIRES_BEKZOD_RULING, "Golden, narrow and wide fixtures all use 2 doors per bay, but no Rulebook rule states it. Must be asked."),
+    unevenBayWidthDistribution: rule("UNRULED-BAY-SPLIT", null, REQUIRES_BEKZOD_RULING, "No approved rule for distributing a non-integral bay-width remainder. Must be asked.")
+  });
+  var UnapprovedRuleError = class extends Error {
+    constructor(key, ruleRecord) {
+      super(
+        `Rule "${key}" (${ruleRecord.id}) is ${RULE_PROVENANCE.REQUIRES_BEKZOD_RULING} and cannot be applied. ${ruleRecord.note}`
+      );
+      this.name = "UnapprovedRuleError";
+      this.code = "UNAPPROVED_RULE_APPLICATION";
+      this.ruleKey = key;
+      this.ruleId = ruleRecord.id;
+    }
+  };
+  function resolve(key) {
+    const record = WARDROBE_RULES[key];
+    if (!record) {
+      throw new Error(`Unknown rule key "${key}".`);
+    }
+    if (record.provenance === RULE_PROVENANCE.REQUIRES_BEKZOD_RULING) {
+      throw new UnapprovedRuleError(key, record);
+    }
+    return record.value;
+  }
+  function ruleIdOf(key) {
+    const record = WARDROBE_RULES[key];
+    if (!record) throw new Error(`Unknown rule key "${key}".`);
+    return record.id;
+  }
+
+  // src/lib/partgraph/emitDrawerBankParts.js
+  var DEFAULT_DRAWER_ROW_HEIGHT_MM = 180;
+  var DRAWER_BOX_SIDE_THICKNESS_MM = 15;
+  var DRAWER_SIDE_DEPTH_SETBACK_MM = 50;
+  var DRAWER_BOTTOM_SIDE_INSET_TOTAL_MM = 10;
+  function emitDrawerBankParts({
+    comp,
+    bay,
+    yBotTopDmm,
+    zCarcassFrontDmm,
+    carcassDepthMm,
+    matCarcass,
+    matFront,
+    edgeFrontDmm,
+    edgeRearDmm,
+    toDeciMm: toDeciMm2
+  }) {
+    const revealMm = resolve("drawerFrontRevealMm");
+    const slideDeductionMm = resolve("drawerSlideWidthDeductionMm");
+    const frontThicknessMm = resolve("panelThicknessMm");
+    const bottomThicknessMm = Math.max(6, resolve("backThicknessMm"));
+    const rows = Math.max(1, Number(comp.rows) || 1);
+    const bankHeightMm = comp.heightMm != null ? Number(comp.heightMm) : rows * DEFAULT_DRAWER_ROW_HEIGHT_MM;
+    const drawerHeightMm = bankHeightMm / rows;
+    const frontHeightMm = drawerHeightMm - 2 * revealMm;
+    const boxHeightMm = frontHeightMm;
+    const bayWidthMm = bay.clearWidthDmm / 10;
+    const sideLengthMm = carcassDepthMm - DRAWER_SIDE_DEPTH_SETBACK_MM;
+    const frontWidthMm = bayWidthMm - 2 * revealMm;
+    const backWidthMm = bayWidthMm - slideDeductionMm - 2 * DRAWER_BOX_SIDE_THICKNESS_MM;
+    const bottomWidthMm = bayWidthMm - slideDeductionMm - DRAWER_BOTTOM_SIDE_INSET_TOTAL_MM;
+    const bottomDepthMm = sideLengthMm - DRAWER_BOX_SIDE_THICKNESS_MM;
+    const halfDeductionMm = slideDeductionMm / 2;
+    const boxMinXMm = bay.minXDmm / 10 + halfDeductionMm;
+    const boxMaxXMm = bay.maxXDmm / 10 - halfDeductionMm;
+    const offsetBottomMm = Number(comp.offsetFromBottomMm ?? 0);
+    const bankBottomYDmm = yBotTopDmm + toDeciMm2(offsetBottomMm, `${comp.id}.offsetFromBottomMm`);
+    const baseId = (comp.partId || comp.id).toUpperCase().replace(/-/g, "_");
+    const sourceRuleIds = [
+      ruleIdOf("drawerFrontRevealMm"),
+      ruleIdOf("drawerSlideWidthDeductionMm"),
+      ruleIdOf("drawerRunnerFamily"),
+      ruleIdOf("panelThicknessMm")
+    ];
+    const panels = [];
+    const partIds = [];
+    for (let r = 0; r < rows; r++) {
+      const rowTag = `R${String(r + 1).padStart(2, "0")}`;
+      const apertureMinYMm = offsetBottomMm + r * drawerHeightMm + yBotTopDmm / 10;
+      const apertureMinYDmm = bankBottomYDmm + toDeciMm2(r * drawerHeightMm, `${comp.id}.row${r}`);
+      const apertureMaxYDmm = apertureMinYDmm + toDeciMm2(drawerHeightMm, `${comp.id}.drawerH`);
+      const revealDmm = toDeciMm2(revealMm, "drawerFrontRevealMm");
+      const frontMinYDmm = apertureMinYDmm + revealDmm;
+      const frontMaxYDmm = apertureMaxYDmm - revealDmm;
+      const frontWidthDmm = toDeciMm2(frontWidthMm, "drawerFrontWidth");
+      const frontHeightDmm = toDeciMm2(frontHeightMm, "drawerFrontHeight");
+      const frontThickDmm = toDeciMm2(frontThicknessMm, "drawerFrontThickness");
+      const frontMinXDmm = bay.minXDmm + revealDmm;
+      const frontMaxXDmm = frontMinXDmm + frontWidthDmm;
+      const frontId = `${baseId}_${rowTag}_FRONT`;
+      panels.push({
+        id: frontId,
+        bayIndex: bay.index,
+        role: PART_ROLES.DRAWER_FRONT,
+        materialCode: matFront,
+        lengthDmm: frontHeightDmm,
+        widthDmm: frontWidthDmm,
+        thicknessDmm: frontThickDmm,
+        minXDmm: frontMinXDmm,
+        maxXDmm: frontMaxXDmm,
+        minYDmm: frontMinYDmm,
+        maxYDmm: frontMaxYDmm,
+        minZDmm: zCarcassFrontDmm,
+        maxZDmm: zCarcassFrontDmm + frontThickDmm,
+        orientation: ORIENTATIONS.VERTICAL_XY,
+        grainDirection: GRAIN_DIRECTIONS.LENGTH,
+        edges: {
+          LENGTH_EDGE_1: edgeFrontDmm,
+          LENGTH_EDGE_2: edgeFrontDmm,
+          WIDTH_EDGE_1: edgeFrontDmm,
+          WIDTH_EDGE_2: edgeFrontDmm
+        },
+        sourceRuleIds
+      });
+      partIds.push(frontId);
+      const boxHDmm = toDeciMm2(boxHeightMm, "drawerBoxHeight");
+      const sideThickDmm = toDeciMm2(DRAWER_BOX_SIDE_THICKNESS_MM, "drawerSideT");
+      const sideLenDmm = toDeciMm2(sideLengthMm, "drawerSideLen");
+      const sideMinYDmm = frontMinYDmm;
+      const sideMaxYDmm = sideMinYDmm + boxHDmm;
+      const sideMinZDmm = zCarcassFrontDmm + frontThickDmm;
+      const sideMaxZDmm = sideMinZDmm + sideLenDmm;
+      const boxMinXDmm = toDeciMm2(boxMinXMm, "boxMinX");
+      const boxMaxXDmm = toDeciMm2(boxMaxXMm, "boxMaxX");
+      const sideLId = `${baseId}_${rowTag}_SIDE_L`;
+      panels.push({
+        id: sideLId,
+        bayIndex: bay.index,
+        role: PART_ROLES.DRAWER_SIDE_L,
+        materialCode: matCarcass,
+        lengthDmm: sideLenDmm,
+        widthDmm: boxHDmm,
+        thicknessDmm: sideThickDmm,
+        minXDmm: boxMinXDmm,
+        maxXDmm: boxMinXDmm + sideThickDmm,
+        minYDmm: sideMinYDmm,
+        maxYDmm: sideMaxYDmm,
+        minZDmm: sideMinZDmm,
+        maxZDmm: sideMaxZDmm,
+        orientation: ORIENTATIONS.VERTICAL_YZ,
+        grainDirection: GRAIN_DIRECTIONS.LENGTH,
+        edges: {
+          LENGTH_EDGE_1: edgeFrontDmm,
+          LENGTH_EDGE_2: edgeRearDmm,
+          WIDTH_EDGE_1: 0,
+          WIDTH_EDGE_2: 0
+        },
+        sourceRuleIds
+      });
+      partIds.push(sideLId);
+      const sideRId = `${baseId}_${rowTag}_SIDE_R`;
+      panels.push({
+        id: sideRId,
+        bayIndex: bay.index,
+        role: PART_ROLES.DRAWER_SIDE_R,
+        materialCode: matCarcass,
+        lengthDmm: sideLenDmm,
+        widthDmm: boxHDmm,
+        thicknessDmm: sideThickDmm,
+        minXDmm: boxMaxXDmm - sideThickDmm,
+        maxXDmm: boxMaxXDmm,
+        minYDmm: sideMinYDmm,
+        maxYDmm: sideMaxYDmm,
+        minZDmm: sideMinZDmm,
+        maxZDmm: sideMaxZDmm,
+        orientation: ORIENTATIONS.VERTICAL_YZ,
+        grainDirection: GRAIN_DIRECTIONS.LENGTH,
+        edges: {
+          LENGTH_EDGE_1: edgeFrontDmm,
+          LENGTH_EDGE_2: edgeRearDmm,
+          WIDTH_EDGE_1: 0,
+          WIDTH_EDGE_2: 0
+        },
+        sourceRuleIds
+      });
+      partIds.push(sideRId);
+      const backWidthDmm = toDeciMm2(backWidthMm, "drawerBackW");
+      const backId = `${baseId}_${rowTag}_BACK`;
+      panels.push({
+        id: backId,
+        bayIndex: bay.index,
+        role: PART_ROLES.DRAWER_BACK,
+        materialCode: matCarcass,
+        lengthDmm: boxHDmm,
+        widthDmm: backWidthDmm,
+        thicknessDmm: sideThickDmm,
+        minXDmm: boxMinXDmm + sideThickDmm,
+        maxXDmm: boxMinXDmm + sideThickDmm + backWidthDmm,
+        minYDmm: sideMinYDmm,
+        maxYDmm: sideMaxYDmm,
+        minZDmm: sideMaxZDmm - sideThickDmm,
+        maxZDmm: sideMaxZDmm,
+        orientation: ORIENTATIONS.VERTICAL_XY,
+        grainDirection: GRAIN_DIRECTIONS.LENGTH,
+        edges: {
+          LENGTH_EDGE_1: 0,
+          LENGTH_EDGE_2: 0,
+          WIDTH_EDGE_1: 0,
+          WIDTH_EDGE_2: 0
+        },
+        sourceRuleIds
+      });
+      partIds.push(backId);
+      const bottomWidthDmm = toDeciMm2(bottomWidthMm, "drawerBottomW");
+      const bottomDepthDmm = toDeciMm2(bottomDepthMm, "drawerBottomD");
+      const bottomThickDmm = toDeciMm2(bottomThicknessMm, "drawerBottomT");
+      const bottomInsetDmm = toDeciMm2(DRAWER_BOTTOM_SIDE_INSET_TOTAL_MM / 2, "bottomInset");
+      const bottomId = `${baseId}_${rowTag}_BOTTOM`;
+      panels.push({
+        id: bottomId,
+        bayIndex: bay.index,
+        role: PART_ROLES.DRAWER_BOTTOM,
+        materialCode: matCarcass,
+        lengthDmm: bottomWidthDmm,
+        widthDmm: bottomDepthDmm,
+        thicknessDmm: bottomThickDmm,
+        minXDmm: boxMinXDmm + bottomInsetDmm,
+        maxXDmm: boxMinXDmm + bottomInsetDmm + bottomWidthDmm,
+        minYDmm: sideMinYDmm,
+        maxYDmm: sideMinYDmm + bottomThickDmm,
+        minZDmm: sideMinZDmm,
+        maxZDmm: sideMinZDmm + bottomDepthDmm,
+        orientation: ORIENTATIONS.HORIZONTAL_XZ,
+        grainDirection: GRAIN_DIRECTIONS.LENGTH,
+        edges: {
+          LENGTH_EDGE_1: 0,
+          LENGTH_EDGE_2: 0,
+          WIDTH_EDGE_1: 0,
+          WIDTH_EDGE_2: 0
+        },
+        sourceRuleIds
+      });
+      partIds.push(bottomId);
+    }
+    return { panels, partIds };
   }
 
   // src/lib/partgraph/buildStructuralPartGraph.js
@@ -987,6 +1314,7 @@ var AiDesignerTransport = (() => {
     }
     const fixedShelves = [];
     const adjShelves = [];
+    const drawerPanels = [];
     const previews = [];
     const ledger = createComponentLedger();
     for (const bay of baySpans) {
@@ -1145,10 +1473,29 @@ var AiDesignerTransport = (() => {
             sourceRuleIds: ["WR-003", "WR-008", "WR-013"]
           });
           ledger.recordStructural(comp, bay.index, [partId]);
+        } else if (comp.type === "DRAWER_BANK") {
+          const { panels, partIds } = emitDrawerBankParts({
+            comp,
+            bay,
+            yBotTopDmm,
+            zCarcassFrontDmm,
+            carcassDepthMm: carcassDDmm / 10,
+            matCarcass,
+            matFront,
+            edgeFrontDmm,
+            edgeRearDmm,
+            toDeciMm
+          });
+          for (const panel of panels) drawerPanels.push(panel);
+          ledger.recordStructural(comp, bay.index, partIds);
         } else {
           ledger.recordUnsupported(comp, bay.index);
         }
       }
+    }
+    drawerPanels.sort((a, b) => a.bayIndex - b.bayIndex || a.minYDmm - b.minYDmm);
+    for (const d of drawerPanels) {
+      parts.push(createPanel(d));
     }
     fixedShelves.sort((a, b) => a.bayIndex - b.bayIndex || b.minYDmm - a.minYDmm);
     for (const s of fixedShelves) {
@@ -1596,7 +1943,8 @@ var AiDesignerTransport = (() => {
         const overlapZ = Math.min(p1.placement.maxZDmm, p2.placement.maxZDmm) - Math.max(p1.placement.minZDmm, p2.placement.minZDmm);
         if (overlapX > 0 && overlapY > 0 && overlapZ > 0) {
           const isBackPanelEngagement = p1.id === "BACK_PANEL_01" && ["CARC_TOP", "CARC_BOT", "CARC_SIDE_L", "CARC_SIDE_R"].includes(p2.id) || p2.id === "BACK_PANEL_01" && ["CARC_TOP", "CARC_BOT", "CARC_SIDE_L", "CARC_SIDE_R"].includes(p1.id);
-          if (!isBackPanelEngagement) {
+          const isDrawerAssemblyOverlap = typeof p1.role === "string" && typeof p2.role === "string" && p1.role.startsWith("DRAWER_") && p2.role.startsWith("DRAWER_");
+          if (!isBackPanelEngagement && !isDrawerAssemblyOverlap) {
             addError(
               "UNINTENDED_PART_COLLISION",
               `Part "${p1.id}" and Part "${p2.id}" collide with overlap volume ${overlapX}x${overlapY}x${overlapZ} dmm.`,
@@ -1616,79 +1964,6 @@ var AiDesignerTransport = (() => {
       valid: errors.length === 0,
       errors
     };
-  }
-
-  // src/lib/rules/wardrobeRuleCatalog.js
-  var RULE_PROVENANCE = Object.freeze({
-    RULEBOOK_V0_1: "RULEBOOK_V0_1",
-    GOLDEN_FIXTURE_BEKZOD_APPROVED: "GOLDEN_FIXTURE_BEKZOD_APPROVED",
-    REQUIRES_BEKZOD_RULING: "REQUIRES_BEKZOD_RULING"
-  });
-  function rule(id, value, provenance, note) {
-    return Object.freeze({ id, value, provenance, note });
-  }
-  var { RULEBOOK_V0_1, GOLDEN_FIXTURE_BEKZOD_APPROVED, REQUIRES_BEKZOD_RULING } = RULE_PROVENANCE;
-  var WARDROBE_RULES = Object.freeze({
-    constructionStyle: rule("WR-001", "CAP_STYLE", RULEBOOK_V0_1, "Cap Style (Style B): top/bottom cap the outer sides and divider."),
-    panelThicknessMm: rule("WR-003", 18, RULEBOOK_V0_1, "Carcass panels, shelves, divider, doors and plinth rails."),
-    backThicknessMm: rule("WR-003", 6, RULEBOOK_V0_1, "Back panel core thickness."),
-    grooveDepthMm: rule("WR-004", 7, RULEBOOK_V0_1, "Back groove machined into top, bottom and both outer sides."),
-    grooveWidthMm: rule("WR-005", 7, RULEBOOK_V0_1, "6.0mm back panel + 1.0mm assembly glue gap."),
-    grooveRootAllowanceMm: rule("WR-005", 1, RULEBOOK_V0_1, "Assembly glue gap component of the 7.0mm groove width."),
-    grooveRearDatumMm: rule("WR-006", 20, RULEBOOK_V0_1, "Groove rear face measured from the carcass rear datum."),
-    doorBumperGapMm: rule("RULEBOOK-S1-Z-ALLOCATION", 2, RULEBOOK_V0_1, "Door bumper / operating air gap, Z in [18.0, 20.0]."),
-    doorRevealMm: rule("WR-008", 2, RULEBOOK_V0_1, "2.0mm perimeter reveals and 2.0mm gaps between doors."),
-    plinthFrontRecessMm: rule("WR-007", 0, RULEBOOK_V0_1, "Frame-aligned plinth: front fascia sits at the carcass front datum, zero recess."),
-    plinthSideInsetMm: rule("WR-007", 0, RULEBOOK_V0_1, "Frame-aligned plinth: side returns align with the carcass frame footprint."),
-    hangingRailOffsetBelowShelfMm: rule("WR-012", 100, RULEBOOK_V0_1, "Rail centre 100.0mm below the underside of the fixed shelf."),
-    edgeBandFrontVisibleMm: rule("WR-013", 1, RULEBOOK_V0_1, "Front visible edges receive 1.0mm PVC."),
-    edgeBandRearUnbandedMm: rule("WR-013", 0, RULEBOOK_V0_1, "Non-visible edges receive 0.0mm."),
-    edgeBandDoorPerimeterMm: rule("WR-013", 1, RULEBOOK_V0_1, "Door perimeter banding."),
-    hingeType: rule("WR-010", "CONCEALED_110", RULEBOOK_V0_1, "110 degree soft-close concealed clip-on, semantic only."),
-    hingeCountPerDoor: rule("WR-011", 5, RULEBOOK_V0_1, "Five hinges per door."),
-    shelfPinPitchMm: rule("WR-009", 32, RULEBOOK_V0_1, "System 32 semantic grid; drilling coordinates blocked."),
-    // --- Values present in the Bekzod-approved Golden Wardrobe fixture but not
-    // --- stated as a numbered Rulebook rule. Approved, but by fixture not by rule.
-    topCompartmentClearOpeningMm: rule("GF-TOP-OPENING", 350, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Clear opening above the top fixed shelf."),
-    shelfCompartmentClearOpeningMm: rule("GF-SHELF-OPENING", 350, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Clear opening above an adjustable shelf."),
-    longHangingTargetClearDropMm: rule("GF-HANG-LONG", 1400, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Long hanging zone target clear drop."),
-    shortHangingTargetClearDropMm: rule("GF-HANG-SHORT", 900, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Short hanging zone target clear drop."),
-    fixedShelfRearSetbackMm: rule("GF-SHELF-REAR", 20, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Fixed shelf / divider depth = carcass depth - 20.0mm (WR-002 rear clearance)."),
-    adjustableShelfSideClearanceMm: rule("GF-ADJ-SIDE", 1, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Adjustable shelf side clearance per face."),
-    adjustableShelfFrontSetbackMm: rule("GF-ADJ-FRONT", 5, GOLDEN_FIXTURE_BEKZOD_APPROVED, "Adjustable shelf front setback, applied symmetrically front and rear."),
-    shelfPinType: rule("WR-009", "SYSTEM_32_PIN_5MM", RULEBOOK_V0_1, "System 32 5mm shelf pin, semantic only."),
-    joineryType: rule("GF-JOINERY", "CONFIRMAT_AND_DOWEL", GOLDEN_FIXTURE_BEKZOD_APPROVED, "Carcass joinery family; drilling coordinates blocked."),
-    hangingRailType: rule("GF-RAIL", "OVAL_TUBE_15X30", GOLDEN_FIXTURE_BEKZOD_APPROVED, "Hanging rail profile, preview only."),
-    // --- NOT approved. Reading these through resolve() throws by design.
-    bayCountForWidth: rule("UNRULED-BAY-COUNT", null, REQUIRES_BEKZOD_RULING, "No approved rule maps overall width to a bay count. Must be asked."),
-    doorsPerBay: rule("UNRULED-DOORS-PER-BAY", null, REQUIRES_BEKZOD_RULING, "Golden, narrow and wide fixtures all use 2 doors per bay, but no Rulebook rule states it. Must be asked."),
-    unevenBayWidthDistribution: rule("UNRULED-BAY-SPLIT", null, REQUIRES_BEKZOD_RULING, "No approved rule for distributing a non-integral bay-width remainder. Must be asked.")
-  });
-  var UnapprovedRuleError = class extends Error {
-    constructor(key, ruleRecord) {
-      super(
-        `Rule "${key}" (${ruleRecord.id}) is ${RULE_PROVENANCE.REQUIRES_BEKZOD_RULING} and cannot be applied. ${ruleRecord.note}`
-      );
-      this.name = "UnapprovedRuleError";
-      this.code = "UNAPPROVED_RULE_APPLICATION";
-      this.ruleKey = key;
-      this.ruleId = ruleRecord.id;
-    }
-  };
-  function resolve(key) {
-    const record = WARDROBE_RULES[key];
-    if (!record) {
-      throw new Error(`Unknown rule key "${key}".`);
-    }
-    if (record.provenance === RULE_PROVENANCE.REQUIRES_BEKZOD_RULING) {
-      throw new UnapprovedRuleError(key, record);
-    }
-    return record.value;
-  }
-  function ruleIdOf(key) {
-    const record = WARDROBE_RULES[key];
-    if (!record) throw new Error(`Unknown rule key "${key}".`);
-    return record.id;
   }
 
   // src/lib/rules/materialCatalog.js
@@ -1761,7 +2036,9 @@ var AiDesignerTransport = (() => {
   });
   var BAY_LAYOUT = Object.freeze({
     LONG_HANGING: "LONG_HANGING",
-    SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES: "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"
+    SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES: "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES",
+    /** Bottom drawer bank (STRUCTURAL DRAWER_* pack) with short hanging above. */
+    DRAWER_BANK_WITH_SHORT_HANGING: "DRAWER_BANK_WITH_SHORT_HANGING"
   });
   var SUPPORTED_FINISHES = Object.freeze(["melamine"]);
   var REQUIRED_INTAKE_FACTS = Object.freeze([
@@ -1970,6 +2247,19 @@ var AiDesignerTransport = (() => {
           clearOpeningAboveMm: fromDeciMm(shelfOpeningDmm),
           thicknessMm: fromDeciMm(panelTDmm),
           depthMm: adjShelfDepthMm
+        });
+      } else if (layout === BAY_LAYOUT.DRAWER_BANK_WITH_SHORT_HANGING) {
+        components.push({
+          id: `drawer-bank-b${nn}`,
+          type: "DRAWER_BANK",
+          offsetFromBottomMm: 0,
+          rows: 3
+        });
+        components.push({
+          id: `rail-short-b${nn}`,
+          type: "HANGING_RAIL_SHORT",
+          offsetBelowShelfMm: fromDeciMm(railOffsetDmm),
+          targetClearDropMm: fromDeciMm(shortDropDmm)
         });
       } else {
         throw new Error(`Unsupported bay layout "${layout}".`);
@@ -2588,7 +2878,7 @@ var AiDesignerTransport = (() => {
     bayCount: "How many bays should the wardrobe be divided into?",
     doorCount: "How many hinged doors across the front?",
     finishType: "Which finish: melamine, painted or veneer?",
-    bayLayouts: "What goes inside each bay, left to right? Options in this slice: full-height hanging, or short hanging over two adjustable shelves.",
+    bayLayouts: "What goes inside each bay, left to right? Options in this slice: full-height hanging, short hanging over two adjustable shelves, or a drawer bank with short hanging above.",
     furnitureScope: "This request falls outside the straight hinged wardrobe we can build today. Shall we proceed with a straight hinged wardrobe instead?"
   });
   var KIND_PREFIX = Object.freeze({
@@ -2599,7 +2889,8 @@ var AiDesignerTransport = (() => {
   });
   var LAYOUT_LABELS = Object.freeze({
     [BAY_LAYOUT.LONG_HANGING]: "full-height hanging with a shelf over the top",
-    [BAY_LAYOUT.SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES]: "short hanging over two adjustable shelves, with a shelf over the top"
+    [BAY_LAYOUT.SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES]: "short hanging over two adjustable shelves, with a shelf over the top",
+    [BAY_LAYOUT.DRAWER_BANK_WITH_SHORT_HANGING]: "drawer bank at the bottom with short hanging above, and a shelf over the top"
   });
 
   // src/lib/conversation/componentRequests.js
@@ -3016,6 +3307,48 @@ var AiDesignerTransport = (() => {
       return {
         error: unsupportedRequest.error,
         unsupported: unsupportedRequest.unsupported
+      };
+    }
+    const DRAWER_INTENT = new RegExp(
+      [
+        "\\b(?:add|put|fit|install|include|want|need|like|have|give|get)\\b[\\s\\S]{0,48}\\bdrawers?\\b",
+        "\\b(?:\\d+|two|three|four|five|six)\\s+(?:[a-z-]+\\s+){0,2}?drawers?\\b",
+        "\\bdrawer\\s+bank\\b",
+        "\\bchest\\s+of\\s+drawers\\b"
+      ].join("|"),
+      "i"
+    );
+    const DRAWER_NEGATION = /\b(no|not|n't|never|without|don't|dont|do\s+not)\b/i;
+    if (DRAWER_INTENT.test(t) && !DRAWER_NEGATION.test(t)) {
+      const currentBays = currentFacts.bayCount || 2;
+      const layouts = currentFacts.bayLayouts ? [...currentFacts.bayLayouts] : ["LONG_HANGING", "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"];
+      while (layouts.length < currentBays) {
+        layouts.push("SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES");
+      }
+      const isLeft = /\b(?:left|bay\s*1)\b/i.test(t);
+      const isRight = /\b(?:right|bay\s*2)\b/i.test(t);
+      let targetBayIdx;
+      if (isLeft) targetBayIdx = 0;
+      else if (isRight) targetBayIdx = 1;
+      else {
+        targetBayIdx = layouts.findIndex((l) => l !== "DRAWER_BANK_WITH_SHORT_HANGING");
+        if (targetBayIdx === -1) targetBayIdx = 0;
+      }
+      if (targetBayIdx >= currentBays) {
+        return {
+          error: `Cannot modify bay ${targetBayIdx + 1} because this wardrobe only has ${currentBays} bay${currentBays > 1 ? "s" : ""}.`
+        };
+      }
+      const baySide = targetBayIdx === 0 ? "left" : targetBayIdx === 1 ? "right" : `bay ${targetBayIdx + 1}`;
+      if (layouts[targetBayIdx] === "DRAWER_BANK_WITH_SHORT_HANGING") {
+        return {
+          error: `The ${baySide} bay already has a drawer bank with short hanging above.`
+        };
+      }
+      layouts[targetBayIdx] = "DRAWER_BANK_WITH_SHORT_HANGING";
+      return {
+        changes: { bayLayouts: layouts },
+        assistantReply: `Added a drawer bank to the ${baySide} bay (with short hanging above).`
       };
     }
     const widthRaw = extractDimension(t, "width");

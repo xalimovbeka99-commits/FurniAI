@@ -516,10 +516,9 @@ export function parseConversationalCommand(text, currentFacts = {}) {
 
   // 0. A request for something the engine cannot build is answered here,
   // before any branch tries to interpret it as a dimension or a layout.
-  // "Add drawers" previously matched nothing and fell through to the model,
-  // so a hard capability limit surfaced either as a generic validation error
-  // or — with no provider reachable — as "the designer is not available".
-  // Both told the customer to try again at something that will never work.
+  // Unmodelled hardware (handles, locks, mirrors, …) still refuses here.
+  // DRAWER_BANK is STRUCTURAL now — "Add drawers" is handled below as a
+  // supported bay-layout change, not as an unsupported refusal.
   //
   // The refusal carries structured `unsupported` entries, which the transport
   // maps to RESULT_KIND.UNSUPPORTED so the browser shows the reason and the
@@ -529,6 +528,59 @@ export function parseConversationalCommand(text, currentFacts = {}) {
     return {
       error: unsupportedRequest.error,
       unsupported: unsupportedRequest.unsupported,
+    };
+  }
+
+  // 0b. Add drawers → DRAWER_BANK_WITH_SHORT_HANGING bay layout (STRUCTURAL
+  // DRAWER_* emission). Replaces low adjustable shelves in that bay so the
+  // drawer pack does not collide with them (PartGraph fail-closed).
+  const DRAWER_INTENT = new RegExp(
+    [
+      "\\b(?:add|put|fit|install|include|want|need|like|have|give|get)\\b[\\s\\S]{0,48}\\bdrawers?\\b",
+      "\\b(?:\\d+|two|three|four|five|six)\\s+(?:[a-z-]+\\s+){0,2}?drawers?\\b",
+      "\\bdrawer\\s+bank\\b",
+      "\\bchest\\s+of\\s+drawers\\b",
+    ].join("|"),
+    "i"
+  );
+  const DRAWER_NEGATION = /\b(no|not|n't|never|without|don't|dont|do\s+not)\b/i;
+  if (DRAWER_INTENT.test(t) && !DRAWER_NEGATION.test(t)) {
+    const currentBays = currentFacts.bayCount || 2;
+    const layouts = currentFacts.bayLayouts
+      ? [...currentFacts.bayLayouts]
+      : ["LONG_HANGING", "SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES"];
+    while (layouts.length < currentBays) {
+      layouts.push("SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES");
+    }
+
+    const isLeft = /\b(?:left|bay\s*1)\b/i.test(t);
+    const isRight = /\b(?:right|bay\s*2)\b/i.test(t);
+    let targetBayIdx;
+    if (isLeft) targetBayIdx = 0;
+    else if (isRight) targetBayIdx = 1;
+    else {
+      // Prefer a bay that does not already have drawers.
+      targetBayIdx = layouts.findIndex((l) => l !== "DRAWER_BANK_WITH_SHORT_HANGING");
+      if (targetBayIdx === -1) targetBayIdx = 0;
+    }
+
+    if (targetBayIdx >= currentBays) {
+      return {
+        error: `Cannot modify bay ${targetBayIdx + 1} because this wardrobe only has ${currentBays} bay${currentBays > 1 ? "s" : ""}.`,
+      };
+    }
+
+    const baySide = targetBayIdx === 0 ? "left" : targetBayIdx === 1 ? "right" : `bay ${targetBayIdx + 1}`;
+    if (layouts[targetBayIdx] === "DRAWER_BANK_WITH_SHORT_HANGING") {
+      return {
+        error: `The ${baySide} bay already has a drawer bank with short hanging above.`,
+      };
+    }
+
+    layouts[targetBayIdx] = "DRAWER_BANK_WITH_SHORT_HANGING";
+    return {
+      changes: { bayLayouts: layouts },
+      assistantReply: `Added a drawer bank to the ${baySide} bay (with short hanging above).`,
     };
   }
 

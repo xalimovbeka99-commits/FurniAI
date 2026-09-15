@@ -239,6 +239,56 @@ function interiorHeightMm(model) {
   return model.heightMm - 2 * model.panelThicknessMm;
 }
 
+/**
+ * When a DRAWER_BANK would occupy the same vertical band as existing low
+ * shelves, shift those shelves (and any shelves that would then collide) above
+ * the bank with minShelfClearanceMm gaps. Fail closed with
+ * INSUFFICIENT_VERTICAL_CLEARANCE when the bay cannot absorb the stack —
+ * consistent with PartGraph's UNINTENDED_PART_COLLISION fail-closed stance.
+ * Hanging rails are never auto-moved (clearance semantics are different).
+ */
+function planShelfShiftsForDrawerBank(section, bankPosition, bankHeight, interiorHeight) {
+  const bankBottom = bankPosition;
+  const bankTop = bankPosition + bankHeight;
+  const clearance = DEFAULTS.minShelfClearanceMm;
+
+  const shelves = section.components
+    .filter((c) => c.type === COMPONENT_TYPES.SHELF)
+    .slice()
+    .sort((a, b) => a.positionMm - b.positionMm);
+
+  const shifts = new Map();
+  let cursor = bankTop + clearance;
+
+  for (const shelf of shelves) {
+    const shelfBottom = shelf.positionMm;
+    const shelfTop = shelf.positionMm + shelf.heightMm;
+    const overlapsBank = Math.min(shelfTop, bankTop) - Math.max(shelfBottom, bankBottom) > 0.5;
+    const sitsInLandingZone = shelfBottom < cursor && shelfTop > bankBottom - 0.5;
+
+    if (!overlapsBank && !sitsInLandingZone) {
+      if (shelfBottom >= cursor) {
+        cursor = Math.max(cursor, shelfTop + clearance);
+      }
+      continue;
+    }
+
+    const newPos = Math.max(cursor, bankTop + clearance);
+    if (newPos + shelf.heightMm > interiorHeight + 0.5) {
+      fail(
+        "INSUFFICIENT_VERTICAL_CLEARANCE",
+        `Cannot place drawer bank (${bankHeight}mm from ${bankBottom}mm) and keep shelf "${shelf.id}" in the ${interiorHeight}mm interior — not enough vertical room above the drawers.`
+      );
+    }
+    if (newPos !== shelf.positionMm) {
+      shifts.set(shelf.id, newPos);
+    }
+    cursor = newPos + shelf.heightMm + clearance;
+  }
+
+  return shifts;
+}
+
 export function addComponent(model, { sectionId, type, positionMm, rows, leaves, hingeSide } = {}) {
   const sectionIndex = findSectionIndex(model, sectionId);
   const section = model.sections[sectionIndex];
@@ -252,7 +302,19 @@ export function addComponent(model, { sectionId, type, positionMm, rows, leaves,
 
   let fields = {};
   if (type === COMPONENT_TYPES.DRAWER_BANK) {
+    if (rows !== undefined && Number(rows) < 0) {
+      fail(
+        "INVALID_INPUT",
+        `Cannot add a negative number of drawers (got ${rows}).`
+      );
+    }
     fields.rows = rows === undefined ? 3 : assertIntegerCount(rows, "rows", DEFAULTS.minDrawerRows, DEFAULTS.maxDrawerRows);
+    if (section.widthMm < DEFAULTS.minDrawerBayClearWidthMm) {
+      fail(
+        "INSUFFICIENT_BAY_WIDTH_FOR_DRAWERS",
+        `Bay clear width ${section.widthMm}mm cannot accommodate undermount deduction (21mm) and drawer box side walls (need >= ${DEFAULTS.minDrawerBayClearWidthMm}mm).`
+      );
+    }
   }
   if (type === COMPONENT_TYPES.DOOR) {
     fields.leaves = leaves === undefined ? 1 : assertIntegerCount(leaves, "leaves", DEFAULTS.minDoorLeaves, DEFAULTS.maxDoorLeaves);
@@ -260,10 +322,18 @@ export function addComponent(model, { sectionId, type, positionMm, rows, leaves,
   }
 
   const heightMm = type === COMPONENT_TYPES.DOOR ? interiorHeightMm(model) : zoneHeightMm(type, fields);
+  const interiorH = interiorHeightMm(model);
+
+  if (type === COMPONENT_TYPES.DRAWER_BANK && heightMm > interiorH + 0.5) {
+    fail(
+      "INSUFFICIENT_VERTICAL_CLEARANCE",
+      `Drawer bank height ${heightMm}mm exceeds the ${interiorH}mm interior — not enough vertical clearance for ${fields.rows} drawer rows.`
+    );
+  }
 
   let position;
   if (positionMm !== undefined) {
-    position = assertIntegerMm(positionMm, "positionMm", { min: 0, max: Math.max(0, interiorHeightMm(model) - heightMm) });
+    position = assertIntegerMm(positionMm, "positionMm", { min: 0, max: Math.max(0, interiorH - heightMm) });
   } else if (type === COMPONENT_TYPES.DOOR) {
     position = 0;
   } else {
@@ -284,13 +354,36 @@ export function addComponent(model, { sectionId, type, positionMm, rows, leaves,
     }
   }
 
+  let workingSection = section;
+  let shiftedShelves = [];
+  if (type === COMPONENT_TYPES.DRAWER_BANK) {
+    const shifts = planShelfShiftsForDrawerBank(workingSection, position, heightMm, interiorH);
+    if (shifts.size > 0) {
+      shiftedShelves = [...shifts.entries()].map(([id, positionMm]) => ({ id, positionMm }));
+      workingSection = {
+        ...workingSection,
+        components: workingSection.components.map((c) =>
+          shifts.has(c.id) ? { ...c, positionMm: shifts.get(c.id) } : c
+        ),
+      };
+    }
+  }
+
   const alloc = allocate(model, type);
   const component = { id: alloc.id, type, positionMm: position, heightMm, ...fields };
-  const sections = model.sections.map((s, i) =>
-    i === sectionIndex ? { ...s, components: [...s.components, component] } : s
-  );
+  const sections = model.sections.map((s, i) => {
+    if (i !== sectionIndex) return s;
+    const base = i === sectionIndex ? workingSection : s;
+    return { ...base, components: [...base.components, component] };
+  });
 
-  return { ...model, idCounters: alloc.idCounters, sections, _newComponentId: alloc.id };
+  return {
+    ...model,
+    idCounters: alloc.idCounters,
+    sections,
+    _newComponentId: alloc.id,
+    ...(shiftedShelves.length > 0 ? { _shiftedShelves: shiftedShelves } : {}),
+  };
 }
 
 export function moveComponent(model, { componentId, axis, deltaMm } = {}) {
