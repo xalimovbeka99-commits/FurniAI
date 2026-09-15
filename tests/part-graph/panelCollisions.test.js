@@ -277,7 +277,6 @@ describe("PartGraph adversarial panel collisions & clearance", () => {
     expect(drawerRoles).toHaveLength(0);
     expect(graph.parts.every((p) => p.role !== "DRAWER_BANK")).toBe(true);
   });
-  });
 
   it("synthetic intersecting drawer box is rejected by PartGraph collision audit (stand-in role)", () => {
     // Inject a FIXED_SHELF-role stand-in that
