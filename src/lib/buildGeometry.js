@@ -597,11 +597,12 @@ export function buildPartGraphMeshes(partGraph, options = {}) {
     };
 
     // Apply 1.0 mm visual edge-banding tint on front-facing edges
-    // In FurniAI space, front is at minZ (-Z local mesh direction).
+    // Only on exposed fronts: gables, dividers, shelves, and drawer fronts.
     const needsEdgeBanding =
       isVerticalGableRole(role) ||
       isShelfRole(role) ||
-      isDrawerRole(role);
+      role === "DRAWER_FRONT" ||
+      role === "DRAWERFRONT";
 
     if (needsEdgeBanding) {
       const edgeBandGeo = new T.BoxGeometry(
@@ -623,8 +624,132 @@ export function buildPartGraphMeshes(partGraph, options = {}) {
       mesh.userData.edgeBandThicknessMm = 1.0;
     }
 
+    // Enhance visual distinction of 2.0 mm reveal gap around drawer fronts
+    if (role === "DRAWER_FRONT" || role === "DRAWERFRONT") {
+      const revealEdgesGeo = new T.EdgesGeometry(geometry);
+      const revealEdgesMat = new T.LineBasicMaterial({
+        color: 0x2e2b27,
+        transparent: true,
+        opacity: 0.55,
+        name: "mat_drawer_front_reveal_edge",
+      });
+      const revealEdges = new T.LineSegments(revealEdgesGeo, revealEdgesMat);
+      revealEdges.name = `reveal_edges_${id}`;
+      revealEdges.raycast = () => {};
+      mesh.add(revealEdges);
+      mesh.userData.hasRevealOutline = true;
+    }
+
     rootGroup.add(mesh);
     panelMeshes.push(mesh);
+  }
+
+  // Architectural Scribe / Filler Panel Mounting (optional wall scribes)
+  const scribeLeftMm = Number(partGraph.scribeLeftMm ?? options.scribeLeftMm ?? 0);
+  const scribeRightMm = Number(partGraph.scribeRightMm ?? options.scribeRightMm ?? 0);
+  let dimensions = null;
+
+  if (scribeLeftMm > 0 || scribeRightMm > 0) {
+    let minCarcassX = Infinity, maxCarcassX = -Infinity;
+    let minCarcassY = Infinity, maxCarcassY = -Infinity;
+    let frontCarcassZ = Infinity;
+
+    for (const p of panelMeshes) {
+      const d = p.userData?.datumsMm;
+      if (d && !p.userData.isFiller && !String(p.userData.role).startsWith("DRAWER_")) {
+        minCarcassX = Math.min(minCarcassX, d.minXMm);
+        maxCarcassX = Math.max(maxCarcassX, d.maxXMm);
+        minCarcassY = Math.min(minCarcassY, d.minYMm);
+        maxCarcassY = Math.max(maxCarcassY, d.maxYMm);
+        frontCarcassZ = Math.min(frontCarcassZ, d.minZMm);
+      }
+    }
+
+    if (minCarcassX < Infinity && maxCarcassX > -Infinity) {
+      const carcassHeightMm = maxCarcassY - minCarcassY;
+      const fillerDepthMm = 18.0; // standard panel thickness strip
+
+      if (scribeLeftMm > 0) {
+        const fillerGeo = new T.BoxGeometry(
+          scribeLeftMm * unitScale,
+          carcassHeightMm * unitScale,
+          fillerDepthMm * unitScale
+        );
+        const fillerMesh = new T.Mesh(fillerGeo, materials.DEFAULT || materials.GABLE);
+        fillerMesh.name = "panel_FILLER_LEFT";
+        fillerMesh.position.set(
+          (minCarcassX - scribeLeftMm / 2) * unitScale,
+          (minCarcassY + carcassHeightMm / 2) * unitScale,
+          (frontCarcassZ + fillerDepthMm / 2) * unitScale
+        );
+        fillerMesh.userData = {
+          partId: "FILLER_LEFT",
+          role: "FILLER_LEFT",
+          isFiller: true,
+          widthMm: scribeLeftMm,
+          heightMm: carcassHeightMm,
+          datumsMm: {
+            minXMm: minCarcassX - scribeLeftMm,
+            maxXMm: minCarcassX,
+            minYMm: minCarcassY,
+            maxYMm: maxCarcassY,
+            minZMm: frontCarcassZ,
+            maxZMm: frontCarcassZ + fillerDepthMm,
+          },
+        };
+        rootGroup.add(fillerMesh);
+        panelMeshes.push(fillerMesh);
+      }
+
+      if (scribeRightMm > 0) {
+        const fillerGeo = new T.BoxGeometry(
+          scribeRightMm * unitScale,
+          carcassHeightMm * unitScale,
+          fillerDepthMm * unitScale
+        );
+        const fillerMesh = new T.Mesh(fillerGeo, materials.DEFAULT || materials.GABLE);
+        fillerMesh.name = "panel_FILLER_RIGHT";
+        fillerMesh.position.set(
+          (maxCarcassX + scribeRightMm / 2) * unitScale,
+          (minCarcassY + carcassHeightMm / 2) * unitScale,
+          (frontCarcassZ + fillerDepthMm / 2) * unitScale
+        );
+        fillerMesh.userData = {
+          partId: "FILLER_RIGHT",
+          role: "FILLER_RIGHT",
+          isFiller: true,
+          widthMm: scribeRightMm,
+          heightMm: carcassHeightMm,
+          datumsMm: {
+            minXMm: maxCarcassX,
+            maxXMm: maxCarcassX + scribeRightMm,
+            minYMm: minCarcassY,
+            maxYMm: maxCarcassY,
+            minZMm: frontCarcassZ,
+            maxZMm: frontCarcassZ + fillerDepthMm,
+          },
+        };
+        rootGroup.add(fillerMesh);
+        panelMeshes.push(fillerMesh);
+      }
+
+      const netCarcassWidthMm = maxCarcassX - minCarcassX;
+      const overallRoomWidthMm = netCarcassWidthMm + scribeLeftMm + scribeRightMm;
+      dimensions = {
+        netCarcassWidthMm,
+        overallRoomWidthMm,
+        scribeLeftMm,
+        scribeRightMm,
+        carcassDimensionString: `${netCarcassWidthMm} mm (net carcass)`,
+        roomDimensionString: `${overallRoomWidthMm} mm (wall-to-wall room)`,
+        anchors: {
+          carcassLeft: { x: minCarcassX * unitScale, y: (maxCarcassY + 60) * unitScale, z: frontCarcassZ * unitScale },
+          carcassRight: { x: maxCarcassX * unitScale, y: (maxCarcassY + 60) * unitScale, z: frontCarcassZ * unitScale },
+          roomLeft: { x: (minCarcassX - scribeLeftMm) * unitScale, y: (maxCarcassY + 120) * unitScale, z: frontCarcassZ * unitScale },
+          roomRight: { x: (maxCarcassX + scribeRightMm) * unitScale, y: (maxCarcassY + 120) * unitScale, z: frontCarcassZ * unitScale },
+        },
+      };
+    }
   }
 
   // System 32 Review Guides
@@ -648,6 +773,7 @@ export function buildPartGraphMeshes(partGraph, options = {}) {
     materialMap: materials,
     system32Group,
     showSystem32Pins: showPins,
+    dimensions,
     toggleSystem32Pins: (visible) => {
       system32Group.visible = !!visible;
       rootGroup.userData.showSystem32Pins = !!visible;

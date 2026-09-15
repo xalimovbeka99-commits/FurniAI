@@ -265,12 +265,12 @@ describe("PartGraph adversarial panel collisions & clearance", () => {
     ).toBe(true);
   });
 
-  it("documents drawer geometry is not yet on PartGraph path (no DRAWER_* roles)", () => {
+  it("documents drawer geometry is now declared on PartGraph path", () => {
     const graph = buildStructuralPartGraph(fixture);
     const drawerRoles = graph.parts.filter((p) => String(p.role).startsWith("DRAWER"));
     expect(drawerRoles).toHaveLength(0);
-    expect(PART_ROLES.DRAWER_FRONT).toBeUndefined();
-    expect(PART_ROLES.DRAWER_BOX_SIDE).toBeUndefined();
+    expect(PART_ROLES.DRAWER_FRONT).toBe("DRAWER_FRONT");
+    expect(PART_ROLES.DRAWER_SIDE_L).toBe("DRAWER_SIDE_L");
     // DRAWER_BANK remains unsupported (component outcomes), not structural
     expect(graph.parts.every((p) => p.geometryType === undefined || p.role !== "DRAWER_BANK")).toBe(true);
   });
