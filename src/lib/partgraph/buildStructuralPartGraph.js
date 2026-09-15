@@ -16,6 +16,7 @@ import { validateFurniSpec } from "../furnispec/validate.js";
 import { assertDeciMm, toDeciMm } from "../furnispec/units.js";
 import { PARTGRAPH_VERSION, PART_ROLES, GEOMETRY_TYPES, GRAIN_DIRECTIONS, ORIENTATIONS } from "./schema.js";
 import { createComponentLedger } from "./componentOutcomes.js";
+import { emitDrawerBankParts } from "./emitDrawerBankParts.js";
 
 /**
  * Builds the canonical structural PartGraph from a FurniSpec v0.1 object.
@@ -372,6 +373,7 @@ export function buildStructuralPartGraph(furniSpec) {
   // 6. Shelves Calculation (Fixed and Adjustable)
   const fixedShelves = [];
   const adjShelves = [];
+  const drawerPanels = [];
   /** Visual-only concepts — NOT structural panels / NOT manufacturing parts. */
   const previews = [];
   // M2-OMIT-01: every accepted component is accounted for exactly once.
@@ -557,6 +559,21 @@ export function buildStructuralPartGraph(furniSpec) {
           sourceRuleIds: ["WR-003", "WR-008", "WR-013"],
         });
         ledger.recordStructural(comp, bay.index, [partId]);
+      } else if (comp.type === "DRAWER_BANK") {
+        const { panels, partIds } = emitDrawerBankParts({
+          comp,
+          bay,
+          yBotTopDmm,
+          zCarcassFrontDmm,
+          carcassDepthMm: carcassDDmm / 10,
+          matCarcass,
+          matFront,
+          edgeFrontDmm,
+          edgeRearDmm,
+          toDeciMm,
+        });
+        for (const panel of panels) drawerPanels.push(panel);
+        ledger.recordStructural(comp, bay.index, partIds);
       } else {
         // The catch-all that makes silent omission impossible. Any accepted
         // component type with no branch above lands here and is reported with
@@ -566,6 +583,12 @@ export function buildStructuralPartGraph(furniSpec) {
         ledger.recordUnsupported(comp, bay.index);
       }
     }
+  }
+
+  // Push drawer panels (ordered by bayIndex, then by Y ascending)
+  drawerPanels.sort((a, b) => a.bayIndex - b.bayIndex || a.minYDmm - b.minYDmm);
+  for (const d of drawerPanels) {
+    parts.push(createPanel(d));
   }
 
   // Push fixed shelves (ordered by bayIndex, then by Y descending)
