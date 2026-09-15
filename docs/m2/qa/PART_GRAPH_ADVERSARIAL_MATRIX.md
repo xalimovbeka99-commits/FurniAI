@@ -3,7 +3,8 @@
 **Date:** 2026-09-15 (Asia/Dubai)  
 **Branch:** `test/adversarial-part-graph`  
 **Checkout:** `C:\Users\xalim\FurniAI-F1-Claude-Handoff`  
-**Base tip:** `cb5f110627e1df589101f416fb34299ebb092bc0`  
+**Base tip:** `cb5f110627e1df589101f416fb34299ebb092bc0`
+**Engineering SHA:** `e08e3f66ce2b3370921adf4d0aa45d7a865de9eb`  
 **Scope:** Adversarial PartGraph collision / boring audits + production geometry preflight.  
 **Do not:** merge main, deploy production, or move F1 freeze tip on `integ/f1-claude-handoff`.
 
@@ -63,3 +64,16 @@
 ## Push pattern
 
 Worktree origin → local Integration (`C:\Users\xalim\FurniAI-Integration`) → GitHub `xalimovbeka99-commits/FurniAI` (Integration fetch→push). Leave `integ/f1-claude-handoff` tip unchanged.
+
+## Vitest evidence (2026-09-15 Asia/Dubai)
+
+Command: `npx vitest run tests/part-graph/panelCollisions.test.js tests/part-graph/boringAudit.test.js src/lib/production.test.js`
+
+| File | Tests | `expect()` calls (approx) |
+|---|---|---|
+| `tests/part-graph/panelCollisions.test.js` | 11 passed | 40 |
+| `tests/part-graph/boringAudit.test.js` | 16 passed | 33 |
+| `src/lib/production.test.js` (incl. 3 new preflight cases) | 8 passed | +18 new |
+| **Total this run** | **35 passed / 0 failed** | **?91** (?25 required) |
+
+CI: `.github/workflows/ci.yml` triggers extended for `test/adversarial-part-graph`.
