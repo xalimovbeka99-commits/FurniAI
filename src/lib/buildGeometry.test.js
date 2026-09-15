@@ -496,6 +496,94 @@ describe("buildPartGraphMeshes — Discrete Panels, Edge Banding & System 32 Gui
     expect(group.children).toHaveLength(0);
   });
 
+  it("mounts architectural filler panels and dual-tier dimension anchors when scribes are specified", () => {
+    const group = buildPartGraphMeshes(samplePartGraph, {
+      scribeLeftMm: 60,
+      scribeRightMm: 80,
+    });
+
+    const fillerL = group.children.find((c) => c.name === "panel_FILLER_LEFT");
+    const fillerR = group.children.find((c) => c.name === "panel_FILLER_RIGHT");
+
+    expect(fillerL).toBeDefined();
+    expect(fillerR).toBeDefined();
+
+    expect(fillerL.userData.isFiller).toBe(true);
+    expect(fillerL.userData.widthMm).toBe(60);
+    expect(fillerR.userData.widthMm).toBe(80);
+
+    expect(fillerL.position.x).toBeCloseTo(-0.03, 4);
+    expect(fillerL.position.z).toBeCloseTo(0.029, 4);
+    expect(fillerR.position.x).toBeCloseTo(1.84, 4);
+    expect(fillerR.position.z).toBeCloseTo(0.029, 4);
+
+    const dims = group.userData.dimensions;
+    expect(dims).toBeDefined();
+    expect(dims.netCarcassWidthMm).toBe(1800);
+    expect(dims.overallRoomWidthMm).toBe(1940);
+    expect(dims.scribeLeftMm).toBe(60);
+    expect(dims.scribeRightMm).toBe(80);
+    expect(dims.carcassDimensionString).toBe("1800 mm (net carcass)");
+    expect(dims.roomDimensionString).toBe("1940 mm (wall-to-wall room)");
+
+    expect(dims.anchors.carcassLeft.y).toBeCloseTo(2.46, 4);
+    expect(dims.anchors.carcassRight.y).toBeCloseTo(2.46, 4);
+    expect(dims.anchors.roomLeft.y).toBeCloseTo(2.52, 4);
+    expect(dims.anchors.roomRight.y).toBeCloseTo(2.52, 4);
+  });
+
+  it("attaches visual reveal outline only to DRAWER_FRONT panels, avoiding edge-banding on internal drawer box parts", () => {
+    const group = buildPartGraphMeshes(samplePartGraph);
+
+    const drawerFront = group.children.find((c) => c.name === "panel_DRAWER_FRONT_01");
+    expect(drawerFront).toBeDefined();
+    expect(drawerFront.userData.hasRevealOutline).toBe(true);
+
+    const revealEdges = drawerFront.children.find((c) => c.name.startsWith("reveal_edges_"));
+    expect(revealEdges).toBeDefined();
+    expect(revealEdges.isLineSegments).toBe(true);
+
+    for (const partId of ["DRAWER_SIDE_L_01", "DRAWER_SIDE_R_01", "DRAWER_BACK_01", "DRAWER_BOT_01"]) {
+      const panel = group.children.find((c) => c.name === `panel_${partId}`);
+      expect(panel).toBeDefined();
+      expect(panel.userData.hasRevealOutline).toBeUndefined();
+      expect(panel.userData.edgeBandThicknessMm).toBeUndefined();
+      const edgeChildren = panel.children.filter((c) => c.name.startsWith("edgeband_"));
+      expect(edgeChildren).toHaveLength(0);
+    }
+  });
+
+  it("safely handles 50 rapid dynamic updates and disposals without context/memory leakage", () => {
+    let currentGroup = null;
+
+    for (let i = 0; i < 50; i++) {
+      if (currentGroup) {
+        disposeGeometryGroup(currentGroup);
+      }
+
+      const dynamicGraph = {
+        ...samplePartGraph,
+        sourceSpecId: `stress-test-${i}`,
+        parts: samplePartGraph.parts.filter((p, idx) => {
+          if (p.role === "SHELF" && i % 3 === 0) return false;
+          if (String(p.role).startsWith("DRAWER") && i % 2 === 0 && idx > 7) return false;
+          return true;
+        }),
+      };
+
+      currentGroup = buildPartGraphMeshes(dynamicGraph, {
+        showSystem32Pins: i % 2 === 1,
+        scribeLeftMm: (i % 5) * 10,
+        scribeRightMm: (i % 4) * 15,
+      });
+
+      expect(currentGroup.children.length).toBeGreaterThan(0);
+    }
+
+    disposeGeometryGroup(currentGroup);
+    expect(currentGroup.children).toHaveLength(0);
+  });
+
   it("delegates polymorphic buildGeometry(partGraph) to buildPartGraphMeshes", () => {
     const group = buildGeometry(samplePartGraph, { showSystem32Pins: true });
     expect(group.name).toContain("partgraph_model");
