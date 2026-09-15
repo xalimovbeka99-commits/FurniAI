@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildGeometry,
+  buildPartGraphMeshes,
+  buildDiscretePartGraphPanels,
+  generateSystem32Pins,
+  disposeGeometryGroup,
   panelAreaFromParts,
   partsToCutList,
   validateGeometry,
@@ -188,5 +192,314 @@ describe("partsToCutList", () => {
       width: 600,
       thickness: 18,
     });
+  });
+});
+
+describe("buildPartGraphMeshes — Discrete Panels, Edge Banding & System 32 Guides", () => {
+  // Sample PartGraph fixture containing GABLE, DIVIDER, SHELF, and DRAWER_*
+  const samplePartGraph = {
+    sourceSpecId: "test-wardrobe-01",
+    partGraphVersion: "partgraph/0.1",
+    parts: [
+      {
+        id: "CARC_BOT",
+        role: "BOTTOM_PANEL",
+        placement: {
+          minXDmm: 0,
+          maxXDmm: 18000,
+          minYDmm: 1000,
+          maxYDmm: 1180,
+          minZDmm: 200,
+          maxZDmm: 6000,
+        },
+      },
+      {
+        id: "CARC_TOP",
+        role: "TOP_PANEL",
+        placement: {
+          minXDmm: 0,
+          maxXDmm: 18000,
+          minYDmm: 23820,
+          maxYDmm: 24000,
+          minZDmm: 200,
+          maxZDmm: 6000,
+        },
+      },
+      {
+        id: "GABLE_L",
+        role: "GABLE",
+        placement: {
+          minXDmm: 0,
+          maxXDmm: 180,
+          minYDmm: 1180,
+          maxYDmm: 23820,
+          minZDmm: 200,
+          maxZDmm: 6000,
+        },
+      },
+      {
+        id: "GABLE_R",
+        role: "SIDE_PANEL_RIGHT",
+        placement: {
+          minXDmm: 17820,
+          maxXDmm: 18000,
+          minYDmm: 1180,
+          maxYDmm: 23820,
+          minZDmm: 200,
+          maxZDmm: 6000,
+        },
+      },
+      {
+        id: "DIV_01",
+        role: "DIVIDER",
+        placement: {
+          minXDmm: 8910,
+          maxXDmm: 9090,
+          minYDmm: 1180,
+          maxYDmm: 23820,
+          minZDmm: 200,
+          maxZDmm: 5800,
+        },
+      },
+      {
+        id: "SHELF_01",
+        role: "SHELF",
+        placement: {
+          minXDmm: 180,
+          maxXDmm: 8910,
+          minYDmm: 12000,
+          maxYDmm: 12180,
+          minZDmm: 200,
+          maxZDmm: 5800,
+        },
+      },
+      {
+        id: "DRAWER_FRONT_01",
+        role: "DRAWER_FRONT",
+        placement: {
+          minXDmm: 180,
+          maxXDmm: 8910,
+          minYDmm: 2000,
+          maxYDmm: 3500,
+          minZDmm: 200,
+          maxZDmm: 380,
+        },
+      },
+      {
+        id: "DRAWER_SIDE_L_01",
+        role: "DRAWER_SIDE_L",
+        placement: {
+          minXDmm: 200,
+          maxXDmm: 360,
+          minYDmm: 2100,
+          maxYDmm: 3400,
+          minZDmm: 380,
+          maxZDmm: 5200,
+        },
+      },
+      {
+        id: "DRAWER_SIDE_R_01",
+        role: "DRAWER_SIDE_R",
+        placement: {
+          minXDmm: 8730,
+          maxXDmm: 8890,
+          minYDmm: 2100,
+          maxYDmm: 3400,
+          minZDmm: 380,
+          maxZDmm: 5200,
+        },
+      },
+      {
+        id: "DRAWER_BACK_01",
+        role: "DRAWER_BACK",
+        placement: {
+          minXDmm: 360,
+          maxXDmm: 8730,
+          minYDmm: 2100,
+          maxYDmm: 3400,
+          minZDmm: 5040,
+          maxZDmm: 5200,
+        },
+      },
+      {
+        id: "DRAWER_BOT_01",
+        role: "DRAWER_BOTTOM",
+        placement: {
+          minXDmm: 360,
+          maxXDmm: 8730,
+          minYDmm: 2100,
+          maxYDmm: 2160,
+          minZDmm: 380,
+          maxZDmm: 5040,
+        },
+      },
+    ],
+  };
+
+  it("renders each PartGraph part as an independent THREE.BoxGeometry positioned via bounding datums", () => {
+    const group = buildPartGraphMeshes(samplePartGraph);
+    expect(group.userData.panelCount).toBe(11);
+
+    const gableL = group.children.find((c) => c.name === "panel_GABLE_L");
+    expect(gableL).toBeDefined();
+    expect(gableL.geometry.type).toBe("BoxGeometry");
+
+    // Dimensions: (180 - 0) / 10 = 18 mm -> 0.018 m
+    // Height: (23820 - 1180) / 10 = 2264 mm -> 2.264 m
+    // Depth: (6000 - 200) / 10 = 580 mm -> 0.580 m
+    expect(gableL.geometry.parameters.width).toBeCloseTo(0.018, 5);
+    expect(gableL.geometry.parameters.height).toBeCloseTo(2.264, 5);
+    expect(gableL.geometry.parameters.depth).toBeCloseTo(0.580, 5);
+
+    // Center position: X = 9 mm -> 0.009 m, Y = (1180 + 23820)/20 = 1250 mm -> 1.25 m, Z = (200 + 6000)/20 = 310 mm -> 0.310 m
+    expect(gableL.position.x).toBeCloseTo(0.009, 5);
+    expect(gableL.position.y).toBeCloseTo(1.25, 5);
+    expect(gableL.position.z).toBeCloseTo(0.31, 5);
+
+    // Bounding datums in userData
+    expect(gableL.userData.datumsMm.minXMm).toBe(0);
+    expect(gableL.userData.datumsMm.maxXMm).toBe(18);
+    expect(gableL.userData.datumsMm.minYMm).toBe(118);
+    expect(gableL.userData.datumsMm.maxYMm).toBe(2382);
+    expect(gableL.userData.datumsMm.minZMm).toBe(20);
+    expect(gableL.userData.datumsMm.maxZMm).toBe(600);
+  });
+
+  it("mounts discrete drawer parts (DRAWER_FRONT, DRAWER_SIDE_L, DRAWER_SIDE_R, DRAWER_BACK, DRAWER_BOTTOM)", () => {
+    const group = buildDiscretePartGraphPanels(samplePartGraph);
+    const drawerParts = [
+      "panel_DRAWER_FRONT_01",
+      "panel_DRAWER_SIDE_L_01",
+      "panel_DRAWER_SIDE_R_01",
+      "panel_DRAWER_BACK_01",
+      "panel_DRAWER_BOT_01",
+    ];
+
+    for (const name of drawerParts) {
+      const mesh = group.children.find((c) => c.name === name);
+      expect(mesh, `Missing discrete drawer mesh ${name}`).toBeDefined();
+      expect(mesh.geometry.type).toBe("BoxGeometry");
+    }
+  });
+
+  it("applies 1.0 mm visual edge-banding tint on front-facing edges", () => {
+    const group = buildPartGraphMeshes(samplePartGraph);
+
+    // Gables, dividers, shelves, and drawer fronts should have edge banding attached
+    const checkEdgeBanded = (panelName) => {
+      const panel = group.children.find((c) => c.name === panelName);
+      expect(panel).toBeDefined();
+      expect(panel.userData.hasEdgeBanding).toBe(true);
+      expect(panel.userData.edgeBandThicknessMm).toBe(1.0);
+
+      const edgeMesh = panel.children.find((c) => c.userData?.isEdgeBanding);
+      expect(edgeMesh).toBeDefined();
+      expect(edgeMesh.geometry.type).toBe("BoxGeometry");
+      // 1.0 mm in metres = 0.001 m
+      expect(edgeMesh.geometry.parameters.depth).toBeCloseTo(0.001, 5);
+      // Positioned at front face (-depth/2 + 0.001/2)
+      const expectedZ = -panel.geometry.parameters.depth / 2 + 0.0005;
+      expect(edgeMesh.position.z).toBeCloseTo(expectedZ, 5);
+    };
+
+    checkEdgeBanded("panel_GABLE_L");
+    checkEdgeBanded("panel_GABLE_R");
+    checkEdgeBanded("panel_DIV_01");
+    checkEdgeBanded("panel_SHELF_01");
+    checkEdgeBanded("panel_DRAWER_FRONT_01");
+  });
+
+  it("renders System 32 review pins with 37 mm front/rear offsets and 32 mm pitch when toggled ON", () => {
+    const group = buildPartGraphMeshes(samplePartGraph, { showSystem32Pins: true });
+    const pinsGroup = group.userData.system32Group;
+    expect(pinsGroup).toBeDefined();
+    expect(pinsGroup.visible).toBe(true);
+    expect(pinsGroup.userData.isSystem32Pins).toBe(true);
+    expect(pinsGroup.userData.pinDiameterMm).toBe(5);
+    expect(pinsGroup.userData.pitchMm).toBe(32);
+    expect(pinsGroup.userData.frontOffsetMm).toBe(37);
+    expect(pinsGroup.userData.rearOffsetMm).toBe(37);
+    expect(pinsGroup.userData.startOffsetMm).toBe(64);
+    expect(pinsGroup.userData.totalPins).toBeGreaterThan(0);
+
+    // Bottom panel top datum is 118 mm -> baseline is 118 + 64 = 182 mm
+    // Check front and rear row pin offsets on GABLE_L (minZ = 20 mm, maxZ = 600 mm)
+    // Front row Z: 20 + 37 = 57 mm -> 0.057 m
+    // Rear row Z: 600 - 37 = 563 mm -> 0.563 m
+    const frontPin = pinsGroup.children.find(
+      (c) => c.userData.parentGableId === "GABLE_L" && c.userData.row === "front" && Math.round(c.userData.heightMm) === 182
+    );
+    expect(frontPin).toBeDefined();
+    expect(frontPin.position.z).toBeCloseTo(0.057, 4);
+    expect(frontPin.position.y).toBeCloseTo(0.182, 4);
+
+    const rearPin = pinsGroup.children.find(
+      (c) => c.userData.parentGableId === "GABLE_L" && c.userData.row === "rear" && Math.round(c.userData.heightMm) === 182
+    );
+    expect(rearPin).toBeDefined();
+    expect(rearPin.position.z).toBeCloseTo(0.563, 4);
+    expect(rearPin.position.y).toBeCloseTo(0.182, 4);
+
+    // Verify next pin height interval is exactly 32 mm (182 + 32 = 214 mm)
+    const nextFrontPin = pinsGroup.children.find(
+      (c) => c.userData.parentGableId === "GABLE_L" && c.userData.row === "front" && Math.round(c.userData.heightMm) === 214
+    );
+    expect(nextFrontPin).toBeDefined();
+    expect(nextFrontPin.position.y).toBeCloseTo(0.214, 4);
+  });
+
+  it("respects showSystem32Pins: false and allows dynamic toggling", () => {
+    const group = buildPartGraphMeshes(samplePartGraph, { showSystem32Pins: false });
+    expect(group.userData.system32Group.visible).toBe(false);
+
+    // Toggle on dynamically
+    const stateOn = group.userData.toggleSystem32Pins(true);
+    expect(stateOn).toBe(true);
+    expect(group.userData.system32Group.visible).toBe(true);
+
+    // Toggle off
+    const stateOff = group.userData.toggleSystem32Pins(false);
+    expect(stateOff).toBe(false);
+    expect(group.userData.system32Group.visible).toBe(false);
+  });
+
+  it("recursively disposes all geometries and materials on recompilation", () => {
+    const group = buildPartGraphMeshes(samplePartGraph, { showSystem32Pins: true });
+
+    const disposedGeometries = [];
+    const disposedMaterials = [];
+
+    group.traverse((obj) => {
+      if (obj.geometry) {
+        vi.spyOn(obj.geometry, "dispose").mockImplementation(function () {
+          disposedGeometries.push(this);
+        });
+      }
+      if (obj.material) {
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (const m of mats) {
+          if (!m.__spied) {
+            m.__spied = true;
+            vi.spyOn(m, "dispose").mockImplementation(function () {
+              disposedMaterials.push(this);
+            });
+          }
+        }
+      }
+    });
+
+    // Execute disposal
+    disposeGeometryGroup(group);
+
+    expect(disposedGeometries.length).toBeGreaterThan(0);
+    expect(disposedMaterials.length).toBeGreaterThan(0);
+    expect(group.children).toHaveLength(0);
+  });
+
+  it("delegates polymorphic buildGeometry(partGraph) to buildPartGraphMeshes", () => {
+    const group = buildGeometry(samplePartGraph, { showSystem32Pins: true });
+    expect(group.name).toContain("partgraph_model");
+    expect(group.userData.panelCount).toBe(11);
+    expect(group.userData.system32Group.visible).toBe(true);
   });
 });
