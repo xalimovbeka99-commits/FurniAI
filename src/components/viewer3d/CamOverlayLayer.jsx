@@ -743,6 +743,19 @@ export function createCamOverlay({ scene, partGraph, options = {}, threeInstance
 
     toolhead.position.set(posX, posY, posZ);
 
+    // Dynamic pulsing of colliding vacuum clamp halos
+    if (collisionResult && collisionResult.collisions && collisionResult.collisions.length > 0) {
+      const pulseOpacity = 0.55 + Math.sin(Date.now() * 0.008) * 0.35; // pulses between 0.2 and 0.9
+      for (const coll of collisionResult.collisions) {
+        const halo = clampMesh.getObjectByName(`halo_${coll.clampId}`);
+        if (halo && halo.material) {
+          halo.material.opacity = pulseOpacity;
+          halo.material.transparent = true;
+          halo.material.needsUpdate = true;
+        }
+      }
+    }
+
     return {
       activeOp,
       opIndex: activeOpIndex + 1,

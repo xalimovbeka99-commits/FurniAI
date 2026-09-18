@@ -205,14 +205,28 @@ export default function CamSimulationBar({
             {/* Telemetry & Operation Info */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs bg-black/30 p-2 rounded-lg border border-white/5 font-mono my-2">
               <div>
-                <span className="text-neutral-500 block text-[10px] uppercase">Operation</span>
+                <span className="text-neutral-500 block text-[10px] uppercase">
+                  Operation ({stepInfo?.opIndex || 1}/{stepInfo?.totalOps || total})
+                </span>
                 <div className="flex items-center gap-1.5 truncate">
                   <span
                     className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
-                      isRapid ? "bg-amber-500/20 text-amber-300" : "bg-cyan-500/20 text-cyan-300"
+                      isRapid
+                        ? "bg-amber-500/20 text-amber-300"
+                        : activeOp?.category === "GROOVE"
+                        ? "bg-lime-500/20 text-lime-300"
+                        : activeOp?.category === "BORE"
+                        ? "bg-rose-500/20 text-rose-300"
+                        : "bg-cyan-500/20 text-cyan-300"
                     }`}
                   >
-                    {activeOp?.type || "G00"}
+                    {activeOp?.category === "CONTOUR"
+                      ? "OUTLINE_CONTOUR"
+                      : activeOp?.category === "GROOVE"
+                      ? "POCKET_GROOVE"
+                      : activeOp?.category === "BORE"
+                      ? "BORE_SYSTEM_32"
+                      : activeOp?.type || "G00"}
                   </span>
                   <span className="truncate text-neutral-200">
                     {activeOp?.description || "Idle Clearance"}
