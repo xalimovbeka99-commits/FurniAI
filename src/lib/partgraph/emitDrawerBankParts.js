@@ -10,7 +10,7 @@
  *   boxHeightMm ← drawerH - 2*reveal
  *   boxDepthMm ← carcassDepth - DRAWER_SIDE_DEPTH_SETBACK_MM (50)
  *   boxBottomClearanceMm ← 0
- *   bottomThicknessMm ← max(6, backThicknessMm)
+ *   bottomThicknessMm ← 6.0 (HDF_WHITE_6; decoupled from matCarcass)
  *   backBetweenSides ← true
  *   DRAWER_BOX_SIDE_THICKNESS_MM = 15, DRAWER_BOTTOM_SIDE_INSET_TOTAL_MM = 10
  *
@@ -29,6 +29,9 @@ export const DRAWER_BOX_SIDE_THICKNESS_MM = 15;
 export const DRAWER_SIDE_DEPTH_SETBACK_MM = 50;
 /** Bottom groove inset total (5 mm each side into the box sides). */
 export const DRAWER_BOTTOM_SIDE_INSET_TOTAL_MM = 10;
+/** Drawer bottom board — always 6 mm white HDF, never carcass melamine. */
+export const DRAWER_BOTTOM_MATERIAL_CODE = "HDF_WHITE_6";
+export const DRAWER_BOTTOM_THICKNESS_MM = 6.0;
 
 /**
  * @param {object} args
@@ -49,7 +52,7 @@ export function emitDrawerBankParts({
   const revealMm = resolve("drawerFrontRevealMm");
   const slideDeductionMm = resolve("drawerSlideWidthDeductionMm");
   const frontThicknessMm = resolve("panelThicknessMm");
-  const bottomThicknessMm = Math.max(6.0, resolve("backThicknessMm"));
+  const bottomThicknessMm = DRAWER_BOTTOM_THICKNESS_MM;
 
   const rows = Math.max(1, Number(comp.rows) || 1);
   const bankHeightMm =
@@ -267,7 +270,7 @@ export function emitDrawerBankParts({
       id: bottomId,
       bayIndex: bay.index,
       role: PART_ROLES.DRAWER_BOTTOM,
-      materialCode: matCarcass,
+      materialCode: DRAWER_BOTTOM_MATERIAL_CODE,
       lengthDmm: bottomWidthDmm,
       widthDmm: bottomDepthDmm,
       thicknessDmm: bottomThickDmm,

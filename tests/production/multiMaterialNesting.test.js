@@ -72,7 +72,7 @@ describe("multiMaterialNesting — group keys (ENFORCED)", () => {
         id: "CARC_SIDE",
         role: "SIDE_PANEL_LEFT",
         lengthMm: 580,
-        widthMm: 2100,
+        widthMm: 800,
         thicknessMm: 18,
         materialCode: "MEL_WHITE_18",
         grainDirection: "LENGTH",
@@ -234,5 +234,81 @@ describe("multiMaterialNesting — never share a sheet (ENFORCED)", () => {
     // Procurement total sheets = sum of independent runs
     const sumSheets = manifest.runs.reduce((n, r) => n + r.sheetCount, 0);
     expect(manifest.sheetCount).toBe(sumSheets);
+  });
+});
+
+describe("multiMaterialNesting — drawer bottoms pack into HDF_WHITE_6|6 (ENFORCED)", () => {
+  it("DRAWER_BOTTOM nests in HDF_WHITE_6|6 run, separate from MEL_WHITE_18|18 carcass", () => {
+    const graph = syntheticGraph([
+      panel({
+        id: "CARC_SIDE",
+        role: "SIDE_PANEL_LEFT",
+        lengthMm: 580,
+        widthMm: 800,
+        thicknessMm: 18,
+        materialCode: "MEL_WHITE_18",
+        grainDirection: "LENGTH",
+      }),
+      panel({
+        id: "DRW_SIDE_L",
+        role: "DRAWER_SIDE_L",
+        lengthMm: 450,
+        widthMm: 140,
+        thicknessMm: 18,
+        materialCode: "MEL_WHITE_18",
+        quantity: 2,
+      }),
+      panel({
+        id: "DRW_BOTTOM_R01",
+        role: "DRAWER_BOTTOM",
+        lengthMm: 420,
+        widthMm: 430,
+        thicknessMm: 6,
+        materialCode: "HDF_WHITE_6",
+        grainDirection: "LENGTH",
+      }),
+      panel({
+        id: "DRW_BOTTOM_R02",
+        role: "DRAWER_BOTTOM",
+        lengthMm: 420,
+        widthMm: 430,
+        thicknessMm: 6,
+        materialCode: "HDF_WHITE_6",
+        grainDirection: "LENGTH",
+      }),
+    ]);
+
+    const rows = buildCutListRows(graph);
+    const groups = groupCutRowsByMaterialThickness(rows);
+    expect(groups.has("MEL_WHITE_18|18")).toBe(true);
+    expect(groups.has("HDF_WHITE_6|6")).toBe(true);
+    expect(groups.has("MEL_WHITE_18|6")).toBe(false);
+
+    const hdfRows = groups.get("HDF_WHITE_6|6").rows;
+    expect(hdfRows.every((r) => r.material === "HDF_WHITE_6" && r.thicknessMm === 6)).toBe(true);
+    expect(hdfRows.some((r) => /BOTTOM/i.test(r.partId || r.id || ""))).toBe(true);
+
+    const melRows = groups.get("MEL_WHITE_18|18").rows;
+    expect(melRows.every((r) => r.material === "MEL_WHITE_18" && r.thicknessMm === 18)).toBe(true);
+    expect(melRows.some((r) => /BOTTOM/i.test(r.partId || r.id || ""))).toBe(false);
+
+    const manifest = compileNestingManifest(graph);
+    const hdfRun = manifest.runs.find((r) => r.groupKey === "HDF_WHITE_6|6");
+    const melRun = manifest.runs.find((r) => r.groupKey === "MEL_WHITE_18|18");
+    expect(hdfRun).toBeTruthy();
+    expect(melRun).toBeTruthy();
+    expect(hdfRun.groupKey).not.toBe(melRun.groupKey);
+
+    // Bottoms never share a sheet with 18 mm melamine
+    for (const sheet of manifest.sheets) {
+      const materials = new Set(sheet.placements.map((p) => p.material));
+      const thicknesses = new Set(sheet.placements.map((p) => p.thicknessMm));
+      expect(materials.size).toBe(1);
+      expect(thicknesses.size).toBe(1);
+      if (materials.has("HDF_WHITE_6")) {
+        expect(thicknesses.has(6)).toBe(true);
+        expect(materials.has("MEL_WHITE_18")).toBe(false);
+      }
+    }
   });
 });
