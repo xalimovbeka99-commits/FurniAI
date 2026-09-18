@@ -79,7 +79,9 @@ describe("claims are checked against what the kernel actually does", () => {
     }
 
     const bad = buildStructuralPartGraph(fixture);
-    bad.parts[0].role = "DRAWER_FRONT";
+    // DRAWER_FRONT became a declared role with the 2026-09-15 runner ruling,
+    // so the sentinel has to be a role that is still undeclared.
+    bad.parts[0].role = "DRAWER_RUNNER_BRACKET";
     expect(validatePartGraph(bad).errors.some((e) => e.code === "INVALID_PART_ROLE")).toBe(true);
   });
 });

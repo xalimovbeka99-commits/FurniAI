@@ -84,17 +84,47 @@ export const COMPONENT_REPRESENTATION_POLICY = Object.freeze({
       "a PREVIEW_ONLY visual.",
   }),
   [COMPONENT_TYPES.DRAWER_BANK]: Object.freeze({
+    // STILL UNSUPPORTED BY DEFAULT, and deliberately so.
+    //
+    // The 2026-09-15 ruling made a drawer bank representable IN PRINCIPLE: the
+    // runner family and the 21.0mm width deduction size the box's width, and
+    // drawerPack.js compiles five parts per row. But the box's height, depth,
+    // runner clearance, bottom thickness and back arrangement are still unruled,
+    // and nothing in the conversational intake path can supply them. So a
+    // customer who asks for drawers still cannot be given drawers, and this
+    // policy is what tells them so before the request reaches a model.
+    //
+    // A spec that DOES state those five inputs compiles normally — the kernel
+    // records STRUCTURAL at runtime, overriding this default. That is the only
+    // route to drawer parts today, and it is not one a conversation can take.
     outcome: COMPONENT_OUTCOME.UNSUPPORTED,
-    diagnosticCode: COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED,
+    conditionallyStructural: Object.freeze({
+      requiredInputs: Object.freeze([
+        "boxHeightMm",
+        "boxDepthMm",
+        "boxBottomClearanceMm",
+        "bottomThicknessMm",
+        "backBetweenSides",
+      ]),
+      compiledBy: "src/lib/partgraph/drawerPack.js",
+    }),
+    representation:
+      "Five cut parts per row - DRAWER_FRONT, DRAWER_SIDE_L, DRAWER_SIDE_R, " +
+      "DRAWER_BACK, DRAWER_BOTTOM - sized from the 2026-09-15 runner ruling " +
+      "(UNDERMOUNT_CONCEALED_21MM, 21.0mm total width deduction, 2.0mm front " +
+      "reveal). See drawerPack.js.",
+    // Kept because the ruling did NOT settle the box's height, depth, runner
+    // clearance, bottom thickness or back arrangement. A bank that does not
+    // state those is recorded UNSUPPORTED/COMPONENT_NOT_PLACED at runtime with
+    // the missing field named, using this copy.
+    diagnosticCode: COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_PLACED,
     reason:
-      "No drawer part roles exist in PartGraph v0.1 (no DRAWER_FRONT, " +
-      "DRAWER_BOX_SIDE, DRAWER_BOX_BACK, DRAWER_BOX_FRONT or DRAWER_BOTTOM), " +
-      "and drawer box dimensions depend on a runner family that has not been " +
-      "approved. Emitting geometry would require inventing construction rules.",
+      "The runner family and its 21.0mm width deduction are ruled, so the box's " +
+      "width is determined. Its height, depth, runner clearance, bottom thickness " +
+      "and back arrangement are not ruled and are not derivable from the bay.",
     customerMessage:
-      "I can't add drawers to this wardrobe yet — the drawer boxes depend on " +
-      "the runner hardware, which isn't confirmed for this design. Everything " +
-      "else in your wardrobe is unchanged.",
+      "I can't build the drawers for this design yet \u2014 the drawer box sizes for " +
+      "this runner aren't confirmed. Everything else in your wardrobe is unchanged.",
     suggestedAlternative: Object.freeze({
       componentType: COMPONENT_TYPES.SHELF_FIXED,
       // Lower-case and clause-shaped: it is always read inside an offer

@@ -27,24 +27,12 @@ describe("wardrobe rule catalog", () => {
     }
   });
 
-  it("names every rule that still needs a Bekzod ruling, by key", () => {
+  it("names the bay count, doors-per-bay and bay-split rules as unruled", () => {
     // Exact equality on purpose: this roster must not grow or shrink silently.
-    // It grew by three when the System 32 boring compiler was added. WR-009
-    // approves the 32.0mm pitch and the 37.0mm front setback, and in the same
-    // Rulebook row blocks the drilling coordinates. Three inputs a hole column
-    // actually needs are stated nowhere: the hole depth (the 12-14mm figure in
-    // docs/knowledge-base/construction-standards.md cites Wikipedia, not
-    // Bekzod), the column origin datum, and whether a rear row is bored at all.
-    // They are registered as unruled rather than chosen, so resolve() throws on
-    // each and the boring compiler reports them instead of guessing.
-    expect(unapprovedRuleKeys()).toEqual([
-      "bayCountForWidth",
-      "doorsPerBay",
-      "shelfPinColumnOriginDatum",
-      "shelfPinHoleDepthMm",
-      "shelfPinRearRowPolicy",
-      "unevenBayWidthDistribution",
-    ]);
+    // It briefly held six keys while the System 32 boring inputs were open.
+    // The 2026-09-15 ruling closed all three, so it is back to the original
+    // three - and those three are still genuinely unruled.
+    expect(unapprovedRuleKeys()).toEqual(["bayCountForWidth", "doorsPerBay", "unevenBayWidthDistribution"]);
   });
 
   it("resolves approved rules to their Rulebook values", () => {

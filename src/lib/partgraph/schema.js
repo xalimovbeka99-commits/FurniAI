@@ -22,6 +22,19 @@ export const PART_ROLES = Object.freeze({
   PLINTH_SIDE_RETURN_LEFT: "PLINTH_SIDE_RETURN_LEFT",
   PLINTH_SIDE_RETURN_RIGHT: "PLINTH_SIDE_RETURN_RIGHT",
   PLINTH_CROSS_STRETCHER: "PLINTH_CROSS_STRETCHER",
+
+  // Drawer pack. Added when the 2026-09-15 ruling named the runner family
+  // (UNDERMOUNT_CONCEALED_21MM) and its 21.0mm total width deduction, which
+  // is what previously held DRAWER_BANK unrepresentable.
+  //
+  // There is deliberately no DRAWER_BOX_FRONT: in this decomposition the
+  // drawer front IS the front of the box, so a row is one front plus two
+  // sides, a back and a bottom.
+  DRAWER_FRONT: "DRAWER_FRONT",
+  DRAWER_SIDE_L: "DRAWER_SIDE_L",
+  DRAWER_SIDE_R: "DRAWER_SIDE_R",
+  DRAWER_BACK: "DRAWER_BACK",
+  DRAWER_BOTTOM: "DRAWER_BOTTOM",
 });
 
 export const GEOMETRY_TYPES = Object.freeze({

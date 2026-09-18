@@ -15,7 +15,8 @@
 import { validateFurniSpec } from "../furnispec/validate.js";
 import { assertDeciMm, toDeciMm } from "../furnispec/units.js";
 import { PARTGRAPH_VERSION, PART_ROLES, GEOMETRY_TYPES, GRAIN_DIRECTIONS, ORIENTATIONS } from "./schema.js";
-import { createComponentLedger } from "./componentOutcomes.js";
+import { createComponentLedger, COMPONENT_DIAGNOSTIC_CODE } from "./componentOutcomes.js";
+import { compileDrawerPack, missingDrawerInputs } from "./drawerPack.js";
 
 /**
  * Builds the canonical structural PartGraph from a FurniSpec v0.1 object.
@@ -380,6 +381,9 @@ export function buildStructuralPartGraph(furniSpec) {
   // draws, `ledger` is what the customer asked for and what became of it.
   // A PREVIEW outcome carries the id of its preview so the two can be joined.
   const ledger = createComponentLedger();
+  /** Drawer parts are accumulated separately so they sort after the carcass. */
+  const drawerParts = [];
+  const drawerDerivations = [];
 
   for (const bay of baySpans) {
     let currentBottomFaceY = yTopBottomDmm;
@@ -557,6 +561,50 @@ export function buildStructuralPartGraph(furniSpec) {
           sourceRuleIds: ["WR-003", "WR-008", "WR-013"],
         });
         ledger.recordStructural(comp, bay.index, [partId]);
+      } else if (comp.type === "DRAWER_BANK") {
+        // Representable since the 2026-09-15 runner ruling, but only for a bank
+        // that states the five box dimensions the ruling does not cover. One
+        // that does not is reported with the missing field named, never given
+        // a box built on a guess.
+        const missing = missingDrawerInputs(comp);
+        if (missing.length > 0) {
+          ledger.recordUnsupported(comp, bay.index, {
+            diagnosticCode: COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_PLACED,
+            reason:
+              `Drawer bank "${comp.id}" does not state ${missing.join(", ")}. The 2026-09-15 ruling ` +
+              "fixed the runner family and the 21.0mm width deduction, which size the box's WIDTH. " +
+              "Its height, depth, runner clearance, bottom thickness and back arrangement are not ruled " +
+              "and are not derivable from the bay.",
+            // No customerMessage override: the policy owns the customer-facing
+            // wording, and `unsupportedRequestIntegration.test.js` asserts there
+            // is exactly one source for it.
+          });
+        } else {
+          let bankBottomYDmm;
+          if (comp.offsetFromBottomMm !== undefined) {
+            bankBottomYDmm = yBotTopDmm + toDeciMm(comp.offsetFromBottomMm, `${comp.id}.offsetFromBottomMm`);
+          } else if (comp.elevationMm !== undefined) {
+            bankBottomYDmm = toDeciMm(comp.elevationMm, `${comp.id}.elevationMm`);
+          } else {
+            bankBottomYDmm = yBotTopDmm;
+          }
+
+          const pack = compileDrawerPack({
+            bank: comp,
+            bay,
+            bankBottomYDmm,
+            panelTDmm,
+            zCarcassFrontDmm,
+            matCarcass,
+            matFront,
+            edgeFrontDmm,
+            edgeRearDmm,
+          });
+          drawerParts.push(...pack.parts);
+          drawerDerivations.push(...pack.derivations);
+          currentBottomFaceY = bankBottomYDmm;
+          ledger.recordStructural(comp, bay.index, pack.partIds);
+        }
       } else {
         // The catch-all that makes silent omission impossible. Any accepted
         // component type with no branch above lands here and is reported with
@@ -566,6 +614,11 @@ export function buildStructuralPartGraph(furniSpec) {
         ledger.recordUnsupported(comp, bay.index);
       }
     }
+  }
+
+  // Push drawer pack parts (bay order, then row order, then the five roles)
+  for (const d of drawerParts) {
+    parts.push(createPanel(d));
   }
 
   // Push fixed shelves (ordered by bayIndex, then by Y descending)

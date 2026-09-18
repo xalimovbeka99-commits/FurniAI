@@ -165,6 +165,11 @@ describe("a requested DRAWER_BANK is reported, never silently omitted", () => {
     expect(result.valid).toBe(true);
   });
 
+  // Since the 2026-09-15 runner ruling a DRAWER_BANK is representable in
+  // principle, so a bank that omits the box dimensions is NOT_PLACED (this
+  // instance could not be built) rather than NOT_REPRESENTED (the kernel has
+  // no idea what a drawer is). The guarantee under test is unchanged: it is
+  // reported, never silently omitted.
   it("appears in the ledger as UNSUPPORTED with a structured diagnostic", () => {
     const graph = buildStructuralPartGraph(specWithDrawerBank());
     const entry = graph.componentOutcomes.find((e) => e.componentId === "drawer-bank-l1");
@@ -173,8 +178,8 @@ describe("a requested DRAWER_BANK is reported, never silently omitted", () => {
     expect(entry.outcome).toBe(COMPONENT_OUTCOME.UNSUPPORTED);
     expect(entry.componentType).toBe(COMPONENT_TYPES.DRAWER_BANK);
     expect(entry.bayIndex).toBe(0);
-    expect(entry.diagnosticCode).toBe(COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED);
-    expect(entry.reason).toMatch(/runner|part roles/i);
+    expect(entry.diagnosticCode).toBe(COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_PLACED);
+    expect(entry.reason).toMatch(/runner|not ruled|box/i);
     expect(entry.customerMessage).toMatch(/drawers/i);
     expect(entry.partIds).toEqual([]);
     expect(entry.undeclared).toBe(false);
@@ -204,7 +209,7 @@ describe("a requested DRAWER_BANK is reported, never silently omitted", () => {
     const graph = buildStructuralPartGraph(specWithDrawerBank());
     const warning = graph.warnings.find((w) => w.componentId === "drawer-bank-l1");
     expect(warning).toBeDefined();
-    expect(warning.code).toBe(COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED);
+    expect(warning.code).toBe(COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_PLACED);
     expect(warning.componentType).toBe(COMPONENT_TYPES.DRAWER_BANK);
   });
 
@@ -232,7 +237,7 @@ describe("a requested DRAWER_BANK is reported, never silently omitted", () => {
     expect(item).toMatchObject({
       request: "drawer-bank-l1",
       componentType: COMPONENT_TYPES.DRAWER_BANK,
-      code: COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED,
+      code: COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_PLACED,
       alternativeApplied: false,
     });
     expect(typeof item.reason).toBe("string");

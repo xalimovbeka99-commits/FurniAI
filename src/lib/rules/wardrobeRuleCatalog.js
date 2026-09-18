@@ -18,8 +18,24 @@
 export const RULE_PROVENANCE = Object.freeze({
   RULEBOOK_V0_1: "RULEBOOK_V0_1",
   GOLDEN_FIXTURE_BEKZOD_APPROVED: "GOLDEN_FIXTURE_BEKZOD_APPROVED",
+  /**
+   * Ruled directly by Bekzod on 2026-09-15, in answer to the four boring
+   * questions and the drawer-runner question raised in
+   * docs/m2/SYSTEM32_BORING_SCOPE.md section 6. Approved: resolve() returns.
+   * Not yet transcribed into docs/WARDROBE_RULEBOOK_V0.1.md, which is why it
+   * is its own class rather than RULEBOOK_V0_1 — the Rulebook is the record of
+   * what was ruled, and it has not caught up.
+   */
+  BEKZOD_RULING_2026_09_15: "BEKZOD_RULING_2026_09_15",
   REQUIRES_BEKZOD_RULING: "REQUIRES_BEKZOD_RULING",
 });
+
+/** Provenance classes whose values may be applied. */
+export const APPROVED_PROVENANCE = Object.freeze([
+  "RULEBOOK_V0_1",
+  "GOLDEN_FIXTURE_BEKZOD_APPROVED",
+  "BEKZOD_RULING_2026_09_15",
+]);
 
 export const RULE_CATALOG_VERSION = "wardrobe-rules/0.1";
 
@@ -28,7 +44,8 @@ function rule(id, value, provenance, note) {
   return Object.freeze({ id, value, provenance, note });
 }
 
-const { RULEBOOK_V0_1, GOLDEN_FIXTURE_BEKZOD_APPROVED, REQUIRES_BEKZOD_RULING } = RULE_PROVENANCE;
+const { RULEBOOK_V0_1, GOLDEN_FIXTURE_BEKZOD_APPROVED, BEKZOD_RULING_2026_09_15, REQUIRES_BEKZOD_RULING } =
+  RULE_PROVENANCE;
 
 export const WARDROBE_RULES = Object.freeze({
   constructionStyle: rule("WR-001", "CAP_STYLE", RULEBOOK_V0_1, "Cap Style (Style B): top/bottom cap the outer sides and divider."),
@@ -58,9 +75,32 @@ export const WARDROBE_RULES = Object.freeze({
   shelfPinPitchMm: rule("WR-009", 32.0, RULEBOOK_V0_1, "System 32 semantic grid; drilling coordinates blocked."),
   shelfPinFrontSetbackMm: rule("WR-009", 37.0, RULEBOOK_V0_1, "System 32 front-edge row setback, stated in the WR-009 Rulebook row alongside the 32.0mm pitch. Semantic only; drilling coordinates blocked."),
   shelfPinDiameterMm: rule("WR-009", 5.0, RULEBOOK_V0_1, "Numeric form of the approved SYSTEM_32_PIN_5MM pin type. Semantic only."),
-  shelfPinHoleDepthMm: rule("UNRULED-PIN-HOLE-DEPTH", null, REQUIRES_BEKZOD_RULING, "No approved hole depth. The 12-14mm figure in docs/knowledge-base/construction-standards.md cites Wikipedia, not a Bekzod ruling. Must be asked."),
-  shelfPinColumnOriginDatum: rule("UNRULED-PIN-COLUMN-ORIGIN", null, REQUIRES_BEKZOD_RULING, "WR-009 fixes the pitch and the front setback but not where the first hole of a column sits. Without an origin datum a hole column cannot be enumerated. Must be asked."),
-  shelfPinRearRowPolicy: rule("UNRULED-PIN-REAR-ROW", null, REQUIRES_BEKZOD_RULING, "Whether a rear pin row is bored, and whether it mirrors the 37.0mm setback from the rear edge, is a machine-retooling convenience described in a knowledge-base note, not a Rulebook rule. Must be asked."),
+  // --- Ruled by Bekzod on 2026-09-15, closing SYSTEM32_BORING_SCOPE.md section 6.
+  shelfPinHoleDepthByCarcassThicknessMm: rule(
+    "BR-2026-09-15-PIN-DEPTH",
+    Object.freeze({ 18.0: 13.0, 16.0: 11.5 }),
+    BEKZOD_RULING_2026_09_15,
+    "Pin hole depth is carcass-thickness dependent: 13.0mm into 18mm board, 11.5mm into 16mm. Read through shelfPinHoleDepthFor(); any other thickness is unruled and throws."
+  ),
+  shelfPinColumnOriginDatum: rule(
+    "BR-2026-09-15-PIN-ORIGIN",
+    "BOTTOM_PANEL_UPPER_FACE_PLUS_64MM",
+    BEKZOD_RULING_2026_09_15,
+    "First hole of a column sits 64.0mm above the bottom panel's upper face. The column's upper bound is TOP_PANEL_LOWER_FACE_MINUS_64MM."
+  ),
+  shelfPinColumnOriginOffsetMm: rule("BR-2026-09-15-PIN-ORIGIN-OFFSET", 64.0, BEKZOD_RULING_2026_09_15, "Numeric form of the column origin offset, applied at both ends of the column."),
+  shelfPinColumnUpperBoundDatum: rule("BR-2026-09-15-PIN-UPPER-BOUND", "TOP_PANEL_LOWER_FACE_MINUS_64MM", BEKZOD_RULING_2026_09_15, "Upper bound of a shelf-pin column."),
+  shelfPinRearRowPolicy: rule(
+    "BR-2026-09-15-PIN-REAR-ROW",
+    "BORED_MIRROR_FRONT_37MM",
+    BEKZOD_RULING_2026_09_15,
+    "A rear pin row IS bored, mirroring the front row at 37.0mm from the rear datum."
+  ),
+
+  // --- Drawer hardware, ruled by Bekzod on 2026-09-15.
+  drawerRunnerFamily: rule("BR-2026-09-15-RUNNER-FAMILY", "UNDERMOUNT_CONCEALED_21MM", BEKZOD_RULING_2026_09_15, "Concealed undermount runner family. Supersedes the unapproved-runner reason that held DRAWER_BANK unsupported."),
+  drawerSlideWidthDeductionMm: rule("BR-2026-09-15-RUNNER-DEDUCTION", 21.0, BEKZOD_RULING_2026_09_15, "TOTAL width reduction from the bay clear width to the drawer box external width - not per side."),
+  drawerFrontRevealMm: rule("BR-2026-09-15-DRAWER-REVEAL", 2.0, BEKZOD_RULING_2026_09_15, "Reveal around a drawer front, matching the WR-008 door reveal."),
 
   // --- Values present in the Bekzod-approved Golden Wardrobe fixture but not
   // --- stated as a numbered Rulebook rule. Approved, but by fixture not by rule.
@@ -104,10 +144,33 @@ export function resolve(key) {
   if (!record) {
     throw new Error(`Unknown rule key "${key}".`);
   }
-  if (record.provenance === RULE_PROVENANCE.REQUIRES_BEKZOD_RULING) {
+  if (!APPROVED_PROVENANCE.includes(record.provenance)) {
     throw new UnapprovedRuleError(key, record);
   }
   return record.value;
+}
+
+/**
+ * Shelf-pin hole depth for a given carcass thickness.
+ *
+ * The 2026-09-15 ruling covers 18mm and 16mm board only. Any other thickness
+ * throws rather than falling back to the nearest ruled value - a pin hole
+ * deeper than the board is a hole through the customer's wardrobe.
+ *
+ * @param {number} carcassThicknessMm
+ */
+export function shelfPinHoleDepthFor(carcassThicknessMm) {
+  const table = resolve("shelfPinHoleDepthByCarcassThicknessMm");
+  const depth = table[carcassThicknessMm];
+  if (depth === undefined) {
+    throw new UnapprovedRuleError("shelfPinHoleDepthByCarcassThicknessMm", {
+      id: ruleIdOf("shelfPinHoleDepthByCarcassThicknessMm"),
+      note:
+        `Pin hole depth is ruled for ${Object.keys(table).join("mm and ")}mm board only. ` +
+        `No depth is ruled for ${carcassThicknessMm}mm board.`,
+    });
+  }
+  return depth;
 }
 
 /** Returns the rule ID for provenance recording without reading the value. */
