@@ -557,6 +557,40 @@ function renderDimensionSVG(x1, y1, x2, y2, text, options = {}) {
 }
 
 /**
+ * Refuse to draw a PartGraph the validator rejects.
+ *
+ * PL-006: a drawer bank in a bay at or below the construction floor produces a
+ * zero- or negative-width DRAWER_BACK. `validatePartGraph` rejects it, and the
+ * cut-list, nesting and DXF entry points all fail closed with the part named —
+ * but the SVG path took a PartGraph on trust and drew a 13,000-character shop
+ * drawing containing a panel that cannot be cut. A drawing is the artifact a
+ * workshop acts on, so it is the worst of the four to leave unguarded.
+ *
+ * Measured before the fix, at the three boundary widths (bay clear width /
+ * DRAWER_BACK finished width / SVG result):
+ *   50.9mm / -0.1mm / RENDERED     51.0mm / 0.0mm / RENDERED     51.1mm / 0.1mm / rendered
+ *
+ * @param {object} partGraph
+ * @param {string} entryPoint name used in the error, so the failure says which door it came through
+ */
+function assertRenderablePartGraph(partGraph, entryPoint) {
+  if (!partGraph || !Array.isArray(partGraph.parts)) {
+    throw new Error(`${entryPoint} requires a PartGraph object.`);
+  }
+  const result = validatePartGraph(partGraph);
+  if (!result.valid) {
+    const degenerate = result.errors.filter(
+      (e) => e.code === "INVALID_FINISHED_DIMENSION" || e.code === "INVALID_RAW_DIMENSION"
+    );
+    const reported = (degenerate.length > 0 ? degenerate : result.errors).slice(0, 3);
+    throw new Error(
+      `${entryPoint} refuses an invalid PartGraph: ` +
+        reported.map((e) => `[${e.code}] ${e.message}`).join(" ")
+    );
+  }
+}
+
+/**
  * Generates the complete ISO A3 drawing sheet vector SVG string.
  *
  * @param {object} partGraph - Compiled structural PartGraph

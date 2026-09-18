@@ -74,6 +74,7 @@ export function validateWardrobeModel(model) {
     const shelves = zoneComponents.filter((c) => c.type === COMPONENT_TYPES.SHELF);
 
     const drawerBanks = zoneComponents.filter((c) => c.type === COMPONENT_TYPES.DRAWER_BANK);
+    // Strictly greater: at exactly the sum the drawer back is 0mm wide.
     if (drawerBanks.length > 0 && section.widthMm <= DEFAULTS.minDrawerBayClearWidthMm) {
       for (const bank of drawerBanks) {
         issues.push({
