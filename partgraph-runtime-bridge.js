@@ -1023,6 +1023,8 @@ var PartGraphBridge = (() => {
   var DRAWER_BOX_SIDE_THICKNESS_MM = 15;
   var DRAWER_SIDE_DEPTH_SETBACK_MM = 50;
   var DRAWER_BOTTOM_SIDE_INSET_TOTAL_MM = 10;
+  var DRAWER_BOTTOM_MATERIAL_CODE = "HDF_WHITE_6";
+  var DRAWER_BOTTOM_THICKNESS_MM = 6;
   function emitDrawerBankParts({
     comp,
     bay,
@@ -1038,9 +1040,19 @@ var PartGraphBridge = (() => {
     const revealMm = resolve("drawerFrontRevealMm");
     const slideDeductionMm = resolve("drawerSlideWidthDeductionMm");
     const frontThicknessMm = resolve("panelThicknessMm");
-    const bottomThicknessMm = Math.max(6, resolve("backThicknessMm"));
+    const bottomThicknessMm = DRAWER_BOTTOM_THICKNESS_MM;
     const rows = Math.max(1, Number(comp.rows) || 1);
     const bankHeightMm = comp.heightMm != null ? Number(comp.heightMm) : rows * DEFAULT_DRAWER_ROW_HEIGHT_MM;
+    if (comp.heightMm != null) {
+      const bankHeightDmm = Math.round(bankHeightMm * 10);
+      if (Math.abs(bankHeightMm * 10 - bankHeightDmm) > 1e-9 || bankHeightDmm % rows !== 0) {
+        const err = new Error(
+          `Drawer bank "${comp.id || "?"}": ${bankHeightMm}mm over ${rows} rows does not divide to an exact 0.1mm row height.`
+        );
+        err.code = "DEGENERATE_DRAWER_GEOMETRY";
+        throw err;
+      }
+    }
     const drawerHeightMm = bankHeightMm / rows;
     const frontHeightMm = drawerHeightMm - 2 * revealMm;
     const boxHeightMm = frontHeightMm;
@@ -1050,6 +1062,23 @@ var PartGraphBridge = (() => {
     const backWidthMm = bayWidthMm - slideDeductionMm - 2 * DRAWER_BOX_SIDE_THICKNESS_MM;
     const bottomWidthMm = bayWidthMm - slideDeductionMm - DRAWER_BOTTOM_SIDE_INSET_TOTAL_MM;
     const bottomDepthMm = sideLengthMm - DRAWER_BOX_SIDE_THICKNESS_MM;
+    const degenerate = [
+      ["front width", frontWidthMm],
+      ["front height", frontHeightMm],
+      ["box height", boxHeightMm],
+      ["side length", sideLengthMm],
+      ["back width", backWidthMm],
+      ["bottom width", bottomWidthMm],
+      ["bottom depth", bottomDepthMm],
+      ["bottom thickness", bottomThicknessMm]
+    ].filter(([, value]) => !(value > 0));
+    if (degenerate.length > 0) {
+      const err = new Error(
+        `Drawer bank "${comp.id}" computes non-positive ${degenerate.map(([what, value]) => `${what} (${value}mm)`).join(", ")}. A ${bayWidthMm}mm bay cannot carry a drawer box: the back is bay - ${slideDeductionMm} - 2 x ${DRAWER_BOX_SIDE_THICKNESS_MM}, so the bay must exceed ${slideDeductionMm + 2 * DRAWER_BOX_SIDE_THICKNESS_MM}mm.`
+      );
+      err.code = "DEGENERATE_DRAWER_GEOMETRY";
+      throw err;
+    }
     const halfDeductionMm = slideDeductionMm / 2;
     const boxMinXMm = bay.minXDmm / 10 + halfDeductionMm;
     const boxMaxXMm = bay.maxXDmm / 10 - halfDeductionMm;
@@ -1200,7 +1229,7 @@ var PartGraphBridge = (() => {
         id: bottomId,
         bayIndex: bay.index,
         role: PART_ROLES.DRAWER_BOTTOM,
-        materialCode: matCarcass,
+        materialCode: DRAWER_BOTTOM_MATERIAL_CODE,
         lengthDmm: bottomWidthDmm,
         widthDmm: bottomDepthDmm,
         thicknessDmm: bottomThickDmm,
@@ -4977,7 +5006,23 @@ var PartGraphBridge = (() => {
     }
     return out;
   }
+  function assertRenderablePartGraph(partGraph, entryPoint) {
+    if (!partGraph || !Array.isArray(partGraph.parts)) {
+      throw new Error(`${entryPoint} requires a PartGraph object.`);
+    }
+    const result = validatePartGraph(partGraph);
+    if (!result.valid) {
+      const degenerate = result.errors.filter(
+        (e) => e.code === "INVALID_FINISHED_DIMENSION" || e.code === "INVALID_RAW_DIMENSION"
+      );
+      const reported = (degenerate.length > 0 ? degenerate : result.errors).slice(0, 3);
+      throw new Error(
+        `${entryPoint} refuses an invalid PartGraph: ` + reported.map((e) => `[${e.code}] ${e.message}`).join(" ")
+      );
+    }
+  }
   function generateShopDrawingsSVG(partGraph, options = {}) {
+    assertRenderablePartGraph(partGraph, "generateShopDrawingsSVG");
     const sheet = SHEET_SIZES[options.sheetSize || "A3"] || SHEET_SIZES.A3;
     const proj = projectOrthographicViews(partGraph, options);
     const { bounds, views } = proj;
@@ -5133,7 +5178,7 @@ var PartGraphBridge = (() => {
 `;
     svg += `  <g id="material_legend">
 `;
-    svg += `    <rect x="${legX}" y="${legY}" width="144" height="46" fill="#f8fafc" stroke="#64748b" stroke-width="0.3" rx="1.0" />
+    svg += `    <rect x="${legX}" y="${legY}" width="144" height="52" fill="#f8fafc" stroke="#64748b" stroke-width="0.3" rx="1.0" />
 `;
     svg += `    <text x="${legX + 4}" y="${legY + 6}" class="legend-title">MATERIAL &amp; HARDWARE SCHEDULE</text>
 `;
@@ -5143,11 +5188,13 @@ var PartGraphBridge = (() => {
 `;
     svg += `    <text x="${legX + 4}" y="${legY + 24}" class="legend-item">\u2022 BACK PANEL: 6.0 mm HDF Insert into 7.0 mm Groove</text>
 `;
-    svg += `    <text x="${legX + 4}" y="${legY + 30}" class="legend-item">\u2022 DRAWER PACK: 15.0 mm Sides/Back, 6.0 mm Bottom, 18.0 mm Front</text>
+    svg += `    <text x="${legX + 4}" y="${legY + 30}" class="legend-item">\u2022 DRAWER PACK: 15.0 mm Sides/Back, 6.0 mm Bottom (HDF_WHITE_6), 18.0 mm Front</text>
 `;
-    svg += `    <text x="${legX + 4}" y="${legY + 36}" class="legend-item">\u2022 EDGE-BANDING (1.0 mm ABS): All exposed carcass front edges &amp; facades</text>
+    svg += `    <text x="${legX + 4}" y="${legY + 36}" class="legend-item">\u2022 HARDWARE: UNDERMOUNT_CONCEALED_21MM slides (nominal deduction 21.0 mm)</text>
 `;
-    svg += `    <text x="${legX + 4}" y="${legY + 42}" class="legend-item">\u2022 EDGE-BANDING (0.4 mm Melamine): Shelves front face (adjustable)</text>
+    svg += `    <text x="${legX + 4}" y="${legY + 42}" class="legend-item">\u2022 EDGE-BANDING (1.0 mm ABS): All exposed carcass front edges &amp; facades</text>
+`;
+    svg += `    <text x="${legX + 4}" y="${legY + 48}" class="legend-item">\u2022 EDGE-BANDING (0.4 mm Melamine): Shelves front face (adjustable)</text>
 `;
     svg += `  </g>
 `;
@@ -5184,6 +5231,8 @@ var PartGraphBridge = (() => {
     svg += `    <text x="${tbX + 76}" y="${tbY + 18}" class="title-sub">REVISION:</text>
 `;
     svg += `    <text x="${tbX + 76}" y="${tbY + 24}" class="title-val">Rev ${proj.revision}</text>
+`;
+    svg += `    <text x="${tbX + 76}" y="${tbY + 29}" class="title-sub" style="font-size:1.9px;">SLIDES: UNDERMOUNT_CONCEALED_21MM | BOTTOMS: HDF_WHITE_6</text>
 `;
     svg += `    <!-- Drawing Status & Scale -->
 `;
@@ -5297,9 +5346,12 @@ var PartGraphBridge = (() => {
       throw new Error("compilePanelToDxf requires a panel object.");
     }
     const dims = resolvePanelDimsMm(panel);
-    const { lengthMm: L, widthMm: W } = dims;
+    const { lengthMm: L, widthMm: W, thicknessMm: T } = dims;
     if (!(L > 0) || !(W > 0)) {
       throw new Error(`Panel "${panel.id || "?"}" has non-positive flat dimensions.`);
+    }
+    if (!(T > 0)) {
+      throw new Error(`Panel "${panel.id || "?"}" has non-positive thickness (${T}).`);
     }
     const layers = /* @__PURE__ */ new Set([DXF_LAYERS.OUTLINE_CONTOUR]);
     const entities = [];
@@ -5646,6 +5698,40 @@ var PartGraphBridge = (() => {
   ]);
   var DEFAULT_KERF_MM = 3.5;
   var DEFAULT_PERIMETER_TRIM_MM = 15;
+  var MAX_USABLE_SHEET_LENGTH_MM = 2800 - 2 * DEFAULT_PERIMETER_TRIM_MM;
+  var MAX_USABLE_SHEET_WIDTH_MM = 2070 - 2 * DEFAULT_PERIMETER_TRIM_MM;
+  var PANEL_EXCEEDS_SHEET_ENVELOPE = "PANEL_EXCEEDS_SHEET_ENVELOPE";
+  var UNROUTED_MATERIAL_ERROR = "UNROUTED_MATERIAL_ERROR";
+  var ROUTED_MATERIAL_CODES = Object.freeze([
+    "MEL_WHITE_18",
+    "MEL_WHITE_15",
+    "HDF_WHITE_6",
+    "HDF_WHITE_06",
+    "BIRCH_PLY_15"
+  ]);
+  var ROUTED_MATERIAL_SET = new Set(ROUTED_MATERIAL_CODES);
+  function isRoutedMaterialCode(materialCode) {
+    const code = String(materialCode ?? "").trim().toUpperCase();
+    return code.length > 0 && ROUTED_MATERIAL_SET.has(code);
+  }
+  function assertRoutedMaterialCode(materialCode, partId = "") {
+    const code = String(materialCode ?? "").trim();
+    const upper = code.toUpperCase();
+    if (isRoutedMaterialCode(upper)) return upper;
+    const label = code.length > 0 ? code : "(empty)";
+    const where = partId ? ` part "${partId}"` : "";
+    const err = new Error(
+      `Unrecognized material code ${label}${where}: nesting refuses unrouted stock (no default bucket).`
+    );
+    err.code = UNROUTED_MATERIAL_ERROR;
+    err.materialCode = code;
+    if (partId) err.partId = partId;
+    throw err;
+  }
+  var OVERSIZED_SPLIT_POLICIES = Object.freeze({
+    TWO_PIECE_TONGUE_AND_GROOVE: "TWO_PIECE_TONGUE_AND_GROOVE",
+    H_CHANNEL_SPLICE: "H_CHANNEL_SPLICE"
+  });
   var CUT_LIST_CSV_COLUMNS = Object.freeze([
     "Part ID",
     "Role",
@@ -5770,6 +5856,11 @@ var PartGraphBridge = (() => {
           `Panel "${r.partId || "?"}" has non-positive cut dimensions (${r.cutLengthMm}\xD7${r.cutWidthMm}).`
         );
       }
+      if (!(r.thicknessMm > 0)) {
+        throw new Error(
+          `Panel "${r.partId || "?"}" has non-positive thickness (${r.thicknessMm}).`
+        );
+      }
       rows.push({
         partId: r.partId,
         role: r.role,
@@ -5838,6 +5929,8 @@ var PartGraphBridge = (() => {
           partId: r.partId,
           role: r.role,
           grain: r.grain,
+          material: r.material,
+          thicknessMm: r.thicknessMm,
           lengthMm: r.cutLengthMm,
           widthMm: r.cutWidthMm,
           areaMm2: r.cutLengthMm * r.cutWidthMm
@@ -6059,16 +6152,170 @@ var PartGraphBridge = (() => {
     const stockArea = pack.stock.lengthMm * pack.stock.widthMm;
     return unplacedPenalty + pack.sheetCount * 1e6 - pack.yieldEfficiencyPct * 1e3 + stockArea;
   }
-  function compileNestingManifest(partGraph, options = {}) {
-    if (!partGraph || typeof partGraph !== "object") {
-      throw new Error("compileNestingManifest requires a PartGraph object.");
+  function materialThicknessGroupKey(row) {
+    const material = String(row.material ?? row.materialCode ?? "").trim() || "UNKNOWN_MATERIAL";
+    const thicknessMm = roundMm(row.thicknessMm ?? 0, 2);
+    return `${material}|${thicknessMm}`;
+  }
+  function groupCutRowsByMaterialThickness(cutRows) {
+    const groups = /* @__PURE__ */ new Map();
+    for (const row of cutRows) {
+      const groupKey = materialThicknessGroupKey(row);
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, {
+          groupKey,
+          material: String(row.material ?? "").trim() || "UNKNOWN_MATERIAL",
+          thicknessMm: roundMm(row.thicknessMm ?? 0, 2),
+          rows: []
+        });
+      }
+      groups.get(groupKey).rows.push(row);
     }
-    const kerfMm = options.kerfMm ?? DEFAULT_KERF_MM;
+    return groups;
+  }
+  function usableSheetEnvelopeMm(perimeterTrimMm = DEFAULT_PERIMETER_TRIM_MM, stock = { lengthMm: 2800, widthMm: 2070 }) {
+    return {
+      lengthMm: stock.lengthMm - 2 * perimeterTrimMm,
+      widthMm: stock.widthMm - 2 * perimeterTrimMm
+    };
+  }
+  function exceedsSheetEnvelope(lengthMm, widthMm, grain, usable) {
+    const orients = allowedOrientations(grain);
+    for (const o of orients) {
+      const placedW = o === "natural" ? lengthMm : widthMm;
+      const placedH = o === "natural" ? widthMm : lengthMm;
+      if (placedW <= usable.lengthMm + 1e-9 && placedH <= usable.widthMm + 1e-9) {
+        return false;
+      }
+    }
+    return true;
+  }
+  function splitPanelAtDividerFaces(lengthMm, widthMm, dividerPlacementsMm, usable) {
+    const dividers = [...new Set(
+      (dividerPlacementsMm || []).map(Number).filter((x) => Number.isFinite(x) && x > 1e-9 && x < lengthMm - 1e-9)
+    )].sort((a, b) => a - b);
+    if (dividers.length === 0) {
+      return {
+        ok: false,
+        code: PANEL_EXCEEDS_SHEET_ENVELOPE,
+        message: "Oversized panel has split policy but no internal bay divider placements to align seams."
+      };
+    }
+    const cuts = [0, ...dividers, lengthMm];
+    const pieces = [];
+    for (let i = 0; i < cuts.length - 1; i++) {
+      const x0 = cuts[i];
+      const x1 = cuts[i + 1];
+      const pieceLengthMm = roundMm(x1 - x0, 3);
+      const pieceWidthMm = roundMm(widthMm, 3);
+      if (pieceLengthMm > usable.lengthMm + 1e-9 || pieceWidthMm > usable.widthMm + 1e-9) {
+        return {
+          ok: false,
+          code: PANEL_EXCEEDS_SHEET_ENVELOPE,
+          message: `Split piece ${pieceLengthMm}\xD7${pieceWidthMm} mm still exceeds usable ${usable.lengthMm}\xD7${usable.widthMm} mm.`
+        };
+      }
+      pieces.push({
+        index: i,
+        lengthMm: pieceLengthMm,
+        widthMm: pieceWidthMm,
+        /** Left edge X in original panel coords — equals divider face when i > 0 */
+        seamX: i === 0 ? null : roundMm(x0, 3),
+        leftX: roundMm(x0, 3),
+        rightX: roundMm(x1, 3)
+      });
+    }
+    for (const piece of pieces) {
+      if (piece.seamX != null && !dividers.some((d) => Math.abs(d - piece.seamX) < 1e-6)) {
+        return {
+          ok: false,
+          code: PANEL_EXCEEDS_SHEET_ENVELOPE,
+          message: `Seam X=${piece.seamX} does not align with an internal bay divider face.`
+        };
+      }
+    }
+    return { ok: true, pieces, dividerPlacementsMm: dividers };
+  }
+  function evaluateOversizedPanelPolicy(panel, options = {}) {
+    if (!panel || typeof panel !== "object") {
+      return {
+        ok: false,
+        oversized: false,
+        code: "INVALID_PANEL",
+        message: "evaluateOversizedPanelPolicy requires a panel object."
+      };
+    }
+    const lengthMm = Number(panel.cutLengthMm ?? panel.lengthMm ?? panel.length);
+    const widthMm = Number(panel.cutWidthMm ?? panel.widthMm ?? panel.width);
+    const grain = normalizeGrainDirection(panel.grainDirection ?? panel.grain);
     const perimeterTrimMm = options.perimeterTrimMm ?? DEFAULT_PERIMETER_TRIM_MM;
-    const stockSheets = options.stockSheets ?? STOCK_SHEETS;
-    const cutRows = buildCutListRows(partGraph);
-    const items = expandNestItems(cutRows);
-    const edgeBandingLinearMetersByThicknessMm = sumEdgeBandingLinearMeters(cutRows);
+    const stock = options.envelopeStock ?? { lengthMm: 2800, widthMm: 2070 };
+    const usable = options.usableEnvelopeMm ?? usableSheetEnvelopeMm(perimeterTrimMm, stock);
+    if (!(lengthMm > 0) || !(widthMm > 0)) {
+      return {
+        ok: false,
+        oversized: false,
+        code: "INVALID_PANEL_DIMS",
+        message: `Panel "${panel.partId || panel.id || "?"}" has non-positive dims.`
+      };
+    }
+    const oversized = exceedsSheetEnvelope(lengthMm, widthMm, grain, usable);
+    if (!oversized) {
+      return {
+        ok: true,
+        oversized: false,
+        policy: null,
+        pieces: [
+          {
+            index: 0,
+            lengthMm: roundMm(lengthMm, 3),
+            widthMm: roundMm(widthMm, 3),
+            seamX: null,
+            leftX: 0,
+            rightX: roundMm(lengthMm, 3)
+          }
+        ],
+        seamXs: [],
+        usableEnvelopeMm: usable
+      };
+    }
+    const policy = panel.splitPolicy ?? options.splitPolicy ?? panel.oversizedSplitPolicy ?? null;
+    const allowed = new Set(Object.values(OVERSIZED_SPLIT_POLICIES));
+    if (!policy || !allowed.has(policy)) {
+      return {
+        ok: false,
+        oversized: true,
+        code: PANEL_EXCEEDS_SHEET_ENVELOPE,
+        message: `Panel "${panel.partId || panel.id || "?"}" ${roundMm(lengthMm)}\xD7${roundMm(widthMm)} mm exceeds usable sheet envelope ${usable.lengthMm}\xD7${usable.widthMm} mm (SHEET_2800x2070 minus ${perimeterTrimMm} mm trim each side). Configure split policy ${Object.values(OVERSIZED_SPLIT_POLICIES).join(" | ")}.`,
+        policy: policy || null,
+        usableEnvelopeMm: usable
+      };
+    }
+    const dividers = panel.dividerPlacementsMm ?? options.dividerPlacementsMm ?? panel.internalBayDividerFacesMm ?? [];
+    const split = splitPanelAtDividerFaces(lengthMm, widthMm, dividers, usable);
+    if (!split.ok) {
+      return {
+        ok: false,
+        oversized: true,
+        code: split.code || PANEL_EXCEEDS_SHEET_ENVELOPE,
+        message: split.message,
+        policy,
+        usableEnvelopeMm: usable
+      };
+    }
+    const seamXs = split.pieces.map((p) => p.seamX).filter((x) => x != null);
+    return {
+      ok: true,
+      oversized: true,
+      policy,
+      pieces: split.pieces,
+      seamXs,
+      dividerPlacementsMm: split.dividerPlacementsMm,
+      usableEnvelopeMm: usable
+    };
+  }
+  function packMaterialThicknessRun(group, stockSheets, kerfMm, perimeterTrimMm) {
+    const items = expandNestItems(group.rows);
     const packsByStock = {};
     let primary = null;
     for (const stock of stockSheets) {
@@ -6088,35 +6335,195 @@ var PartGraphBridge = (() => {
       }
     }
     if (!primary) {
-      throw new Error("compileNestingManifest: no stock sheets configured.");
+      throw new Error(`packMaterialThicknessRun: no stock for group ${group.groupKey}`);
     }
     if (primary.unplaced.length > 0) {
       const sample = primary.unplaced[0];
       throw new Error(
-        `Nesting failed: ${primary.unplaced.length} part(s) do not fit any evaluated stock. Example: ${sample.instanceId} \u2014 ${sample.reason}`
+        `Nesting failed in group ${group.groupKey}: ${primary.unplaced.length} part(s) do not fit. Example: ${sample.instanceId} \u2014 ${sample.reason}`
       );
     }
+    const sheets = primary.sheets.map((s) => ({
+      ...s,
+      groupKey: group.groupKey,
+      material: group.material,
+      thicknessMm: group.thicknessMm,
+      placements: s.placements.map((p) => ({
+        ...p,
+        groupKey: group.groupKey,
+        material: group.material,
+        thicknessMm: group.thicknessMm
+      }))
+    }));
     return {
-      algorithm: "FFDH_SHELF",
-      algorithmNotes: "First-Fit Decreasing Height shelf packing with kerf gutters; guillotine-friendly horizontal shelves. Evaluates both stock families; primary = fewest sheets, then higher yield, then smaller sheet area.",
+      groupKey: group.groupKey,
+      material: group.material,
+      thicknessMm: group.thicknessMm,
+      cutList: group.rows,
+      packsByStock,
+      primaryStockId: primary.stock.id,
+      sheetCount: primary.sheetCount,
+      yieldEfficiencyPct: primary.yieldEfficiencyPct,
+      totalPanelAreaMm2: primary.totalPanelAreaMm2,
+      totalSheetAreaMm2: primary.totalSheetAreaMm2,
+      sheets,
+      stock: primary.stock
+    };
+  }
+  function compileNestingManifest(partGraph, options = {}) {
+    if (!partGraph || typeof partGraph !== "object") {
+      throw new Error("compileNestingManifest requires a PartGraph object.");
+    }
+    const kerfMm = options.kerfMm ?? DEFAULT_KERF_MM;
+    const perimeterTrimMm = options.perimeterTrimMm ?? DEFAULT_PERIMETER_TRIM_MM;
+    const stockSheets = options.stockSheets ?? STOCK_SHEETS;
+    const envelopeStock = stockSheets.find((s) => s.id === "SHEET_2800x2070") || stockSheets.reduce(
+      (best, s) => !best || s.lengthMm * s.widthMm > best.lengthMm * best.widthMm ? s : best,
+      null
+    ) || { lengthMm: 2800, widthMm: 2070 };
+    const usable = usableSheetEnvelopeMm(perimeterTrimMm, envelopeStock);
+    const cutRows = buildCutListRows(partGraph);
+    for (const row of cutRows) {
+      assertRoutedMaterialCode(row.material ?? row.materialCode, row.partId);
+    }
+    const edgeBandingLinearMetersByThicknessMm = sumEdgeBandingLinearMeters(cutRows);
+    const partsById = new Map(
+      (Array.isArray(partGraph.parts) ? partGraph.parts : []).map((p) => [p.id, p])
+    );
+    const splitExpandedRows = [];
+    const oversizedDecisions = [];
+    for (const row of cutRows) {
+      const src = partsById.get(row.partId) || {};
+      const decision = evaluateOversizedPanelPolicy(
+        {
+          partId: row.partId,
+          cutLengthMm: row.cutLengthMm,
+          cutWidthMm: row.cutWidthMm,
+          grain: row.grain,
+          splitPolicy: src.splitPolicy ?? options.splitPolicy,
+          dividerPlacementsMm: src.dividerPlacementsMm ?? src.internalBayDividerFacesMm ?? options.dividerPlacementsMm
+        },
+        { perimeterTrimMm, usableEnvelopeMm: usable, envelopeStock }
+      );
+      oversizedDecisions.push({ partId: row.partId, ...decision });
+      if (!decision.ok) {
+        const err = new Error(decision.message || `Oversized panel rejected: ${decision.code}`);
+        err.code = decision.code || PANEL_EXCEEDS_SHEET_ENVELOPE;
+        err.partId = row.partId;
+        throw err;
+      }
+      if (decision.oversized && decision.pieces && decision.pieces.length > 1) {
+        for (const piece of decision.pieces) {
+          splitExpandedRows.push({
+            ...row,
+            partId: `${row.partId}__SPLIT_${piece.index + 1}`,
+            cutLengthMm: piece.lengthMm,
+            cutWidthMm: piece.widthMm,
+            qty: row.qty,
+            splitFrom: row.partId,
+            seamX: piece.seamX,
+            splitPolicy: decision.policy
+          });
+        }
+      } else {
+        splitExpandedRows.push(row);
+      }
+    }
+    const groups = groupCutRowsByMaterialThickness(splitExpandedRows);
+    const runs = [];
+    for (const group of groups.values()) {
+      runs.push(packMaterialThicknessRun(group, stockSheets, kerfMm, perimeterTrimMm));
+    }
+    runs.sort((a, b) => {
+      if (b.thicknessMm !== a.thicknessMm) return b.thicknessMm - a.thicknessMm;
+      return String(a.material).localeCompare(String(b.material));
+    });
+    const sheetCount = runs.reduce((n, r) => n + r.sheetCount, 0);
+    const totalPanelAreaMm2 = runs.reduce((n, r) => n + r.totalPanelAreaMm2, 0);
+    const totalSheetAreaMm2 = runs.reduce((n, r) => n + r.totalSheetAreaMm2, 0);
+    const blendedYieldEfficiencyPct = totalSheetAreaMm2 > 0 ? roundMm(totalPanelAreaMm2 / totalSheetAreaMm2 * 100, 2) : 0;
+    let globalIndex = 0;
+    const sheets = [];
+    for (const run of runs) {
+      for (const s of run.sheets) {
+        sheets.push({
+          ...s,
+          index: globalIndex++,
+          runGroupKey: run.groupKey
+        });
+      }
+    }
+    const packsByStock = {};
+    for (const stock of stockSheets) {
+      let sc = 0;
+      let panelArea = 0;
+      let sheetArea = 0;
+      const stockSheetsList = [];
+      for (const run of runs) {
+        const p = run.packsByStock[stock.id];
+        if (!p) continue;
+        sc += p.sheetCount;
+        panelArea += p.totalPanelAreaMm2;
+        sheetArea += p.totalSheetAreaMm2;
+        for (const s of p.sheets) {
+          stockSheetsList.push({
+            ...s,
+            groupKey: run.groupKey,
+            material: run.material,
+            thicknessMm: run.thicknessMm
+          });
+        }
+      }
+      packsByStock[stock.id] = {
+        sheetCount: sc,
+        yieldEfficiencyPct: sheetArea > 0 ? roundMm(panelArea / sheetArea * 100, 2) : 0,
+        totalPanelAreaMm2: panelArea,
+        totalSheetAreaMm2: sheetArea,
+        unplacedCount: 0,
+        unplaced: [],
+        sheets: stockSheetsList,
+        stock: {
+          id: stock.id,
+          lengthMm: stock.lengthMm,
+          widthMm: stock.widthMm,
+          usableLengthMm: roundMm(stock.lengthMm - 2 * perimeterTrimMm, 1),
+          usableWidthMm: roundMm(stock.widthMm - 2 * perimeterTrimMm, 1)
+        },
+        note: "Aggregated across independent material\xD7thickness runs \u2014 not a single mixed nest."
+      };
+    }
+    const primaryRun = runs.reduce(
+      (best, r) => !best || r.totalPanelAreaMm2 > best.totalPanelAreaMm2 ? r : best,
+      null
+    ) || runs[0];
+    return {
+      algorithm: "FFDH_SHELF_BY_MATERIAL_THICKNESS",
+      algorithmNotes: "Independent First-Fit Decreasing Height shelf packing per (materialCode, thicknessMm) group. Sheets are never shared across different material/thickness tuples. Yield % and sheet counts are primary per run (runs[]); top-level sheetCount is the procurement sum. blendedYieldEfficiencyPct is non-primary (legacy display only). Oversized panels exceeding usable 2770\xD72040 fail closed unless TWO_PIECE_TONGUE_AND_GROOVE or H_CHANNEL_SPLICE with divider-aligned seams.",
       kerfMm,
       perimeterTrimMm,
+      usableEnvelopeMm: usable,
       grainPolicy: {
         LENGTH: "part length \u2016 sheet length (X); rotation rejected",
         LENGTHWISE: "alias of LENGTH",
         WIDTH: "part width \u2016 sheet width (Y); rotation rejected",
         NONE: "rotation allowed"
       },
-      cutList: cutRows,
+      materialGrouping: "materialCode+thicknessMm",
+      cutList: splitExpandedRows,
       edgeBandingLinearMetersByThicknessMm,
-      totalPanelAreaMm2: primary.totalPanelAreaMm2,
+      oversizedDecisions,
+      runs,
+      totalPanelAreaMm2,
+      totalSheetAreaMm2,
+      sheetCount,
+      // Primary yield metric is per-run — do not treat top-level as authoritative.
+      yieldEfficiencyPct: primaryRun ? primaryRun.yieldEfficiencyPct : 0,
+      primaryYieldSource: primaryRun ? { groupKey: primaryRun.groupKey, note: "yieldEfficiencyPct mirrors largest panel-area run; see runs[] for all" } : null,
+      blendedYieldEfficiencyPct,
       packsByStock,
-      primaryStockId: primary.stock.id,
-      sheetCount: primary.sheetCount,
-      yieldEfficiencyPct: primary.yieldEfficiencyPct,
-      totalSheetAreaMm2: primary.totalSheetAreaMm2,
-      sheets: primary.sheets,
-      stock: primary.stock
+      primaryStockId: primaryRun ? primaryRun.primaryStockId : null,
+      sheets,
+      stock: primaryRun ? primaryRun.stock : null
     };
   }
 
@@ -6282,7 +6689,7 @@ var PartGraphBridge = (() => {
     const stockH = manifest.stock?.widthMm || 1220;
     const totalSheetM2 = (manifest.totalSheetAreaMm2 / 1e6).toFixed(2);
     const totalPanelM2 = (manifest.totalPanelAreaMm2 / 1e6).toFixed(2);
-    const yieldPct = manifest.yieldEfficiencyPct.toFixed(1);
+    const yieldPct = Number(manifest.yieldEfficiencyPct ?? manifest.blendedYieldEfficiencyPct ?? 0).toFixed(1);
     const edgeBandingLines = [];
     const bandingEntries = Object.entries(
       manifest.edgeBandingLinearMetersByThicknessMm || {}
@@ -6301,7 +6708,7 @@ var PartGraphBridge = (() => {
       "============================================================",
       `Stock Format:       ${manifest.primaryStockId} (${stockW} \xD7 ${stockH} mm)`,
       `Required Sheets:    ${manifest.sheetCount} sheets`,
-      `Material Yield:     ${yieldPct}%`,
+      `Material Yield:     ${yieldPct}% (primary run; see per-material runs)`,
       `Total Sheet Area:   ${totalSheetM2} m\xB2`,
       `Net Panel Area:     ${totalPanelM2} m\xB2`,
       `Kerf Width:         ${manifest.kerfMm} mm`,
@@ -6312,6 +6719,13 @@ var PartGraphBridge = (() => {
         (e) => `  \u2022 ${e.label}: ${e.linearMeters.toFixed(2)} m`
       ),
       "------------------------------------------------------------",
+      ...Array.isArray(manifest.runs) && manifest.runs.length ? [
+        "MATERIAL RUNS (independent nests \u2014 yield per group):",
+        ...manifest.runs.map(
+          (r) => `  \u2022 ${r.material} @ ${r.thicknessMm} mm: ${r.sheetCount} sheet(s), yield ${Number(r.yieldEfficiencyPct).toFixed(1)}%`
+        ),
+        "------------------------------------------------------------"
+      ] : [],
       `Total Parts Placed: ${manifest.cutList?.length || 0}`,
       "============================================================"
     ];

@@ -809,6 +809,8 @@ var AiDesignerTransport = (() => {
   var DRAWER_BOX_SIDE_THICKNESS_MM = 15;
   var DRAWER_SIDE_DEPTH_SETBACK_MM = 50;
   var DRAWER_BOTTOM_SIDE_INSET_TOTAL_MM = 10;
+  var DRAWER_BOTTOM_MATERIAL_CODE = "HDF_WHITE_6";
+  var DRAWER_BOTTOM_THICKNESS_MM = 6;
   function emitDrawerBankParts({
     comp,
     bay,
@@ -824,9 +826,19 @@ var AiDesignerTransport = (() => {
     const revealMm = resolve("drawerFrontRevealMm");
     const slideDeductionMm = resolve("drawerSlideWidthDeductionMm");
     const frontThicknessMm = resolve("panelThicknessMm");
-    const bottomThicknessMm = Math.max(6, resolve("backThicknessMm"));
+    const bottomThicknessMm = DRAWER_BOTTOM_THICKNESS_MM;
     const rows = Math.max(1, Number(comp.rows) || 1);
     const bankHeightMm = comp.heightMm != null ? Number(comp.heightMm) : rows * DEFAULT_DRAWER_ROW_HEIGHT_MM;
+    if (comp.heightMm != null) {
+      const bankHeightDmm = Math.round(bankHeightMm * 10);
+      if (Math.abs(bankHeightMm * 10 - bankHeightDmm) > 1e-9 || bankHeightDmm % rows !== 0) {
+        const err = new Error(
+          `Drawer bank "${comp.id || "?"}": ${bankHeightMm}mm over ${rows} rows does not divide to an exact 0.1mm row height.`
+        );
+        err.code = "DEGENERATE_DRAWER_GEOMETRY";
+        throw err;
+      }
+    }
     const drawerHeightMm = bankHeightMm / rows;
     const frontHeightMm = drawerHeightMm - 2 * revealMm;
     const boxHeightMm = frontHeightMm;
@@ -836,6 +848,23 @@ var AiDesignerTransport = (() => {
     const backWidthMm = bayWidthMm - slideDeductionMm - 2 * DRAWER_BOX_SIDE_THICKNESS_MM;
     const bottomWidthMm = bayWidthMm - slideDeductionMm - DRAWER_BOTTOM_SIDE_INSET_TOTAL_MM;
     const bottomDepthMm = sideLengthMm - DRAWER_BOX_SIDE_THICKNESS_MM;
+    const degenerate = [
+      ["front width", frontWidthMm],
+      ["front height", frontHeightMm],
+      ["box height", boxHeightMm],
+      ["side length", sideLengthMm],
+      ["back width", backWidthMm],
+      ["bottom width", bottomWidthMm],
+      ["bottom depth", bottomDepthMm],
+      ["bottom thickness", bottomThicknessMm]
+    ].filter(([, value]) => !(value > 0));
+    if (degenerate.length > 0) {
+      const err = new Error(
+        `Drawer bank "${comp.id}" computes non-positive ${degenerate.map(([what, value]) => `${what} (${value}mm)`).join(", ")}. A ${bayWidthMm}mm bay cannot carry a drawer box: the back is bay - ${slideDeductionMm} - 2 x ${DRAWER_BOX_SIDE_THICKNESS_MM}, so the bay must exceed ${slideDeductionMm + 2 * DRAWER_BOX_SIDE_THICKNESS_MM}mm.`
+      );
+      err.code = "DEGENERATE_DRAWER_GEOMETRY";
+      throw err;
+    }
     const halfDeductionMm = slideDeductionMm / 2;
     const boxMinXMm = bay.minXDmm / 10 + halfDeductionMm;
     const boxMaxXMm = bay.maxXDmm / 10 - halfDeductionMm;
@@ -986,7 +1015,7 @@ var AiDesignerTransport = (() => {
         id: bottomId,
         bayIndex: bay.index,
         role: PART_ROLES.DRAWER_BOTTOM,
-        materialCode: matCarcass,
+        materialCode: DRAWER_BOTTOM_MATERIAL_CODE,
         lengthDmm: bottomWidthDmm,
         widthDmm: bottomDepthDmm,
         thicknessDmm: bottomThickDmm,
