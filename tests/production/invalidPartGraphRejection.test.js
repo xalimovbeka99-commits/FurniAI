@@ -79,14 +79,25 @@ describe('Permanent Exporter Invalid PartGraph Rejection & Precision Matrix', ()
     });
   });
 
-  describe('SVG Exporter input rejection boundary (Reconciled Gap)', () => {
-    it('documents current behavior: generateShopDrawingsSVG returns SVG without throwing on invalid part', () => {
+  describe('SVG Exporter input rejection boundary (PL-006 closed)', () => {
+    it('refuses zero-width finished panel (throw = reject invalid input)', () => {
       const graph = createTestGraph({ finished: { lengthDmm: 1760, widthDmm: 0, thicknessDmm: 150 } });
-      // Returning SVG demonstrates a failure to reject invalid input;
-      // it does not alone prove a degenerate part was rendered on screen.
-      const result = generateShopDrawingsSVG(graph);
-      expect(typeof result).toBe('string');
-      expect(result.length).toBeGreaterThan(0);
+      // A returned SVG string would be a failure to REJECT invalid input —
+      // it would not alone prove a degenerate part was rendered.
+      expect(() => generateShopDrawingsSVG(graph)).toThrow(/non-positive|INVALID_FINISHED|refuses an invalid PartGraph/i);
+    });
+
+    it('refuses negative width and non-positive thickness', () => {
+      expect(() =>
+        generateShopDrawingsSVG(
+          createTestGraph({ finished: { lengthDmm: 1760, widthDmm: -10, thicknessDmm: 150 } })
+        )
+      ).toThrow(/non-positive|INVALID_FINISHED|refuses an invalid PartGraph/i);
+      expect(() =>
+        generateShopDrawingsSVG(
+          createTestGraph({ finished: { lengthDmm: 1760, widthDmm: 400, thicknessDmm: 0 } })
+        )
+      ).toThrow(/non-positive|INVALID_FINISHED|refuses an invalid PartGraph/i);
     });
   });
 

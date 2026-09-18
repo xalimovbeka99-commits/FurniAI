@@ -33,7 +33,7 @@ minDrawerBayClearWidthMm: 21 + 15 + 15, // 51 mm
    - **Result:** Accepted by kernel and validator (51 >= 51).
    - **Defect:**  ackWidthMm = 51 - 21 - 30 = 0 mm.
    - Produces a zero-width physical structural panel (DRAWER_BACK_B1_R1: Finished: 0.0 × 176.0 × 15.0 mm).
-   - Exporters (SVG shop drawings, nesting) still emit this zero-width part without fail-closing.
+   - Historical note: SVG previously returned without throwing; nesting already fail-closed via cut-list. Reconciled tip: SVG+DXF+CSV+nesting all refuse.
 3. **52 mm (bayWidth == 52 mm):**
    - **Result:** Accepted by kernel and validator.
    - **Defect:** backWidthMm = 52 - 51 = 1 mm.
@@ -44,7 +44,7 @@ Empirical probe results across the 4 exporters:
 - **DXF Compiler (`compileCabinetDxfPackage`):** FAIL-CLOSED (threw `Panel "..." has non-positive flat dimensions`).
 - **Cut-list CSV (`generateCutListCsv`):** FAIL-CLOSED (threw `Panel "..." has non-positive cut dimensions`).
 - **Nesting Preflight (`compileNestingManifest`):** FAIL-CLOSED (threw `Panel "..." has non-positive cut dimensions`).
-- **SVG Shop Drawings (`generateShopDrawingsSVG`):** Returned SVG without throwing. Returning SVG proves a **failure to reject invalid input**; it does not alone prove a degenerate part was visually rendered.
+- **SVG Shop Drawings (`generateShopDrawingsSVG`):** **FAIL-CLOSED** on reconciled tip (throws on non-positive finished dims). Note: a *returned* SVG for invalid input would still mean failure to reject — not proof of on-screen degenerate render.
 
 ---
 

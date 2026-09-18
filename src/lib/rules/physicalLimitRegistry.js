@@ -97,10 +97,10 @@ export const PHYSICAL_LIMITS = Object.freeze({
   minDrawerBayClearWidthMm: Object.freeze({
     id: "PL-006",
     unit: "mm",
-    scope: "Minimum bay clear width for a DRAWER_BANK (undermount 21mm + L/R box sides 15mm each).",
-    enforcedBy: "src/lib/wardrobe-model/kernel.js + validator.js — INSUFFICIENT_BAY_WIDTH_FOR_DRAWERS",
+    scope: "Exclusive construction floor for DRAWER_BANK bay clear width (need W > 21+15+15). At W=floor, DRAWER_BACK width is 0.",
+    enforcedBy: "src/lib/wardrobe-model/kernel.js + validator.js — INSUFFICIENT_BAY_WIDTH_FOR_DRAWERS (widthMm <= floor); src/lib/partgraph/emitDrawerBankParts.js refuses non-positive DRAWER_* dims",
     provenance: PHYSICAL_LIMIT_PROVENANCE.PROVISIONAL_PENDING_BEKZOD_REVIEW,
-    note: "Construction floor from emitDrawerBankParts constants; engineer-chosen, not a Bekzod width ruling.",
+    note: "Derived from emitDrawerBankParts construction params. Not BEKZOD_APPROVED usable-width. W=52 is arithmetic validity only.",
   }),
 });
 

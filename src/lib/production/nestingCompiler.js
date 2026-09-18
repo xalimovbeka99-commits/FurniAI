@@ -218,6 +218,11 @@ export function buildCutListRows(partGraph) {
         `Panel "${r.partId || "?"}" has non-positive cut dimensions (${r.cutLengthMm}×${r.cutWidthMm}).`
       );
     }
+    if (!(r.thicknessMm > 0)) {
+      throw new Error(
+        `Panel "${r.partId || "?"}" has non-positive thickness (${r.thicknessMm}).`
+      );
+    }
     rows.push({
       partId: r.partId,
       role: r.role,

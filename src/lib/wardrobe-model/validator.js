@@ -74,13 +74,13 @@ export function validateWardrobeModel(model) {
     const shelves = zoneComponents.filter((c) => c.type === COMPONENT_TYPES.SHELF);
 
     const drawerBanks = zoneComponents.filter((c) => c.type === COMPONENT_TYPES.DRAWER_BANK);
-    if (drawerBanks.length > 0 && section.widthMm < DEFAULTS.minDrawerBayClearWidthMm) {
+    if (drawerBanks.length > 0 && section.widthMm <= DEFAULTS.minDrawerBayClearWidthMm) {
       for (const bank of drawerBanks) {
         issues.push({
           code: "INSUFFICIENT_BAY_WIDTH_FOR_DRAWERS",
           sectionId: section.id,
           componentId: bank.id,
-          message: `Bay clear width ${section.widthMm}mm cannot accommodate undermount deduction and drawer box side walls (need >= ${DEFAULTS.minDrawerBayClearWidthMm}mm).`,
+          message: `Bay clear width ${section.widthMm}mm cannot accommodate undermount deduction and drawer box side walls (need > ${DEFAULTS.minDrawerBayClearWidthMm}mm).`,
         });
       }
     }

@@ -1,33 +1,47 @@
 # M2 Baseline Change Package (docs only — no pin refresh)
 
-**Branch:** `integ/m2-integration-lead` (cut from tip `c48e108`; **not** a push to `integ/part-graph-compiler`)  
-**Tip SHA:** `c48e108ab779a5b4fe36c8600f1dac38376d74c0`  
-**Pin baseline:** F1 freeze `cb5f110627e1df589101f416fb34299ebb092bc0`  
-**Fixture:** `tests/wardrobe-production/fixtures/phase1-protected-surfaces.json` (`sha256-normalized-lf`)  
-**Date:** 2026-09-18 ~19:30 GST (UTC+4)  
-**Author:** Integration lead (Grok Bot) for BEK  
-**Policy:** No protected-hash replacement, no main merge, no prod deploy, no CNC unlock.  
-**Companion:** `PL006_BOUNDARY.md`, `BROWSER_ACCEPTANCE_CHECKLIST.md`, `CI_FINGERPRINT_FINDINGS.md` (detail)
+**Branch:** `integ/m2-integration-lead`  
+**Combined tip (post Claude 927c071 + e47c205 reconcile):**   
+**Start baseline:** `3fab34a70cbeed90c2480de355bf57a9457d4cfe`  
+**Merged reproduction:** `e47c2058f97dcfcf6db199b095ac588e9ae94abe`  
+**Claude PL-006 SoT:** `927c071db8ce221589c60beec899f02bad67f4c9`  
+**Claude bundle (REVIEW ONLY):** `d80f1d309297f1c167cec69eb6bccc76f26c4b16` — drawerPack NOT merged  
+**AG boot/menu:** `30b2fe9` / `bdafb42` + mobile test from `c51af19`  
+**Pin baseline (unchanged):** `cb5f110627e1df589101f416fb34299ebb092bc0`  
+**Date:** 2026-09-18 ~20:05 GST (UTC+4)  
+**Policy:** No protected-hash replacement, no main/prod, no CNC unlock.
 
-### What this package asks BEK
+### Compiler decision
+**emitDrawerBankParts** authoritative. See `DRAWER_COMPILER_DECISION.md`.
 
-Approve or reject **pin refresh** per file below. This is **not** a request to “make CI green” by any other means (revert, skip, force).
+### PL-006 engineering (not furniture-rule approval)
+`DEGENERATE_DRAWER_GEOMETRY` at source; exclusive `W<=51` customer gate; SVG via validatePartGraph; DXF/CSV/nesting refuse. 50.9/51.0/51.1 covered. Not BEKZOD_APPROVED usable width.
 
-### Hash assertion count
+### Proposed fingerprints (normalized LF sha256) — DO NOT refresh fixtures yet
 
-Phase 1 `phase2Verification.test.js` checks **8** pinned paths → on tip **5 fail** / **3 match** (`runWardrobeAgent.js`, `FurnitureModel.jsx`, `vercel.json`).  
-`frozenSurfaces.test.js` additionally pins `page.jsx` (same expected hash) → **+1 fail**.  
+| File | New sha256-normalized-lf |
+|---|---|
+| `src/lib/wardrobe-model/schema.js` | `cdbbc49cc414250730fc2f46006da9eaa2689d4232a44ed1badf30a323340c22` |
+| `src/lib/wardrobe-model/kernel.js` | `0f7ffa171d8e571b03baa050f02f4f102e7c14df51cd311574485837facac84b` |
+| `src/lib/wardrobe-model/validator.js` | `783d9ebf68b763e4bc6b6c600c9463365b5f2270d98ba0f2ae55d118bc6c1af8` |
+| `src/lib/partgraph/emitDrawerBankParts.js` | `98c14f745bb97028e56d322cb6c630c7344aae24631571285bdfd3b3a61098d7` |
+| `src/lib/partgraph/wardrobeModelAdapter.js` | `82384d20a236a974ebcec34770f8bf518ae2211e43da186d4ea4d83bf2a033c0` |
+| `src/lib/drawing/projectionEngine.js` | `d0305c6fc0e08b22c2e8df42810dea4315edacb171a5780a9ce68afcbcfbb728` |
+| `src/lib/production/dxfCompiler.js` | `3024cbaec27c7673385ccbdaf1f23db1b647b1b91cb6a4256814752d6d08cf87` |
+| `src/lib/production/nestingCompiler.js` | `75716016a89abfb2d6c07ce84113a687bdee24f76cfb38469617717c472a1368` |
 
-**Correct inventory:** **6 failed assertions** across the two suites, covering **5 unique files** (`page.jsx` counted twice). Prior M2 audit on `c46ba83` cited 4 model/tools fails; AG `f4fd28c` added the 5th file (`page.jsx`), which surfaces in both suites.
+Fingerprint refresh **PENDING** BEK. Prior per-file rows retained below for history.
 
-Local reconfirm (combined tip, hashes not refreshed):
+### Evidence classes (separate)
 
-```text
-npx vitest run \
-  src/lib/wardrobe-production-verification/phase2Verification.test.js \
-  src/lib/wardrobe-verification/frozenSurfaces.test.js
-# 6 failed | 15 passed | 12 todo
-```
+| Class | Result on combined tip |
+|---|---|
+| Parser/unit Vitest (PL-006 + exporters + drawer wiring + conversational) | **156 passed** (focused 14 files) |
+| Browser static Builder — mfg-nesting (+mobile) | **3 passed** |
+| Browser F1 journey | **5 passed** (incl. Add drawers STRUCTURAL) |
+| Browser Next R3F | **7 passed** |
+| AG prior local Playwright | Reported only; re-run above supersedes for this SHA |
+| Live provider | Not claimed |
 
 ---
 
@@ -55,7 +69,7 @@ npx vitest run \
 | **Introducing commits** | `3373fb5` (wire Add drawers) → hardened `f607380` (fuzz); merge `aedc33a` |
 | **ORIGINAL AUTHOR (git)** | `xalimovbeka-ui` (Integration hop) |
 | **CURRENT OWNER (role)** | **Claude Code** |
-| **Behavior changed** | `planShelfShiftsForDrawerBank`; DRAWER_BANK rejects negative rows (`INVALID_INPUT`); enforces `minDrawerBayClearWidthMm` (`INSUFFICIENT_BAY_WIDTH_FOR_DRAWERS`); over-height → `INSUFFICIENT_VERTICAL_CLEARANCE`; returns `_shiftedShelves`. Gate is **`widthMm < 51`** (exact 51 allowed — see PL-006). |
+| **Behavior changed** | `planShelfShiftsForDrawerBank`; DRAWER_BANK rejects negative rows (`INVALID_INPUT`); enforces `minDrawerBayClearWidthMm` (`INSUFFICIENT_BAY_WIDTH_FOR_DRAWERS`); over-height → `INSUFFICIENT_VERTICAL_CLEARANCE`; returns `_shiftedShelves`. Gate is **`widthMm <= 51`** exclusive (exact 51 rejected — PL-006 engineering close on combined tip). |
 | **Regression evidence** | Same as above; drawerBank.wiring + drawerConversational.eval PASS |
 | **BEK approval decision text** | **Approve pin refresh for `kernel.js`? Y / N** — Recommended **Y** with PL-006 follow-up (boundary exclusivity); **N** = keep red / revert drawer gates. |
 
@@ -68,7 +82,7 @@ npx vitest run \
 | **Introducing commits** | `f607380` |
 | **ORIGINAL AUTHOR (git)** | `xalimovbeka-ui` |
 | **CURRENT OWNER (role)** | **Claude Code** |
-| **Behavior changed** | Emits `INSUFFICIENT_BAY_WIDTH_FOR_DRAWERS` when section already has DRAWER_BANK and `widthMm < minDrawerBayClearWidthMm`. |
+| **Behavior changed** | Emits `INSUFFICIENT_BAY_WIDTH_FOR_DRAWERS` when section already has DRAWER_BANK and `widthMm <= minDrawerBayClearWidthMm` (exclusive floor). |
 | **Regression evidence** | Validator + wardrobe-ai suites green aside from hash pins |
 | **BEK approval decision text** | **Approve pin refresh for `validator.js`? Y / N** — Recommended **Y** (mirrors kernel); **N** = keep red / revert. |
 

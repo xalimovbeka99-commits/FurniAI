@@ -16,6 +16,7 @@
  */
 
 import { PART_ROLES } from "../partgraph/schema.js";
+import { validatePartGraph } from "../partgraph/validatePartGraph.js";
 
 /**
  * Standard ISO sheet dimensions in millimetres.
@@ -564,7 +565,36 @@ function renderDimensionSVG(x1, y1, x2, y2, text, options = {}) {
  * @param {string} [options.projectName="FurniAI Parametric Wardrobe"]
  * @returns {string} Standalone SVG document markup
  */
+/**
+ * Fail-closed gate for shop-drawing SVG.
+ * A returned SVG string for invalid geometry is a failure to REJECT invalid
+ * input — it does not alone prove a degenerate part was rendered.
+ */
+
+/**
+ * Refuse to draw a PartGraph the validator rejects (PL-006).
+ * A returned SVG for invalid input is a failure to REJECT — not proof a
+ * degenerate part was rendered on screen.
+ */
+function assertRenderablePartGraph(partGraph, entryPoint) {
+  if (!partGraph || !Array.isArray(partGraph.parts)) {
+    throw new Error(`${entryPoint} requires a PartGraph object.`);
+  }
+  const result = validatePartGraph(partGraph);
+  if (!result.valid) {
+    const degenerate = result.errors.filter(
+      (e) => e.code === "INVALID_FINISHED_DIMENSION" || e.code === "INVALID_RAW_DIMENSION"
+    );
+    const reported = (degenerate.length > 0 ? degenerate : result.errors).slice(0, 3);
+    throw new Error(
+      `${entryPoint} refuses an invalid PartGraph: ` +
+        reported.map((e) => `[${e.code}] ${e.message}`).join(" ")
+    );
+  }
+}
+
 export function generateShopDrawingsSVG(partGraph, options = {}) {
+  assertRenderablePartGraph(partGraph, "generateShopDrawingsSVG");
   const sheet = SHEET_SIZES[options.sheetSize || "A3"] || SHEET_SIZES.A3;
   const proj = projectOrthographicViews(partGraph, options);
   const { bounds, views } = proj;

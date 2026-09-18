@@ -309,10 +309,11 @@ export function addComponent(model, { sectionId, type, positionMm, rows, leaves,
       );
     }
     fields.rows = rows === undefined ? 3 : assertIntegerCount(rows, "rows", DEFAULTS.minDrawerRows, DEFAULTS.maxDrawerRows);
-    if (section.widthMm < DEFAULTS.minDrawerBayClearWidthMm) {
+    // PL-006: at W == construction floor (51), BACK width = 0. Exclusive gate.
+    if (section.widthMm <= DEFAULTS.minDrawerBayClearWidthMm) {
       fail(
         "INSUFFICIENT_BAY_WIDTH_FOR_DRAWERS",
-        `Bay clear width ${section.widthMm}mm cannot accommodate undermount deduction (21mm) and drawer box side walls (need >= ${DEFAULTS.minDrawerBayClearWidthMm}mm).`
+        `Bay clear width ${section.widthMm}mm cannot accommodate undermount deduction (21mm) and drawer box side walls (need > ${DEFAULTS.minDrawerBayClearWidthMm}mm).`
       );
     }
   }

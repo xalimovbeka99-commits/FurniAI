@@ -92,9 +92,12 @@ export function compilePanelToDxf(panel, options = {}) {
   }
 
   const dims = resolvePanelDimsMm(panel);
-  const { lengthMm: L, widthMm: W } = dims;
+  const { lengthMm: L, widthMm: W, thicknessMm: T } = dims;
   if (!(L > 0) || !(W > 0)) {
     throw new Error(`Panel "${panel.id || "?"}" has non-positive flat dimensions.`);
+  }
+  if (!(T > 0)) {
+    throw new Error(`Panel "${panel.id || "?"}" has non-positive thickness (${T}).`);
   }
 
   const layers = new Set([DXF_LAYERS.OUTLINE_CONTOUR]);

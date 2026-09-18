@@ -119,10 +119,9 @@ export const DEFAULTS = Object.freeze({
   /** Fail-closed: continuous shelf span without a vertical partition. */
   maxUnsupportedShelfSpanMm: 1200,
   /**
-   * Fail-closed: minimum bay clear width for DRAWER_BANK.
-   * Must accommodate concealed-undermount total reduction (21 mm) plus L/R
-   * drawer-box side walls (15 mm each) so the back panel stays non-negative.
-   * Matches emitDrawerBankParts / DRAWER_PACK_POLICY construction.
+   * PL-006 construction floor for DRAWER_BANK clear width (not usable-width ruling).
+   * BACK = W - 21 - 15 - 15; at W=51 BACK=0. Kernel rejects widthMm <= this value.
+   * Provenance: PROVISIONAL_PENDING_BEKZOD_REVIEW. 52 mm is arithmetic-only.
    */
   minDrawerBayClearWidthMm: 21 + 15 + 15,
 });

@@ -12,8 +12,13 @@
  * - Carries over the current revision counter without dropping or skipping.
  * - Reconciles envelope, plinth, carcass, bays, and doors arithmetic with exact
  *   deci-mm closure.
- * - Sets status="APPROVED", qualificationStatus="WORKSHOP_REVIEW_NOT_CNC_QUALIFIED".
+ * - Defaults status=PROPOSED (draft) with labelled adapterAssumptions — does not
+ *   silently promote to workshop-approved / CNC-qualified.
+ * - qualificationStatus stays WORKSHOP_REVIEW_NOT_CNC_QUALIFIED.
  * - Hardware drilling remains BLOCKED_PENDING_HARDWARE_APPROVAL.
+ * - SHELF → SHELF_FIXED is an explicit mapping assumption (WardrobeModel has no kind).
+ * - HANGING_RAIL LONG vs SHORT keeps prior product heuristic (drop > 1000 → LONG)
+ *   to avoid silent intent change; Claude nearer-target mapping is documented only.
  */
 
 import {
@@ -29,6 +34,7 @@ import {
   COMPONENT_TYPES,
   SIDE_INSET_STATUS,
 } from "../furnispec/schema.js";
+import { resolve } from "../rules/wardrobeRuleCatalog.js";
 
 function pad2(n) {
   return String(n).padStart(2, "0");
@@ -62,8 +68,10 @@ export function adaptWardrobeModelToFurniSpec(wardrobeModel, options = {}) {
 
   const panelThicknessMm = Number(wardrobeModel.panelThicknessMm) || 18.0;
 
-  // Plinth (standard 100mm height)
-  const plinthHeightMm = 100.0;
+  // Plinth — provisional default when model/options omit it (labelled below).
+  const plinthHeightMm = Number(
+    options.plinthHeightMm ?? wardrobeModel.plinthHeightMm ?? 100.0
+  );
   const plinth = {
     heightMm: plinthHeightMm,
     frontRecessMm: 0.0,
@@ -119,10 +127,22 @@ export function adaptWardrobeModelToFurniSpec(wardrobeModel, options = {}) {
       const cType = String(comp.type || "").toUpperCase();
 
       if (cType === "SHELF") {
-        // Shelf: default 18mm thickness, 560mm depth, clearOpening above
-        const shelfDepthMm = carcassDepthMm - 20.0;
+        // Mapping assumption: WardrobeModel SHELF → SHELF_FIXED (labelled on draft).
+        const shelfDepthMm = carcassDepthMm - resolve("fixedShelfRearSetbackMm");
         const pos = Number(comp.positionMm) || 0;
-        const openingAbove = pos > 0 ? Math.max(carcassHeightMm - pos - panelThicknessMm, 50) : 350.0;
+        let openingAbove;
+        if (pos > 0) {
+          openingAbove = carcassHeightMm - pos - panelThicknessMm;
+          // Do NOT silently clamp/relocate with a 50 mm floor — that moves the shelf.
+          if (!(openingAbove > 0)) {
+            throw new Error(
+              `Cannot adapt shelf "${cId}": position ${pos}mm leaves non-positive clear opening above ` +
+                `(${openingAbove}mm). Refuse rather than relocate.`
+            );
+          }
+        } else {
+          openingAbove = resolve("topCompartmentClearOpeningMm");
+        }
         components.push({
           id: cId,
           type: COMPONENT_TYPES.SHELF_FIXED,
@@ -131,11 +151,12 @@ export function adaptWardrobeModelToFurniSpec(wardrobeModel, options = {}) {
           depthMm: shelfDepthMm,
         });
       } else if (cType === "HANGING_RAIL") {
-        const drop = Number(comp.positionMm) || 1400.0;
+        const drop = Number(comp.positionMm) || resolve("longHangingTargetClearDropMm");
+        // Preserve prior product heuristic (drop > 1000 → LONG) to avoid silent reclass.
         components.push({
           id: cId,
           type: drop > 1000 ? COMPONENT_TYPES.HANGING_RAIL_LONG : COMPONENT_TYPES.HANGING_RAIL_SHORT,
-          offsetBelowShelfMm: 100.0,
+          offsetBelowShelfMm: resolve("hangingRailOffsetBelowShelfMm"),
           targetClearDropMm: drop,
         });
       } else if (cType === "DRAWER_BANK") {
@@ -145,6 +166,13 @@ export function adaptWardrobeModelToFurniSpec(wardrobeModel, options = {}) {
           offsetFromBottomMm: Number(comp.positionMm) || 0,
           rows: comp.rows || 3,
         });
+      } else if (cType === "DOOR" || cType === "DIVIDER") {
+        // Doors handled at envelope level; dividers implied by section splits.
+      } else {
+        // M2-OMIT-01: never silently drop an unmapped component type.
+        throw new Error(
+          `Cannot adapt component "${cId}" of type "${comp.type}" — unmapped types are refused, not dropped.`
+        );
       }
     });
 
@@ -204,6 +232,39 @@ export function adaptWardrobeModelToFurniSpec(wardrobeModel, options = {}) {
   };
 
   const finishType = options.finishType || FINISH_TYPES.MELAMINE;
+  const status = options.status || SPEC_STATUS.PROPOSED;
+  const assumptions = [
+    {
+      key: "plinth.heightMm",
+      value: plinthHeightMm,
+      provenance: "PROVISIONAL_PENDING_BEKZOD_REVIEW",
+      note: "WardrobeModel has no plinth; default 100 mm unless options/model supply plinthHeightMm.",
+    },
+    {
+      key: "shelf.kind",
+      value: "SHELF_FIXED",
+      provenance: "MAPPING_ASSUMPTION",
+      note: "WardrobeModel SHELF has no fixed/adjustable flag; default FIXED (housed).",
+    },
+    {
+      key: "hangingRail.kind",
+      value: "drop > 1000 → LONG else SHORT",
+      provenance: "PRODUCT_HEURISTIC_PRESERVED",
+      note: "Prior candidate heuristic retained to avoid silent intent change vs Claude nearer-of-(1400,900) mapping.",
+    },
+    {
+      key: "shelf.openingAbove",
+      value: "computed from position; refuse if non-positive",
+      provenance: "MAPPING_ASSUMPTION",
+      note: "Removed silent Math.max(...,50) clamp that relocated shelves. Fallback uses topCompartmentClearOpeningMm (GOLDEN).",
+    },
+    {
+      key: "drawer.constructionDefaults",
+      value: "emitDrawerBankParts provisional pack",
+      provenance: "PROVISIONAL_PENDING_BEKZOD_REVIEW",
+      note: "Five Claude drawerPack inputs filled by conversational construction defaults — not BEKZOD_RULING box geometry.",
+    },
+  ];
 
   const furniSpec = {
     schemaVersion: FURNISPEC_SCHEMA_VERSION,
@@ -215,7 +276,7 @@ export function adaptWardrobeModelToFurniSpec(wardrobeModel, options = {}) {
     wardrobeType: WARDROBE_TYPES.STRAIGHT_HINGED,
     constructionStyle: CONSTRUCTION_STYLES.CAP_STYLE,
     finishType,
-    status: SPEC_STATUS.APPROVED,
+    status,
     qualificationStatus: QUALIFICATION_STATUS.WORKSHOP_REVIEW_NOT_CNC_QUALIFIED,
     envelope: {
       widthMm,
@@ -286,6 +347,7 @@ export function adaptWardrobeModelToFurniSpec(wardrobeModel, options = {}) {
       hardwareDrilling: "BLOCKED_PENDING_HARDWARE_APPROVAL",
       cncQualified: "NO",
     },
+    adapterAssumptions: assumptions,
   };
 
   return furniSpec;

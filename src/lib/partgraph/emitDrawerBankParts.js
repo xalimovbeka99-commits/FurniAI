@@ -1,13 +1,22 @@
 /**
  * Emit discrete DRAWER_* structural panels for a DRAWER_BANK component.
  *
- * Dimensions (Bekzod 2026-09-15):
- *   FRONT:  W = bay - 2*reveal, H = drawerH - 2*reveal, T = 18
- *   SIDE:   L = depth - 50, H = boxH, T = 15
- *   BACK:   W = bay - slideDeduction - 2*15, H = boxH, T = 15
- *   BOTTOM: W = bay - slideDeduction - 10, T = 6
+ * AUTHORITATIVE drawer construction (see docs/m2/integ/DRAWER_COMPILER_DECISION.md).
+ * Claude drawerPack.js is NOT wired — conversational path would regress.
  *
- * Integer deci-mm placement. CNC / drilling stay blocked (no ops here).
+ * Ruled (BEKZOD_RULING): reveal 2.0 mm, slide deduction 21.0 mm total, runner family.
+ * Provisional construction defaults (PROVISIONAL_PENDING_BEKZOD_REVIEW) — NOT
+ * BEKZOD_APPROVED furniture rules:
+ *   boxHeightMm ← drawerH - 2*reveal
+ *   boxDepthMm ← carcassDepth - DRAWER_SIDE_DEPTH_SETBACK_MM (50)
+ *   boxBottomClearanceMm ← 0
+ *   bottomThicknessMm ← max(6, backThicknessMm)
+ *   backBetweenSides ← true
+ *   DRAWER_BOX_SIDE_THICKNESS_MM = 15, DRAWER_BOTTOM_SIDE_INSET_TOTAL_MM = 10
+ *
+ * PL-006: BACK = W - 21 - 2*15. Throws DEGENERATE_DRAWER_GEOMETRY when any
+ * finished dim is non-positive. Exact row division required when heightMm set.
+ * Integer deci-mm. CNC / drilling stay blocked.
  */
 import { PART_ROLES, ORIENTATIONS, GRAIN_DIRECTIONS } from "./schema.js";
 import { resolve, ruleIdOf } from "../rules/wardrobeRuleCatalog.js";
@@ -45,6 +54,17 @@ export function emitDrawerBankParts({
   const rows = Math.max(1, Number(comp.rows) || 1);
   const bankHeightMm =
     comp.heightMm != null ? Number(comp.heightMm) : rows * DEFAULT_DRAWER_ROW_HEIGHT_MM;
+  // Exact 0.1 mm row division when height is stated (ported from Claude drawerPack discipline).
+  if (comp.heightMm != null) {
+    const bankHeightDmm = Math.round(bankHeightMm * 10);
+    if (Math.abs(bankHeightMm * 10 - bankHeightDmm) > 1e-9 || bankHeightDmm % rows !== 0) {
+      const err = new Error(
+        `Drawer bank "${comp.id || "?"}": ${bankHeightMm}mm over ${rows} rows does not divide to an exact 0.1mm row height.`
+      );
+      err.code = "DEGENERATE_DRAWER_GEOMETRY";
+      throw err;
+    }
+  }
   const drawerHeightMm = bankHeightMm / rows;
   const frontHeightMm = drawerHeightMm - 2 * revealMm;
   const boxHeightMm = frontHeightMm;
@@ -55,6 +75,34 @@ export function emitDrawerBankParts({
   const backWidthMm = bayWidthMm - slideDeductionMm - 2 * DRAWER_BOX_SIDE_THICKNESS_MM;
   const bottomWidthMm = bayWidthMm - slideDeductionMm - DRAWER_BOTTOM_SIDE_INSET_TOTAL_MM;
   const bottomDepthMm = sideLengthMm - DRAWER_BOX_SIDE_THICKNESS_MM;
+
+  // PL-006, fail at the source. The FurniSpec path has no bay-width guard of
+  // its own - `minDrawerBayClearWidthMm` is enforced in wardrobe-model's
+  // kernel and validator, which a FurniSpec never passes through. Measured
+  // before this guard: a 50.9mm bay produced a DRAWER_BACK of -0.1mm, and the
+  // SVG shop drawing rendered it. Refusing here protects every consumer,
+  // including ones that would otherwise only catch it downstream.
+  const degenerate = [
+    ["front width", frontWidthMm],
+    ["front height", frontHeightMm],
+    ["box height", boxHeightMm],
+    ["side length", sideLengthMm],
+    ["back width", backWidthMm],
+    ["bottom width", bottomWidthMm],
+    ["bottom depth", bottomDepthMm],
+    ["bottom thickness", bottomThicknessMm],
+  ].filter(([, value]) => !(value > 0));
+  if (degenerate.length > 0) {
+    const err = new Error(
+      `Drawer bank "${comp.id}" computes non-positive ${degenerate
+        .map(([what, value]) => `${what} (${value}mm)`)
+        .join(", ")}. A ${bayWidthMm}mm bay cannot carry a drawer box: the back is ` +
+        `bay - ${slideDeductionMm} - 2 x ${DRAWER_BOX_SIDE_THICKNESS_MM}, so the bay must exceed ` +
+        `${slideDeductionMm + 2 * DRAWER_BOX_SIDE_THICKNESS_MM}mm.`
+    );
+    err.code = "DEGENERATE_DRAWER_GEOMETRY";
+    throw err;
+  }
 
   const halfDeductionMm = slideDeductionMm / 2;
   const boxMinXMm = bay.minXDmm / 10 + halfDeductionMm;

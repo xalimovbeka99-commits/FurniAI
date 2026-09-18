@@ -62,3 +62,18 @@ Direct `emitDrawerBankParts` at W=50 also yields BACK **W=−1** (negative); cus
 - **Separately set a BEKZOD_APPROVED usable min bay/drawer width later? Y / N / DEFER**
 
 No code change in this docs package.
+
+
+---
+
+## Reconciled tip update (engineering close)
+
+On `integ/m2-integration-lead` after Claude reconcile:
+
+- Kernel/validator reject `widthMm <= 51` (exclusive).
+- `emitDrawerBankParts` refuses non-positive DRAWER_* dims (direct compiler).
+- SVG/DXF/CSV/nesting refuse non-positive finished/cut/thickness dims.
+- Still **PROVISIONAL_PENDING_BEKZOD_REVIEW** — not BEKZOD_APPROVED usable width.
+- W=52 remains arithmetic-only (1 mm BACK), not manufacturability.
+
+Permanent tests: `tests/part-graph/pl006.customerAndCompiler.test.js`, `tests/production/invalidPartGraph.exporters.test.js`.
