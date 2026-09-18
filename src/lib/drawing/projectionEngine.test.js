@@ -260,6 +260,8 @@ describe("projectionEngine — SVG Drawing Sheet Generation & Title Block", () =
     expect(svg).toContain('id="material_legend"');
     expect(svg).toContain("18.0 mm MFC");
     expect(svg).toContain("6.0 mm HDF Insert into 7.0 mm Groove");
+    expect(svg).toContain("HDF_WHITE_6");
+    expect(svg).toContain("UNDERMOUNT_CONCEALED_21MM");
     expect(svg).toContain("1.0 mm ABS");
     expect(svg).toContain("0.4 mm Melamine");
   });
