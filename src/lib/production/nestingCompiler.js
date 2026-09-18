@@ -39,6 +39,22 @@ export const STOCK_SHEETS = Object.freeze([
 export const DEFAULT_KERF_MM = 3.5;
 export const DEFAULT_PERIMETER_TRIM_MM = 15.0;
 
+/**
+ * Max usable envelope on SHEET_2800x2070 with DEFAULT_PERIMETER_TRIM_MM each side.
+ * ENFORCED by evaluateOversizedPanelPolicy / compileNestingManifest preflight.
+ */
+export const MAX_USABLE_SHEET_LENGTH_MM = 2800 - 2 * DEFAULT_PERIMETER_TRIM_MM; // 2770
+export const MAX_USABLE_SHEET_WIDTH_MM = 2070 - 2 * DEFAULT_PERIMETER_TRIM_MM; // 2040
+
+export const PANEL_EXCEEDS_SHEET_ENVELOPE = "PANEL_EXCEEDS_SHEET_ENVELOPE";
+
+/** Explicit split policies that allow oversized panels past envelope rejection. */
+export const OVERSIZED_SPLIT_POLICIES = Object.freeze({
+  TWO_PIECE_TONGUE_AND_GROOVE: "TWO_PIECE_TONGUE_AND_GROOVE",
+  H_CHANNEL_SPLICE: "H_CHANNEL_SPLICE",
+});
+
+
 /** CSV columns (exact order / labels). */
 export const CUT_LIST_CSV_COLUMNS = Object.freeze([
   "Part ID",
@@ -310,6 +326,8 @@ function expandNestItems(cutRows) {
         partId: r.partId,
         role: r.role,
         grain: r.grain,
+        material: r.material,
+        thicknessMm: r.thicknessMm,
         lengthMm: r.cutLengthMm,
         widthMm: r.cutWidthMm,
         areaMm2: r.cutLengthMm * r.cutWidthMm,
@@ -604,28 +622,261 @@ function scorePack(pack) {
 }
 
 /**
- * compileNestingManifest(partGraph, options?)
+ * Material × thickness group key. Different tuples never share a sheet.
  *
- * @param {object} partGraph
- * @param {object} [options]
- * @param {number} [options.kerfMm=3.5]
- * @param {number} [options.perimeterTrimMm=15]
- * @param {Array<{id:string,lengthMm:number,widthMm:number}>} [options.stockSheets]
- * @returns {object}
+ * @param {{ material?: string, thicknessMm?: number }} row
+ * @returns {string}
  */
-export function compileNestingManifest(partGraph, options = {}) {
-  if (!partGraph || typeof partGraph !== "object") {
-    throw new Error("compileNestingManifest requires a PartGraph object.");
+export function materialThicknessGroupKey(row) {
+  const material = String(row.material ?? row.materialCode ?? "").trim() || "UNKNOWN_MATERIAL";
+  const thicknessMm = roundMm(row.thicknessMm ?? 0, 2);
+  return `${material}|${thicknessMm}`;
+}
+
+/**
+ * Group cut-list rows by (materialCode, thicknessMm).
+ *
+ * @param {Array<object>} cutRows
+ * @returns {Map<string, { groupKey: string, material: string, thicknessMm: number, rows: Array<object> }>}
+ */
+export function groupCutRowsByMaterialThickness(cutRows) {
+  /** @type {Map<string, { groupKey: string, material: string, thicknessMm: number, rows: Array<object> }>} */
+  const groups = new Map();
+  for (const row of cutRows) {
+    const groupKey = materialThicknessGroupKey(row);
+    if (!groups.has(groupKey)) {
+      groups.set(groupKey, {
+        groupKey,
+        material: String(row.material ?? "").trim() || "UNKNOWN_MATERIAL",
+        thicknessMm: roundMm(row.thicknessMm ?? 0, 2),
+        rows: [],
+      });
+    }
+    groups.get(groupKey).rows.push(row);
+  }
+  return groups;
+}
+
+/**
+ * Usable envelope for the largest evaluated stock (SHEET_2800x2070 − trim).
+ *
+ * @param {number} [perimeterTrimMm]
+ * @param {{ lengthMm: number, widthMm: number }} [stock]
+ * @returns {{ lengthMm: number, widthMm: number }}
+ */
+export function usableSheetEnvelopeMm(
+  perimeterTrimMm = DEFAULT_PERIMETER_TRIM_MM,
+  stock = { lengthMm: 2800, widthMm: 2070 }
+) {
+  return {
+    lengthMm: stock.lengthMm - 2 * perimeterTrimMm,
+    widthMm: stock.widthMm - 2 * perimeterTrimMm,
+  };
+}
+
+/**
+ * True when no allowed grain orientation fits the usable envelope.
+ *
+ * @param {number} lengthMm
+ * @param {number} widthMm
+ * @param {string} grain
+ * @param {{ lengthMm: number, widthMm: number }} usable
+ * @returns {boolean}
+ */
+export function exceedsSheetEnvelope(lengthMm, widthMm, grain, usable) {
+  const orients = allowedOrientations(grain);
+  for (const o of orients) {
+    const placedW = o === "natural" ? lengthMm : widthMm;
+    const placedH = o === "natural" ? widthMm : lengthMm;
+    if (placedW <= usable.lengthMm + 1e-9 && placedH <= usable.widthMm + 1e-9) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Split an oversized panel at internal bay divider faces (invisible from front).
+ * Each seam X equals a divider placement.
+ *
+ * @param {number} lengthMm — panel length along X (cabinet width)
+ * @param {number} widthMm
+ * @param {number[]} dividerPlacementsMm
+ * @param {{ lengthMm: number, widthMm: number }} usable
+ * @returns {{ ok: boolean, pieces?: Array<object>, code?: string, message?: string }}
+ */
+export function splitPanelAtDividerFaces(lengthMm, widthMm, dividerPlacementsMm, usable) {
+  const dividers = [...new Set(
+    (dividerPlacementsMm || [])
+      .map(Number)
+      .filter((x) => Number.isFinite(x) && x > 1e-9 && x < lengthMm - 1e-9)
+  )].sort((a, b) => a - b);
+
+  if (dividers.length === 0) {
+    return {
+      ok: false,
+      code: PANEL_EXCEEDS_SHEET_ENVELOPE,
+      message:
+        "Oversized panel has split policy but no internal bay divider placements to align seams.",
+    };
   }
 
-  const kerfMm = options.kerfMm ?? DEFAULT_KERF_MM;
+  const cuts = [0, ...dividers, lengthMm];
+  const pieces = [];
+  for (let i = 0; i < cuts.length - 1; i++) {
+    const x0 = cuts[i];
+    const x1 = cuts[i + 1];
+    const pieceLengthMm = roundMm(x1 - x0, 3);
+    const pieceWidthMm = roundMm(widthMm, 3);
+    // Natural orientation must fit after split (grain-locked carcass panels).
+    if (pieceLengthMm > usable.lengthMm + 1e-9 || pieceWidthMm > usable.widthMm + 1e-9) {
+      return {
+        ok: false,
+        code: PANEL_EXCEEDS_SHEET_ENVELOPE,
+        message: `Split piece ${pieceLengthMm}×${pieceWidthMm} mm still exceeds usable ${usable.lengthMm}×${usable.widthMm} mm.`,
+      };
+    }
+    pieces.push({
+      index: i,
+      lengthMm: pieceLengthMm,
+      widthMm: pieceWidthMm,
+      /** Left edge X in original panel coords — equals divider face when i > 0 */
+      seamX: i === 0 ? null : roundMm(x0, 3),
+      leftX: roundMm(x0, 3),
+      rightX: roundMm(x1, 3),
+    });
+  }
+
+  // Contract: every internal seam X equals a divider placement
+  for (const piece of pieces) {
+    if (piece.seamX != null && !dividers.some((d) => Math.abs(d - piece.seamX) < 1e-6)) {
+      return {
+        ok: false,
+        code: PANEL_EXCEEDS_SHEET_ENVELOPE,
+        message: `Seam X=${piece.seamX} does not align with an internal bay divider face.`,
+      };
+    }
+  }
+
+  return { ok: true, pieces, dividerPlacementsMm: dividers };
+}
+
+/**
+ * Fail-closed oversized panel policy (ENFORCED).
+ *
+ * Panels exceeding max usable 2770×2040 mm are rejected with
+ * PANEL_EXCEEDS_SHEET_ENVELOPE unless an explicit split policy is configured:
+ *   TWO_PIECE_TONGUE_AND_GROOVE | H_CHANNEL_SPLICE
+ * Seams must align with internal bay divider faces (seam X = divider placement).
+ *
+ * @param {object} panel — cut dims in mm (+ optional splitPolicy / dividerPlacementsMm)
+ * @param {object} [options]
+ * @returns {{ ok: boolean, oversized: boolean, code?: string, message?: string, policy?: string|null, pieces?: Array, seamXs?: number[] }}
+ */
+export function evaluateOversizedPanelPolicy(panel, options = {}) {
+  if (!panel || typeof panel !== "object") {
+    return {
+      ok: false,
+      oversized: false,
+      code: "INVALID_PANEL",
+      message: "evaluateOversizedPanelPolicy requires a panel object.",
+    };
+  }
+
+  const lengthMm = Number(panel.cutLengthMm ?? panel.lengthMm ?? panel.length);
+  const widthMm = Number(panel.cutWidthMm ?? panel.widthMm ?? panel.width);
+  const grain = normalizeGrainDirection(panel.grainDirection ?? panel.grain);
   const perimeterTrimMm = options.perimeterTrimMm ?? DEFAULT_PERIMETER_TRIM_MM;
-  const stockSheets = options.stockSheets ?? STOCK_SHEETS;
+  const stock = options.envelopeStock ?? { lengthMm: 2800, widthMm: 2070 };
+  const usable = options.usableEnvelopeMm ?? usableSheetEnvelopeMm(perimeterTrimMm, stock);
 
-  const cutRows = buildCutListRows(partGraph);
-  const items = expandNestItems(cutRows);
-  const edgeBandingLinearMetersByThicknessMm = sumEdgeBandingLinearMeters(cutRows);
+  if (!(lengthMm > 0) || !(widthMm > 0)) {
+    return {
+      ok: false,
+      oversized: false,
+      code: "INVALID_PANEL_DIMS",
+      message: `Panel "${panel.partId || panel.id || "?"}" has non-positive dims.`,
+    };
+  }
 
+  const oversized = exceedsSheetEnvelope(lengthMm, widthMm, grain, usable);
+  if (!oversized) {
+    return {
+      ok: true,
+      oversized: false,
+      policy: null,
+      pieces: [
+        {
+          index: 0,
+          lengthMm: roundMm(lengthMm, 3),
+          widthMm: roundMm(widthMm, 3),
+          seamX: null,
+          leftX: 0,
+          rightX: roundMm(lengthMm, 3),
+        },
+      ],
+      seamXs: [],
+      usableEnvelopeMm: usable,
+    };
+  }
+
+  const policy =
+    panel.splitPolicy ??
+    options.splitPolicy ??
+    panel.oversizedSplitPolicy ??
+    null;
+  const allowed = new Set(Object.values(OVERSIZED_SPLIT_POLICIES));
+  if (!policy || !allowed.has(policy)) {
+    return {
+      ok: false,
+      oversized: true,
+      code: PANEL_EXCEEDS_SHEET_ENVELOPE,
+      message:
+        `Panel "${panel.partId || panel.id || "?"}" ${roundMm(lengthMm)}×${roundMm(widthMm)} mm ` +
+        `exceeds usable sheet envelope ${usable.lengthMm}×${usable.widthMm} mm ` +
+        `(SHEET_2800x2070 minus ${perimeterTrimMm} mm trim each side). ` +
+        `Configure split policy ${Object.values(OVERSIZED_SPLIT_POLICIES).join(" | ")}.`,
+      policy: policy || null,
+      usableEnvelopeMm: usable,
+    };
+  }
+
+  const dividers =
+    panel.dividerPlacementsMm ??
+    options.dividerPlacementsMm ??
+    panel.internalBayDividerFacesMm ??
+    [];
+
+  const split = splitPanelAtDividerFaces(lengthMm, widthMm, dividers, usable);
+  if (!split.ok) {
+    return {
+      ok: false,
+      oversized: true,
+      code: split.code || PANEL_EXCEEDS_SHEET_ENVELOPE,
+      message: split.message,
+      policy,
+      usableEnvelopeMm: usable,
+    };
+  }
+
+  const seamXs = split.pieces.map((p) => p.seamX).filter((x) => x != null);
+  return {
+    ok: true,
+    oversized: true,
+    policy,
+    pieces: split.pieces,
+    seamXs,
+    dividerPlacementsMm: split.dividerPlacementsMm,
+    usableEnvelopeMm: usable,
+  };
+}
+
+/**
+ * Pack one material×thickness group across evaluated stock families.
+ * @returns {object} run manifest fragment
+ */
+function packMaterialThicknessRun(group, stockSheets, kerfMm, perimeterTrimMm) {
+  const items = expandNestItems(group.rows);
   const packsByStock = {};
   let primary = null;
 
@@ -647,37 +898,257 @@ export function compileNestingManifest(partGraph, options = {}) {
   }
 
   if (!primary) {
-    throw new Error("compileNestingManifest: no stock sheets configured.");
+    throw new Error(`packMaterialThicknessRun: no stock for group ${group.groupKey}`);
   }
 
   if (primary.unplaced.length > 0) {
     const sample = primary.unplaced[0];
     throw new Error(
-      `Nesting failed: ${primary.unplaced.length} part(s) do not fit any evaluated stock. Example: ${sample.instanceId} — ${sample.reason}`
+      `Nesting failed in group ${group.groupKey}: ${primary.unplaced.length} part(s) do not fit. Example: ${sample.instanceId} — ${sample.reason}`
     );
   }
 
+  const sheets = primary.sheets.map((s) => ({
+    ...s,
+    groupKey: group.groupKey,
+    material: group.material,
+    thicknessMm: group.thicknessMm,
+    placements: s.placements.map((p) => ({
+      ...p,
+      groupKey: group.groupKey,
+      material: group.material,
+      thicknessMm: group.thicknessMm,
+    })),
+  }));
+
   return {
-    algorithm: "FFDH_SHELF",
+    groupKey: group.groupKey,
+    material: group.material,
+    thicknessMm: group.thicknessMm,
+    cutList: group.rows,
+    packsByStock,
+    primaryStockId: primary.stock.id,
+    sheetCount: primary.sheetCount,
+    yieldEfficiencyPct: primary.yieldEfficiencyPct,
+    totalPanelAreaMm2: primary.totalPanelAreaMm2,
+    totalSheetAreaMm2: primary.totalSheetAreaMm2,
+    sheets,
+    stock: primary.stock,
+  };
+}
+
+/**
+ * compileNestingManifest(partGraph, options?)
+ *
+ * Multi-material nesting (ENFORCED): parts are grouped by (materialCode, thicknessMm);
+ * each group is an independent FFDH run and never shares a sheet with another tuple.
+ * Yield % and sheet counts are primary per run (`runs[]`). Top-level `sheetCount` is
+ * the sum of run sheet counts (procurement total). Top-level `yieldEfficiencyPct` is
+ * intentionally omitted as a blended primary metric — use `runs[].yieldEfficiencyPct`
+ * (a non-primary `blendedYieldEfficiencyPct` is provided for legacy report display only).
+ *
+ * Oversized preflight (ENFORCED): panels exceeding usable 2770×2040 fail closed with
+ * PANEL_EXCEEDS_SHEET_ENVELOPE unless split policy TWO_PIECE_TONGUE_AND_GROOVE or
+ * H_CHANNEL_SPLICE is configured with divider-aligned seams.
+ *
+ * @param {object} partGraph
+ * @param {object} [options]
+ * @param {number} [options.kerfMm=3.5]
+ * @param {number} [options.perimeterTrimMm=15]
+ * @param {Array<{id:string,lengthMm:number,widthMm:number}>} [options.stockSheets]
+ * @param {string} [options.splitPolicy]
+ * @param {number[]} [options.dividerPlacementsMm]
+ * @returns {object}
+ */
+export function compileNestingManifest(partGraph, options = {}) {
+  if (!partGraph || typeof partGraph !== "object") {
+    throw new Error("compileNestingManifest requires a PartGraph object.");
+  }
+
+  const kerfMm = options.kerfMm ?? DEFAULT_KERF_MM;
+  const perimeterTrimMm = options.perimeterTrimMm ?? DEFAULT_PERIMETER_TRIM_MM;
+  const stockSheets = options.stockSheets ?? STOCK_SHEETS;
+  const envelopeStock =
+    stockSheets.find((s) => s.id === "SHEET_2800x2070") ||
+    stockSheets.reduce(
+      (best, s) =>
+        !best || s.lengthMm * s.widthMm > best.lengthMm * best.widthMm ? s : best,
+      null
+    ) ||
+    { lengthMm: 2800, widthMm: 2070 };
+  const usable = usableSheetEnvelopeMm(perimeterTrimMm, envelopeStock);
+
+  const cutRows = buildCutListRows(partGraph);
+  const edgeBandingLinearMetersByThicknessMm = sumEdgeBandingLinearMeters(cutRows);
+
+  // --- Oversized preflight (fail-closed) ---------------------------------
+  const partsById = new Map(
+    (Array.isArray(partGraph.parts) ? partGraph.parts : []).map((p) => [p.id, p])
+  );
+  /** @type {Array<object>} */
+  const splitExpandedRows = [];
+  const oversizedDecisions = [];
+
+  for (const row of cutRows) {
+    const src = partsById.get(row.partId) || {};
+    const decision = evaluateOversizedPanelPolicy(
+      {
+        partId: row.partId,
+        cutLengthMm: row.cutLengthMm,
+        cutWidthMm: row.cutWidthMm,
+        grain: row.grain,
+        splitPolicy: src.splitPolicy ?? options.splitPolicy,
+        dividerPlacementsMm:
+          src.dividerPlacementsMm ??
+          src.internalBayDividerFacesMm ??
+          options.dividerPlacementsMm,
+      },
+      { perimeterTrimMm, usableEnvelopeMm: usable, envelopeStock }
+    );
+    oversizedDecisions.push({ partId: row.partId, ...decision });
+
+    if (!decision.ok) {
+      const err = new Error(decision.message || `Oversized panel rejected: ${decision.code}`);
+      err.code = decision.code || PANEL_EXCEEDS_SHEET_ENVELOPE;
+      err.partId = row.partId;
+      throw err;
+    }
+
+    if (decision.oversized && decision.pieces && decision.pieces.length > 1) {
+      for (const piece of decision.pieces) {
+        splitExpandedRows.push({
+          ...row,
+          partId: `${row.partId}__SPLIT_${piece.index + 1}`,
+          cutLengthMm: piece.lengthMm,
+          cutWidthMm: piece.widthMm,
+          qty: row.qty,
+          splitFrom: row.partId,
+          seamX: piece.seamX,
+          splitPolicy: decision.policy,
+        });
+      }
+    } else {
+      splitExpandedRows.push(row);
+    }
+  }
+
+  // --- Multi-material / multi-thickness independent runs ----------------
+  const groups = groupCutRowsByMaterialThickness(splitExpandedRows);
+  const runs = [];
+  for (const group of groups.values()) {
+    runs.push(packMaterialThicknessRun(group, stockSheets, kerfMm, perimeterTrimMm));
+  }
+
+  // Stable order: thicker first, then material name
+  runs.sort((a, b) => {
+    if (b.thicknessMm !== a.thicknessMm) return b.thicknessMm - a.thicknessMm;
+    return String(a.material).localeCompare(String(b.material));
+  });
+
+  const sheetCount = runs.reduce((n, r) => n + r.sheetCount, 0);
+  const totalPanelAreaMm2 = runs.reduce((n, r) => n + r.totalPanelAreaMm2, 0);
+  const totalSheetAreaMm2 = runs.reduce((n, r) => n + r.totalSheetAreaMm2, 0);
+  const blendedYieldEfficiencyPct =
+    totalSheetAreaMm2 > 0
+      ? roundMm((totalPanelAreaMm2 / totalSheetAreaMm2) * 100, 2)
+      : 0;
+
+  // Flatten sheets with global index for legacy consumers; never mix groups on one sheet.
+  let globalIndex = 0;
+  const sheets = [];
+  for (const run of runs) {
+    for (const s of run.sheets) {
+      sheets.push({
+        ...s,
+        index: globalIndex++,
+        runGroupKey: run.groupKey,
+      });
+    }
+  }
+
+  // Legacy packsByStock: per-stock sheet counts summed across runs (not a merged nest).
+  const packsByStock = {};
+  for (const stock of stockSheets) {
+    let sc = 0;
+    let panelArea = 0;
+    let sheetArea = 0;
+    const stockSheetsList = [];
+    for (const run of runs) {
+      const p = run.packsByStock[stock.id];
+      if (!p) continue;
+      sc += p.sheetCount;
+      panelArea += p.totalPanelAreaMm2;
+      sheetArea += p.totalSheetAreaMm2;
+      for (const s of p.sheets) {
+        stockSheetsList.push({
+          ...s,
+          groupKey: run.groupKey,
+          material: run.material,
+          thicknessMm: run.thicknessMm,
+        });
+      }
+    }
+    packsByStock[stock.id] = {
+      sheetCount: sc,
+      yieldEfficiencyPct:
+        sheetArea > 0 ? roundMm((panelArea / sheetArea) * 100, 2) : 0,
+      totalPanelAreaMm2: panelArea,
+      totalSheetAreaMm2: sheetArea,
+      unplacedCount: 0,
+      unplaced: [],
+      sheets: stockSheetsList,
+      stock: {
+        id: stock.id,
+        lengthMm: stock.lengthMm,
+        widthMm: stock.widthMm,
+        usableLengthMm: roundMm(stock.lengthMm - 2 * perimeterTrimMm, 1),
+        usableWidthMm: roundMm(stock.widthMm - 2 * perimeterTrimMm, 1),
+      },
+      note: "Aggregated across independent material×thickness runs — not a single mixed nest.",
+    };
+  }
+
+  // Primary stock = stock chosen by the run with the largest panel area
+  const primaryRun =
+    runs.reduce(
+      (best, r) => (!best || r.totalPanelAreaMm2 > best.totalPanelAreaMm2 ? r : best),
+      null
+    ) || runs[0];
+
+  return {
+    algorithm: "FFDH_SHELF_BY_MATERIAL_THICKNESS",
     algorithmNotes:
-      "First-Fit Decreasing Height shelf packing with kerf gutters; guillotine-friendly horizontal shelves. Evaluates both stock families; primary = fewest sheets, then higher yield, then smaller sheet area.",
+      "Independent First-Fit Decreasing Height shelf packing per (materialCode, thicknessMm) group. " +
+      "Sheets are never shared across different material/thickness tuples. " +
+      "Yield % and sheet counts are primary per run (runs[]); top-level sheetCount is the procurement sum. " +
+      "blendedYieldEfficiencyPct is non-primary (legacy display only). " +
+      "Oversized panels exceeding usable 2770×2040 fail closed unless TWO_PIECE_TONGUE_AND_GROOVE or H_CHANNEL_SPLICE with divider-aligned seams.",
     kerfMm,
     perimeterTrimMm,
+    usableEnvelopeMm: usable,
     grainPolicy: {
       LENGTH: "part length ‖ sheet length (X); rotation rejected",
       LENGTHWISE: "alias of LENGTH",
       WIDTH: "part width ‖ sheet width (Y); rotation rejected",
       NONE: "rotation allowed",
     },
-    cutList: cutRows,
+    materialGrouping: "materialCode+thicknessMm",
+    cutList: splitExpandedRows,
     edgeBandingLinearMetersByThicknessMm,
-    totalPanelAreaMm2: primary.totalPanelAreaMm2,
+    oversizedDecisions,
+    runs,
+    totalPanelAreaMm2,
+    totalSheetAreaMm2,
+    sheetCount,
+    // Primary yield metric is per-run — do not treat top-level as authoritative.
+    yieldEfficiencyPct: primaryRun ? primaryRun.yieldEfficiencyPct : 0,
+    primaryYieldSource: primaryRun
+      ? { groupKey: primaryRun.groupKey, note: "yieldEfficiencyPct mirrors largest panel-area run; see runs[] for all" }
+      : null,
+    blendedYieldEfficiencyPct,
     packsByStock,
-    primaryStockId: primary.stock.id,
-    sheetCount: primary.sheetCount,
-    yieldEfficiencyPct: primary.yieldEfficiencyPct,
-    totalSheetAreaMm2: primary.totalSheetAreaMm2,
-    sheets: primary.sheets,
-    stock: primary.stock,
+    primaryStockId: primaryRun ? primaryRun.primaryStockId : null,
+    sheets,
+    stock: primaryRun ? primaryRun.stock : null,
   };
 }

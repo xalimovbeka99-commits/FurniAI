@@ -295,7 +295,7 @@ describe("nestingCompiler — yield / sheet count sanity", () => {
       }),
     ]);
     const manifest = compileNestingManifest(graph);
-    expect(manifest.algorithm).toBe("FFDH_SHELF");
+    expect(manifest.algorithm).toBe("FFDH_SHELF_BY_MATERIAL_THICKNESS");
     expect(manifest.kerfMm).toBe(3.5);
     expect(manifest.perimeterTrimMm).toBe(15);
     expect(manifest.sheetCount).toBe(1);
@@ -340,5 +340,78 @@ describe("nestingCompiler — yield / sheet count sanity", () => {
       panel({ id: "X", lengthDmm: 1000, widthDmm: 500, grainDirection: "LENGTHWISE" })
     );
     expect(r.grain).toBe("LENGTH");
+  });
+});
+
+
+describe("nestingCompiler — multi-material sheets never mix thicknesses (ENFORCED)", () => {
+  it("18 mm carcass parts and 6 mm back never share the same sheet", () => {
+    const graph = syntheticGraph([
+      panel({
+        id: "CARC_A",
+        lengthDmm: 8000,
+        widthDmm: 5800,
+        thicknessDmm: 180,
+        materialCode: "MEL_WHITE_18",
+        quantity: 3,
+        grainDirection: "LENGTH",
+      }),
+      panel({
+        id: "CARC_B",
+        role: "FIXED_SHELF",
+        lengthDmm: 7800,
+        widthDmm: 5600,
+        thicknessDmm: 180,
+        materialCode: "MEL_WHITE_18",
+        quantity: 2,
+        grainDirection: "LENGTH",
+      }),
+      panel({
+        id: "BACK_6",
+        role: "BACK_PANEL",
+        lengthDmm: 7960,
+        widthDmm: 20000,
+        thicknessDmm: 60,
+        materialCode: "HDF_WHITE_6",
+        grainDirection: "NONE",
+        quantity: 1,
+      }),
+    ]);
+    const manifest = compileNestingManifest(graph);
+    expect(manifest.runs.length).toBe(2);
+    expect(manifest.runs.some((r) => r.thicknessMm === 18)).toBe(true);
+    expect(manifest.runs.some((r) => r.thicknessMm === 6)).toBe(true);
+
+    for (const sheet of manifest.sheets) {
+      const thicknesses = new Set(sheet.placements.map((p) => p.thicknessMm));
+      expect(thicknesses.size).toBe(1);
+      const materials = new Set(sheet.placements.map((p) => p.material));
+      expect(materials.size).toBe(1);
+    }
+
+    // Explicit: no sheet contains both a CARC_* and BACK_6 placement
+    for (const sheet of manifest.sheets) {
+      const ids = sheet.placements.map((p) => p.partId);
+      const hasCarc = ids.some((id) => String(id).startsWith("CARC_"));
+      const hasBack = ids.some((id) => String(id).startsWith("BACK_"));
+      expect(hasCarc && hasBack).toBe(false);
+    }
+  });
+
+  it("golden wardrobe nests 18 mm MEL and 6 mm HDF on separate runs/sheets", () => {
+    const graph = buildStructuralPartGraph(fixture);
+    const manifest = compileNestingManifest(graph);
+    expect(manifest.algorithm).toBe("FFDH_SHELF_BY_MATERIAL_THICKNESS");
+    expect(manifest.runs.length).toBeGreaterThanOrEqual(2);
+
+    const mel = manifest.runs.find((r) => r.thicknessMm === 18);
+    const hdf = manifest.runs.find((r) => r.thicknessMm === 6);
+    expect(mel).toBeTruthy();
+    expect(hdf).toBeTruthy();
+
+    for (const sheet of manifest.sheets) {
+      const thicknesses = new Set(sheet.placements.map((p) => p.thicknessMm));
+      expect(thicknesses.size).toBe(1);
+    }
   });
 });
