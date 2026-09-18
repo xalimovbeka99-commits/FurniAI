@@ -90,6 +90,26 @@ export {
   createZipBuffer,
 };
 
+/**
+ * Generates shop drawings SVG with error-boundary protection and returns preview payload.
+ *
+ * @param {object} partGraph
+ * @param {object} [options]
+ * @returns {{ ok: boolean, svg?: string, error?: string, filename?: string }}
+ */
+export function getShopDrawingsPreview(partGraph, options = {}) {
+  try {
+    if (!partGraph || typeof partGraph !== "object") {
+      return { ok: false, error: "Invalid PartGraph provided for shop drawings." };
+    }
+    const svg = generateShopDrawingsSVG(partGraph, options);
+    const filename = `${partGraph.sourceSpecId || "wardrobe"}-shop-drawings.svg`;
+    return { ok: true, svg, filename };
+  } catch (err) {
+    return { ok: false, error: err && err.message ? err.message : String(err) };
+  }
+}
+
 const FALLBACK_MAT = {
   oak: { color: 0xc8a87a, rough: 0.75, metal: 0 },
   walnut: { color: 0x6e5236, rough: 0.7, metal: 0 },

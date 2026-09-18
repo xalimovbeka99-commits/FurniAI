@@ -65,6 +65,7 @@ var PartGraphBridge = (() => {
     formatNestingReport: () => formatNestingReport,
     generateCutListCsv: () => generateCutListCsv,
     generateShopDrawingsSVG: () => generateShopDrawingsSVG,
+    getShopDrawingsPreview: () => getShopDrawingsPreview,
     goldenSpec: () => goldenWardrobe_fixture_default,
     loadApprovedPartGraph: () => loadApprovedPartGraph,
     loadDraftPartGraph: () => loadDraftPartGraph,
@@ -6371,6 +6372,18 @@ var PartGraphBridge = (() => {
   }
 
   // src/lib/adapters/browserBridge.js
+  function getShopDrawingsPreview(partGraph, options = {}) {
+    try {
+      if (!partGraph || typeof partGraph !== "object") {
+        return { ok: false, error: "Invalid PartGraph provided for shop drawings." };
+      }
+      const svg = generateShopDrawingsSVG(partGraph, options);
+      const filename = `${partGraph.sourceSpecId || "wardrobe"}-shop-drawings.svg`;
+      return { ok: true, svg, filename };
+    } catch (err) {
+      return { ok: false, error: err && err.message ? err.message : String(err) };
+    }
+  }
   var FALLBACK_MAT = {
     oak: { color: 13150330, rough: 0.75, metal: 0 },
     walnut: { color: 7230006, rough: 0.7, metal: 0 },

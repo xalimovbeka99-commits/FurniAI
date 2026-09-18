@@ -205,7 +205,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 
 /* ============ BUILDER VIEW ============ */
 #view-builder{position:fixed;inset:0;z-index:200;background:var(--paper);display:flex;flex-direction:column}
-.b-top{display:flex;align-items:center;justify-content:space-between;padding:13px 22px;border-bottom:1px solid var(--line-soft);background:rgba(250,249,245,.9);backdrop-filter:blur(10px);flex-shrink:0;gap:16px}
+.b-top{position:relative;z-index:50;display:flex;align-items:center;justify-content:space-between;padding:13px 22px;border-bottom:1px solid var(--line-soft);background:rgba(250,249,245,.9);backdrop-filter:blur(10px);flex-shrink:0;gap:16px}
 .b-top .left{display:flex;align-items:center;gap:18px;min-width:0}
 .b-back{font-family:'Space Mono',monospace;font-size:13px;color:var(--ink-soft);cursor:pointer;display:flex;align-items:center;gap:8px;transition:color .2s;white-space:nowrap}
 .b-back:hover{color:var(--brass)}
@@ -267,6 +267,39 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 .mfg-menu-divider{height:1px;background:var(--line,#EDE8DC);margin:5px 0}
 .mfg-menu-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:transparent;border:none;border-radius:5px;padding:7px 10px;font-size:12px;color:var(--ink,#1C1E21);cursor:pointer;font-family:'Inter',sans-serif;transition:background .15s ease,color .15s ease;box-sizing:border-box}
 .mfg-menu-item:hover{background:var(--paper-2,#EFECE6);color:var(--brass,#0088A8)}
+
+/* Toast Notification System */
+.toast-container{position:fixed;top:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:10px;pointer-events:none}
+.toast{pointer-events:auto;display:flex;align-items:center;gap:12px;background:rgba(28,30,33,0.95);color:#FAF9F5;border:1px solid rgba(255,255,255,0.12);padding:12px 18px;border-radius:8px;box-shadow:0 10px 30px rgba(0,0,0,0.35);font-family:var(--sans,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif);font-size:13px;line-height:1.4;max-width:420px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transform:translateY(-8px);opacity:0;transition:transform .22s ease-out,opacity .22s ease-out}
+.toast.toast-show{transform:translateY(0);opacity:1}
+.toast-icon{font-size:16px;flex-shrink:0}
+.toast-msg{flex:1}
+.toast-success{border-left:3px solid #34A853}
+.toast-error{background:rgba(44,20,22,0.96);border-color:rgba(224,106,106,0.35);border-left:3px solid #E06A6A;color:#FFF0F0}
+.toast-close{background:none;border:none;color:rgba(255,255,255,0.5);cursor:pointer;font-size:16px;padding:0 0 0 8px;line-height:1}
+.toast-close:hover{color:#FFF}
+
+/* 2D Blueprint Preview Modal */
+.blueprint-modal{position:fixed;inset:0;z-index:2500;display:flex;align-items:center;justify-content:center;padding:20px}
+.blueprint-modal-backdrop{position:absolute;inset:0;background:rgba(15,17,20,0.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.blueprint-modal-dialog{position:relative;z-index:1;background:#181A1D;border:1px solid rgba(255,255,255,0.12);border-radius:12px;width:100%;max-width:1240px;height:90vh;max-height:880px;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,0.5);overflow:hidden}
+.blueprint-modal-header{padding:14px 20px;background:#1C1E22;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+.blueprint-modal-title{display:flex;align-items:center;gap:12px}
+.bp-icon{font-size:20px}
+.bp-heading{font-size:15px;font-weight:700;color:#FAF9F5;letter-spacing:-0.01em}
+.bp-sub{font-size:12px;color:#9A9E9F;margin-top:1px}
+.blueprint-modal-actions{display:flex;align-items:center;gap:10px}
+.blueprint-modal-actions .btn{color:#FAF9F5;border-color:rgba(255,255,255,0.2)}
+.blueprint-modal-actions .btn:hover{background:rgba(255,255,255,0.1)}
+.blueprint-modal-close{background:none;border:none;color:#8E9297;font-size:24px;cursor:pointer;line-height:1;padding:4px 8px;border-radius:4px}
+.blueprint-modal-close:hover{color:#FFF;background:rgba(255,255,255,0.08)}
+.blueprint-modal-viewport{flex:1;background:#23262A;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;padding:24px}
+.blueprint-svg-container{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+.blueprint-svg-container svg{width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;display:block;box-shadow:0 16px 48px rgba(0,0,0,0.45);border-radius:2px;background:#FFFFFF}
+.blueprint-modal-footer{padding:12px 20px;background:#1C1E22;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+.bp-sheet-info{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.bp-badge{font-size:11px;font-family:var(--mono,monospace);padding:3px 8px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:4px;color:#C2C5C8}
+.bp-badge.alert{border-color:rgba(220,100,60,0.35);color:#E27D60;background:rgba(220,100,60,0.1)}
 
 /* responsive */
 @media(max-width:1000px){
@@ -658,6 +691,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
         </button>
         <div id="mfgMenuDropdown" class="mfg-menu-dropdown">
           <div class="mfg-menu-header">Blueprints &amp; Technical 2D</div>
+          <button type="button" class="mfg-menu-item" id="btnPreviewShopDrawings" onclick="handlePreviewShopDrawings()">🔍 Preview Blueprint (2D)</button>
           <button type="button" class="mfg-menu-item" id="btnExportShopDrawings" onclick="handleExportShopDrawings('SVG')">📐 Shop Blueprints (SVG)</button>
           <button type="button" class="mfg-menu-item" id="btnExportShopDrawingsPdf" onclick="handleExportShopDrawings('PDF')">📄 Shop Blueprints (PDF)</button>
           <div class="mfg-menu-divider"></div>
@@ -3181,44 +3215,141 @@ function getActivePartGraph() {
   return null;
 }
 
+window.showToast = function(msg, type = 'success', duration = 3500) {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  const icon = type === 'error' ? '⚠️' : '📐';
+  toast.innerHTML = `<span class="toast-icon">${icon}</span><span class="toast-msg">${msg}</span><button type="button" class="toast-close" aria-label="Dismiss">&times;</button>`;
+  const closeBtn = toast.querySelector('.toast-close');
+  const dismiss = () => {
+    toast.classList.remove('toast-show');
+    setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 250);
+  };
+  if (closeBtn) closeBtn.addEventListener('click', dismiss);
+  container.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('toast-show'));
+  if (duration > 0) setTimeout(dismiss, duration);
+  return toast;
+};
+
 window.handleExportShopDrawings = function(format) {
   const menu = document.getElementById('mfgMenuDropdown');
   if (menu) menu.style.display = 'none';
-  const partGraph = getActivePartGraph();
-  if (!partGraph || !globalThis.PartGraphBridge) {
-    console.warn('PartGraph not available for shop drawings');
-    return;
-  }
-  if (format === 'PDF' && typeof globalThis.PartGraphBridge.exportShopDrawingsPDF === 'function') {
-    globalThis.PartGraphBridge.exportShopDrawingsPDF(partGraph);
-  } else if (typeof globalThis.PartGraphBridge.exportShopDrawingsSVG === 'function') {
-    globalThis.PartGraphBridge.exportShopDrawingsSVG(partGraph);
+  try {
+    const partGraph = getActivePartGraph();
+    if (!partGraph) {
+      throw new Error('Unable to compile PartGraph: Design geometry is incomplete or unbuildable.');
+    }
+    if (!globalThis.PartGraphBridge) {
+      throw new Error('PartGraphBridge runtime is not initialized.');
+    }
+    if (format === 'PDF') {
+      if (typeof globalThis.PartGraphBridge.exportShopDrawingsPDF !== 'function') {
+        throw new Error('PDF export is not available in this build.');
+      }
+      globalThis.PartGraphBridge.exportShopDrawingsPDF(partGraph);
+      window.showToast('Generated Shop Drawings PDF — Print view ready', 'success');
+    } else {
+      if (typeof globalThis.PartGraphBridge.exportShopDrawingsSVG !== 'function') {
+        throw new Error('SVG export is not available in this build.');
+      }
+      const res = globalThis.PartGraphBridge.exportShopDrawingsSVG(partGraph);
+      const filename = (res && res.filename) || 'wardrobe-shop-drawings.svg';
+      window.showToast(`Exported Shop Drawings (SVG) — ${filename}`, 'success');
+    }
+  } catch (err) {
+    console.error('Shop drawings export error:', err);
+    window.showToast('Export failed: ' + (err && err.message ? err.message : 'PartGraph compilation error'), 'error', 6000);
   }
 };
+
+window.handlePreviewShopDrawings = function() {
+  const menu = document.getElementById('mfgMenuDropdown');
+  if (menu) menu.style.display = 'none';
+  try {
+    const partGraph = getActivePartGraph();
+    if (!partGraph) {
+      throw new Error('Unable to compile PartGraph: Design geometry is incomplete or unbuildable.');
+    }
+    if (!globalThis.PartGraphBridge || typeof globalThis.PartGraphBridge.generateShopDrawingsSVG !== 'function') {
+      throw new Error('Shop drawings projection engine is not available.');
+    }
+    const svgContent = globalThis.PartGraphBridge.generateShopDrawingsSVG(partGraph);
+    if (!svgContent || typeof svgContent !== 'string') {
+      throw new Error('Failed to generate 2D vector shop drawings.');
+    }
+    const modal = document.getElementById('blueprintPreviewModal');
+    const container = document.getElementById('blueprintSvgContainer');
+    const subtitle = document.getElementById('blueprintModalSubtitle');
+    if (modal && container) {
+      container.innerHTML = svgContent;
+      if (subtitle && partGraph.sourceSpecId) {
+        subtitle.textContent = `${partGraph.sourceSpecId} · A3 Landscape (420 × 297 mm) · Scale 1:20`;
+      }
+      modal.style.display = 'flex';
+      modal.setAttribute('aria-hidden', 'false');
+      window.showToast('2D Blueprint preview ready', 'success', 2500);
+    }
+  } catch (err) {
+    console.error('Blueprint preview error:', err);
+    window.showToast('Blueprint preview failed: ' + (err && err.message ? err.message : 'Compilation error'), 'error', 6000);
+  }
+};
+
+window.closeBlueprintModal = function() {
+  const modal = document.getElementById('blueprintPreviewModal');
+  if (modal) {
+    modal.style.display = 'none';
+    modal.setAttribute('aria-hidden', 'true');
+  }
+};
+
+window.downloadBlueprintFromModal = function(format) {
+  window.handleExportShopDrawings(format);
+};
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    if (typeof window.closeBlueprintModal === 'function') window.closeBlueprintModal();
+    if (typeof window.closeNestingReportModal === 'function') window.closeNestingReportModal();
+  }
+});
 
 window.handleExportCncDxfZip = function() {
   const menu = document.getElementById('mfgMenuDropdown');
   if (menu) menu.style.display = 'none';
-  const partGraph = getActivePartGraph();
-  if (!partGraph || !globalThis.PartGraphBridge) {
-    console.warn('PartGraph not available for CNC package');
-    return;
-  }
-  if (typeof globalThis.PartGraphBridge.exportCabinetDxfZip === 'function') {
-    globalThis.PartGraphBridge.exportCabinetDxfZip(partGraph);
+  try {
+    const partGraph = getActivePartGraph();
+    if (!partGraph || !globalThis.PartGraphBridge) {
+      throw new Error('PartGraph not available for CNC package.');
+    }
+    if (typeof globalThis.PartGraphBridge.exportCabinetDxfZip === 'function') {
+      globalThis.PartGraphBridge.exportCabinetDxfZip(partGraph);
+      window.showToast('Exported CNC Package (DXF ZIP)', 'success');
+    }
+  } catch (err) {
+    console.error('CNC export error:', err);
+    window.showToast('CNC export failed: ' + (err && err.message ? err.message : 'Error'), 'error', 6000);
   }
 };
 
 window.handleExportCutListCsv = function() {
   const menu = document.getElementById('mfgMenuDropdown');
   if (menu) menu.style.display = 'none';
-  const partGraph = getActivePartGraph();
-  if (!partGraph || !globalThis.PartGraphBridge) {
-    console.warn('PartGraph not available for Cut List');
-    return;
-  }
-  if (typeof globalThis.PartGraphBridge.exportCutListCSV === 'function') {
-    globalThis.PartGraphBridge.exportCutListCSV(partGraph);
+  try {
+    const partGraph = getActivePartGraph();
+    if (!partGraph || !globalThis.PartGraphBridge) {
+      throw new Error('PartGraph not available for Cut List.');
+    }
+    if (typeof globalThis.PartGraphBridge.exportCutListCSV === 'function') {
+      globalThis.PartGraphBridge.exportCutListCSV(partGraph);
+      window.showToast('Exported Cut List (CSV)', 'success');
+    }
+  } catch (err) {
+    console.error('Cut List export error:', err);
+    window.showToast('Cut List export failed: ' + (err && err.message ? err.message : 'Error'), 'error', 6000);
   }
 };
 
@@ -3227,7 +3358,7 @@ window.handleShowNestingReport = function() {
   if (menu) menu.style.display = 'none';
   const partGraph = getActivePartGraph();
   if (!partGraph || !globalThis.PartGraphBridge) {
-    console.warn('PartGraph not available for Nesting Report');
+    window.showToast('PartGraph not available for Nesting Report', 'error', 5000);
     return;
   }
   try {
@@ -3238,13 +3369,14 @@ window.handleShowNestingReport = function() {
     if (modal && body) {
       body.innerHTML = report.html;
       modal.style.display = 'flex';
+      window.showToast('Nesting preflight report generated', 'success', 2500);
     } else {
       console.log(report.text);
       alert(report.text);
     }
   } catch (err) {
     console.error('Nesting error:', err);
-    alert('Nesting preflight error: ' + err.message);
+    window.showToast('Nesting preflight error: ' + err.message, 'error', 6000);
   }
 };
 
@@ -3258,7 +3390,7 @@ window.printNestingReport = function() {
   if (!body) return;
   const printWin = window.open('', '_blank');
   if (printWin) {
-    printWin.document.write(`<!DOCTYPE html><html><head><title>Nesting Report</title><style>body{font-family:sans-serif;padding:24px;color:#1C1E21;}</style></head><body>${body.innerHTML}<script>window.onload=function(){window.print();}</script></body></html>`);
+    printWin.document.write(`<!DOCTYPE html><html><head><title>Nesting Report</title><style>body{font-family:sans-serif;padding:24px;color:#1C1E21;}</style></head><body>${body.innerHTML}<script>window.onload=function(){window.print();}<\/script></body></html>`);
     printWin.document.close();
   }
 };
@@ -3728,15 +3860,17 @@ if(document.readyState!=='loading')bootWithGuard();else addEventListener('DOMCon
   </div>
 </div>
 
-<!-- â•â•â•â•â•â•â•â•â•â•â• MY PROJECTS â•â•â•â•â•â•â•â•â•â•â• -->
+<!-- â• â• â• â• â• â• â• â• â• â• â•  MY PROJECTS â• â• â• â• â• â• â• â• â• â• â•  -->
 <div id="view-projects" hidden>
   <div class="ai-wrap">
     <div class="ai-head">
       <div class="ai-brand">My Projects</div>
-      <button class="ai-back" onclick="go('#/')">â† Back</button>
+      <button class="ai-back" onclick="go('#/')">← Back</button>
     </div>
     <div class="projects-grid" id="projectsGrid"></div>
   </div>
+</div>
+
 <!-- Nesting Report Modal -->
 <div id="nestingReportModal" class="nesting-report-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);backdrop-filter:blur(3px);z-index:2000;align-items:center;justify-content:center;">
   <div style="background:#FAF9F5;border:1px solid #DFD9CC;border-radius:12px;width:90%;max-width:540px;box-shadow:0 16px 40px rgba(0,0,0,0.2);overflow:hidden;">
@@ -3751,5 +3885,40 @@ if(document.readyState!=='loading')bootWithGuard();else addEventListener('DOMCon
     </div>
   </div>
 </div>
+
+<!-- 2D Blueprint Viewport Preview Modal -->
+<div id="blueprintPreviewModal" class="blueprint-modal" style="display:none;" aria-hidden="true">
+  <div class="blueprint-modal-backdrop" onclick="closeBlueprintModal()"></div>
+  <div class="blueprint-modal-dialog">
+    <div class="blueprint-modal-header">
+      <div class="blueprint-modal-title">
+        <span class="bp-icon">📐</span>
+        <div>
+          <div class="bp-heading">Shop Drawings — A3 Technical Blueprint</div>
+          <div class="bp-sub" id="blueprintModalSubtitle">Front Elevation &amp; Plan Projections · Scaled Vector Sheet</div>
+        </div>
+      </div>
+      <div class="blueprint-modal-actions">
+        <button type="button" class="btn sm ghost" id="btnBpDownloadSvg" onclick="downloadBlueprintFromModal('SVG')">Download SVG</button>
+        <button type="button" class="btn sm ghost" id="btnBpPrintPdf" onclick="downloadBlueprintFromModal('PDF')">Print / PDF</button>
+        <button type="button" class="blueprint-modal-close" onclick="closeBlueprintModal()" title="Close">&times;</button>
+      </div>
+    </div>
+    <div class="blueprint-modal-viewport" id="blueprintModalViewport">
+      <div id="blueprintSvgContainer" class="blueprint-svg-container"></div>
+    </div>
+    <div class="blueprint-modal-footer">
+      <div class="bp-sheet-info">
+        <span class="bp-badge">ISO 216 — A3 LANDSCAPE (420 × 297 mm)</span>
+        <span class="bp-badge">1:1 VECTOR CLARITY</span>
+        <span class="bp-badge alert" id="bpCncStatus">CNC: NOT QUALIFIED</span>
+      </div>
+      <button type="button" class="btn sm" onclick="closeBlueprintModal()" style="background:#1C1E21;color:#fff;">Close Preview</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Feedback Container -->
+<div id="toastContainer" class="toast-container" aria-live="polite"></div>
 </body>
 </html>
