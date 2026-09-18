@@ -1,0 +1,33 @@
+[
+  {
+    "id": "OUTLINE_001",
+    "hostPartId": "BOX_SIDE",
+    "type": "OUTLINE_CONTOUR",
+    "status": "DRY_RUN_ONLY",
+    "toolDiameterMm": 6,
+    "closed": true,
+    "pathMm": [[0,0],[600,0],[600,400],[0,400],[0,0]],
+    "stepDownDepthsMm": [3, 6, 9, 12, 15, 18]
+  },
+  {
+    "id": "GROOVE_001",
+    "hostPartId": "BOX_SIDE",
+    "type": "POCKET_GROOVE",
+    "status": "DRY_RUN_ONLY",
+    "widthMm": 6,
+    "depthMm": 8,
+    "startMm": [0, 10],
+    "endMm": [600, 10]
+  },
+  {
+    "id": "BORE32_001",
+    "hostPartId": "BOX_SIDE",
+    "type": "BORE_SYSTEM_32",
+    "status": "DRY_RUN_ONLY",
+    "face": "EDGE",
+    "centerMm": null,
+    "diameterMm": 5,
+    "depthMm": 13,
+    "hardwareGate": "BLOCKED_PENDING_HARDWARE_APPROVAL"
+  }
+]
