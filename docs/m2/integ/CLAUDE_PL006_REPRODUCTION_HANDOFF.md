@@ -1,4 +1,4 @@
-﻿# Claude Handoff: PL-006 Drawer Back Boundary Reproduction & Atomic Rejection
+# Claude Handoff: PL-006 Drawer Back Boundary Reproduction & Atomic Rejection
 
 **Date:** 2026-09-18  
 **Author:** Antigravity / Integration  
@@ -31,32 +31,46 @@ minDrawerBayClearWidthMm: 21 + 15 + 15, // 51 mm
    - **Result:** Correctly rejected by validator (INSUFFICIENT_BAY_WIDTH_FOR_DRAWERS).
 2. **51 mm (bayWidth == 51 mm):**
    - **Result:** Accepted by kernel and validator (51 >= 51).
-   - **Defect:** ackWidthMm = 51 - 21 - 30 = 0 mm.
+   - **Defect:**  ackWidthMm = 51 - 21 - 30 = 0 mm.
    - Produces a zero-width physical structural panel (DRAWER_BACK_B1_R1: Finished: 0.0 × 176.0 × 15.0 mm).
    - Exporters (SVG shop drawings, nesting) still emit this zero-width part without fail-closing.
 3. **52 mm (bayWidth == 52 mm):**
    - **Result:** Accepted by kernel and validator.
-   - **Defect:** ackWidthMm = 52 - 51 = 1 mm.
+   - **Defect:** backWidthMm = 52 - 51 = 1 mm.
    - This represents arithmetic validity only, not physical manufacturability.
+
+### Exporter Failure Modes on Minimal Zero-Width Part
+Empirical probe results across the 4 exporters:
+- **DXF Compiler (`compileCabinetDxfPackage`):** FAIL-CLOSED (threw `Panel "..." has non-positive flat dimensions`).
+- **Cut-list CSV (`generateCutListCsv`):** FAIL-CLOSED (threw `Panel "..." has non-positive cut dimensions`).
+- **Nesting Preflight (`compileNestingManifest`):** FAIL-CLOSED (threw `Panel "..." has non-positive cut dimensions`).
+- **SVG Shop Drawings (`generateShopDrawingsSVG`):** Returned SVG without throwing. Returning SVG proves a **failure to reject invalid input**; it does not alone prove a degenerate part was visually rendered.
 
 ---
 
 ## 2. Instructions for Claude Code
 
 1. **Enforce Strictly Positive Physical Part Dimensions:**
-   - Enforce that every physical structural part (DRAWER_BACK, DRAWER_FRONT, DRAWER_SIDE, DRAWER_BOTTOM, carcass panels, shelves) has strictly positive finished dimensions:
-     \text{length} > 0, \quad \text{width} > 0, \quad \text{thickness} > 0
-   - Derive the boundary constraint strictly from the actual drawer construction formula (ayWidth > slideDeductionMm + 2 * DRAWER_BOX_SIDE_THICKNESS_MM).
+   - Enforce that every physical structural part (`DRAWER_BACK`, `DRAWER_FRONT`, `DRAWER_SIDE`, `DRAWER_BOTTOM`, carcass panels, shelves) has strictly positive finished dimensions:
+     $$\text{length} > 0, \quad \text{width} > 0, \quad \text{thickness} > 0$$
+   - Derive the boundary constraint strictly from the actual drawer construction formula (`bayWidth > slideDeductionMm + 2 * DRAWER_BOX_SIDE_THICKNESS_MM`).
    - Do **NOT** invent an arbitrary practical minimum width (e.g. do not guess 200 mm or 300 mm without a rulebook ruling).
-   - Do **NOT** mark PL-006 as BEKZOD_APPROVED; keep provenance as PROVISIONAL_PENDING_BEKZOD_REVIEW.
+   - Do **NOT** mark PL-006 as `BEKZOD_APPROVED`; keep provenance as `PROVISIONAL_PENDING_BEKZOD_REVIEW`.
 
-2. **Atomic Rejection Contract:**
+2. **Verify Customer Paths vs. Direct Compiler Inputs Separately:**
+   - A manually injected invalid part does not establish which customer paths can create it.
+   - Claude must verify PL-006 through:
+     1. **Customer entry points:** `proposeWardrobe`, `parseConversationalCommand`, `applyConversationalEdit` (must refuse before part emission).
+     2. **Direct compiler inputs:** `emitDrawerBankParts`, `buildStructuralPartGraph` (fail-close validation).
+
+3. **Atomic Rejection Contract:**
    - When invalid drawer geometry is requested (e.g. bay width <= 51 mm), the pipeline must reject atomically.
    - Previous design state, envelope, revision number, proposal ID/fingerprint, and Undo history stack must remain completely unchanged.
-   - All downstream artifact exporters (SVG, DXF, CSV, Nesting) must fail-close and refuse invalid geometry rather than rendering degenerate or zero-dimension primitives.
+   - Exporters must consistently refuse invalid geometry. Permanent coverage is now captured in `tests/production/invalidPartGraphRejection.test.js`.
    - Tests must cover:
      - Exact boundary cases: 50.9 mm, 51.0 mm, 51.1 mm.
-     - Decimal deci-mm precision (0.1 mm).
+     - Decimal deci-mm precision (0.1 mm = 1 dmm).
+     - Zero/negative dimensions and invalid thickness.
 
 ---
 
