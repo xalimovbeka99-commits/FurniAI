@@ -18,7 +18,19 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { ProviderError, PROVIDER_ERROR_CODES } from "./errors.js";
 
-const DEFAULT_MODEL = "claude-sonnet-4-6";
+/**
+ * Verified 2026-09-11 against the official model list at
+ * platform.claude.com/docs/en/models/overview, which names
+ * claude-fable-5-1, claude-opus-5, claude-sonnet-5 and
+ * claude-haiku-4-5-20251001. The previous default "claude-sonnet-4-6" is not
+ * a model Anthropic publishes and never was — there is no Sonnet 4.6.
+ *
+ * This was corrected from the documented model list, NOT inferred from an API
+ * rejection: a 401 means the credential was refused before the model id is
+ * ever considered, so a rejected key is no evidence at all about the model.
+ */
+export const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5";
+const DEFAULT_MODEL = DEFAULT_ANTHROPIC_MODEL;
 
 /**
  * @param {{ apiKey?: string, model?: string }} [config]

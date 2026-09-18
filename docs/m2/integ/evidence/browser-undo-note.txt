@@ -1,0 +1,1 @@
+Undo not customer-visible on golden-parametric without AI revision stack. Marked UNVERIFIED for journey scenario 7 on this path; material independence still verified.

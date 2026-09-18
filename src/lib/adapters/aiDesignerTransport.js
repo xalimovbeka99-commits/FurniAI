@@ -76,7 +76,17 @@ export async function proposeDesignChange({
   const parsed = parseConversationalCommand(message, factsFrom(currentObservations));
   if (parsed) {
     if (parsed.error) {
-      return { ok: false, error: parsed.error, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.REJECTED };
+      // Same distinction as below: a capability limit is UNSUPPORTED (the
+      // browser shows the reason and the offered alternative), a bad value is
+      // REJECTED (a bare error). Collapsing them loses the explanation.
+      const parsedUnsupported = Array.isArray(parsed.unsupported) ? parsed.unsupported : [];
+      return {
+        ok: false,
+        error: parsed.error,
+        ...(parsedUnsupported.length > 0 ? { unsupported: parsedUnsupported } : {}),
+        source: RESULT_SOURCE.DETERMINISTIC,
+        kind: parsedUnsupported.length > 0 ? RESULT_KIND.UNSUPPORTED : RESULT_KIND.REJECTED,
+      };
     }
     if (parsed.changes?.materialKey && Object.keys(parsed.changes).length === 1) {
       return {
@@ -88,9 +98,18 @@ export async function proposeDesignChange({
       };
     }
     const applied = applyConversationalEdit({ currentObservations, commandText: message, specId, revision });
-    return applied.ok
-      ? { ...applied, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.DESIGN_UPDATED }
-      : { ...applied, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.REJECTED };
+    if (applied.ok) {
+      return { ...applied, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.DESIGN_UPDATED };
+    }
+    // A refusal carrying structured `unsupported` entries is a capability
+    // limit, not a validation failure. The browser renders the two
+    // differently: UNSUPPORTED shows the reason and the offered alternative,
+    // REJECTED shows a bare error. Sending a capability limit down the
+    // REJECTED path would hide the explanation the customer needs.
+    const kind = Array.isArray(applied.unsupported) && applied.unsupported.length > 0
+      ? RESULT_KIND.UNSUPPORTED
+      : RESULT_KIND.REJECTED;
+    return { ...applied, source: RESULT_SOURCE.DETERMINISTIC, kind };
   }
 
   // ---- 2. Model, for phrasings the parser does not recognise ------------

@@ -536,7 +536,196 @@ var AiDesignerTransport = (() => {
     // Panels facing front on XY plane (Doors, Back, Plinth Front/Rear)
   });
 
+  // src/lib/partgraph/componentOutcomes.js
+  var COMPONENT_OUTCOME = Object.freeze({
+    STRUCTURAL: "STRUCTURAL",
+    PREVIEW: "PREVIEW",
+    UNSUPPORTED: "UNSUPPORTED"
+  });
+  var COMPONENT_DIAGNOSTIC_CODE = Object.freeze({
+    /** The kernel has no representation for this component type at all. */
+    COMPONENT_NOT_REPRESENTED: "COMPONENT_NOT_REPRESENTED",
+    /** The type passed FurniSpec validation but no policy is declared here. */
+    UNDECLARED_COMPONENT_TYPE: "UNDECLARED_COMPONENT_TYPE",
+    /** The type is representable but this instance could not be placed. */
+    COMPONENT_NOT_PLACED: "COMPONENT_NOT_PLACED"
+  });
+  var COMPONENT_REPRESENTATION_POLICY = Object.freeze({
+    [COMPONENT_TYPES.SHELF_FIXED]: Object.freeze({
+      outcome: COMPONENT_OUTCOME.STRUCTURAL,
+      representation: "Fixed shelf panel cut to the clear bay width."
+    }),
+    [COMPONENT_TYPES.SHELF_ADJUSTABLE]: Object.freeze({
+      outcome: COMPONENT_OUTCOME.STRUCTURAL,
+      representation: "Adjustable shelf panel, inset by the clearance policy."
+    }),
+    [COMPONENT_TYPES.HANGING_RAIL_LONG]: Object.freeze({
+      outcome: COMPONENT_OUTCOME.PREVIEW,
+      previewKind: "HANGING_RAIL",
+      representation: "Bought hanging rail. Not a cut panel. Recorded as a placement datum (rail centre height) and, where the preview lane is enabled, drawn as a PREVIEW_ONLY visual."
+    }),
+    [COMPONENT_TYPES.HANGING_RAIL_SHORT]: Object.freeze({
+      outcome: COMPONENT_OUTCOME.PREVIEW,
+      previewKind: "HANGING_RAIL",
+      representation: "Bought hanging rail. Not a cut panel. Recorded as a placement datum (rail centre height) and, where the preview lane is enabled, drawn as a PREVIEW_ONLY visual."
+    }),
+    [COMPONENT_TYPES.DRAWER_BANK]: Object.freeze({
+      outcome: COMPONENT_OUTCOME.UNSUPPORTED,
+      diagnosticCode: COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED,
+      reason: "No drawer part roles exist in PartGraph v0.1 (no DRAWER_FRONT, DRAWER_BOX_SIDE, DRAWER_BOX_BACK, DRAWER_BOX_FRONT or DRAWER_BOTTOM), and drawer box dimensions depend on a runner family that has not been approved. Emitting geometry would require inventing construction rules.",
+      customerMessage: "I can't add drawers to this wardrobe yet \u2014 the drawer boxes depend on the runner hardware, which isn't confirmed for this design. Everything else in your wardrobe is unchanged.",
+      suggestedAlternative: Object.freeze({
+        componentType: COMPONENT_TYPES.SHELF_FIXED,
+        // Lower-case and clause-shaped: it is always read inside an offer
+        // sentence ("If you'd like, I can use ..."), never on its own.
+        summary: "a fixed shelf at the same height, which you could add drawers under later",
+        applied: false
+      })
+    })
+  });
+  function createComponentLedger() {
+    const entries = /* @__PURE__ */ new Map();
+    function key(bayIndex, componentId) {
+      return `${bayIndex}:${componentId}`;
+    }
+    function put(entry) {
+      const k = key(entry.bayIndex, entry.componentId);
+      if (entries.has(k)) {
+        throw new Error(
+          `Component "${entry.componentId}" in bay ${entry.bayIndex} was recorded twice in the outcome ledger.`
+        );
+      }
+      entries.set(k, Object.freeze(entry));
+    }
+    return {
+      /** A component that produced real manufacturing parts. */
+      recordStructural(comp, bayIndex, partIds) {
+        const policy = COMPONENT_REPRESENTATION_POLICY[comp.type];
+        put({
+          componentId: comp.id,
+          componentType: comp.type,
+          bayIndex,
+          outcome: COMPONENT_OUTCOME.STRUCTURAL,
+          partIds: Object.freeze([...partIds]),
+          representation: policy?.representation ?? null
+        });
+      },
+      /**
+       * A component represented visually and/or by a placement datum, never as a
+       * cut part. `datum` documents what the kernel actually computed (for a
+       * hanging rail: its centre height), so the outcome is meaningful even when
+       * the visual preview lane is not enabled on this branch.
+       */
+      recordPreview(comp, bayIndex, datum = null) {
+        const policy = COMPONENT_REPRESENTATION_POLICY[comp.type];
+        put({
+          componentId: comp.id,
+          componentType: comp.type,
+          bayIndex,
+          outcome: COMPONENT_OUTCOME.PREVIEW,
+          previewKind: policy?.previewKind ?? null,
+          partIds: Object.freeze([]),
+          placementDatum: datum ? Object.freeze({ ...datum }) : null,
+          representation: policy?.representation ?? null
+        });
+      },
+      /**
+       * A component the kernel cannot represent. `overrides` lets a caller
+       * narrow the diagnostic (e.g. COMPONENT_NOT_PLACED) without duplicating
+       * the customer-facing copy.
+       */
+      recordUnsupported(comp, bayIndex, overrides = {}) {
+        const policy = COMPONENT_REPRESENTATION_POLICY[comp.type];
+        const undeclared = !policy;
+        put({
+          componentId: comp.id,
+          componentType: comp.type,
+          bayIndex,
+          outcome: COMPONENT_OUTCOME.UNSUPPORTED,
+          partIds: Object.freeze([]),
+          diagnosticCode: overrides.diagnosticCode ?? policy?.diagnosticCode ?? COMPONENT_DIAGNOSTIC_CODE.UNDECLARED_COMPONENT_TYPE,
+          reason: overrides.reason ?? policy?.reason ?? `Component type "${comp.type}" passed FurniSpec validation but no representation policy is declared for it.`,
+          customerMessage: overrides.customerMessage ?? policy?.customerMessage ?? "I couldn't include one of the parts you asked for in this design. Everything else is unchanged.",
+          suggestedAlternative: policy?.suggestedAlternative ?? null,
+          undeclared
+        });
+      },
+      /** Has this component already been accounted for? */
+      has(comp, bayIndex) {
+        return entries.has(key(bayIndex, comp.id));
+      },
+      finish() {
+        const list = Object.freeze([...entries.values()]);
+        const count = (outcome) => list.filter((e) => e.outcome === outcome).length;
+        return {
+          componentOutcomes: list,
+          counts: Object.freeze({
+            totalComponents: list.length,
+            structuralComponents: count(COMPONENT_OUTCOME.STRUCTURAL),
+            previewComponents: count(COMPONENT_OUTCOME.PREVIEW),
+            unsupportedComponents: count(COMPONENT_OUTCOME.UNSUPPORTED)
+          })
+        };
+      }
+    };
+  }
+  function unsupportedComponentsForCustomer(componentOutcomes = []) {
+    return componentOutcomes.filter((e) => e.outcome === COMPONENT_OUTCOME.UNSUPPORTED).map((e) => ({
+      request: e.componentId,
+      componentType: e.componentType,
+      bayIndex: e.bayIndex,
+      code: e.diagnosticCode,
+      reason: e.customerMessage,
+      engineeringReason: e.reason,
+      alternative: e.suggestedAlternative ? e.suggestedAlternative.summary : null,
+      alternativeApplied: false
+    }));
+  }
+
   // src/lib/partgraph/buildStructuralPartGraph.js
+  function resolveHangingRailTube(tubeType) {
+    const raw = String(tubeType || "OVAL_TUBE_15X30").toUpperCase();
+    let m = raw.match(/^OVAL_TUBE_(\d+(?:\.\d+)?)X(\d+(?:\.\d+)?)$/);
+    if (m) {
+      const a = Number(m[1]);
+      const b = Number(m[2]);
+      const minorDiamMm = Math.min(a, b);
+      const majorDiamMm = Math.max(a, b);
+      return {
+        tubeType: raw,
+        tubeTypeResolved: true,
+        profile: "OVAL",
+        minorDiamMm,
+        majorDiamMm,
+        assumptionNotes: [
+          `Parsed ${raw}: minor(vertical)=${minorDiamMm}mm, major(depth)=${majorDiamMm}mm.`
+        ]
+      };
+    }
+    m = raw.match(/^ROUND_(?:D|DIA)?_?(\d+(?:\.\d+)?)$/);
+    if (m) {
+      const d = Number(m[1]);
+      return {
+        tubeType: raw,
+        tubeTypeResolved: true,
+        profile: "ROUND",
+        minorDiamMm: d,
+        majorDiamMm: d,
+        assumptionNotes: [`Parsed ${raw}: round diameter ${d}mm.`]
+      };
+    }
+    return {
+      tubeType: raw,
+      tubeTypeResolved: false,
+      profile: "OVAL",
+      minorDiamMm: 15,
+      majorDiamMm: 30,
+      assumptionNotes: [
+        `Unknown tubeType "${raw}" \u2014 rendered as fixed OVAL 15\xD730 mm fallback (limitation).`,
+        "Supported patterns: OVAL_TUBE_<minor>X<major>, ROUND_D<diam> / ROUND_<diam>."
+      ]
+    };
+  }
   function buildStructuralPartGraph(furniSpec) {
     const valResult = validateFurniSpec(furniSpec);
     if (!valResult.valid) {
@@ -796,6 +985,8 @@ var AiDesignerTransport = (() => {
     }
     const fixedShelves = [];
     const adjShelves = [];
+    const previews = [];
+    const ledger = createComponentLedger();
     for (const bay of baySpans) {
       let currentBottomFaceY = yTopBottomDmm;
       let currentRailCenterY = null;
@@ -843,9 +1034,64 @@ var AiDesignerTransport = (() => {
             },
             sourceRuleIds: ["WR-003", "WR-008", "WR-013"]
           });
+          ledger.recordStructural(comp, bay.index, [partId]);
         } else if (comp.type.startsWith("HANGING_RAIL")) {
           const offsetBelowDmm = assertDeciMm(comp.offsetBelowShelfMm, `${comp.id}.offsetBelowShelfMm`);
           currentRailCenterY = currentBottomFaceY - offsetBelowDmm;
+          const railHw = furniSpec.hardware?.hangingRails || {};
+          const tube = resolveHangingRailTube(railHw.type || "OVAL_TUBE_15X30");
+          const endInsetMm = 2;
+          const endInsetDmm = Math.round(endInsetMm * 10);
+          const minXDmm = bay.minXDmm + endInsetDmm;
+          const maxXDmm = bay.maxXDmm - endInsetDmm;
+          const centerZDmm = zCarcassFrontDmm + Math.floor(dividerDepthDmm / 2);
+          const halfMinorDmm = Math.round(tube.minorDiamMm / 2 * 10);
+          const halfMajorDmm = Math.round(tube.majorDiamMm / 2 * 10);
+          const lengthMm = (maxXDmm - minXDmm) / 10;
+          previews.push({
+            id: (comp.partId || comp.id).toUpperCase().replace(/-/g, "_"),
+            kind: "HANGING_RAIL",
+            status: "PREVIEW_ONLY",
+            visualConcept: true,
+            engineeringVerified: false,
+            manufacturingOutput: false,
+            sourceComponentId: comp.id,
+            sourceComponentType: comp.type,
+            tubeType: tube.tubeType,
+            tubeTypeResolved: tube.tubeTypeResolved,
+            profile: tube.profile,
+            bayIndex: bay.index,
+            minXDmm,
+            maxXDmm,
+            minYDmm: currentRailCenterY - halfMinorDmm,
+            maxYDmm: currentRailCenterY + halfMinorDmm,
+            minZDmm: centerZDmm - halfMajorDmm,
+            maxZDmm: centerZDmm + halfMajorDmm,
+            centerYDmm: currentRailCenterY,
+            centerZDmm,
+            assumed: {
+              minorDiamMm: tube.minorDiamMm,
+              majorDiamMm: tube.majorDiamMm,
+              lengthMm,
+              endInsetMm,
+              offsetBelowShelfMm: comp.offsetBelowShelfMm,
+              centerZRule: "zCarcassFront + floor(dividerDepth/2) \u2014 mid carcass depth heuristic",
+              centerYRule: "shelfBottomFaceY - offsetBelowShelfMm",
+              finishIntent: "chrome metal preview (independent of melamine materialKey)"
+            },
+            notes: [
+              "Visual hanging-rail preview for customer layout comprehension.",
+              "Not a PartGraph structural panel; excluded from totalStructuralParts.",
+              `Hardware status: ${railHw.status || "PREVIEW_ONLY"}.`,
+              ...tube.assumptionNotes
+            ]
+          });
+          ledger.recordPreview(comp, bay.index, {
+            previewId: previews[previews.length - 1].id,
+            railCenterYDmm: currentRailCenterY,
+            bayMinXDmm: bay.minXDmm,
+            bayMaxXDmm: bay.maxXDmm
+          });
         } else if (comp.type === "SHELF_ADJUSTABLE") {
           let minYDmm;
           let maxYDmm;
@@ -896,6 +1142,9 @@ var AiDesignerTransport = (() => {
             },
             sourceRuleIds: ["WR-003", "WR-008", "WR-013"]
           });
+          ledger.recordStructural(comp, bay.index, [partId]);
+        } else {
+          ledger.recordUnsupported(comp, bay.index);
         }
       }
     }
@@ -1179,6 +1428,17 @@ var AiDesignerTransport = (() => {
         message: `Plinth side inset (${furniSpec.plinth.sideInsetMm}mm) is an assumption pending Bekzod workshop confirmation.`
       });
     }
+    const { componentOutcomes, counts: componentCounts } = ledger.finish();
+    for (const entry of componentOutcomes) {
+      if (entry.outcome !== "UNSUPPORTED") continue;
+      warnings.push({
+        code: entry.diagnosticCode,
+        message: `Component "${entry.componentId}" (${entry.componentType}) in bay ${entry.bayIndex} is not represented: ${entry.reason}`,
+        componentId: entry.componentId,
+        componentType: entry.componentType,
+        bayIndex: entry.bayIndex
+      });
+    }
     return {
       partGraphVersion: PARTGRAPH_VERSION,
       sourceSpecId: furniSpec.specId,
@@ -1186,10 +1446,17 @@ var AiDesignerTransport = (() => {
       unitScale: "deci-mm",
       qualificationStatus: furniSpec.qualificationStatus,
       parts,
+      previews,
       operations,
       warnings,
+      componentOutcomes,
       summary: {
         totalStructuralParts: parts.length,
+        totalPreviewParts: previews.length,
+        totalComponents: componentCounts.totalComponents,
+        structuralComponents: componentCounts.structuralComponents,
+        previewComponents: componentCounts.previewComponents,
+        unsupportedComponents: componentCounts.unsupportedComponents,
         totalOperations: operations.length,
         approvedOperations: operations.filter((op) => op.status === "APPROVED").length,
         blockedOperations: operations.filter((op) => op.status !== "APPROVED").length,
@@ -1238,6 +1505,13 @@ var AiDesignerTransport = (() => {
         addError("DUPLICATE_PART_ID", `Duplicate Part ID "${part.id}".`, part.id);
       }
       seenPartIds.add(part.id);
+      if (typeof part.role !== "string" || !Object.prototype.hasOwnProperty.call(PART_ROLES, part.role)) {
+        addError(
+          "INVALID_PART_ROLE",
+          `Part "${part.id}" has role ${JSON.stringify(part.role)}, which is not a declared PART_ROLES member.`,
+          part.id
+        );
+      }
       const fin = part.finished || {};
       ["lengthDmm", "widthDmm", "thicknessDmm"].forEach((dim) => {
         const val = fin[dim];
@@ -2326,6 +2600,77 @@ var AiDesignerTransport = (() => {
     [BAY_LAYOUT.SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES]: "short hanging over two adjustable shelves, with a shelf over the top"
   });
 
+  // src/lib/conversation/componentRequests.js
+  var REQUEST_VERB = "add|put|fit|install|include|want|need|like|love|have|give|get|use|with|featuring";
+  var NEGATION = /\b(no|not|n't|never|without|none|don't|dont|do\s+not|does\s+not|doesn't|won't|will\s+not|can't|cannot|rather\s+not|instead\s+of|skip|drop|remove|delete|take\s+out|get\s+rid|no\s+need|unless)\b/i;
+  var REFERENCE_FRAMING = /\b(you\s+(?:showed|mentioned|suggested|said)|the\s+ones?\s+(?:you|in)|showroom|catalogue|catalog|last\s+time|earlier|previous|other\s+wardrobe|like\s+the\s+one)\b/i;
+  var GAP = "(?:\\s+(?:up\\s+to|a|an|the|some|any|more|extra|another|about|around|at\\s+least|\\d+|one|two|three|four|five|six|couple|few|pair|of|my|our|it|its))*(?:\\s+[a-z-]+){0,2}\\s+";
+  var COMPONENT_WORDS = Object.freeze([
+    {
+      noun: "drawers?|drawer\\s+bank|chest\\s+of\\s+drawers",
+      componentType: COMPONENT_TYPES.DRAWER_BANK,
+      customerWord: "drawers"
+    }
+  ]);
+  var UNMODELLED_WORDS = Object.freeze([
+    { noun: "handles?|knobs?|pulls?", customerWord: "handles" },
+    { noun: "mirrors?|mirrored\\s+doors?", customerWord: "a mirror" },
+    { noun: "lighting|lights|led\\s+strips?|leds?|spotlights?|light\\s+strips?", customerWord: "lighting" },
+    { noun: "locks?|lockable", customerWord: "a lock" },
+    { noun: "shoe\\s+racks?|tie\\s+racks?|trouser\\s+racks?|baskets?|pull-?out\\s+racks?", customerWord: "racks and baskets" },
+    { noun: "soft[-\\s]?close|push[-\\s]?to[-\\s]?open", customerWord: "soft-close hardware" }
+  ]);
+  function toClauses(text) {
+    return text.split(/[;.!?]+|,\s*|\s+\band\b\s+|\s+\bbut\b\s+|\s+\bthen\b\s+|\s+\balso\b\s+|\s+\bhowever\b\s+/i).map((c) => c.trim()).filter(Boolean);
+  }
+  function clauseRequests(clause, noun) {
+    const governed = new RegExp(`\\b(?:${REQUEST_VERB})\\b${GAP}(?:${noun})\\b`, "i");
+    if (governed.test(clause)) return true;
+    const quantified = new RegExp(`\\b(?:\\d+|two|three|four|five|six)\\s+(?:[a-z-]+\\s+){0,2}?(?:${noun})\\b`, "i");
+    return quantified.test(clause);
+  }
+  function detectUnsupportedComponentRequest(text) {
+    if (typeof text !== "string" || !text.trim()) return null;
+    const unsupported = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const clause of toClauses(text)) {
+      if (NEGATION.test(clause) || REFERENCE_FRAMING.test(clause)) continue;
+      for (const { noun, componentType, customerWord } of COMPONENT_WORDS) {
+        if (seen.has(customerWord) || !clauseRequests(clause, noun)) continue;
+        const policy = COMPONENT_REPRESENTATION_POLICY[componentType];
+        if (!policy || policy.outcome !== COMPONENT_OUTCOME.UNSUPPORTED) continue;
+        seen.add(customerWord);
+        unsupported.push({
+          request: customerWord,
+          componentType,
+          code: policy.diagnosticCode ?? COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED,
+          reason: policy.customerMessage,
+          engineeringReason: policy.reason,
+          alternative: policy.suggestedAlternative ? policy.suggestedAlternative.summary : null,
+          alternativeApplied: false
+        });
+      }
+      for (const { noun, customerWord } of UNMODELLED_WORDS) {
+        if (seen.has(customerWord) || !clauseRequests(clause, noun)) continue;
+        seen.add(customerWord);
+        unsupported.push({
+          request: customerWord,
+          componentType: null,
+          code: COMPONENT_DIAGNOSTIC_CODE.COMPONENT_NOT_REPRESENTED,
+          reason: `I can't add ${customerWord} to the design yet. Your wardrobe is unchanged.`,
+          engineeringReason: `"${customerWord}" has no representation in FurniSpec v0.1 \u2014 it is neither a cut part nor an approved hardware item.`,
+          alternative: null,
+          alternativeApplied: false
+        });
+      }
+    }
+    if (unsupported.length === 0) return null;
+    return {
+      unsupported,
+      error: unsupported.map((u) => u.alternative ? `${u.reason} If you'd like, I can use ${u.alternative}.` : u.reason).join(" ")
+    };
+  }
+
   // src/lib/conversation/clarifyInput.js
   var ACCEPTED_DIMENSION_UNITS = Object.freeze({
     // Millimetre variants (factor to dmm = 10, factor to mm = 1)
@@ -2505,6 +2850,14 @@ var AiDesignerTransport = (() => {
     APPROVAL_REJECTED: "APPROVAL_REJECTED",
     APPROVED: "APPROVED"
   });
+  function unrepresentableComponents(partGraph) {
+    const outcomes = partGraph?.componentOutcomes ?? [];
+    const blocked = outcomes.filter((e) => e.outcome === COMPONENT_OUTCOME.UNSUPPORTED);
+    if (blocked.length === 0) return null;
+    const unsupported = unsupportedComponentsForCustomer(outcomes);
+    const customerMessage = unsupported.map((u) => u.alternative ? `${u.reason} If you'd like, I can use ${u.alternative}.` : u.reason).join(" ");
+    return { unsupported, customerMessage };
+  }
   function previewDraftWardrobe({
     description,
     answers = {},
@@ -2601,6 +2954,22 @@ var AiDesignerTransport = (() => {
     const proposal = createProposal(assembled.spec);
     const partGraph = buildStructuralPartGraph(assembled.spec);
     const partGraphValidation = validatePartGraph(partGraph);
+    const unrepresentable = unrepresentableComponents(partGraph);
+    if (unrepresentable) {
+      return {
+        stage: PIPELINE_STAGE.UNSUPPORTED_REQUEST,
+        interpretation,
+        observations,
+        gaps,
+        spec: null,
+        proposal: null,
+        partGraph: null,
+        partGraphValidation: null,
+        unsupported: unrepresentable.unsupported,
+        error: unrepresentable.customerMessage,
+        safety: preApprovalSafety(null)
+      };
+    }
     return {
       stage: PIPELINE_STAGE.DRAFT_PREVIEW,
       previewType: "DRAFT_PREVIEW",
@@ -2640,6 +3009,13 @@ var AiDesignerTransport = (() => {
   function parseConversationalCommand(text, currentFacts = {}) {
     if (typeof text !== "string" || !text.trim()) return null;
     const t = text.trim();
+    const unsupportedRequest = detectUnsupportedComponentRequest(t);
+    if (unsupportedRequest) {
+      return {
+        error: unsupportedRequest.error,
+        unsupported: unsupportedRequest.unsupported
+      };
+    }
     const widthRaw = extractDimension(t, "width");
     if (widthRaw !== null) {
       const parsedDim = parseDimension(widthRaw);
@@ -2717,7 +3093,19 @@ var AiDesignerTransport = (() => {
         assistantReply: `Configured the ${baySide} bay as short hanging with two adjustable shelves.`
       };
     }
-    if (/\b(?:add\s+(?:another\s+|more\s+)?shelf|more\s+shelves|add\s+shelv(?:es|ing)|shelves)\b/i.test(t)) {
+    const SHELF_INTENT = new RegExp(
+      [
+        "\\badd\\s+(?:another\\s+|more\\s+|a\\s+|an\\s+|\\d+\\s+|two\\s+|three\\s+)?shelv(?:es|ing)?\\b",
+        "\\badd\\s+(?:another\\s+|more\\s+)?shelf\\b",
+        "\\bmore\\s+shelves\\b",
+        "\\ball\\s+shelves\\b",
+        "\\b(?:use|switch|change|configure|want|need|with|give)\\b[^.]*\\bshelv(?:es|ing)\\b",
+        "\\b(?:\\d+|one|two|three|four)\\s+shelves\\b",
+        "\\bshelves\\s+(?:in|on)\\s+both\\b"
+      ].join("|"),
+      "i"
+    );
+    if (SHELF_INTENT.test(t)) {
       if (/all\s+shelves|shelves\s+(?:in|on)\s+both\s+(?:bays|sides)/i.test(t)) {
         const currentBays2 = currentFacts.bayCount || 2;
         const currentLayouts = currentFacts.bayLayouts || [];
@@ -2818,13 +3206,34 @@ var AiDesignerTransport = (() => {
         };
       }
     }
-    const matMatch = t.match(/\b(oak|walnut|white|grey|taupe|cream|black|navy|sage|ash)\b/i);
-    if (matMatch && /finish|material|color|colour/i.test(t)) {
+    const FINISH_WORDS = "oak|walnut|white|grey|taupe|cream|black|navy|sage|ash";
+    const SCOPED_PART = /\b(door|doors|handle|handles|shelf|shelves|drawer|drawers|rail|rails|interior|inside|back|plinth|trim|edge|edges|frame|top|side|sides)\b/i;
+    const matMatch = t.match(new RegExp(`\\b(${FINISH_WORDS})\\b`, "i"));
+    if (matMatch) {
       const mat = matMatch[1].toLowerCase();
-      return {
-        changes: { materialKey: mat },
-        assistantReply: `Changed finish to ${mat}.`
-      };
+      const beforeColour = t.slice(0, matMatch.index);
+      const afterColour = t.slice(matMatch.index + matMatch[1].length);
+      const scopedAfter = SCOPED_PART.test(afterColour);
+      const scopedBefore = SCOPED_PART.test(beforeColour);
+      if (scopedAfter || scopedBefore) {
+        const named = (afterColour.match(SCOPED_PART) || beforeColour.match(SCOPED_PART))[1].toLowerCase();
+        if (/\b(add|fit|install|include|put|attach|give\s+it)\b/i.test(beforeColour)) {
+          return {
+            error: `I can't add ${named} to the design yet. Your wardrobe is unchanged \u2014 you can still change its size, layout or finish.`
+          };
+        }
+        return {
+          error: `I can only change the finish of the whole wardrobe at the moment, not just the ${named}. Your design is unchanged \u2014 say "make it ${mat}" if you'd like the whole wardrobe in ${mat}.`
+        };
+      }
+      const explicitFinishWord = /finish|material|colour|color|paint/i.test(t);
+      const colourIsTheRequest = /(?:make|paint|change|switch|turn|do|have|want|like|use|try|in|to)\b[^.]*$/i.test(beforeColour) && /^[\s,.!?]*(please|thanks|thank you)?[\s,.!?]*$/i.test(afterColour);
+      if (explicitFinishWord || colourIsTheRequest) {
+        return {
+          changes: { materialKey: mat },
+          assistantReply: `Changed finish to ${mat}.`
+        };
+      }
     }
     return null;
   }
@@ -2838,9 +3247,12 @@ var AiDesignerTransport = (() => {
     const currentFacts = Object.fromEntries(currentObservations.map((o) => [o.key, o.value]));
     const parsed = parseConversationalCommand(commandText, currentFacts);
     if (parsed && parsed.error) {
+      const parsedUnsupported = Array.isArray(parsed.unsupported) ? parsed.unsupported : [];
       return {
         ok: false,
-        error: parsed.error
+        kind: parsedUnsupported.length > 0 ? "UNSUPPORTED" : "REJECTED",
+        error: parsed.error,
+        ...parsedUnsupported.length > 0 ? { unsupported: parsedUnsupported } : {}
       };
     }
     if (!parsed) {
@@ -2866,7 +3278,10 @@ var AiDesignerTransport = (() => {
       if (!draft2.spec || !draft2.partGraph || draft2.validation && !draft2.validation.valid) {
         return {
           ok: false,
-          error: draft2.error || draft2.validation?.errors?.map((e) => e.message).join("; ") || "Failed to generate valid wardrobe geometry for this change."
+          error: draft2.error || draft2.validation?.errors?.map((e) => e.message).join("; ") || "Failed to generate valid wardrobe geometry for this change.",
+          // Carry the structured refusal so the browser can show the reason and
+          // the offered alternative, rather than a generic failure string.
+          ...draft2.unsupported ? { unsupported: draft2.unsupported } : {}
         };
       }
       if (draft2.partGraphValidation && !draft2.partGraphValidation.valid) {
@@ -2898,7 +3313,10 @@ var AiDesignerTransport = (() => {
     if (!draft.spec || !draft.partGraph || draft.validation && !draft.validation.valid) {
       return {
         ok: false,
-        error: draft.error || draft.validation?.errors?.map((e) => e.message).join("; ") || "Failed to generate valid wardrobe geometry for this change."
+        error: draft.error || draft.validation?.errors?.map((e) => e.message).join("; ") || "Failed to generate valid wardrobe geometry for this change.",
+        // Carry the structured refusal so the browser can show the reason and
+        // the offered alternative, rather than a generic failure string.
+        ...draft.unsupported ? { unsupported: draft.unsupported } : {}
       };
     }
     if (draft.partGraphValidation && !draft.partGraphValidation.valid) {
@@ -3103,7 +3521,14 @@ var AiDesignerTransport = (() => {
     const parsed = parseConversationalCommand(message, factsFrom(currentObservations));
     if (parsed) {
       if (parsed.error) {
-        return { ok: false, error: parsed.error, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.REJECTED };
+        const parsedUnsupported = Array.isArray(parsed.unsupported) ? parsed.unsupported : [];
+        return {
+          ok: false,
+          error: parsed.error,
+          ...parsedUnsupported.length > 0 ? { unsupported: parsedUnsupported } : {},
+          source: RESULT_SOURCE.DETERMINISTIC,
+          kind: parsedUnsupported.length > 0 ? RESULT_KIND.UNSUPPORTED : RESULT_KIND.REJECTED
+        };
       }
       if (parsed.changes?.materialKey && Object.keys(parsed.changes).length === 1) {
         return {
@@ -3115,7 +3540,11 @@ var AiDesignerTransport = (() => {
         };
       }
       const applied2 = applyConversationalEdit({ currentObservations, commandText: message, specId, revision });
-      return applied2.ok ? { ...applied2, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.DESIGN_UPDATED } : { ...applied2, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.REJECTED };
+      if (applied2.ok) {
+        return { ...applied2, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.DESIGN_UPDATED };
+      }
+      const kind = Array.isArray(applied2.unsupported) && applied2.unsupported.length > 0 ? RESULT_KIND.UNSUPPORTED : RESULT_KIND.REJECTED;
+      return { ...applied2, source: RESULT_SOURCE.DETERMINISTIC, kind };
     }
     if (typeof fetchImpl !== "function") {
       return {

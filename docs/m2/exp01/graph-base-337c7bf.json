@@ -1,0 +1,417 @@
+{
+  "parts": [
+    {
+      "id": "CARC_TOP",
+      "role": "TOP_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 18000,
+        "widthDmm": 5800,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 0,
+        "maxXDmm": 18000,
+        "minYDmm": 23820,
+        "maxYDmm": 24000,
+        "minZDmm": 200,
+        "maxZDmm": 6000
+      }
+    },
+    {
+      "id": "CARC_BOT",
+      "role": "BOTTOM_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 18000,
+        "widthDmm": 5800,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 0,
+        "maxXDmm": 18000,
+        "minYDmm": 1000,
+        "maxYDmm": 1180,
+        "minZDmm": 200,
+        "maxZDmm": 6000
+      }
+    },
+    {
+      "id": "CARC_SIDE_L",
+      "role": "SIDE_PANEL_LEFT",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 22640,
+        "widthDmm": 5800,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 0,
+        "maxXDmm": 180,
+        "minYDmm": 1180,
+        "maxYDmm": 23820,
+        "minZDmm": 200,
+        "maxZDmm": 6000
+      }
+    },
+    {
+      "id": "CARC_SIDE_R",
+      "role": "SIDE_PANEL_RIGHT",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 22640,
+        "widthDmm": 5800,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 17820,
+        "maxXDmm": 18000,
+        "minYDmm": 1180,
+        "maxYDmm": 23820,
+        "minZDmm": 200,
+        "maxZDmm": 6000
+      }
+    },
+    {
+      "id": "CARC_DIV_01",
+      "role": "DIVIDER_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 22640,
+        "widthDmm": 5600,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 8910,
+        "maxXDmm": 9090,
+        "minYDmm": 1180,
+        "maxYDmm": 23820,
+        "minZDmm": 200,
+        "maxZDmm": 5800
+      }
+    },
+    {
+      "id": "SHELF_FIX_L1",
+      "role": "FIXED_SHELF",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 8730,
+        "widthDmm": 5600,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 180,
+        "maxXDmm": 8910,
+        "minYDmm": 20140,
+        "maxYDmm": 20320,
+        "minZDmm": 200,
+        "maxZDmm": 5800
+      }
+    },
+    {
+      "id": "SHELF_FIX_R1",
+      "role": "FIXED_SHELF",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 8730,
+        "widthDmm": 5600,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 9090,
+        "maxXDmm": 17820,
+        "minYDmm": 20140,
+        "maxYDmm": 20320,
+        "minZDmm": 200,
+        "maxZDmm": 5800
+      }
+    },
+    {
+      "id": "SHELF_ADJ_R2",
+      "role": "ADJUSTABLE_SHELF",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 8710,
+        "widthDmm": 5500,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 9100,
+        "maxXDmm": 17810,
+        "minYDmm": 6280,
+        "maxYDmm": 6460,
+        "minZDmm": 250,
+        "maxZDmm": 5750
+      }
+    },
+    {
+      "id": "SHELF_ADJ_R3",
+      "role": "ADJUSTABLE_SHELF",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 8710,
+        "widthDmm": 5500,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 9100,
+        "maxXDmm": 17810,
+        "minYDmm": 9960,
+        "maxYDmm": 10140,
+        "minZDmm": 250,
+        "maxZDmm": 5750
+      }
+    },
+    {
+      "id": "BACK_PANEL_01",
+      "role": "BACK_PANEL",
+      "materialCode": "HDF_WHITE_6",
+      "finished": {
+        "lengthDmm": 22760,
+        "widthDmm": 17760,
+        "thicknessDmm": 60
+      },
+      "placement": {
+        "minXDmm": 120,
+        "maxXDmm": 17880,
+        "minYDmm": 1120,
+        "maxYDmm": 23880,
+        "minZDmm": 5865,
+        "maxZDmm": 5925
+      }
+    },
+    {
+      "id": "DOOR_01",
+      "role": "DOOR_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 22960,
+        "widthDmm": 4475,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 20,
+        "maxXDmm": 4495,
+        "minYDmm": 1020,
+        "maxYDmm": 23980,
+        "minZDmm": 0,
+        "maxZDmm": 180
+      }
+    },
+    {
+      "id": "DOOR_02",
+      "role": "DOOR_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 22960,
+        "widthDmm": 4475,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 4515,
+        "maxXDmm": 8990,
+        "minYDmm": 1020,
+        "maxYDmm": 23980,
+        "minZDmm": 0,
+        "maxZDmm": 180
+      }
+    },
+    {
+      "id": "DOOR_03",
+      "role": "DOOR_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 22960,
+        "widthDmm": 4475,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 9010,
+        "maxXDmm": 13485,
+        "minYDmm": 1020,
+        "maxYDmm": 23980,
+        "minZDmm": 0,
+        "maxZDmm": 180
+      }
+    },
+    {
+      "id": "DOOR_04",
+      "role": "DOOR_PANEL",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 22960,
+        "widthDmm": 4475,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 13505,
+        "maxXDmm": 17980,
+        "minYDmm": 1020,
+        "maxYDmm": 23980,
+        "minZDmm": 0,
+        "maxZDmm": 180
+      }
+    },
+    {
+      "id": "PLINTH_FRONT",
+      "role": "PLINTH_FRONT_FASCIA",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 18000,
+        "widthDmm": 1000,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 0,
+        "maxXDmm": 18000,
+        "minYDmm": 0,
+        "maxYDmm": 1000,
+        "minZDmm": 200,
+        "maxZDmm": 380
+      }
+    },
+    {
+      "id": "PLINTH_REAR",
+      "role": "PLINTH_REAR_RAIL",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 18000,
+        "widthDmm": 1000,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 0,
+        "maxXDmm": 18000,
+        "minYDmm": 0,
+        "maxYDmm": 1000,
+        "minZDmm": 5820,
+        "maxZDmm": 6000
+      }
+    },
+    {
+      "id": "PLINTH_SIDE_L",
+      "role": "PLINTH_SIDE_RETURN_LEFT",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 5440,
+        "widthDmm": 1000,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 0,
+        "maxXDmm": 180,
+        "minYDmm": 0,
+        "maxYDmm": 1000,
+        "minZDmm": 380,
+        "maxZDmm": 5820
+      }
+    },
+    {
+      "id": "PLINTH_SIDE_R",
+      "role": "PLINTH_SIDE_RETURN_RIGHT",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 5440,
+        "widthDmm": 1000,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 17820,
+        "maxXDmm": 18000,
+        "minYDmm": 0,
+        "maxYDmm": 1000,
+        "minZDmm": 380,
+        "maxZDmm": 5820
+      }
+    },
+    {
+      "id": "PLINTH_CROSS_C",
+      "role": "PLINTH_CROSS_STRETCHER",
+      "materialCode": "MEL_WHITE_18",
+      "finished": {
+        "lengthDmm": 5440,
+        "widthDmm": 1000,
+        "thicknessDmm": 180
+      },
+      "placement": {
+        "minXDmm": 8910,
+        "maxXDmm": 9090,
+        "minYDmm": 0,
+        "maxYDmm": 1000,
+        "minZDmm": 380,
+        "maxZDmm": 5820
+      }
+    }
+  ],
+  "operations": [
+    {
+      "id": "OP_GRV_SIDE_L",
+      "hostPartId": "CARC_SIDE_L",
+      "type": "BACK_GROOVE",
+      "face": "INNER",
+      "vector": [
+        1,
+        0,
+        0
+      ],
+      "widthDmm": 70,
+      "depthDmm": 70,
+      "status": "APPROVED"
+    },
+    {
+      "id": "OP_GRV_SIDE_R",
+      "hostPartId": "CARC_SIDE_R",
+      "type": "BACK_GROOVE",
+      "face": "INNER",
+      "vector": [
+        -1,
+        0,
+        0
+      ],
+      "widthDmm": 70,
+      "depthDmm": 70,
+      "status": "APPROVED"
+    },
+    {
+      "id": "OP_GRV_TOP",
+      "hostPartId": "CARC_TOP",
+      "type": "BACK_GROOVE",
+      "face": "LOWER",
+      "vector": [
+        0,
+        -1,
+        0
+      ],
+      "widthDmm": 70,
+      "depthDmm": 70,
+      "status": "APPROVED"
+    },
+    {
+      "id": "OP_GRV_BOT",
+      "hostPartId": "CARC_BOT",
+      "type": "BACK_GROOVE",
+      "face": "UPPER",
+      "vector": [
+        0,
+        1,
+        0
+      ],
+      "widthDmm": 70,
+      "depthDmm": 70,
+      "status": "APPROVED"
+    }
+  ],
+  "previews": null,
+  "summary": {
+    "totalStructuralParts": 19,
+    "totalOperations": 4,
+    "approvedOperations": 4,
+    "blockedOperations": 0,
+    "envelope": {
+      "widthDmm": 18000,
+      "heightDmm": 24000,
+      "depthDmm": 6000
+    }
+  },
+  "hasPreviewsKey": false
+}

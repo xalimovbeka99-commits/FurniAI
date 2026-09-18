@@ -28,6 +28,10 @@
 
 import { buildStructuralPartGraph } from "../partgraph/buildStructuralPartGraph.js";
 import { validatePartGraph } from "../partgraph/validatePartGraph.js";
+import {
+  COMPONENT_OUTCOME,
+  unsupportedComponentsForCustomer,
+} from "../partgraph/componentOutcomes.js";
 import { QUALIFICATION_STATUS, SPEC_STATUS } from "../furnispec/schema.js";
 import { validateFurniSpec } from "../furnispec/validate.js";
 import { AssemblyBlockedError, assembleFurniSpec } from "./assembleFurniSpec.js";
@@ -42,6 +46,7 @@ import {
 } from "./intakeModel.js";
 import { createDeterministicPhraseAdapter, assertProposalOnly } from "./proposalAdapter.js";
 import { questionsFor } from "./questions.js";
+import { detectUnsupportedComponentRequest } from "./componentRequests.js";
 
 export const PIPELINE_STAGE = Object.freeze({
   NEEDS_CLARIFICATION: "NEEDS_CLARIFICATION",
@@ -215,6 +220,26 @@ export function approveAndPreview({ proposal, approval }) {
   const partGraph = buildStructuralPartGraph(approvedSpec);
   const partGraphValidation = validatePartGraph(partGraph);
 
+  // An approval cannot make an unrepresentable component representable. If the
+  // approved spec asks for something the kernel cannot build, this is refused
+  // at the strictest boundary in the system rather than previewed.
+  const unrepresentable = unrepresentableComponents(partGraph);
+  if (unrepresentable) {
+    return {
+      stage: PIPELINE_STAGE.UNSUPPORTED_REQUEST,
+      proposal,
+      approval,
+      approvalValidation,
+      spec: null,
+      validation,
+      partGraph: null,
+      partGraphValidation: null,
+      unsupported: unrepresentable.unsupported,
+      error: unrepresentable.customerMessage,
+      safety: preApprovalSafety(null, APPROVAL_STATE.APPROVAL_REJECTED),
+    };
+  }
+
   return {
     stage: PIPELINE_STAGE.APPROVED_FOR_PREVIEW,
     proposal,
@@ -255,6 +280,40 @@ export function runConversationToWardrobe({ description, answers = {}, specId, r
  * - Facts record exact origins (CUSTOMER_STATED, EXTRACTED, DEFAULTED, RULE_DERIVED).
  * - Workshop approval is NOT fabricated; CNC and drilling remain blocked.
  */
+/**
+ * The line between "we recorded that we could not build this" and "we built it".
+ *
+ * The component ledger makes an unrepresentable component VISIBLE in the
+ * PartGraph. That is a diagnostic, not a fulfilment — and the two must never
+ * be confused. A PartGraph whose ledger contains an UNSUPPORTED outcome is a
+ * record of a request the kernel could not honour; returning it to a customer
+ * as their new design would mean quietly shipping a wardrobe missing the part
+ * they asked for, with the explanation buried in a field nobody reads.
+ *
+ * So every pipeline path that turns a spec into a customer-visible design runs
+ * this first. If anything is unrepresentable the design is NOT replaced, the
+ * revision is NOT advanced, and no suggested alternative is applied — the
+ * caller gets the explanation and keeps the design they already had.
+ *
+ * @param {object} partGraph
+ * @returns {{ unsupported: Array<object>, customerMessage: string } | null}
+ *          null when every component was represented.
+ */
+export function unrepresentableComponents(partGraph) {
+  const outcomes = partGraph?.componentOutcomes ?? [];
+  const blocked = outcomes.filter((e) => e.outcome === COMPONENT_OUTCOME.UNSUPPORTED);
+  if (blocked.length === 0) return null;
+
+  const unsupported = unsupportedComponentsForCustomer(outcomes);
+  // One sentence per refused component, in the customer's language, plus the
+  // alternative as an OFFER. Nothing here applies anything.
+  const customerMessage = unsupported
+    .map((u) => (u.alternative ? `${u.reason} If you'd like, I can use ${u.alternative}.` : u.reason))
+    .join(" ");
+
+  return { unsupported, customerMessage };
+}
+
 export function previewDraftWardrobe({
   description,
   answers = {},
@@ -361,6 +420,26 @@ export function previewDraftWardrobe({
   const partGraph = buildStructuralPartGraph(assembled.spec);
   const partGraphValidation = validatePartGraph(partGraph);
 
+  // A draft that silently omits something the customer asked for is not a
+  // draft of their request. Refuse with the explanation instead of showing a
+  // wardrobe that quietly lost a part.
+  const unrepresentable = unrepresentableComponents(partGraph);
+  if (unrepresentable) {
+    return {
+      stage: PIPELINE_STAGE.UNSUPPORTED_REQUEST,
+      interpretation,
+      observations,
+      gaps,
+      spec: null,
+      proposal: null,
+      partGraph: null,
+      partGraphValidation: null,
+      unsupported: unrepresentable.unsupported,
+      error: unrepresentable.customerMessage,
+      safety: preApprovalSafety(null),
+    };
+  }
+
   return {
     stage: PIPELINE_STAGE.DRAFT_PREVIEW,
     previewType: "DRAFT_PREVIEW",
@@ -434,6 +513,24 @@ function extractDimension(text, axis) {
 export function parseConversationalCommand(text, currentFacts = {}) {
   if (typeof text !== "string" || !text.trim()) return null;
   const t = text.trim();
+
+  // 0. A request for something the engine cannot build is answered here,
+  // before any branch tries to interpret it as a dimension or a layout.
+  // "Add drawers" previously matched nothing and fell through to the model,
+  // so a hard capability limit surfaced either as a generic validation error
+  // or — with no provider reachable — as "the designer is not available".
+  // Both told the customer to try again at something that will never work.
+  //
+  // The refusal carries structured `unsupported` entries, which the transport
+  // maps to RESULT_KIND.UNSUPPORTED so the browser shows the reason and the
+  // offered alternative. Nothing is applied.
+  const unsupportedRequest = detectUnsupportedComponentRequest(t);
+  if (unsupportedRequest) {
+    return {
+      error: unsupportedRequest.error,
+      unsupported: unsupportedRequest.unsupported,
+    };
+  }
 
   // 1. Width: "make it 2000 mm wide", "make it -2000 mm wide", "width 2000", "2.1m wide"
   const widthRaw = extractDimension(t, "width");
@@ -532,7 +629,24 @@ export function parseConversationalCommand(text, currentFacts = {}) {
   // Either add exactly one shelf through supported parameters, preserving unrelated choices,
   // or offer the two-shelf layout as an explicit alternative before applying it.
   // Do not report an unchanged layout as an added shelf."
-  if (/\b(?:add\s+(?:another\s+|more\s+)?shelf|more\s+shelves|add\s+shelv(?:es|ing)|shelves)\b/i.test(t)) {
+  // The bare word "shelves" used to enter this branch on its own, so "make the
+  // shelves oak" — a finish request — was answered with a shelving-layout
+  // refusal. A confident answer to a question nobody asked. Entry now requires
+  // an intent about shelf quantity or layout; a sentence that merely mentions
+  // shelves falls through to the branches that actually match it.
+  const SHELF_INTENT = new RegExp(
+    [
+      "\\badd\\s+(?:another\\s+|more\\s+|a\\s+|an\\s+|\\d+\\s+|two\\s+|three\\s+)?shelv(?:es|ing)?\\b",
+      "\\badd\\s+(?:another\\s+|more\\s+)?shelf\\b",
+      "\\bmore\\s+shelves\\b",
+      "\\ball\\s+shelves\\b",
+      "\\b(?:use|switch|change|configure|want|need|with|give)\\b[^.]*\\bshelv(?:es|ing)\\b",
+      "\\b(?:\\d+|one|two|three|four)\\s+shelves\\b",
+      "\\bshelves\\s+(?:in|on)\\s+both\\b",
+    ].join("|"),
+    "i"
+  );
+  if (SHELF_INTENT.test(t)) {
     // Check if "all shelves" / "shelves on both"
     if (/all\s+shelves|shelves\s+(?:in|on)\s+both\s+(?:bays|sides)/i.test(t)) {
       const currentBays = currentFacts.bayCount || 2;
@@ -657,14 +771,69 @@ export function parseConversationalCommand(text, currentFacts = {}) {
     }
   }
 
-  // 7. Finish change: "oak", "walnut", "white"
-  const matMatch = t.match(/\b(oak|walnut|white|grey|taupe|cream|black|navy|sage|ash)\b/i);
-  if (matMatch && /finish|material|color|colour/i.test(t)) {
+  // 7. Finish change.
+  //
+  // Two things are separated here, because conflating them is how a customer
+  // ends up with a whole wardrobe repainted when they asked about one door.
+  //
+  //   "Make it walnut"            → change the wardrobe finish.
+  //   "Make the doors walnut"     → a per-part finish, which is NOT supported.
+  //                                 Say so; do not apply it to everything.
+  //
+  // Widening matters for a second reason: every phrasing the parser misses
+  // spends a model call on a trivial edit, and the model is slower, costlier
+  // and less predictable than this branch.
+  const FINISH_WORDS = "oak|walnut|white|grey|taupe|cream|black|navy|sage|ash";
+
+  /** Parts a customer might name; a finish scoped to one of these is not supported. */
+  const SCOPED_PART = /\b(door|doors|handle|handles|shelf|shelves|drawer|drawers|rail|rails|interior|inside|back|plinth|trim|edge|edges|frame|top|side|sides)\b/i;
+
+  const matMatch = t.match(new RegExp(`\\b(${FINISH_WORDS})\\b`, "i"));
+  if (matMatch) {
     const mat = matMatch[1].toLowerCase();
-    return {
-      changes: { materialKey: mat },
-      assistantReply: `Changed finish to ${mat}.`,
-    };
+    const beforeColour = t.slice(0, matMatch.index);
+    const afterColour = t.slice(matMatch.index + matMatch[1].length);
+
+    // A noun straight after the colour ("black handles") means the colour
+    // describes that thing, not the wardrobe.
+    const scopedAfter = SCOPED_PART.test(afterColour);
+    // A part named before the colour ("make the doors walnut") scopes it too.
+    const scopedBefore = SCOPED_PART.test(beforeColour);
+
+    if (scopedAfter || scopedBefore) {
+      const named = (afterColour.match(SCOPED_PART) || beforeColour.match(SCOPED_PART))[1].toLowerCase();
+
+      // "Add black handles" is a request for handles, not for a black
+      // wardrobe. Answering it as a finish problem would be a confident,
+      // fluent, wrong answer — worse than admitting the real limitation.
+      if (/\b(add|fit|install|include|put|attach|give\s+it)\b/i.test(beforeColour)) {
+        return {
+          error:
+            `I can't add ${named} to the design yet. Your wardrobe is unchanged — ` +
+            `you can still change its size, layout or finish.`,
+        };
+      }
+
+      return {
+        error:
+          `I can only change the finish of the whole wardrobe at the moment, not just the ${named}. ` +
+          `Your design is unchanged — say "make it ${mat}" if you'd like the whole wardrobe in ${mat}.`,
+      };
+    }
+
+    // An explicit finish word, or the colour standing as the whole point of
+    // the sentence ("make it walnut", "in oak", "walnut please").
+    const explicitFinishWord = /finish|material|colour|color|paint/i.test(t);
+    const colourIsTheRequest =
+      /(?:make|paint|change|switch|turn|do|have|want|like|use|try|in|to)\b[^.]*$/i.test(beforeColour) &&
+      /^[\s,.!?]*(please|thanks|thank you)?[\s,.!?]*$/i.test(afterColour);
+
+    if (explicitFinishWord || colourIsTheRequest) {
+      return {
+        changes: { materialKey: mat },
+        assistantReply: `Changed finish to ${mat}.`,
+      };
+    }
   }
 
   return null;
@@ -684,9 +853,17 @@ export function applyConversationalEdit({
   const parsed = parseConversationalCommand(commandText, currentFacts);
 
   if (parsed && parsed.error) {
+    // A parse-time capability limit carries the same structured shape as a
+    // kernel-time one, so the browser and the transport handle both the same
+    // way and neither can lose the explanation. `kind` (adopted from Grok's
+    // PR #4) lets a caller branch without re-deriving the reason from the
+    // array — asserted by src/lib/adapters/unsupportedCustomerEntry.test.js.
+    const parsedUnsupported = Array.isArray(parsed.unsupported) ? parsed.unsupported : [];
     return {
       ok: false,
+      kind: parsedUnsupported.length > 0 ? "UNSUPPORTED" : "REJECTED",
       error: parsed.error,
+      ...(parsedUnsupported.length > 0 ? { unsupported: parsedUnsupported } : {}),
     };
   }
 
@@ -715,6 +892,9 @@ export function applyConversationalEdit({
       return {
         ok: false,
         error: draft.error || (draft.validation?.errors?.map((e) => e.message).join("; ")) || "Failed to generate valid wardrobe geometry for this change.",
+        // Carry the structured refusal so the browser can show the reason and
+        // the offered alternative, rather than a generic failure string.
+        ...(draft.unsupported ? { unsupported: draft.unsupported } : {}),
       };
     }
     if (draft.partGraphValidation && !draft.partGraphValidation.valid) {
@@ -753,6 +933,9 @@ export function applyConversationalEdit({
     return {
       ok: false,
       error: draft.error || (draft.validation?.errors?.map((e) => e.message).join("; ")) || "Failed to generate valid wardrobe geometry for this change.",
+      // Carry the structured refusal so the browser can show the reason and
+      // the offered alternative, rather than a generic failure string.
+      ...(draft.unsupported ? { unsupported: draft.unsupported } : {}),
     };
   }
 
