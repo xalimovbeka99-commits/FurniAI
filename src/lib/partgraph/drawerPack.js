@@ -28,12 +28,14 @@
  *
  *   row height    = the bank's own heightMm divided by its own rows
  *   box width     = the bay's clear width minus the ruled 21.0mm deduction
- *   front width   = clear width + one panel thickness - two ruled reveals
+ *   front width   = the bay's clear width minus two ruled reveals
  *
- * The last is half-overlay tiling: each front covers half of the panel on
- * either side of its bay, which is the only arrangement in which adjacent
- * fronts neither collide nor leave the carcass showing. The formula and its
- * rule IDs travel with every part.
+ * The front is INSET in its bay, not overlaid on the carcass. This is a
+ * hinged-door wardrobe and the drawers live behind the doors, so an overlay
+ * front would occupy the doors' own plane - the validator's collision check
+ * proves it. Inset also removes any need to decide how a front tiles across a
+ * divider, which no rule states. The formula and its rule IDs travel with
+ * every part.
  */
 import { resolve } from "../rules/wardrobeRuleCatalog.js";
 import { PART_ROLES, GRAIN_DIRECTIONS, ORIENTATIONS } from "./schema.js";
