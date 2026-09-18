@@ -56,6 +56,11 @@ export const WARDROBE_RULES = Object.freeze({
   hingeType: rule("WR-010", "CONCEALED_110", RULEBOOK_V0_1, "110 degree soft-close concealed clip-on, semantic only."),
   hingeCountPerDoor: rule("WR-011", 5, RULEBOOK_V0_1, "Five hinges per door."),
   shelfPinPitchMm: rule("WR-009", 32.0, RULEBOOK_V0_1, "System 32 semantic grid; drilling coordinates blocked."),
+  shelfPinFrontSetbackMm: rule("WR-009", 37.0, RULEBOOK_V0_1, "System 32 front-edge row setback, stated in the WR-009 Rulebook row alongside the 32.0mm pitch. Semantic only; drilling coordinates blocked."),
+  shelfPinDiameterMm: rule("WR-009", 5.0, RULEBOOK_V0_1, "Numeric form of the approved SYSTEM_32_PIN_5MM pin type. Semantic only."),
+  shelfPinHoleDepthMm: rule("UNRULED-PIN-HOLE-DEPTH", null, REQUIRES_BEKZOD_RULING, "No approved hole depth. The 12-14mm figure in docs/knowledge-base/construction-standards.md cites Wikipedia, not a Bekzod ruling. Must be asked."),
+  shelfPinColumnOriginDatum: rule("UNRULED-PIN-COLUMN-ORIGIN", null, REQUIRES_BEKZOD_RULING, "WR-009 fixes the pitch and the front setback but not where the first hole of a column sits. Without an origin datum a hole column cannot be enumerated. Must be asked."),
+  shelfPinRearRowPolicy: rule("UNRULED-PIN-REAR-ROW", null, REQUIRES_BEKZOD_RULING, "Whether a rear pin row is bored, and whether it mirrors the 37.0mm setback from the rear edge, is a machine-retooling convenience described in a knowledge-base note, not a Rulebook rule. Must be asked."),
 
   // --- Values present in the Bekzod-approved Golden Wardrobe fixture but not
   // --- stated as a numbered Rulebook rule. Approved, but by fixture not by rule.
