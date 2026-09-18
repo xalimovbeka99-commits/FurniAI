@@ -561,7 +561,7 @@ function renderDimensionSVG(x1, y1, x2, y2, text, options = {}) {
  *
  * PL-006: a drawer bank in a bay at or below the construction floor produces a
  * zero- or negative-width DRAWER_BACK. `validatePartGraph` rejects it, and the
- * cut-list, nesting and DXF entry points all fail closed with the part named —
+ * cut-list, nesting and DXF entry points all fail closed with the part named â€”
  * but the SVG path took a PartGraph on trust and drew a 13,000-character shop
  * drawing containing a panel that cannot be cut. A drawing is the artifact a
  * workshop acts on, so it is the worst of the four to leave unguarded.
@@ -599,34 +599,6 @@ function assertRenderablePartGraph(partGraph, entryPoint) {
  * @param {string} [options.projectName="FurniAI Parametric Wardrobe"]
  * @returns {string} Standalone SVG document markup
  */
-/**
- * Fail-closed gate for shop-drawing SVG.
- * A returned SVG string for invalid geometry is a failure to REJECT invalid
- * input — it does not alone prove a degenerate part was rendered.
- */
-
-/**
- * Refuse to draw a PartGraph the validator rejects (PL-006).
- * A returned SVG for invalid input is a failure to REJECT — not proof a
- * degenerate part was rendered on screen.
- */
-function assertRenderablePartGraph(partGraph, entryPoint) {
-  if (!partGraph || !Array.isArray(partGraph.parts)) {
-    throw new Error(`${entryPoint} requires a PartGraph object.`);
-  }
-  const result = validatePartGraph(partGraph);
-  if (!result.valid) {
-    const degenerate = result.errors.filter(
-      (e) => e.code === "INVALID_FINISHED_DIMENSION" || e.code === "INVALID_RAW_DIMENSION"
-    );
-    const reported = (degenerate.length > 0 ? degenerate : result.errors).slice(0, 3);
-    throw new Error(
-      `${entryPoint} refuses an invalid PartGraph: ` +
-        reported.map((e) => `[${e.code}] ${e.message}`).join(" ")
-    );
-  }
-}
-
 export function generateShopDrawingsSVG(partGraph, options = {}) {
   assertRenderablePartGraph(partGraph, "generateShopDrawingsSVG");
   const sheet = SHEET_SIZES[options.sheetSize || "A3"] || SHEET_SIZES.A3;
@@ -772,13 +744,13 @@ export function generateShopDrawingsSVG(partGraph, options = {}) {
   svg += `  <g id="material_legend">\n`;
   svg += `    <rect x="${legX}" y="${legY}" width="144" height="52" fill="#f8fafc" stroke="#64748b" stroke-width="0.3" rx="1.0" />\n`;
   svg += `    <text x="${legX + 4}" y="${legY + 6}" class="legend-title">MATERIAL &amp; HARDWARE SCHEDULE</text>\n`;
-  svg += `    <text x="${legX + 4}" y="${legY + 12}" class="legend-item">• CARCASS STOCK: ${carcassCode} (18.0 mm MFC)</text>\n`;
-  svg += `    <text x="${legX + 4}" y="${legY + 18}" class="legend-item">• FACADE STOCK: ${facadeCode} (18.0 mm MFC)</text>\n`;
-  svg += `    <text x="${legX + 4}" y="${legY + 24}" class="legend-item">• BACK PANEL: 6.0 mm HDF Insert into 7.0 mm Groove</text>\n`;
-  svg += `    <text x="${legX + 4}" y="${legY + 30}" class="legend-item">• DRAWER PACK: 15.0 mm Sides/Back, 6.0 mm Bottom (HDF_WHITE_6), 18.0 mm Front</text>\n`;
-  svg += `    <text x="${legX + 4}" y="${legY + 36}" class="legend-item">• HARDWARE: UNDERMOUNT_CONCEALED_21MM runners (nominal deduction 21.0 mm)</text>\n`;
-  svg += `    <text x="${legX + 4}" y="${legY + 42}" class="legend-item">• EDGE-BANDING (1.0 mm ABS): All exposed carcass front edges &amp; facades</text>\n`;
-  svg += `    <text x="${legX + 4}" y="${legY + 48}" class="legend-item">• EDGE-BANDING (0.4 mm Melamine): Shelves front face (adjustable)</text>\n`;
+  svg += `    <text x="${legX + 4}" y="${legY + 12}" class="legend-item">â€¢ CARCASS STOCK: ${carcassCode} (18.0 mm MFC)</text>\n`;
+  svg += `    <text x="${legX + 4}" y="${legY + 18}" class="legend-item">â€¢ FACADE STOCK: ${facadeCode} (18.0 mm MFC)</text>\n`;
+  svg += `    <text x="${legX + 4}" y="${legY + 24}" class="legend-item">â€¢ BACK PANEL: 6.0 mm HDF Insert into 7.0 mm Groove</text>\n`;
+  svg += `    <text x="${legX + 4}" y="${legY + 30}" class="legend-item">â€¢ DRAWER PACK: 15.0 mm Sides/Back, 6.0 mm Bottom (HDF_WHITE_6), 18.0 mm Front</text>\n`;
+  svg += `    <text x="${legX + 4}" y="${legY + 36}" class="legend-item">â€¢ HARDWARE: UNDERMOUNT_CONCEALED_21MM runners (nominal deduction 21.0 mm)</text>\n`;
+  svg += `    <text x="${legX + 4}" y="${legY + 42}" class="legend-item">â€¢ EDGE-BANDING (1.0 mm ABS): All exposed carcass front edges &amp; facades</text>\n`;
+  svg += `    <text x="${legX + 4}" y="${legY + 48}" class="legend-item">â€¢ EDGE-BANDING (0.4 mm Melamine): Shelves front face (adjustable)</text>\n`;
   svg += `  </g>\n`;
 
   // TITLE BLOCK (Bottom-Right)
@@ -814,7 +786,7 @@ export function generateShopDrawingsSVG(partGraph, options = {}) {
 
   svg += `    <text x="${tbX + 4}" y="${tbY + 49}" class="title-sub">UNITS:</text>\n`;
   svg += `    <text x="${tbX + 16}" y="${tbY + 49}" class="title-val">MILLIMETRES (mm)</text>\n`;
-  svg += `    <text x="${tbX + 76}" y="${tbY + 49}" class="title-sub">ACCURACY: ±0.5 mm</text>\n`;
+  svg += `    <text x="${tbX + 76}" y="${tbY + 49}" class="title-sub">ACCURACY: Â±0.5 mm</text>\n`;
   svg += `  </g>\n`;
 
   svg += `</svg>\n`;
