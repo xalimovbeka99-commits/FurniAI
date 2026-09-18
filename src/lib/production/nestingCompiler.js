@@ -48,6 +48,52 @@ export const MAX_USABLE_SHEET_WIDTH_MM = 2070 - 2 * DEFAULT_PERIMETER_TRIM_MM; /
 
 export const PANEL_EXCEEDS_SHEET_ENVELOPE = "PANEL_EXCEEDS_SHEET_ENVELOPE";
 
+/**
+ * Fail-closed when a nesting input uses a material code outside the routed CAM catalog.
+ * Never silently bucket unrouted stock into UNKNOWN / "Other Materials".
+ */
+export const UNROUTED_MATERIAL_ERROR = "UNROUTED_MATERIAL_ERROR";
+
+/** Material codes the nesting CAM path will schedule onto sheet stock. */
+export const ROUTED_MATERIAL_CODES = Object.freeze([
+  "MEL_WHITE_18",
+  "MEL_WHITE_15",
+  "HDF_WHITE_6",
+  "HDF_WHITE_06",
+  "BIRCH_PLY_15",
+]);
+
+const ROUTED_MATERIAL_SET = new Set(ROUTED_MATERIAL_CODES);
+
+/**
+ * @param {string|null|undefined} materialCode
+ * @returns {boolean}
+ */
+export function isRoutedMaterialCode(materialCode) {
+  const code = String(materialCode ?? "").trim().toUpperCase();
+  return code.length > 0 && ROUTED_MATERIAL_SET.has(code);
+}
+
+/**
+ * @param {string|null|undefined} materialCode
+ * @param {string} [partId]
+ * @returns {string} normalized routed code
+ */
+export function assertRoutedMaterialCode(materialCode, partId = "") {
+  const code = String(materialCode ?? "").trim();
+  const upper = code.toUpperCase();
+  if (isRoutedMaterialCode(upper)) return upper;
+  const label = code.length > 0 ? code : "(empty)";
+  const where = partId ? ` part "${partId}"` : "";
+  const err = new Error(
+    `Unrecognized material code ${label}${where}: nesting refuses unrouted stock (no default bucket).`
+  );
+  err.code = UNROUTED_MATERIAL_ERROR;
+  err.materialCode = code;
+  if (partId) err.partId = partId;
+  throw err;
+}
+
 /** Explicit split policies that allow oversized panels past envelope rejection. */
 export const OVERSIZED_SPLIT_POLICIES = Object.freeze({
   TWO_PIECE_TONGUE_AND_GROOVE: "TWO_PIECE_TONGUE_AND_GROOVE",
@@ -984,6 +1030,9 @@ export function compileNestingManifest(partGraph, options = {}) {
   const usable = usableSheetEnvelopeMm(perimeterTrimMm, envelopeStock);
 
   const cutRows = buildCutListRows(partGraph);
+  for (const row of cutRows) {
+    assertRoutedMaterialCode(row.material ?? row.materialCode, row.partId);
+  }
   const edgeBandingLinearMetersByThicknessMm = sumEdgeBandingLinearMeters(cutRows);
 
   // --- Oversized preflight (fail-closed) ---------------------------------

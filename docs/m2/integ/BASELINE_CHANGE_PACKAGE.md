@@ -1,4 +1,4 @@
-# M2 Baseline Change Package (docs only — no pin refresh)
+# M2 Baseline Change Package (docs only â€” no pin refresh)
 
 **Branch:** `integ/m2-integration-lead`  
 **Combined tip (engineering reconcile):** `4dcc96e09f7b93890b96839072fdd04b2af38ad5`  
@@ -6,7 +6,7 @@
 **Start baseline:** `3fab34a70cbeed90c2480de355bf57a9457d4cfe`  
 **Merged reproduction:** `e47c2058f97dcfcf6db199b095ac588e9ae94abe`  
 **Claude PL-006 SoT:** `927c071db8ce221589c60beec899f02bad67f4c9`  
-**Claude bundle (REVIEW ONLY):** `d80f1d309297f1c167cec69eb6bccc76f26c4b16` — drawerPack NOT merged  
+**Claude bundle (REVIEW ONLY):** `d80f1d309297f1c167cec69eb6bccc76f26c4b16` â€” drawerPack NOT merged  
 **AG boot/menu:** `30b2fe9` / `bdafb42` + mobile test from `c51af19`  
 **Pin baseline (unchanged):** `cb5f110627e1df589101f416fb34299ebb092bc0`  
 **Date:** 2026-09-18 ~20:05 GST (UTC+4)  
@@ -18,7 +18,7 @@
 ### PL-006 engineering (not furniture-rule approval)
 `DEGENERATE_DRAWER_GEOMETRY` at source; exclusive `W<=51` customer gate; SVG via validatePartGraph; DXF/CSV/nesting refuse. 50.9/51.0/51.1 covered. Not BEKZOD_APPROVED usable width.
 
-### Proposed fingerprints (normalized LF sha256) — DO NOT refresh fixtures yet
+### Proposed fingerprints (normalized LF sha256) â€” DO NOT refresh fixtures yet
 
 | File | New sha256-normalized-lf |
 |---|---|
@@ -38,7 +38,7 @@ Fingerprint refresh **PENDING** BEK. Prior per-file rows retained below for hist
 | Class | Result on combined tip |
 |---|---|
 | Parser/unit Vitest (PL-006 + exporters + drawer wiring + conversational) | **156 passed** (focused 14 files) |
-| Browser static Builder — mfg-nesting (+mobile) | **3 passed** |
+| Browser static Builder â€” mfg-nesting (+mobile) | **3 passed** |
 | Browser F1 journey | **5 passed** (incl. Add drawers STRUCTURAL) |
 | Browser Next R3F | **7 passed** |
 | AG prior local Playwright | Reported only; re-run above supersedes for this SHA |
@@ -54,12 +54,12 @@ Fingerprint refresh **PENDING** BEK. Prior per-file rows retained below for hist
 |---|---|
 | **Old fingerprint (expected from test)** | `762db472d86836a8067eeb8471a7500429f2b10fc7ffd81157069998945caf20` |
 | **New fingerprint (actual on tip)** | `4017a90e56afc705b675a6877bce200c06602e5609560b6dd26ad634f63b4a03` |
-| **Introducing commits** | `f607380` — adversarial conversational drawer fuzz |
+| **Introducing commits** | `f607380` â€” adversarial conversational drawer fuzz |
 | **ORIGINAL AUTHOR (git)** | `xalimovbeka-ui` \<xalimov.beka@gmail.com\> (Integration hop identity) |
-| **CURRENT OWNER (role)** | **Claude Code** — wardrobe-model schema/kernel/validator |
+| **CURRENT OWNER (role)** | **Claude Code** â€” wardrobe-model schema/kernel/validator |
 | **Behavior changed** | Adds `DEFAULTS.minDrawerBayClearWidthMm = 21 + 15 + 15` (**51**). Arithmetic construction floor for DRAWER_BANK bay clear width (undermount 21 + L/R box sides 15+15). **Not** a usable-drawer product ruling (see PL-006). |
 | **Regression evidence (still passes)** | wardrobe-ai Vitest 138+ (incl. drawer wiring/fuzz); production 22; R3F Playwright 7/7 this run; CNC still blocked |
-| **BEK approval decision text** | **Approve pin refresh for `schema.js`? Y / N** — Recommended **Y** if M2 DRAWER_BANK path is accepted; **N** means keep CI red or revert this DEFAULT (do not silently skip). |
+| **BEK approval decision text** | **Approve pin refresh for `schema.js`? Y / N** â€” Recommended **Y** if M2 DRAWER_BANK path is accepted; **N** means keep CI red or revert this DEFAULT (do not silently skip). |
 
 ### 2. `src/lib/wardrobe-model/kernel.js`
 
@@ -67,12 +67,12 @@ Fingerprint refresh **PENDING** BEK. Prior per-file rows retained below for hist
 |---|---|
 | **Old fingerprint** | `243b670f6487fc9b05015cbc4c6eb36509400785d6c040317cb1d93674124ed5` |
 | **New fingerprint** | `78e520a7dd655b5417e6f93ae5c77454e995a33831d0273242145d2305d3140e` |
-| **Introducing commits** | `3373fb5` (wire Add drawers) → hardened `f607380` (fuzz); merge `aedc33a` |
+| **Introducing commits** | `3373fb5` (wire Add drawers) â†’ hardened `f607380` (fuzz); merge `aedc33a` |
 | **ORIGINAL AUTHOR (git)** | `xalimovbeka-ui` (Integration hop) |
 | **CURRENT OWNER (role)** | **Claude Code** |
-| **Behavior changed** | `planShelfShiftsForDrawerBank`; DRAWER_BANK rejects negative rows (`INVALID_INPUT`); enforces `minDrawerBayClearWidthMm` (`INSUFFICIENT_BAY_WIDTH_FOR_DRAWERS`); over-height → `INSUFFICIENT_VERTICAL_CLEARANCE`; returns `_shiftedShelves`. Gate is **`widthMm <= 51`** exclusive (exact 51 rejected — PL-006 engineering close on combined tip). |
+| **Behavior changed** | `planShelfShiftsForDrawerBank`; DRAWER_BANK rejects negative rows (`INVALID_INPUT`); enforces `minDrawerBayClearWidthMm` (`INSUFFICIENT_BAY_WIDTH_FOR_DRAWERS`); over-height â†’ `INSUFFICIENT_VERTICAL_CLEARANCE`; returns `_shiftedShelves`. Gate is **`widthMm <= 51`** exclusive (exact 51 rejected â€” PL-006 engineering close on combined tip). |
 | **Regression evidence** | Same as above; drawerBank.wiring + drawerConversational.eval PASS |
-| **BEK approval decision text** | **Approve pin refresh for `kernel.js`? Y / N** — Recommended **Y** with PL-006 follow-up (boundary exclusivity); **N** = keep red / revert drawer gates. |
+| **BEK approval decision text** | **Approve pin refresh for `kernel.js`? Y / N** â€” Recommended **Y** with PL-006 follow-up (boundary exclusivity); **N** = keep red / revert drawer gates. |
 
 ### 3. `src/lib/wardrobe-model/validator.js`
 
@@ -85,7 +85,7 @@ Fingerprint refresh **PENDING** BEK. Prior per-file rows retained below for hist
 | **CURRENT OWNER (role)** | **Claude Code** |
 | **Behavior changed** | Emits `INSUFFICIENT_BAY_WIDTH_FOR_DRAWERS` when section already has DRAWER_BANK and `widthMm <= minDrawerBayClearWidthMm` (exclusive floor). |
 | **Regression evidence** | Validator + wardrobe-ai suites green aside from hash pins |
-| **BEK approval decision text** | **Approve pin refresh for `validator.js`? Y / N** — Recommended **Y** (mirrors kernel); **N** = keep red / revert. |
+| **BEK approval decision text** | **Approve pin refresh for `validator.js`? Y / N** â€” Recommended **Y** (mirrors kernel); **N** = keep red / revert. |
 
 ### 4. `src/lib/wardrobe-tools/tools.js`
 
@@ -98,7 +98,7 @@ Fingerprint refresh **PENDING** BEK. Prior per-file rows retained below for hist
 | **CURRENT OWNER (role)** | **Claude Code** (wardrobe-tools) |
 | **Behavior changed** | Strips `_shiftedShelves` from stored model; returns `shiftedShelves` on success; `component_add` description documents STRUCTURAL DRAWER_BANK / shelf-shift / clearance fail-closed (CNC still blocked). |
 | **Regression evidence** | tools + wardrobe-ai PASS |
-| **BEK approval decision text** | **Approve pin refresh for `tools.js`? Y / N** — Recommended **Y**; **N** = keep red / revert. |
+| **BEK approval decision text** | **Approve pin refresh for `tools.js`? Y / N** â€” Recommended **Y**; **N** = keep red / revert. |
 
 ### 5. `src/app/builder/page.jsx`
 
@@ -106,12 +106,12 @@ Fingerprint refresh **PENDING** BEK. Prior per-file rows retained below for hist
 |---|---|
 | **Old fingerprint** | `a62763f26155ed85c282d5e600f69c32083b1c851e6129e8fd0e13caf984ba00` |
 | **New fingerprint** | `e8b04078be00d39d3309e180d14ce412def93b80332d2704ac685805483d8029` |
-| **Introducing commits** | `f4fd28c` — Manufacturing & Blueprints action menu / export bridges |
+| **Introducing commits** | `f4fd28c` â€” Manufacturing & Blueprints action menu / export bridges |
 | **ORIGINAL AUTHOR (git)** | Bekzod Khalimov \<xalimov.beka99@gmail.com\> (`xalimovbeka99-commits`) |
-| **CURRENT OWNER (role)** | **Antigravity** — customer Builder UI / export toolbar |
+| **CURRENT OWNER (role)** | **Antigravity** â€” customer Builder UI / export toolbar |
 | **Behavior changed** | Imports `ExportMenu`; places it in header beside Ask AI. No Environment/camera/panel layout change in this delta. |
 | **Regression evidence** | R3F Playwright **7/7 PASS** this run (local Next build); ExportMenu is Next builder surface |
-| **BEK approval decision text** | **Approve pin refresh for `page.jsx`? Y / N** — Recommended **Y** if export toolbar is intentional on M2 tip; **N** = keep red / revert ExportMenu wiring only. |
+| **BEK approval decision text** | **Approve pin refresh for `page.jsx`? Y / N** â€” Recommended **Y** if export toolbar is intentional on M2 tip; **N** = keep red / revert ExportMenu wiring only. |
 
 ---
 
@@ -129,14 +129,14 @@ Hashes must be rewritten **only after explicit BEK Y** per file (or a single wri
 
 ---
 
-## Release checklist — keep OPEN until verified resolved
+## Release checklist â€” keep OPEN until verified resolved
 
 | ID | Item | Status |
 |---|---|---|
-| RC-STALE | Stale-response / changeToken + design-id guard (see `ANTIGRAVITY_STALE_GUARD_HANDOFF.md`) | **OPEN — keep on checklist until independently re-verified on tip** |
-| RC-DIM | Drawing-dimension findings (SVG dimension `<text>` / shop-drawing correctness residuals) | **OPEN — keep on checklist until independently re-verified on tip** |
-| RC-F1-DRAWERS | Static F1 “Add drawers” browser path vs STRUCTURAL Vitest path | **OPEN** (prior audit 4/5 F1; parser green) |
-| RC-PL006 | PL-006 usable width vs 51 mm construction floor | **OPEN** — see `PL006_BOUNDARY.md` |
+| RC-STALE | Stale-response / changeToken + design-id guard (see `ANTIGRAVITY_STALE_GUARD_HANDOFF.md`) | **OPEN â€” keep on checklist until independently re-verified on tip** |
+| RC-DIM | Drawing-dimension findings (SVG dimension `<text>` / shop-drawing correctness residuals) | **OPEN â€” keep on checklist until independently re-verified on tip** |
+| RC-F1-DRAWERS | Static F1 â€œAdd drawersâ€ browser path vs STRUCTURAL Vitest path | **OPEN** (prior audit 4/5 F1; parser green) |
+| RC-PL006 | PL-006 usable width vs 51 mm construction floor | **OPEN** â€” see `PL006_BOUNDARY.md` |
 | RC-CNC | CNC / System32 | **BLOCKED** (unchanged) |
 
 ---
@@ -146,3 +146,19 @@ Hashes must be rewritten **only after explicit BEK Y** per file (or a single wri
 - Do not refresh `phase1-protected-surfaces.json` in this branch without BEK Y text.  
 - Do not push/reset `integ/part-graph-compiler` (AG dirty worktree risk).  
 - Do not merge main / deploy production / unlock CNC.
+
+---
+
+## Authorized pin refresh (2026-09-18) — tip `5d77e82`
+
+Bekzod authorized surface pin refresh. Fixtures updated:
+
+| File | Previous hash | New hash | Justification |
+|---|---|---|---|
+| `src/lib/wardrobe-model/schema.js` | `762db472…45caf20` | `e8ea4b6e…f343dc` | PL-006 construction floor + M2 DEFAULTS |
+| `src/lib/wardrobe-model/kernel.js` | `243b670f…124ed5` | `0f7ffa17…cac84b` | Exclusive W<=51 DRAWER_BANK gate |
+| `src/lib/wardrobe-model/validator.js` | `a7fc020d…d9be80` | `6296f8d4…80a3c6` | Exclusive bay-width validator mirror |
+| `src/lib/wardrobe-tools/tools.js` | `8b927a29…a10b9a` | `3bf272d0…c8aa99` | STRUCTURAL DRAWER_BANK tooling wiring |
+| `src/app/builder/page.jsx` | `a62763f2…84ba00` | `e8b04078…3d8029` | Builder unify after M2 export/nesting surfaces |
+
+Technical justification: reconciled PL-006 degenerate guards + multi-run nesting manifest contract. Pins live in `phase1-protected-surfaces.json` and `frozen-surfaces.json`.
