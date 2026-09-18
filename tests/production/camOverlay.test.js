@@ -2,6 +2,11 @@ import { describe, it, expect, beforeEach } from "vitest";
 import * as THREE from "three";
 import goldenSpec from "../../src/lib/furnispec/goldenWardrobe.fixture.json";
 import { buildStructuralPartGraph } from "../../src/lib/partgraph/buildStructuralPartGraph.js";
+import { compileNeutralOperations } from "../../src/lib/cam/neutralOperations.js";
+import {
+  adaptNeutralOperationsToOverlay,
+  mapPartLocalToWorld,
+} from "../../src/lib/cam/camOverlayAdapter.js";
 import {
   DEFAULT_KERF_MM,
   EXCLUSION_HALO_MM,
@@ -194,5 +199,94 @@ describe("Milestone M3: CAM Viewport Overlays & Vacuum Pod Visualization Suite",
     // Clean disposal
     overlay.dispose();
     expect(scene.getObjectByName("camToolpathsGroup")).toBeUndefined();
+  });
+
+  it("bridges Grok's neutral operations IR into 3D viewport trajectories with grooves and ribbons", () => {
+    const neutralIr = compileNeutralOperations(partGraph);
+    expect(neutralIr).toBeDefined();
+    expect(neutralIr.operations.length).toBeGreaterThan(0);
+
+    const adaptedOps = adaptNeutralOperationsToOverlay(neutralIr, partGraph);
+    expect(Array.isArray(adaptedOps)).toBe(true);
+    expect(adaptedOps.length).toBeGreaterThan(0);
+
+    // Verify presence of rapid, contour, and groove operations
+    const rapidOps = adaptedOps.filter((o) => o.category === "RAPID" || o.type === "G00");
+    const contourOps = adaptedOps.filter((o) => o.category === "CONTOUR");
+    const grooveOps = adaptedOps.filter((o) => o.category === "GROOVE");
+
+    expect(rapidOps.length).toBeGreaterThan(0);
+    expect(contourOps.length).toBeGreaterThan(0);
+    expect(grooveOps.length).toBeGreaterThan(0);
+
+    // Verify dynamic cutter diameter / kerf is assigned
+    for (const op of contourOps) {
+      expect(op.cutterDiameterMm).toBeGreaterThanOrEqual(6.0);
+      expect(op.kerfMm).toBeGreaterThanOrEqual(6.0);
+    }
+    for (const op of grooveOps) {
+      expect(op.cutterDiameterMm).toBe(6.0); // 6mm back groove
+    }
+
+    // Mount to Three.js scene via createCamOverlay with neutralIr
+    const scene = new THREE.Scene();
+    const overlay = createCamOverlay({
+      scene,
+      partGraph,
+      options: { neutralIr },
+      threeInstance: THREE,
+    });
+
+    const camGroup = scene.getObjectByName("camToolpathsGroup");
+    expect(camGroup).toBeDefined();
+
+    // Verify distinct mesh layers
+    const rapidMesh = camGroup.getObjectByName("camRapidTrajectories");
+    const cutMesh = camGroup.getObjectByName("camCutFeedTrajectories");
+    const grooveMesh = camGroup.getObjectByName("camGrooveTrajectories");
+    const ribbonMesh = camGroup.getObjectByName("camKerfRibbons");
+
+    expect(rapidMesh).toBeDefined();
+    expect(rapidMesh.material.color.getHex()).toBe(0xffb703); // amber
+
+    expect(cutMesh).toBeDefined();
+    expect(cutMesh.material.color.getHex()).toBe(0x00f5d4); // cyan
+
+    expect(grooveMesh).toBeDefined();
+    expect(grooveMesh.material.color.getHex()).toBe(0x39ff14); // neon lime
+
+    expect(ribbonMesh).toBeDefined();
+    expect(ribbonMesh.geometry.attributes.position.count).toBeGreaterThan(0);
+
+    // Verify scrub simulation
+    const stepStart = overlay.updateSimulationStep(0);
+    expect(stepStart.activeOp).toBeDefined();
+    const stepMid = overlay.updateSimulationStep(0.5);
+    expect(stepMid.activeOp).toBeDefined();
+    const stepEnd = overlay.updateSimulationStep(1);
+    expect(stepEnd.activeOp).toBeDefined();
+
+    overlay.dispose();
+  });
+
+  it("correctly maps part-local coordinates to world coordinates across orientations", () => {
+    const leftSide = partGraph.parts.find((p) => p.role === "SIDE_PANEL_LEFT");
+    const topPanel = partGraph.parts.find((p) => p.role === "TOP_PANEL");
+    const backPanel = partGraph.parts.find((p) => p.role === "BACK_PANEL");
+
+    const wSide = mapPartLocalToWorld(leftSide, [100, 50, 0]);
+    expect(typeof wSide.x).toBe("number");
+    expect(typeof wSide.y).toBe("number");
+    expect(typeof wSide.z).toBe("number");
+
+    const wTop = mapPartLocalToWorld(topPanel, [200, 150, 10]);
+    expect(typeof wTop.x).toBe("number");
+    expect(typeof wTop.y).toBe("number");
+    expect(typeof wTop.z).toBe("number");
+
+    const wBack = mapPartLocalToWorld(backPanel, [50, 50, -5]);
+    expect(typeof wBack.x).toBe("number");
+    expect(typeof wBack.y).toBe("number");
+    expect(typeof wBack.z).toBe("number");
   });
 });

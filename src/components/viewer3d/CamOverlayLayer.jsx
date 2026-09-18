@@ -18,6 +18,8 @@
 import { useEffect, useRef } from "react";
 import * as THREE_MODULE from "three";
 import { DMM_TO_THREE } from "@/lib/adapters/partGraphToThree";
+import { compileNeutralOperations } from "@/lib/cam/neutralOperations";
+import { adaptNeutralOperationsToOverlay } from "@/lib/cam/camOverlayAdapter";
 
 export const DEFAULT_KERF_MM = 9.525; // 3/8" standard CNC compression router bit
 export const GROOVE_KERF_MM = 6.0;   // 6.0 mm back groove router bit
@@ -357,6 +359,7 @@ export function buildToolpathTrajectoryMesh(operations, options = {}, THREE = TH
 
   const rapidPoints = [];
   const feedPoints = [];
+  const groovePoints = [];
   const ribbonVertices = [];
   const ribbonIndices = [];
 
@@ -366,10 +369,14 @@ export function buildToolpathTrajectoryMesh(operations, options = {}, THREE = TH
     const v1 = new THREE.Vector3(op.from.x, op.from.y, op.from.z);
     const v2 = new THREE.Vector3(op.to.x, op.to.y, op.to.z);
 
-    if (op.type === "G00" || !op.isCutting) {
+    if (op.type === "G00" || !op.isCutting || op.category === "RAPID") {
       rapidPoints.push(v1, v2);
     } else {
-      feedPoints.push(v1, v2);
+      if (op.category === "GROOVE") {
+        groovePoints.push(v1, v2);
+      } else {
+        feedPoints.push(v1, v2);
+      }
 
       // Construct kerf ribbon quad for cutting feed
       const dir = new THREE.Vector3().subVectors(v2, v1);
@@ -387,7 +394,7 @@ export function buildToolpathTrajectoryMesh(operations, options = {}, THREE = TH
           side.set(1, 0, 0).crossVectors(dir, side).normalize();
         }
 
-        const halfKerf = ((op.kerfMm || DEFAULT_KERF_MM) * MM_TO_THREE) / 2;
+        const halfKerf = ((op.cutterDiameterMm || op.kerfMm || DEFAULT_KERF_MM) * MM_TO_THREE) / 2;
         const offset = side.multiplyScalar(halfKerf);
 
         // Quad corners
@@ -424,7 +431,7 @@ export function buildToolpathTrajectoryMesh(operations, options = {}, THREE = TH
     group.add(rapidLines);
   }
 
-  // 2. Cutting feed line segments (solid cyan)
+  // 2. Cutting feed line segments: contour (cyan)
   if (feedPoints.length > 0) {
     const feedGeom = new THREE.BufferGeometry().setFromPoints(feedPoints);
     const feedLines = new THREE.LineSegments(feedGeom, materials.cutFeed);
@@ -432,7 +439,15 @@ export function buildToolpathTrajectoryMesh(operations, options = {}, THREE = TH
     group.add(feedLines);
   }
 
-  // 3. True Kerf Ribbon mesh
+  // 3. Groove slot line segments: groove (neon lime)
+  if (groovePoints.length > 0) {
+    const grooveGeom = new THREE.BufferGeometry().setFromPoints(groovePoints);
+    const grooveLines = new THREE.LineSegments(grooveGeom, materials.cutFeedLime);
+    grooveLines.name = "camGrooveTrajectories";
+    group.add(grooveLines);
+  }
+
+  // 4. True Kerf Ribbon mesh
   if (ribbonVertices.length > 0) {
     const ribbonGeom = new THREE.BufferGeometry();
     ribbonGeom.setAttribute("position", new THREE.Float32BufferAttribute(ribbonVertices, 3));
@@ -681,12 +696,18 @@ export function createCamOverlay({ scene, partGraph, options = {}, threeInstance
     camGroup.position.set(-envW / 2, -envH / 2, -envD / 2);
   }
 
-  // 1. Gather all panel toolpaths
-  const allOperations = [];
-  const parts = partGraph?.parts || [];
-  for (const part of parts) {
-    const ops = generatePanelToolpaths(part, options);
-    allOperations.push(...ops);
+  // 1. Gather all panel toolpaths (from neutral operations IR or direct part calculation)
+  let allOperations = [];
+  if (Array.isArray(options.operations)) {
+    allOperations = options.operations;
+  } else if (options.neutralIr) {
+    allOperations = adaptNeutralOperationsToOverlay(options.neutralIr, partGraph, options);
+  } else {
+    const parts = partGraph?.parts || [];
+    for (const part of parts) {
+      const ops = generatePanelToolpaths(part, options);
+      allOperations.push(...ops);
+    }
   }
 
   // 2. Build default clamps
@@ -735,14 +756,16 @@ export function createCamOverlay({ scene, partGraph, options = {}, threeInstance
   updateSimulationStep(0);
 
   // Visibility toggle handler
-  const setLayersVisibility = ({ cutVectors = true, rapidTrajectories = true, vacuumPods = true, kerfRibbon = true }) => {
+  const setLayersVisibility = ({ cutVectors = true, rapidTrajectories = true, vacuumPods = true, kerfRibbon = true, grooves = true }) => {
     const cutMesh = camGroup.getObjectByName("camCutFeedTrajectories");
     const rapidMesh = camGroup.getObjectByName("camRapidTrajectories");
+    const grooveMesh = camGroup.getObjectByName("camGrooveTrajectories");
     const ribbonMesh = camGroup.getObjectByName("camKerfRibbons");
     const podMesh = camGroup.getObjectByName("camVacuumClamps");
 
     if (cutMesh) cutMesh.visible = !!cutVectors;
     if (rapidMesh) rapidMesh.visible = !!rapidTrajectories;
+    if (grooveMesh) grooveMesh.visible = !!grooves;
     if (ribbonMesh) ribbonMesh.visible = !!kerfRibbon;
     if (podMesh) podMesh.visible = !!vacuumPods;
   };
