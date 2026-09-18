@@ -15,11 +15,19 @@ Approve or reject **pin refresh** per file below. This is **not** a request to �
 
 ### Hash assertion count
 
-Phase 1 suite checks **8** pinned paths. On tip `c48e108`, **5 fail** / **3 match** (`runWardrobeAgent.js`, `FurnitureModel.jsx`, `vercel.json`).  
-Prior M2 audit on `c46ba83` cited 4 model/tools fails; AG `f4fd28c` added the 5th (`page.jsx`).  
-(If a “6th assertion” was expected beyond these five mismatches: none additional failed in local reconfirm — only these five.)
+Phase 1 `phase2Verification.test.js` checks **8** pinned paths → on tip **5 fail** / **3 match** (`runWardrobeAgent.js`, `FurnitureModel.jsx`, `vercel.json`).  
+`frozenSurfaces.test.js` additionally pins `page.jsx` (same expected hash) → **+1 fail**.  
 
-Local reconfirm: `npx vitest run src/lib/wardrobe-production-verification/phase2Verification.test.js` → 5 failed hash pins.
+**Correct inventory:** **6 failed assertions** across the two suites, covering **5 unique files** (`page.jsx` counted twice). Prior M2 audit on `c46ba83` cited 4 model/tools fails; AG `f4fd28c` added the 5th file (`page.jsx`), which surfaces in both suites.
+
+Local reconfirm (combined tip, hashes not refreshed):
+
+```text
+npx vitest run \
+  src/lib/wardrobe-production-verification/phase2Verification.test.js \
+  src/lib/wardrobe-verification/frozenSurfaces.test.js
+# 6 failed | 15 passed | 12 todo
+```
 
 ---
 

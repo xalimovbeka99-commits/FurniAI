@@ -2,13 +2,30 @@
 
 **Status:** DOCS ONLY — hashes **not** refreshed (BEK gate)  
 **Date:** 2026-09-18 ~19:21 GST (UTC+4)  
-**Tip:** `c48e108ab779a5b4fe36c8600f1dac38376d74c0` on `integ/part-graph-compiler` (PR #6)  
+**Tip (findings origin):** `c48e108` on `integ/part-graph-compiler` (PR #6)
+**Reconfirm tip:** `integ/m2-integration-lead` after merge of `bdafb42` (same 5 protected-surface hashes; `index.html` change not pinned)  
 **Pin baseline:** F1 freeze `cb5f110627e1df589101f416fb34299ebb092bc0` (`integ/f1-claude-handoff`)  
 **Fixture:** `tests/wardrobe-production/fixtures/phase1-protected-surfaces.json`  
 **Algorithm:** `sha256-normalized-lf` (CRLF → LF before hash)  
 **Checkout used for this report:** isolated integ clone mirroring Claude-Handoff tip (peer AG/Candidate/Grok trees untouched)
 
-**CI context:** GitHub Actions run [35018071571](https://github.com/xalimovbeka99-commits/FurniAI/actions/runs/35018071571) — `Engineering safety net` **FAILURE** on tip `c48e108`. Local reconfirm: `npx vitest run src/lib/wardrobe-production-verification/phase2Verification.test.js` → **5 failed** hash pins / 9 passed / 12 todo.
+**CI context:** GitHub Actions run [35018071571](https://github.com/xalimovbeka99-commits/FurniAI/actions/runs/35018071571) — `Engineering safety net` **FAILURE** on tip `c48e108` (same protected-surface hashes still fail on combined tip). Local reconfirm on combined tip (2026-09-18 ~19:41 GST):
+
+```text
+npx vitest run \
+  src/lib/wardrobe-production-verification/phase2Verification.test.js \
+  src/lib/wardrobe-verification/frozenSurfaces.test.js
+# → 6 failed assertions | 15 passed | 12 todo across 2 files
+# → 5 distinct files (page.jsx asserted twice)
+```
+
+| Suite | Failed assertions | Files |
+|---|---|---|
+| `phase2Verification.test.js` | 5 | schema.js, kernel.js, validator.js, tools.js, **page.jsx** |
+| `frozenSurfaces.test.js` | 1 | **page.jsx** (same hash pin) |
+| **Total** | **6** | **5 unique files** |
+
+Hashes **not** refreshed (BEK gate). `index.html` AG boot/nesting fix is **out of** these pin fixtures.
 
 **Policy:** Do **not** edit `phase1-protected-surfaces.json` without explicit BEK approval. CNC remains **BLOCKED**. No main merge.
 
@@ -89,7 +106,10 @@
 git fetch origin integ/part-graph-compiler
 git rev-parse HEAD   # expect c48e108ab779a5b4fe36c8600f1dac38376d74c0
 node -e '/* compare fixture hashes vs working tree */'
-npx vitest run src/lib/wardrobe-production-verification/phase2Verification.test.js
+npx vitest run \
+  src/lib/wardrobe-production-verification/phase2Verification.test.js \
+  src/lib/wardrobe-verification/frozenSurfaces.test.js
+# expect: 6 failed assertions / 5 unique files (page.jsx ×2)
 git diff cb5f110627e1df589101f416fb34299ebb092bc0 -- \
   src/lib/wardrobe-model/schema.js \
   src/lib/wardrobe-model/kernel.js \
