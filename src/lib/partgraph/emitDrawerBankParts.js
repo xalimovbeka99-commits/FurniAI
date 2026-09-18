@@ -56,6 +56,33 @@ export function emitDrawerBankParts({
   const bottomWidthMm = bayWidthMm - slideDeductionMm - DRAWER_BOTTOM_SIDE_INSET_TOTAL_MM;
   const bottomDepthMm = sideLengthMm - DRAWER_BOX_SIDE_THICKNESS_MM;
 
+  // PL-006, fail at the source. The FurniSpec path has no bay-width guard of
+  // its own - `minDrawerBayClearWidthMm` is enforced in wardrobe-model's
+  // kernel and validator, which a FurniSpec never passes through. Measured
+  // before this guard: a 50.9mm bay produced a DRAWER_BACK of -0.1mm, and the
+  // SVG shop drawing rendered it. Refusing here protects every consumer,
+  // including ones that would otherwise only catch it downstream.
+  const degenerate = [
+    ["front width", frontWidthMm],
+    ["front height", frontHeightMm],
+    ["box height", boxHeightMm],
+    ["side length", sideLengthMm],
+    ["back width", backWidthMm],
+    ["bottom width", bottomWidthMm],
+    ["bottom depth", bottomDepthMm],
+  ].filter(([, value]) => !(value > 0));
+  if (degenerate.length > 0) {
+    const err = new Error(
+      `Drawer bank "${comp.id}" computes non-positive ${degenerate
+        .map(([what, value]) => `${what} (${value}mm)`)
+        .join(", ")}. A ${bayWidthMm}mm bay cannot carry a drawer box: the back is ` +
+        `bay - ${slideDeductionMm} - 2 x ${DRAWER_BOX_SIDE_THICKNESS_MM}, so the bay must exceed ` +
+        `${slideDeductionMm + 2 * DRAWER_BOX_SIDE_THICKNESS_MM}mm.`
+    );
+    err.code = "DEGENERATE_DRAWER_GEOMETRY";
+    throw err;
+  }
+
   const halfDeductionMm = slideDeductionMm / 2;
   const boxMinXMm = bay.minXDmm / 10 + halfDeductionMm;
   const boxMaxXMm = bay.maxXDmm / 10 - halfDeductionMm;

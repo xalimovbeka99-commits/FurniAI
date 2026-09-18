@@ -124,6 +124,9 @@ export const DEFAULTS = Object.freeze({
    * drawer-box side walls (15 mm each) so the back panel stays non-negative.
    * Matches emitDrawerBankParts / DRAWER_PACK_POLICY construction.
    */
+  // The SUM of the drawer deductions, not a usable width. A bay must EXCEED
+  // it: at exactly this value the drawer back computes to 0mm. No practical
+  // minimum is ruled, so none is invented here.
   minDrawerBayClearWidthMm: 21 + 15 + 15,
 });
 
