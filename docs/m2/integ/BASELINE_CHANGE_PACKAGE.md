@@ -1,7 +1,7 @@
 # M2 Baseline Change Package (docs only — no pin refresh)
 
 **Branch:** `integ/m2-integration-lead`  
-**Combined tip (post Claude 927c071 + e47c205 reconcile):**   
+**Combined tip (post Claude 927c071 + e47c205 reconcile):** `1801f56cab66f89af30bda9507442188b7635b5e`  
 **Start baseline:** `3fab34a70cbeed90c2480de355bf57a9457d4cfe`  
 **Merged reproduction:** `e47c2058f97dcfcf6db199b095ac588e9ae94abe`  
 **Claude PL-006 SoT:** `927c071db8ce221589c60beec899f02bad67f4c9`  
