@@ -94,6 +94,14 @@ export const PHYSICAL_LIMITS = Object.freeze({
       "Deflection depends on material, thickness and load, none of which this limit reads. " +
       "A single span number cannot be correct for every material — this is the one most likely to be wrong in both directions.",
   }),
+  minDrawerBayClearWidthMm: Object.freeze({
+    id: "PL-006",
+    unit: "mm",
+    scope: "Exclusive construction floor for DRAWER_BANK bay clear width (need W > 21+15+15). At W=floor, DRAWER_BACK width is 0.",
+    enforcedBy: "src/lib/wardrobe-model/kernel.js + validator.js — INSUFFICIENT_BAY_WIDTH_FOR_DRAWERS (widthMm <= floor); src/lib/partgraph/emitDrawerBankParts.js refuses non-positive DRAWER_* dims",
+    provenance: PHYSICAL_LIMIT_PROVENANCE.PROVISIONAL_PENDING_BEKZOD_REVIEW,
+    note: "Derived from emitDrawerBankParts construction params. Not BEKZOD_APPROVED usable-width. W=52 is arithmetic validity only.",
+  }),
 });
 
 /** Limits enforced without approval. Non-empty is the expected state today. */

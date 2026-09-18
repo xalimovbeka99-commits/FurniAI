@@ -7,8 +7,8 @@
     "finishType": "melamine",
     "bayCount": 2,
     "doorCount": 4,
-    "fingerprint": "fs256:3183bce1ab63457aed2d7f6072a5fd2cfa60affaf03637e149590e975c83c9a2",
-    "proposalId": "furnispec-ai-wardrobe-5433",
+    "fingerprint": "fs256:09d012c2c8724c5ab5aee595e78fb2628402cdd5d9a2eb04785b956a7c1447cf",
+    "proposalId": "furnispec-ai-wardrobe-1498",
     "parametricMat": "white",
     "structural": 19,
     "preview": 2,
@@ -156,8 +156,8 @@
     "finishType": "melamine",
     "bayCount": 2,
     "doorCount": 4,
-    "fingerprint": "fs256:3183bce1ab63457aed2d7f6072a5fd2cfa60affaf03637e149590e975c83c9a2",
-    "proposalId": "furnispec-ai-wardrobe-5433",
+    "fingerprint": "fs256:09d012c2c8724c5ab5aee595e78fb2628402cdd5d9a2eb04785b956a7c1447cf",
+    "proposalId": "furnispec-ai-wardrobe-1498",
     "parametricMat": "white",
     "structural": 19,
     "preview": 2,
@@ -297,7 +297,7 @@
     "revWidthLabel": "1800 mm",
     "revRevisionLabel": "1"
   },
-  "assistantText": "Sorry â€” I can't add drawers to this wardrobe yet — the drawer boxes depend on the runner hardware, which isn't confirmed for this design. Everything else in your wardrobe is unchanged. (Alternative: a fixed shelf at the same height, which you could add drawers under later)",
-  "userText": "Add drawers on the left",
+  "assistantText": "Sorry â€” I can't add handles to the design yet. Your wardrobe is unchanged.",
+  "userText": "Add black handles",
   "prevAssistants": 1
 }

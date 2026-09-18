@@ -79,7 +79,7 @@ describe("claims are checked against what the kernel actually does", () => {
     }
 
     const bad = buildStructuralPartGraph(fixture);
-    bad.parts[0].role = "DRAWER_FRONT";
+    bad.parts[0].role = "NOT_A_REAL_ROLE";
     expect(validatePartGraph(bad).errors.some((e) => e.code === "INVALID_PART_ROLE")).toBe(true);
   });
 });
@@ -103,11 +103,13 @@ describe("the description does not overclaim", () => {
     }
   });
 
-  it("lists drawers and hardware as not supported, matching the component policy", () => {
+  it("lists DRAWER_BANK as structural and hardware machining as not supported", () => {
+    expect(DESIGN_ENGINE_CAPABILITIES.components.structural).toContain(COMPONENT_TYPES.DRAWER_BANK);
+    expect(DESIGN_ENGINE_CAPABILITIES.components.unsupported).not.toContain(COMPONENT_TYPES.DRAWER_BANK);
     const text = DESIGN_ENGINE_CAPABILITIES.notSupportedYet.join(" ").toLowerCase();
-    expect(text).toMatch(/drawer/);
     expect(text).toMatch(/handle/);
-    expect(DESIGN_ENGINE_CAPABILITIES.components.unsupported).toContain(COMPONENT_TYPES.DRAWER_BANK);
+    expect(text).toMatch(/machining|drilling|cnc/);
+    expect(DESIGN_ENGINE_CAPABILITIES.manufacturing.drilling).toBe("BLOCKED");
   });
 
   it("says nothing about the viewer, the browser, or what is deployed", () => {
@@ -120,11 +122,14 @@ describe("the description does not overclaim", () => {
 
 describe("the customer-facing summary stays consistent with the technical one", () => {
   it("promises nothing the technical description calls unsupported", () => {
-    const { canDo } = describeCapabilitiesForCustomer();
+    const { canDo, cannotDoYet } = describeCapabilitiesForCustomer();
     const promised = canDo.join(" ").toLowerCase();
-    expect(promised).not.toMatch(/drawer/);
+    expect(promised).toMatch(/drawer/);
     expect(promised).not.toMatch(/handle/);
     expect(promised).not.toMatch(/drawing|cutting file|cnc/);
+    const cannot = cannotDoYet.join(" ").toLowerCase();
+    expect(cannot).toMatch(/handle/);
+    expect(cannot).toMatch(/cnc|cutting|drawing/);
   });
 
   it("uses no enum names or engineering units", () => {

@@ -205,7 +205,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 
 /* ============ BUILDER VIEW ============ */
 #view-builder{position:fixed;inset:0;z-index:200;background:var(--paper);display:flex;flex-direction:column}
-.b-top{display:flex;align-items:center;justify-content:space-between;padding:13px 22px;border-bottom:1px solid var(--line-soft);background:rgba(250,249,245,.9);backdrop-filter:blur(10px);flex-shrink:0;gap:16px}
+.b-top{position:relative;z-index:50;display:flex;align-items:center;justify-content:space-between;padding:13px 22px;border-bottom:1px solid var(--line-soft);background:rgba(250,249,245,.9);backdrop-filter:blur(10px);flex-shrink:0;gap:16px}
 .b-top .left{display:flex;align-items:center;gap:18px;min-width:0}
 .b-back{font-family:'Space Mono',monospace;font-size:13px;color:var(--ink-soft);cursor:pointer;display:flex;align-items:center;gap:8px;transition:color .2s;white-space:nowrap}
 .b-back:hover{color:var(--brass)}
@@ -260,8 +260,13 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 .ai-w-example-chip{border:1px dashed var(--brass);background:rgba(0,180,216,.06);color:var(--ink);padding:8px 10px;border-radius:8px;font-family:'Inter',sans-serif;font-size:11.5px;line-height:1.45;text-align:left;cursor:pointer;width:100%;transition:all .18s;box-sizing:border-box}
 .ai-w-example-chip:hover{background:rgba(0,180,216,.14);border-color:var(--brass-bright)}
 .ai-w-textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font-family:'Inter',sans-serif;font-size:12.5px;color:var(--ink);background:var(--paper);box-sizing:border-box}
-.ai-w-textarea:focus{outline:none;border-color:var(--brass)}
-
+/* Manufacturing & Blueprints Export Menu */
+.b-export-group{position:relative;display:inline-block;margin-right:8px}
+.mfg-menu-dropdown{display:none;position:absolute;right:0;top:calc(100% + 4px);background:var(--paper,#FAF9F5);border:1px solid var(--line,#DFD9CC);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.14);padding:6px;min-width:230px;z-index:1000;text-align:left}
+.mfg-menu-header{font-family:'Space Mono',monospace;font-size:9.5px;color:var(--ink-soft,#888);text-transform:uppercase;letter-spacing:.08em;padding:6px 10px 2px}
+.mfg-menu-divider{height:1px;background:var(--line,#EDE8DC);margin:5px 0}
+.mfg-menu-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:transparent;border:none;border-radius:5px;padding:7px 10px;font-size:12px;color:var(--ink,#1C1E21);cursor:pointer;font-family:'Inter',sans-serif;transition:background .15s ease,color .15s ease;box-sizing:border-box}
+.mfg-menu-item:hover{background:var(--paper-2,#EFECE6);color:var(--brass,#0088A8)}
 
 /* responsive */
 @media(max-width:1000px){
@@ -646,8 +651,24 @@ footer ul a:hover{opacity:1;color:var(--brass)}
       <span class="p-pill alert">CNC: NOT QUALIFIED</span>
     </div>
     <div class="b-nav">
-      <button class="btn sm ghost" id="createWithFurniAiBldBtn" onclick="go('#/build/ai-wardrobe')" style="margin-right:8px">âœ¦ Design with AI</button>
-      <button class="b-nav-btn" id="bPrev">â—</button><span class="b-nav-pos" id="bPos">1 / 10</span><button class="b-nav-btn" id="bNext">â–·</button>
+      <div class="b-export-group">
+        <button class="btn sm ghost" id="btnMfgDropdown" onclick="toggleMfgMenu(event)" title="Manufacturing Blueprints &amp; CNC Export" style="display:inline-flex;align-items:center;gap:6px;">
+          <span>⚡ Manufacturing &amp; Blueprints</span>
+          <span style="font-size:9px;opacity:0.7;">▼</span>
+        </button>
+        <div id="mfgMenuDropdown" class="mfg-menu-dropdown">
+          <div class="mfg-menu-header">Blueprints &amp; Technical 2D</div>
+          <button type="button" class="mfg-menu-item" id="btnExportShopDrawings" onclick="handleExportShopDrawings('SVG')">📐 Shop Blueprints (SVG)</button>
+          <button type="button" class="mfg-menu-item" id="btnExportShopDrawingsPdf" onclick="handleExportShopDrawings('PDF')">📄 Shop Blueprints (PDF)</button>
+          <div class="mfg-menu-divider"></div>
+          <div class="mfg-menu-header">Fabrication &amp; CNC</div>
+          <button type="button" class="mfg-menu-item" id="btnExportCncDxf" onclick="handleExportCncDxfZip()">📦 CNC Package (DXF ZIP)</button>
+          <button type="button" class="mfg-menu-item" id="btnExportCutList" onclick="handleExportCutListCsv()">📊 Cut List (CSV)</button>
+          <button type="button" class="mfg-menu-item" id="btnShowNestingReport" onclick="handleShowNestingReport()">📋 Nesting Report</button>
+        </div>
+      </div>
+      <button class="btn sm ghost" id="createWithFurniAiBldBtn" onclick="go('#/build/ai-wardrobe')" style="margin-right:8px">✧ Design with AI</button>
+      <button class="b-nav-btn" id="bPrev">◀</button><span class="b-nav-pos" id="bPos">1 / 10</span><button class="b-nav-btn" id="bNext">▶</button>
     </div>
   </div>
   <div class="b-main show-left">
@@ -3133,6 +3154,115 @@ function bindImageAttach(attachBtnId,fileInputId,previewId,thumbId,removeId,setP
   });
   if(removeBtn)removeBtn.addEventListener('click',()=>{setPending(null);if(preview)preview.hidden=true});
 }
+
+window.toggleMfgMenu = function(e) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById('mfgMenuDropdown');
+  if (!menu) return;
+  menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+};
+
+document.addEventListener('click', function(e) {
+  const menu = document.getElementById('mfgMenuDropdown');
+  const btn = document.getElementById('btnMfgDropdown');
+  if (menu && menu.style.display === 'block') {
+    if (!menu.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+      menu.style.display = 'none';
+    }
+  }
+});
+
+function getActivePartGraph() {
+  if (globalThis.currentPartGraph) return globalThis.currentPartGraph;
+  if (globalThis.PartGraphBridge && typeof globalThis.PartGraphBridge.buildStructuralPartGraph === 'function') {
+    const spec = globalThis.currentFurniSpec || globalThis.PartGraphBridge.goldenSpec;
+    return globalThis.PartGraphBridge.buildStructuralPartGraph(spec);
+  }
+  return null;
+}
+
+window.handleExportShopDrawings = function(format) {
+  const menu = document.getElementById('mfgMenuDropdown');
+  if (menu) menu.style.display = 'none';
+  const partGraph = getActivePartGraph();
+  if (!partGraph || !globalThis.PartGraphBridge) {
+    console.warn('PartGraph not available for shop drawings');
+    return;
+  }
+  if (format === 'PDF' && typeof globalThis.PartGraphBridge.exportShopDrawingsPDF === 'function') {
+    globalThis.PartGraphBridge.exportShopDrawingsPDF(partGraph);
+  } else if (typeof globalThis.PartGraphBridge.exportShopDrawingsSVG === 'function') {
+    globalThis.PartGraphBridge.exportShopDrawingsSVG(partGraph);
+  }
+};
+
+window.handleExportCncDxfZip = function() {
+  const menu = document.getElementById('mfgMenuDropdown');
+  if (menu) menu.style.display = 'none';
+  const partGraph = getActivePartGraph();
+  if (!partGraph || !globalThis.PartGraphBridge) {
+    console.warn('PartGraph not available for CNC package');
+    return;
+  }
+  if (typeof globalThis.PartGraphBridge.exportCabinetDxfZip === 'function') {
+    globalThis.PartGraphBridge.exportCabinetDxfZip(partGraph);
+  }
+};
+
+window.handleExportCutListCsv = function() {
+  const menu = document.getElementById('mfgMenuDropdown');
+  if (menu) menu.style.display = 'none';
+  const partGraph = getActivePartGraph();
+  if (!partGraph || !globalThis.PartGraphBridge) {
+    console.warn('PartGraph not available for Cut List');
+    return;
+  }
+  if (typeof globalThis.PartGraphBridge.exportCutListCSV === 'function') {
+    globalThis.PartGraphBridge.exportCutListCSV(partGraph);
+  }
+};
+
+window.handleShowNestingReport = function() {
+  const menu = document.getElementById('mfgMenuDropdown');
+  if (menu) menu.style.display = 'none';
+  const partGraph = getActivePartGraph();
+  if (!partGraph || !globalThis.PartGraphBridge) {
+    console.warn('PartGraph not available for Nesting Report');
+    return;
+  }
+  try {
+    const manifest = globalThis.PartGraphBridge.compileNestingManifest(partGraph);
+    const report = globalThis.PartGraphBridge.formatNestingReport(manifest);
+    const modal = document.getElementById('nestingReportModal');
+    const body = document.getElementById('nestingReportModalBody');
+    if (modal && body) {
+      body.innerHTML = report.html;
+      modal.style.display = 'flex';
+    } else {
+      console.log(report.text);
+      alert(report.text);
+    }
+  } catch (err) {
+    console.error('Nesting error:', err);
+    alert('Nesting preflight error: ' + err.message);
+  }
+};
+
+window.closeNestingReportModal = function() {
+  const modal = document.getElementById('nestingReportModal');
+  if (modal) modal.style.display = 'none';
+};
+
+window.printNestingReport = function() {
+  const body = document.getElementById('nestingReportModalBody');
+  if (!body) return;
+  const printWin = window.open('', '_blank');
+  if (printWin) {
+    printWin.document.write('<!DOCTYPE html><html><head><title>Nesting Report</title><style>body{font-family:sans-serif;padding:24px;color:#1C1E21;}</style></head><body>' + body.innerHTML + '<' + 'script>window.onload=function(){window.print();};<' + '/script></body></html>');
+    printWin.document.close();
+  }
+};
+
 async function aiSendMessage(text,targetMsgsId,isDrawer,image){
   // Scoped to M1: only an already-active wardrobe routes to the canonical
   // Wardrobe AI bridge. Every other furniture type (kitchen, vanity,
@@ -3606,6 +3736,21 @@ if(document.readyState!=='loading')bootWithGuard();else addEventListener('DOMCon
       <button class="ai-back" onclick="go('#/')">â† Back</button>
     </div>
     <div class="projects-grid" id="projectsGrid"></div>
+  </div>
+</div>
+
+<!-- Nesting Report Modal -->
+<div id="nestingReportModal" class="nesting-report-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);backdrop-filter:blur(3px);z-index:2000;align-items:center;justify-content:center;">
+  <div style="background:#FAF9F5;border:1px solid #DFD9CC;border-radius:12px;width:90%;max-width:540px;box-shadow:0 16px 40px rgba(0,0,0,0.2);overflow:hidden;">
+    <div style="padding:16px 20px 14px;border-bottom:1px solid #EDE8DC;display:flex;justify-content:space-between;align-items:center;">
+      <div style="font-size:14px;font-weight:700;color:#1C1E21;">FurniAI Manufacturing Report</div>
+      <button onclick="closeNestingReportModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#888;line-height:1;">&times;</button>
+    </div>
+    <div id="nestingReportModalBody" style="padding:18px 20px;max-height:75vh;overflow-y:auto;"></div>
+    <div style="padding:12px 20px;border-top:1px solid #EDE8DC;background:#F5F3EF;display:flex;justify-content:flex-end;gap:8px;">
+      <button type="button" class="btn sm ghost" onclick="printNestingReport()">Print Report</button>
+      <button type="button" class="btn sm" onclick="closeNestingReportModal()" style="background:#1C1E21;color:#fff;">Done</button>
+    </div>
   </div>
 </div>
 </body>

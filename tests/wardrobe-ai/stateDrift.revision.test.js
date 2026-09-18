@@ -7,9 +7,7 @@
  * the agent issues multiple successful tools in that turn — asserted as
  * actual semantics, not an idealized 1→5 counter of turns alone.
  *
- * Drawer steps are marked drawerStep:true. DRAWER_BANK is supported here;
- * the PartGraph customer path still fail-closes drawers as UNSUPPORTED
- * (see unsupportedCustomerEntry.test.js) — not this harness.
+ * Drawer steps are marked drawerStep:true. DRAWER_BANK is STRUCTURAL on both the wardrobe-tools path and the PartGraph customer path (CNC stays blocked).
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";

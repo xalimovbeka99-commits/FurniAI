@@ -3,13 +3,13 @@
  *
  * WHY THIS IS DETERMINISTIC
  *
- * "Add drawers" is the single most likely unsupported request a wardrobe
- * customer will type, and it once matched no parser branch at all. It fell
+ * Unmodelled hardware (handles, locks, mirrors, lighting, …) used to fall
  * through to the model, which — with no provider reachable — answered "the
  * designer is not available right now". A permanent capability limit reported
- * as a transient failure, telling the customer to retry something that will
- * never work. Recognising these here means the answer never depends on a model
- * being reachable and never costs a model call.
+ * as a transient failure. Recognising these here means the answer never depends
+ * on a model being reachable and never costs a model call.
+ * DRAWER_BANK is STRUCTURAL now; "Add drawers" is routed by the conversational
+ * parser to a supported bay layout, not refused here.
  *
  * WHY THE WORDING COMES FROM THE POLICY
  *

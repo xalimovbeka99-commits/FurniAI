@@ -1,15 +1,15 @@
 {
   "fixtureVersion": "phase1-protected-surfaces/2",
   "algorithm": "sha256-normalized-lf",
-  "capturedFromCommit": "54fe328b4165374df171cb60678e69da0009d34a",
+  "capturedFromCommit": "5d77e82d859cc54eb1a190ed3cd69e64e55be943",
   "files": {
-    "src/lib/wardrobe-model/schema.js": "762db472d86836a8067eeb8471a7500429f2b10fc7ffd81157069998945caf20",
-    "src/lib/wardrobe-model/kernel.js": "243b670f6487fc9b05015cbc4c6eb36509400785d6c040317cb1d93674124ed5",
-    "src/lib/wardrobe-model/validator.js": "a7fc020d4d33ec1c3064fe6dfa04ad617013a3905a43db8a978fd8629fd9be80",
-    "src/lib/wardrobe-tools/tools.js": "8b927a29d54982dca39006f0a66bb2ecbaae040e663a63482bfaed99f1a10b9a",
+    "src/lib/wardrobe-model/schema.js": "e8ea4b6eaaada6a8192a6c2181c57725dfe929066fdaa90607ed91d4f9f343dc",
+    "src/lib/wardrobe-model/kernel.js": "0f7ffa171d8e571b03baa050f02f4f102e7c14df51cd311574485837facac84b",
+    "src/lib/wardrobe-model/validator.js": "6296f8d498307120255c4f2bbee735637ff5a92dfc668f224ad720349980a3c6",
+    "src/lib/wardrobe-tools/tools.js": "3bf272d0e18463b897839df4532c88b8b64e6799dd718653455b383e48c8aa99",
     "src/lib/wardrobe-agent/runWardrobeAgent.js": "173010c1851cf80679379be36d8eca1d64d65b16c8310765973e51e4a2b63c70",
     "src/components/builder/FurnitureModel.jsx": "fab83a33f866d61e7a1ff28187239689fc90781463abbd064e2dc56a00025537",
-    "src/app/builder/page.jsx": "a62763f26155ed85c282d5e600f69c32083b1c851e6129e8fd0e13caf984ba00",
+    "src/app/builder/page.jsx": "e8b04078be00d39d3309e180d14ce412def93b80332d2704ac685805483d8029",
     "vercel.json": "6d1a714a153965a32d4510a3c8b125b66ee0c0d49e1bf4a21d5e5338fcd7ff16"
   },
   "justifiedBaselineUpdates": [
@@ -57,6 +57,47 @@
       "file": "src/lib/wardrobe-tools/tools.js",
       "reason": "Baseline refresh only � working-tree tools.js is unchanged this commit; protected-surface hash was already drifted from capturedFromCommit and is re-anchored to the current normalized content.",
       "diffSummary": "No behavioral change in tools.js; hash baseline updated to current sha256-normalized-lf."
+    },
+    {
+      "file": "src/lib/wardrobe-model/schema.js",
+      "previousHash": "762db472d86836a8067eeb8471a7500429f2b10fc7ffd81157069998945caf20",
+      "newHash": "e8ea4b6eaaada6a8192a6c2181c57725dfe929066fdaa90607ed91d4f9f343dc",
+      "reason": "Authorized pin refresh on tip 5d77e82: reconciled PL-006 degenerate guards (exclusive bay-width gate + SVG fail-closed) + multi-run nesting/export manifest contract + conversational DRAWER_BANK tooling wiring. Bekzod authorized surface pin refresh 2026-09-18.",
+      "diffSummary": "PL-006 minDrawerBayClearWidthMm construction floor + related DEFAULTS."
+    },
+    {
+      "file": "src/lib/wardrobe-model/kernel.js",
+      "previousHash": "243b670f6487fc9b05015cbc4c6eb36509400785d6c040317cb1d93674124ed5",
+      "newHash": "0f7ffa171d8e571b03baa050f02f4f102e7c14df51cd311574485837facac84b",
+      "reason": "Authorized pin refresh on tip 5d77e82: reconciled PL-006 degenerate guards (exclusive bay-width gate + SVG fail-closed) + multi-run nesting/export manifest contract + conversational DRAWER_BANK tooling wiring. Bekzod authorized surface pin refresh 2026-09-18.",
+      "diffSummary": "Exclusive W<=51 DRAWER_BANK gate + shelf-shift / clearance fail-closed."
+    },
+    {
+      "file": "src/lib/wardrobe-model/validator.js",
+      "previousHash": "a7fc020d4d33ec1c3064fe6dfa04ad617013a3905a43db8a978fd8629fd9be80",
+      "newHash": "6296f8d498307120255c4f2bbee735637ff5a92dfc668f224ad720349980a3c6",
+      "reason": "Authorized pin refresh on tip 5d77e82: reconciled PL-006 degenerate guards (exclusive bay-width gate + SVG fail-closed) + multi-run nesting/export manifest contract + conversational DRAWER_BANK tooling wiring. Bekzod authorized surface pin refresh 2026-09-18.",
+      "diffSummary": "INSUFFICIENT_BAY_WIDTH_FOR_DRAWERS exclusive floor mirroring kernel."
+    },
+    {
+      "file": "src/lib/wardrobe-tools/tools.js",
+      "previousHash": "8b927a29d54982dca39006f0a66bb2ecbaae040e663a63482bfaed99f1a10b9a",
+      "newHash": "3bf272d0e18463b897839df4532c88b8b64e6799dd718653455b383e48c8aa99",
+      "reason": "Authorized pin refresh on tip 5d77e82: reconciled PL-006 degenerate guards (exclusive bay-width gate + SVG fail-closed) + multi-run nesting/export manifest contract + conversational DRAWER_BANK tooling wiring. Bekzod authorized surface pin refresh 2026-09-18.",
+      "diffSummary": "STRUCTURAL DRAWER_BANK component_add wiring + shiftedShelves surface."
+    },
+    {
+      "file": "src/app/builder/page.jsx",
+      "previousHash": "a62763f26155ed85c282d5e600f69c32083b1c851e6129e8fd0e13caf984ba00",
+      "newHash": "e8b04078be00d39d3309e180d14ce412def93b80332d2704ac685805483d8029",
+      "reason": "Authorized pin refresh on tip 5d77e82: reconciled PL-006 degenerate guards (exclusive bay-width gate + SVG fail-closed) + multi-run nesting/export manifest contract + conversational DRAWER_BANK tooling wiring. Bekzod authorized surface pin refresh 2026-09-18.",
+      "diffSummary": "Builder page evolution with LocalEnvironment / export surfaces; hash re-anchored after M2 unify."
     }
-  ]
+  ],
+  "authorizedRefresh": {
+    "by": "Bekzod Khalimov",
+    "date": "2026-09-18",
+    "tip": "5d77e82d859cc54eb1a190ed3cd69e64e55be943",
+    "note": "Authorize Surface Pin Refresh & Run Adversarial Multi-Material Edge Cases"
+  }
 }

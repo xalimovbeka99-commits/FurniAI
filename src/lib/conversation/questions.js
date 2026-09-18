@@ -16,7 +16,7 @@ const PHRASING = Object.freeze({
   bayCount: "How many bays should the wardrobe be divided into?",
   doorCount: "How many hinged doors across the front?",
   finishType: "Which finish: melamine, painted or veneer?",
-  bayLayouts: "What goes inside each bay, left to right? Options in this slice: full-height hanging, or short hanging over two adjustable shelves.",
+  bayLayouts: "What goes inside each bay, left to right? Options in this slice: full-height hanging, short hanging over two adjustable shelves, or a drawer bank with short hanging above.",
   furnitureScope: "This request falls outside the straight hinged wardrobe we can build today. Shall we proceed with a straight hinged wardrobe instead?",
 });
 
@@ -30,6 +30,7 @@ const KIND_PREFIX = Object.freeze({
 export const LAYOUT_LABELS = Object.freeze({
   [BAY_LAYOUT.LONG_HANGING]: "full-height hanging with a shelf over the top",
   [BAY_LAYOUT.SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES]: "short hanging over two adjustable shelves, with a shelf over the top",
+  [BAY_LAYOUT.DRAWER_BANK_WITH_SHORT_HANGING]: "drawer bank at the bottom with short hanging above, and a shelf over the top",
 });
 
 /**

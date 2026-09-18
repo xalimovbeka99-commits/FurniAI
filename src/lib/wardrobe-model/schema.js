@@ -118,6 +118,15 @@ export const DEFAULTS = Object.freeze({
   minHangingInteriorDepthMm: 300,
   /** Fail-closed: continuous shelf span without a vertical partition. */
   maxUnsupportedShelfSpanMm: 1200,
+  /**
+   * PL-006 construction floor for DRAWER_BANK clear width (not usable-width ruling).
+   * BACK = W - 21 - 15 - 15; at W=51 BACK=0. Kernel rejects widthMm <= this value.
+   * Provenance: PROVISIONAL_PENDING_BEKZOD_REVIEW. 52 mm is arithmetic-only.
+   */
+  // The SUM of the drawer deductions, not a usable width. A bay must EXCEED
+  // it: at exactly this value the drawer back computes to 0mm. No practical
+  // minimum is ruled, so none is invented here.
+  minDrawerBayClearWidthMm: 21 + 15 + 15,
 });
 
 /** The one zone-height a given component type occupies, given its own fields. */

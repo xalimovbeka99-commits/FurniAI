@@ -31,6 +31,26 @@ import {
   parseDimension,
   ACCEPTED_DIMENSION_UNITS,
 } from "../conversation/clarifyInput.js";
+import {
+  generateShopDrawingsSVG,
+  exportShopDrawingsSVG,
+  exportShopDrawingsPDF,
+} from "../drawing/projectionEngine.js";
+import {
+  compileCabinetDxfPackage,
+  compilePanelToDxf,
+} from "../production/dxfCompiler.js";
+import {
+  generateCutListCsv,
+  buildCutListRows,
+  compileNestingManifest,
+} from "../production/nestingCompiler.js";
+import {
+  exportCutListCSV,
+  exportCabinetDxfZip,
+  formatNestingReport,
+  createZipBuffer,
+} from "../production/exportBridge.js";
 
 export {
   goldenSpec,
@@ -56,6 +76,18 @@ export {
   parseAndValidateClarifyInput,
   parseDimension,
   ACCEPTED_DIMENSION_UNITS,
+  generateShopDrawingsSVG,
+  exportShopDrawingsSVG,
+  exportShopDrawingsPDF,
+  compileCabinetDxfPackage,
+  compilePanelToDxf,
+  generateCutListCsv,
+  buildCutListRows,
+  compileNestingManifest,
+  exportCutListCSV,
+  exportCabinetDxfZip,
+  formatNestingReport,
+  createZipBuffer,
 };
 
 const FALLBACK_MAT = {

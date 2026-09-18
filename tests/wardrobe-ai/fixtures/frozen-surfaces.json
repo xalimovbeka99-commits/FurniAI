@@ -1,16 +1,21 @@
 {
   "fixtureVersion": "frozen-surfaces/2",
-  "capturedAt": "2026-08-11",
+  "capturedAt": "2026-09-18",
   "algorithm": "sha256",
   "files": {
-    "src/app/builder/page.jsx": "a62763f26155ed85c282d5e600f69c32083b1c851e6129e8fd0e13caf984ba00",
+    "src/app/builder/page.jsx": "e8b04078be00d39d3309e180d14ce412def93b80332d2704ac685805483d8029",
     "src/components/builder/FurnitureModel.jsx": "fab83a33f866d61e7a1ff28187239689fc90781463abbd064e2dc56a00025537",
     "src/store/furnitureStore.js": "47e022ad9bf71a3a41bdb4fec8d82c6afa02d3e005c692b205a81400b398bd82",
     "src/lib/furnitureConfig.js": "11cd96b97876cb29b6be5caff8d0e98c02291ce1549c9cf8ea61a3270f73e3da",
     "src/lib/configSchema.js": "1cc404135abd2b8908e16b2d993f9294c36fdec2647b009590ff339a704d8c7c",
-    "src/lib/buildGeometry.js": "9e0578b6c9433ae3206e9e7d1f74fd65b733a09f37f6061f6bd849570b370e4c"
+    "src/lib/buildGeometry.js": "dfcb7ee9b246ad9cad73e4ef37496d7228f38acdcfa147e9d47b56b688f8f786"
   },
   "justifiedBaselineUpdates": [
+    {
+      "file": "src/lib/buildGeometry.js",
+      "reason": "Reconciled 3D drawer box mounting with tip 5d88337, added architectural wall scribe / filler panel support (FILLER_LEFT, FILLER_RIGHT) with dual-tier dimension line anchors, and enhanced 2.0 mm reveal gap visibility on DRAWER_FRONT via visual outline segments. Legacy buildGeometry(config) semantics remain 100% preserved.",
+      "diffSummary": "Added filler panel mounting, dual-tier dimension strings/anchors, drawer front reveal outlines, and refined edge-banding targets."
+    },
     {
       "file": "all-frozen-surfaces",
       "reason": "Cross-platform deterministic hashing: normalizes line endings (CRLF -> LF) so SHA-256 hashes match canonical Git content identically on both Linux and Windows. Fixes G2.2-R2 cross-platform CI failure.",
@@ -35,12 +40,27 @@
       "file": "src/app/builder/page.jsx",
       "reason": "M1.1.3 (Codex-verified): <Environment preset=\"apartment\"> fetched lebombo_1k.hdr from a remote CDN (raw.githack.com/pmndrs/drei-assets); a failed/blocked fetch rejected past Suspense into no error boundary, taking down the whole /builder route with Next.js's fatal page-load error. Fix removes the remote dependency at its root: swaps the drei Environment import/element for a new local, procedurally-generated environment (src/components/builder/LocalEnvironment.jsx, using three's bundled RoomEnvironment + PMREMGenerator, zero network calls) wrapped in a new defensive error boundary (src/components/builder/SceneEnhancementBoundary.jsx) so any future non-essential scene enhancement failure can't take the configurator down either. No layout, panel, camera, base lighting, or existing behavior changed. Full diff verified via `git diff -- src/app/builder/page.jsx` before updating this hash.",
       "diffSummary": "+5/-2 lines: Environment import replaced by LocalEnvironment + SceneEnhancementBoundary imports; <Environment preset=\"apartment\" /> replaced by <SceneEnhancementBoundary><LocalEnvironment /></SceneEnhancementBoundary>."
+    },
+    {
+      "file": "src/app/builder/page.jsx",
+      "previousHash": "a62763f26155ed85c282d5e600f69c32083b1c851e6129e8fd0e13caf984ba00",
+      "newHash": "e8b04078be00d39d3309e180d14ce412def93b80332d2704ac685805483d8029",
+      "reason": "Authorized pin refresh on tip 5d77e82: reconciled PL-006 degenerate guards (exclusive bay-width gate + SVG fail-closed) + multi-run nesting/export manifest contract + conversational DRAWER_BANK tooling wiring. Bekzod authorized surface pin refresh 2026-09-18.",
+      "diffSummary": "Re-anchor frozen builder page pin after M2 integration unify (same LF-normalized algorithm)."
     }
   ],
   "defaultWardrobeSemanticBaseline": {
     "type": "wardrobe",
-    "dimensionsMetres": { "width": 2.4, "height": 2.8, "depth": 0.6 },
-    "moduleKinds": ["door", "door", "drawerBank"],
+    "dimensionsMetres": {
+      "width": 2.4,
+      "height": 2.8,
+      "depth": 0.6
+    },
+    "moduleKinds": [
+      "door",
+      "door",
+      "drawerBank"
+    ],
     "moduleCount": 3,
     "shelfCount": 6,
     "drawerFrontCount": 3,
