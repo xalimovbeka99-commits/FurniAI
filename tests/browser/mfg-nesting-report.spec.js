@@ -100,4 +100,48 @@ test.describe("Manufacturing & Blueprints — Page Boot & Nesting Report Regress
     await expect(modal).not.toBeVisible();
     expect(pageErrors).toEqual([]);
   });
+
+  test("mobile viewport: manufacturing dropdown and nesting modal remain usable at 390px width", async ({ page }) => {
+    const pageErrors = [];
+    page.on("pageerror", (err) => pageErrors.push(err.message));
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/#/build/golden-parametric");
+    await expect(page.locator("#view-builder")).toBeVisible({ timeout: 15000 });
+    await page.waitForFunction(
+      () => typeof Builder !== "undefined" && Builder.isParametric && Builder.parts?.[0],
+      null,
+      { timeout: 15000 }
+    );
+
+    const mfgBtn = page.locator("#btnMfgDropdown");
+    await expect(mfgBtn).toBeVisible();
+    await mfgBtn.click();
+
+    const mfgMenu = page.locator("#mfgMenuDropdown");
+    await expect(mfgMenu).toBeVisible();
+
+    // Verify menu fits within mobile screen bounds
+    const menuBox = await mfgMenu.boundingBox();
+    expect(menuBox).not.toBeNull();
+    expect(menuBox.x).toBeGreaterThanOrEqual(0);
+    expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(395);
+
+    // Open Nesting Report modal on mobile
+    const nestingBtn = page.locator("#btnShowNestingReport");
+    await expect(nestingBtn).toBeVisible();
+    await nestingBtn.click();
+
+    const modal = page.locator("#nestingReportModal");
+    await expect(modal).toBeVisible();
+
+    // Verify modal close button is clickable on mobile
+    const closeBtn = modal.locator("button:has-text('Done')");
+    await expect(closeBtn).toBeVisible();
+    await closeBtn.click();
+    await expect(modal).not.toBeVisible();
+
+    expect(pageErrors).toEqual([]);
+  });
 });
+
