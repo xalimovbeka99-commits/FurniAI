@@ -5,13 +5,13 @@
  *
  * Ingests Grok's neutral operations IR (compileNeutralOperations) and
  * transforms them into 3D world-space toolpath trajectories, kerf ribbons,
- * and clamp safety meshes consumed by CamOverlayLayer.jsx and CamSimulationBar.jsx.
+ * clamp safety meshes, and simulation steps for CamOverlayLayer and CamSimulationBar.
  *
  * CONTRACT MAPPINGS:
- * - OUTLINE_CONTOUR -> camCutFeedTrajectories (solid cyan lines, G01)
- * - Rapid Transits  -> camRapidTrajectories (dashed amber lines, G00)
- * - POCKET_GROOVE   -> camGrooveTrajectories (neon lime lines, G01)
- * - BORE_SYSTEM_32  -> vertical plunge/retract bores (gated / dry-run)
+ * - OUTLINE_CONTOUR -> camCutFeedTrajectories (solid cyan lines with kerf ribbon metadata)
+ * - Rapid Transits  -> camRapidTrajectories (amber dashed lines at Z_safe = +25 mm)
+ * - POCKET_GROOVE   -> camGrooveTrajectories (neon lime groove line paths)
+ * - BORE_SYSTEM_32  -> drill target positions with status set to GATED/BLOCKED
  * - Kerf Ribbons    -> Dynamic flat ribbon mesh using cutterDiameterMm / toolDiameterMm
  */
 
@@ -21,6 +21,19 @@ import { DMM_TO_THREE } from "../adapters/partGraphToThree.js";
 
 export const MM_TO_THREE = 0.001; // 1 mm = 0.001 Three.js metres
 export const DEFAULT_CLEARANCE_Z_MM = 25.0; // 25 mm clearance plane
+export const DEFAULT_CUTTER_DIAMETER_MM = 6.0; // Standard 6.0 mm compression endmill
+export const DEFAULT_GROOVE_WIDTH_MM = 6.0;   // 6.0 mm back panel groove
+export const DEFAULT_FEED_MM_MIN = 12000;      // 12 m/min cutting feed
+export const DEFAULT_RAPID_MM_MIN = 30000;     // 30 m/min rapid transit
+export const DEFAULT_PLUNGE_MM_MIN = 3000;     // 3 m/min plunge
+
+/** Tool SKU catalog mapping by operation type */
+export const CAM_TOOL_SKUS = Object.freeze({
+  OUTLINE_CONTOUR: "SKU_TOOL_COMPRESSION_6MM",
+  POCKET_GROOVE: "SKU_TOOL_MORTISE_GROOVE_6MM",
+  BORE_SYSTEM_32: "SKU_TOOL_BORING_PIN_5MM",
+  DEFAULT: "SKU_TOOL_GENERIC_ROUTER",
+});
 
 /**
  * Maps a 2D part-local coordinate [xMm, yMm, zDepthMm] to 3D world space (metres)
@@ -58,7 +71,6 @@ export function mapPartLocalToWorld(part, [xMm, yMm, zDepthMm = 0]) {
 
   if (thicknessAxis === "x") {
     // Vertical side or divider panel (YZ plane)
-    // Part X (length) runs along Y; Part Y (width) runs along Z; thickness along X
     return {
       x: maxX + zM,
       y: minY + xM,
@@ -66,7 +78,6 @@ export function mapPartLocalToWorld(part, [xMm, yMm, zDepthMm = 0]) {
     };
   } else if (thicknessAxis === "y") {
     // Horizontal shelf, top, bottom panel (XZ plane)
-    // Part X (length) runs along X; Part Y (width) runs along Z; thickness along Y
     return {
       x: minX + xM,
       y: maxY + zM,
@@ -74,7 +85,6 @@ export function mapPartLocalToWorld(part, [xMm, yMm, zDepthMm = 0]) {
     };
   } else {
     // Front/back vertical panel (XY plane)
-    // Part X (length) runs along X; Part Y (width) runs along Y; thickness along Z
     return {
       x: minX + xM,
       y: minY + yM,
@@ -102,12 +112,12 @@ export function transformNeutralOpToTrajectory(op, part, options = {}) {
     const pathMm = op.pathMm || [];
     if (pathMm.length < 2) return trajectories;
 
-    const cutterDia = op.toolDiameterMm ?? op.cutterDiameterMm ?? 6.0;
+    const cutterDia = op.toolDiameterMm ?? op.cutterDiameterMm ?? DEFAULT_CUTTER_DIAMETER_MM;
+    const toolSku = op.toolSku || CAM_TOOL_SKUS.OUTLINE_CONTOUR;
     const depths = Array.isArray(op.stepDownDepthsMm) && op.stepDownDepthsMm.length
       ? op.stepDownDepthsMm
       : [op.panelThicknessMm || 18.0];
 
-    // For visualization performance, render the primary full-depth pass and entry/exit rapids
     const finalDepthMm = depths[depths.length - 1];
     const firstVertex = pathMm[0];
 
@@ -121,10 +131,12 @@ export function transformNeutralOpToTrajectory(op, part, options = {}) {
       from: mapPartLocalToWorld(part, [firstVertex[0] - cutterDia, firstVertex[1] - cutterDia, clearanceZMm]),
       to: pApproachClearance,
       isCutting: false,
-      feedRate: 30000,
+      feedRate: options.rapidMmMin ?? DEFAULT_RAPID_MM_MIN,
       zDepthMm: clearanceZMm,
       cutterDiameterMm: cutterDia,
       kerfMm: cutterDia,
+      toolSku,
+      status: op.status,
       opId: op.id,
       hostPartId: part.id,
       description: `Rapid approach (${op.id})`,
@@ -137,10 +149,12 @@ export function transformNeutralOpToTrajectory(op, part, options = {}) {
       from: pApproachClearance,
       to: pApproachPlunge,
       isCutting: true,
-      feedRate: 3000,
+      feedRate: options.plungeMmMin ?? DEFAULT_PLUNGE_MM_MIN,
       zDepthMm: -finalDepthMm,
       cutterDiameterMm: cutterDia,
       kerfMm: cutterDia,
+      toolSku,
+      status: op.status,
       opId: op.id,
       hostPartId: part.id,
       description: `Plunge to depth -${finalDepthMm.toFixed(1)}mm (${op.id})`,
@@ -156,10 +170,12 @@ export function transformNeutralOpToTrajectory(op, part, options = {}) {
         from: currWorld,
         to: nextWorld,
         isCutting: true,
-        feedRate: 12000,
+        feedRate: options.feedMmMin ?? DEFAULT_FEED_MM_MIN,
         zDepthMm: -finalDepthMm,
         cutterDiameterMm: cutterDia,
         kerfMm: cutterDia,
+        toolSku,
+        status: op.status,
         opId: op.id,
         hostPartId: part.id,
         description: `Contour cut leg ${i + 1}/${pathMm.length - 1} (${op.id})`,
@@ -175,10 +191,12 @@ export function transformNeutralOpToTrajectory(op, part, options = {}) {
       from: currWorld,
       to: pRetract,
       isCutting: false,
-      feedRate: 30000,
+      feedRate: options.rapidMmMin ?? DEFAULT_RAPID_MM_MIN,
       zDepthMm: clearanceZMm,
       cutterDiameterMm: cutterDia,
       kerfMm: cutterDia,
+      toolSku,
+      status: op.status,
       opId: op.id,
       hostPartId: part.id,
       description: `Retract to clearance (${op.id})`,
@@ -186,8 +204,9 @@ export function transformNeutralOpToTrajectory(op, part, options = {}) {
   } else if (op.type === OPERATION_TYPES.POCKET_GROOVE) {
     const startMm = op.startMm || [0, 10];
     const endMm = op.endMm || [100, 10];
-    const widthMm = op.widthMm || 6.0;
+    const widthMm = op.widthMm || DEFAULT_GROOVE_WIDTH_MM;
     const depthMm = op.depthMm || 8.0;
+    const toolSku = op.toolSku || CAM_TOOL_SKUS.POCKET_GROOVE;
 
     const pClearanceStart = mapPartLocalToWorld(part, [startMm[0], startMm[1], clearanceZMm]);
     const pPlungeStart = mapPartLocalToWorld(part, [startMm[0], startMm[1], -depthMm]);
@@ -201,10 +220,12 @@ export function transformNeutralOpToTrajectory(op, part, options = {}) {
       from: pClearanceStart,
       to: pClearanceStart,
       isCutting: false,
-      feedRate: 30000,
+      feedRate: options.rapidMmMin ?? DEFAULT_RAPID_MM_MIN,
       zDepthMm: clearanceZMm,
       cutterDiameterMm: widthMm,
       kerfMm: widthMm,
+      toolSku,
+      status: op.status,
       opId: op.id,
       hostPartId: part.id,
       description: `Rapid to groove start (${op.id})`,
@@ -217,10 +238,12 @@ export function transformNeutralOpToTrajectory(op, part, options = {}) {
       from: pClearanceStart,
       to: pPlungeStart,
       isCutting: true,
-      feedRate: 4000,
+      feedRate: options.plungeMmMin ?? DEFAULT_PLUNGE_MM_MIN,
       zDepthMm: -depthMm,
       cutterDiameterMm: widthMm,
       kerfMm: widthMm,
+      toolSku,
+      status: op.status,
       opId: op.id,
       hostPartId: part.id,
       description: `Plunge groove -${depthMm.toFixed(1)}mm (${op.id})`,
@@ -237,6 +260,8 @@ export function transformNeutralOpToTrajectory(op, part, options = {}) {
       zDepthMm: -depthMm,
       cutterDiameterMm: widthMm,
       kerfMm: widthMm,
+      toolSku,
+      status: op.status,
       opId: op.id,
       hostPartId: part.id,
       description: `Slot groove cut (${op.id})`,
@@ -249,18 +274,20 @@ export function transformNeutralOpToTrajectory(op, part, options = {}) {
       from: pCutEnd,
       to: pClearanceEnd,
       isCutting: false,
-      feedRate: 30000,
+      feedRate: options.rapidMmMin ?? DEFAULT_RAPID_MM_MIN,
       zDepthMm: clearanceZMm,
       cutterDiameterMm: widthMm,
       kerfMm: widthMm,
+      toolSku,
+      status: op.status,
       opId: op.id,
       hostPartId: part.id,
       description: `Retract groove (${op.id})`,
     });
   } else if (op.type === OPERATION_TYPES.BORE_SYSTEM_32) {
-    // If coordinates are withheld (dry run), emit semantic indicator at host center
     const dia = op.diameterMm || 5.0;
     const depth = op.depthMm || 13.0;
+    const toolSku = op.toolSku || CAM_TOOL_SKUS.BORE_SYSTEM_32;
     const center = op.centerMm || [
       fromDeciMm(part.finished?.lengthDmm || 0) / 2,
       fromDeciMm(part.finished?.widthDmm || 0) / 2,
@@ -275,13 +302,15 @@ export function transformNeutralOpToTrajectory(op, part, options = {}) {
       from: pClear,
       to: pClear,
       isCutting: false,
-      feedRate: 30000,
+      feedRate: options.rapidMmMin ?? DEFAULT_RAPID_MM_MIN,
       zDepthMm: clearanceZMm,
       cutterDiameterMm: dia,
       kerfMm: dia,
+      toolSku,
+      status: "GATED/BLOCKED",
       opId: op.id,
       hostPartId: part.id,
-      description: `Rapid to System 32 bore (${op.id})`,
+      description: `Rapid to System 32 bore (${op.id}) [GATED/BLOCKED]`,
     });
 
     trajectories.push({
@@ -294,9 +323,11 @@ export function transformNeutralOpToTrajectory(op, part, options = {}) {
       zDepthMm: -depth,
       cutterDiameterMm: dia,
       kerfMm: dia,
+      toolSku,
+      status: "GATED/BLOCKED",
       opId: op.id,
       hostPartId: part.id,
-      description: `Bore Ø${dia}mm x ${depth}mm (${op.id}) [DRY_RUN]`,
+      description: `Bore Ø${dia}mm x ${depth}mm (${op.id}) [GATED/BLOCKED]`,
     });
 
     trajectories.push({
@@ -305,10 +336,12 @@ export function transformNeutralOpToTrajectory(op, part, options = {}) {
       from: pBore,
       to: pClear,
       isCutting: false,
-      feedRate: 30000,
+      feedRate: options.rapidMmMin ?? DEFAULT_RAPID_MM_MIN,
       zDepthMm: clearanceZMm,
       cutterDiameterMm: dia,
       kerfMm: dia,
+      toolSku,
+      status: "GATED/BLOCKED",
       opId: op.id,
       hostPartId: part.id,
       description: `Retract bore (${op.id})`,
@@ -319,29 +352,160 @@ export function transformNeutralOpToTrajectory(op, part, options = {}) {
 }
 
 /**
- * Main adapter bridge: Transforms neutral CAM IR into presentation operations
- * for CamOverlayLayer.jsx.
+ * Pure adapter function ingesting Grok's neutral operations[] and emitting
+ * the exact categorized props and simulation sequences consumed by
+ * CamOverlayLayer.jsx and CamSimulationBar.jsx.
  *
- * @param {object} neutralIr - Output of compileNeutralOperations(partGraph)
- * @param {object} partGraph - Validated PartGraph
+ * @param {Array<object>|object} operationsOrIr - operations[] array or compiled neutral IR
  * @param {object} [options]
- * @returns {Array<object>} Consolidated trajectory list
+ * @param {object} [options.partGraph] - Optional host PartGraph for 3D placement mapping
+ * @param {number} [options.clearanceZMm] - Rapid clearance Z height (default: 25.0 mm)
+ * @returns {{
+ *   operations: Array<object>,
+ *   camCutFeedTrajectories: Array<object>,
+ *   camRapidTrajectories: Array<object>,
+ *   camGrooveTrajectories: Array<object>,
+ *   drillMarkers: Array<object>,
+ *   kerfRibbons: Array<object>,
+ *   stepSequences: Array<object>,
+ *   totalOps: number,
+ *   toolSkus: string[]
+ * }}
  */
-export function adaptNeutralOperationsToOverlay(neutralIr, partGraph, options = {}) {
-  if (!neutralIr || !Array.isArray(neutralIr.operations)) {
-    return [];
-  }
+export function mapNeutralOperationsToOverlayProps(operationsOrIr, options = {}) {
+  const operations = Array.isArray(operationsOrIr)
+    ? operationsOrIr
+    : (operationsOrIr?.operations || []);
 
+  const partGraph = options.partGraph || null;
   const partsMap = new Map((partGraph?.parts || []).map((p) => [p.id, p]));
-  const allTrajectories = [];
+  const clearanceZMm = options.clearanceZMm ?? DEFAULT_CLEARANCE_Z_MM;
 
-  for (const op of neutralIr.operations) {
-    const part = partsMap.get(op.hostPartId);
-    if (!part) continue;
+  const camCutFeedTrajectories = [];
+  const camRapidTrajectories = [];
+  const camGrooveTrajectories = [];
+  const drillMarkers = [];
+  const kerfRibbons = [];
+  const stepSequences = [];
+  const toolSkusSet = new Set();
 
+  let prevRetractPosition = null;
+
+  for (let opIdx = 0; opIdx < operations.length; opIdx++) {
+    const op = operations[opIdx];
+    const part = partsMap.get(op.hostPartId) || {
+      id: op.hostPartId || `PART_${opIdx + 1}`,
+      placement: {
+        minXDmm: 0,
+        maxXDmm: 10000,
+        minYDmm: 0,
+        maxYDmm: 10000,
+        minZDmm: 0,
+        maxZDmm: 180,
+      },
+      finished: { lengthDmm: 10000, widthDmm: 10000, thicknessDmm: 180 },
+    };
+
+    // 1. If this is BORE_SYSTEM_32, extract drill target marker with GATED/BLOCKED status
+    if (op.type === OPERATION_TYPES.BORE_SYSTEM_32) {
+      const center = op.centerMm || [
+        fromDeciMm(part?.finished?.lengthDmm || 0) / 2,
+        fromDeciMm(part?.finished?.widthDmm || 0) / 2,
+      ];
+      const dia = op.diameterMm || 5.0;
+      const depth = op.depthMm || 13.0;
+      const worldPos = mapPartLocalToWorld(part, [center[0], center[1], 0]);
+
+      drillMarkers.push({
+        id: op.id,
+        hostPartId: op.hostPartId,
+        status: "GATED/BLOCKED", // Explicitly GATED/BLOCKED per spec
+        hardwareGate: op.hardwareGate || "BLOCKED_PENDING_HARDWARE_APPROVAL",
+        diameterMm: dia,
+        depthMm: depth,
+        face: op.face || "EDGE",
+        toolSku: CAM_TOOL_SKUS.BORE_SYSTEM_32,
+        centerMm: center,
+        worldPosition: worldPos,
+      });
+      toolSkusSet.add(CAM_TOOL_SKUS.BORE_SYSTEM_32);
+    }
+
+    // 2. Generate raw trajectories for the operation
     const opTrajectories = transformNeutralOpToTrajectory(op, part, options);
-    allTrajectories.push(...opTrajectories);
+    if (opTrajectories.length === 0) continue;
+
+    const opFirst = opTrajectories[0];
+    const opLast = opTrajectories[opTrajectories.length - 1];
+
+    // 3. Calculate rapid transit step between operations at Z_safe = +25 mm
+    if (prevRetractPosition && opFirst.from) {
+      const transitRapid = {
+        type: "G00",
+        category: "RAPID",
+        from: prevRetractPosition,
+        to: opFirst.from,
+        isCutting: false,
+        feedRate: options.rapidMmMin ?? DEFAULT_RAPID_MM_MIN,
+        zDepthMm: clearanceZMm,
+        cutterDiameterMm: op.toolDiameterMm || op.widthMm || DEFAULT_CUTTER_DIAMETER_MM,
+        kerfMm: op.toolDiameterMm || op.widthMm || DEFAULT_CUTTER_DIAMETER_MM,
+        toolSku: "RAPID_TRANSIT",
+        status: "DRY_RUN_ONLY",
+        opId: `TRANSIT_${opIdx}`,
+        hostPartId: op.hostPartId,
+        description: `Rapid transit to ${op.id} at Z_safe=+${clearanceZMm}mm`,
+      };
+      camRapidTrajectories.push(transitRapid);
+      stepSequences.push(transitRapid);
+    }
+
+    // 4. Distribute trajectories into categorized channels
+    for (const traj of opTrajectories) {
+      stepSequences.push(traj);
+      if (traj.toolSku) toolSkusSet.add(traj.toolSku);
+
+      if (traj.category === "RAPID" || traj.type === "G00") {
+        camRapidTrajectories.push(traj);
+      } else if (traj.category === "GROOVE") {
+        camGrooveTrajectories.push(traj);
+        kerfRibbons.push({
+          from: traj.from,
+          to: traj.to,
+          widthMm: traj.cutterDiameterMm || DEFAULT_GROOVE_WIDTH_MM,
+          opId: traj.opId,
+        });
+      } else if (traj.category === "CONTOUR") {
+        camCutFeedTrajectories.push(traj);
+        kerfRibbons.push({
+          from: traj.from,
+          to: traj.to,
+          widthMm: traj.cutterDiameterMm || DEFAULT_CUTTER_DIAMETER_MM,
+          opId: traj.opId,
+        });
+      }
+    }
+
+    prevRetractPosition = opLast.to;
   }
 
-  return allTrajectories;
+  return {
+    operations,
+    camCutFeedTrajectories,
+    camRapidTrajectories,
+    camGrooveTrajectories,
+    drillMarkers,
+    kerfRibbons,
+    stepSequences,
+    totalOps: operations.length,
+    toolSkus: Array.from(toolSkusSet),
+  };
 }
+
+/**
+ * Legacy compatibility alias for existing callers.
+ */
+export const adaptNeutralOperationsToOverlay = (neutralIr, partGraph, options = {}) => {
+  const props = mapNeutralOperationsToOverlayProps(neutralIr, { ...options, partGraph });
+  return props.stepSequences;
+};

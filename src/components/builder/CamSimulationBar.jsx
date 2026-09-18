@@ -76,22 +76,24 @@ export default function CamSimulationBar({
     if (onSeek) onSeek(val);
   };
 
+  const total = stepInfo?.totalOps || (Array.isArray(stepInfo?.operations) ? stepInfo.operations.length : 10);
+
   const handleStepBack = () => {
-    const total = stepInfo?.totalOps || 10;
-    const stepSize = 1 / Math.max(1, total);
-    const next = Math.max(0, currentT - stepSize);
+    const currentOpIdx = stepInfo?.opIndex != null ? stepInfo.opIndex - 1 : Math.floor(currentT * total);
+    const prevIdx = Math.max(0, currentOpIdx - 1);
+    const next = prevIdx / Math.max(1, total);
     if (onSeek) onSeek(next);
   };
 
   const handleStepForward = () => {
-    const total = stepInfo?.totalOps || 10;
-    const stepSize = 1 / Math.max(1, total);
-    const next = Math.min(1, currentT + stepSize);
+    const currentOpIdx = stepInfo?.opIndex != null ? stepInfo.opIndex - 1 : Math.floor(currentT * total);
+    const nextIdx = Math.min(total - 1, currentOpIdx + 1);
+    const next = nextIdx / Math.max(1, total);
     if (onSeek) onSeek(next);
   };
 
   const activeOp = stepInfo?.activeOp;
-  const isRapid = activeOp?.type === "G00" || !activeOp?.isCutting;
+  const isRapid = activeOp?.type === "G00" || activeOp?.category === "RAPID" || !activeOp?.isCutting;
   const hasCollision = collisionStatus?.hasCollision;
 
   return (
@@ -228,8 +230,8 @@ export default function CamSimulationBar({
 
               <div>
                 <span className="text-neutral-500 block text-[10px] uppercase">Z-Depth / Feed</span>
-                <span className={`${(stepInfo?.zDepthMm || 0) < 0 ? "text-cyan-300 font-bold" : "text-amber-300"}`}>
-                  Z: {stepInfo?.zDepthMm != null ? stepInfo.zDepthMm.toFixed(1) : "0.0"} mm
+                <span className={`${((stepInfo?.zDepthMm ?? activeOp?.zDepthMm ?? 0) < 0) ? "text-cyan-300 font-bold" : "text-amber-300"}`}>
+                  Z: {(stepInfo?.zDepthMm ?? activeOp?.zDepthMm ?? 0).toFixed(1)} mm
                   <span className="text-neutral-400 text-[10px] ml-1 font-normal">
                     ({activeOp?.feedRate ? `${activeOp.feedRate} mm/min` : "RAPID"})
                   </span>
@@ -237,10 +239,21 @@ export default function CamSimulationBar({
               </div>
 
               <div>
-                <span className="text-neutral-500 block text-[10px] uppercase">Active Tool</span>
-                <span className="text-neutral-300 truncate block">
-                  T01 Ø{(activeOp?.kerfMm || 9.525).toFixed(2)}mm Endmill
-                </span>
+                <span className="text-neutral-500 block text-[10px] uppercase">Active Tool & Status</span>
+                <div className="flex items-center gap-1.5 truncate">
+                  <span className="text-neutral-200 truncate block">
+                    {activeOp?.toolSku || `T01 Ø${(activeOp?.cutterDiameterMm || activeOp?.kerfMm || 6.0).toFixed(1)}mm`}
+                  </span>
+                  {activeOp?.status && (
+                    <span className={`px-1 py-0.2 rounded text-[9px] font-bold ${
+                      activeOp.status.includes("GATED") || activeOp.status.includes("BLOCKED")
+                        ? "bg-rose-500/30 text-rose-300"
+                        : "bg-amber-500/20 text-amber-300"
+                    }`}>
+                      {activeOp.status}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -253,6 +266,7 @@ export default function CamSimulationBar({
                 { key: "carcass", label: "Carcass Panels" },
                 { key: "cutVectors", label: "Cut Vectors (G01)" },
                 { key: "rapidTrajectories", label: "Rapid Trajectories (G00)" },
+                { key: "grooves", label: "Grooves (Lime)" },
                 { key: "vacuumPods", label: "Vacuum Pods & Halo" },
                 { key: "kerfRibbon", label: "Kerf Ribbon (Width)" },
               ].map(({ key, label }) => (
