@@ -1,112 +1,87 @@
-# Claude Handoff: PL-006 Drawer Back Boundary Reproduction & Atomic Rejection
+# Claude & Grok Handoff: PL-006 Drawer Back Boundary Reproduction & Exporter Matrix
 
 **Date:** 2026-09-18  
 **Author:** Antigravity / Integration  
-**Recipients:** Claude Code (Deep Engineering), Grok (Engineering Manager)  
-**Status:** DRAFT / ACTION REQUIRED  
-**Branch:** ix/mfg-boot-crash-and-nesting-report (base tip: integ/part-graph-compiler @ c48e108)  
-**Commit SHA:** 30b2fe9b085f057c0c037161aae0bf5993018b92  
+**Recipients:** Grok (Engineering Manager / PL-006 Lead), Claude Code (Deep Engineering)  
+**Status:** ACTION REQUIRED FOR COMBINED CANDIDATE  
+**Branch:** `integ/m2-reproduction-combined`  
+**Base Tip:** `e47c2058f97dcfcf6db199b095ac588e9ae94abe`  
 
 ---
 
-## 1. PL-006 Reproduction: Drawer Back Width Boundary
+## 1. Executive Summary & Ownership Boundaries
 
-### Root Formula
-In src/lib/partgraph/emitDrawerBankParts.js:
-`javascript
-const backWidthMm = bayWidthMm - slideDeductionMm - 2 * DRAWER_BOX_SIDE_THICKNESS_MM;
-`
-With current construction parameters:
-- slideDeductionMm = 21 (drawerSlideWidthDeductionMm in wardrobeRuleCatalog.js)
-- DRAWER_BOX_SIDE_THICKNESS_MM = 15 (undermount concealed side wall thickness)
-- Sum of deductions = 21 + 15 + 15 = 51 mm
-
-In src/lib/wardrobe-model/schema.js:
-`javascript
-minDrawerBayClearWidthMm: 21 + 15 + 15, // 51 mm
-`
-
-### Boundary Behavior
-1. **50 mm (bayWidth < 51 mm):**
-   - **Result:** Correctly rejected by validator (INSUFFICIENT_BAY_WIDTH_FOR_DRAWERS).
-2. **51 mm (bayWidth == 51 mm):**
-   - **Result:** Accepted by kernel and validator (51 >= 51).
-   - **Defect:**  ackWidthMm = 51 - 21 - 30 = 0 mm.
-   - Produces a zero-width physical structural panel (DRAWER_BACK_B1_R1: Finished: 0.0 × 176.0 × 15.0 mm).
-   - Exporters (SVG shop drawings, nesting) still emit this zero-width part without fail-closing.
-3. **52 mm (bayWidth == 52 mm):**
-   - **Result:** Accepted by kernel and validator.
-   - **Defect:** backWidthMm = 52 - 51 = 1 mm.
-   - This represents arithmetic validity only, not physical manufacturability.
-
-### Exporter Failure Modes on Minimal Zero-Width Part
-Empirical probe results across the 4 exporters:
-- **DXF Compiler (`compileCabinetDxfPackage`):** FAIL-CLOSED (threw `Panel "..." has non-positive flat dimensions`).
-- **Cut-list CSV (`generateCutListCsv`):** FAIL-CLOSED (threw `Panel "..." has non-positive cut dimensions`).
-- **Nesting Preflight (`compileNestingManifest`):** FAIL-CLOSED (threw `Panel "..." has non-positive cut dimensions`).
-- **SVG Shop Drawings (`generateShopDrawingsSVG`):** Returned SVG without throwing. Returning SVG proves a **failure to reject invalid input**; it does not alone prove a degenerate part was visually rendered.
+- **Grok Ownership:** Grok currently owns the drawer reconciliation and PL-006 boundary fix. Antigravity has strictly avoided starting any new compiler implementation in accordance with high-collision single-writer rules (`AGENTS.md`).
+- **Permanent Regression Suite:** Antigravity has implemented and verified the permanent test suite at `tests/production/invalidPartGraphRejection.test.js` (18/18 passing).
+- **Test Corrections Flagged:** Exactly 5 test corrections are flagged below for the combined candidate when Grok's fix lands.
 
 ---
 
-## 2. Instructions for Claude Code
+## 2. Five Flagged Test Corrections for the Combined Candidate
 
-1. **Enforce Strictly Positive Physical Part Dimensions:**
-   - Enforce that every physical structural part (`DRAWER_BACK`, `DRAWER_FRONT`, `DRAWER_SIDE`, `DRAWER_BOTTOM`, carcass panels, shelves) has strictly positive finished dimensions:
-     $$\text{length} > 0, \quad \text{width} > 0, \quad \text{thickness} > 0$$
-   - Derive the boundary constraint strictly from the actual drawer construction formula (`bayWidth > slideDeductionMm + 2 * DRAWER_BOX_SIDE_THICKNESS_MM`).
-   - Do **NOT** invent an arbitrary practical minimum width (e.g. do not guess 200 mm or 300 mm without a rulebook ruling).
-   - Do **NOT** mark PL-006 as `BEKZOD_APPROVED`; keep provenance as `PROVISIONAL_PENDING_BEKZOD_REVIEW`.
+### Flag 1: Replace SVG Defect-Characterization with Rejection Assertion
+- **Current Baseline:** `generateShopDrawingsSVG` does not reject invalid input (returns SVG string without throwing). Returning SVG proves a failure to reject invalid input; it does not alone prove a degenerate part was rendered on screen.
+- **Current Test:** Characterizes this defect in `tests/production/invalidPartGraphRejection.test.js`:
+  ```javascript
+  const result = generateShopDrawingsSVG(zeroBack);
+  expect(typeof result).toBe('string');
+  expect(result.length).toBeGreaterThan(0);
+  ```
+- **Action When Grok Fix Lands:** When the SVG input validation gate is added to `src/lib/drawing/projectionEngine.js`, replace the characterization with:
+  ```javascript
+  expect(() => generateShopDrawingsSVG(zeroBack)).toThrow(/non-positive|invalid/i);
+  ```
 
-2. **Verify Customer Paths vs. Direct Compiler Inputs Separately:**
-   - A manually injected invalid part does not establish which customer paths can create it.
-   - Claude must verify PL-006 through:
-     1. **Customer entry points:** `proposeWardrobe`, `parseConversationalCommand`, `applyConversationalEdit` (must refuse before part emission).
-     2. **Direct compiler inputs:** `emitDrawerBankParts`, `buildStructuralPartGraph` (fail-close validation).
+### Flag 2: Representative Positive Control & Single-Dimension Mutations
+- **Positive Control:** Uses `createPositiveControlGraph()` generated from `buildStructuralPartGraph(goldenSpec)`.
+- **Mutation Pattern:** Deep-clones positive control and mutates exactly ONE dimension of one part per test:
+  - **Finished Dimensions (DXF fail-closed):**
+    - `lengthDmm: 0` -> DXF throws `/non-positive flat dimensions/i`
+    - `lengthDmm: -100` -> DXF throws `/non-positive flat dimensions/i`
+    - `widthDmm: 0` (PL-006 boundary) -> DXF throws `/non-positive flat dimensions/i`
+    - `widthDmm: -50` -> DXF throws `/non-positive flat dimensions/i`
+  - **Raw Cut Dimensions (CSV Cut List & Nesting Preflight fail-closed):**
+    - `lengthDmm: 0` -> CSV & Nesting throw `/non-positive cut dimensions/i`
+    - `lengthDmm: -200` -> CSV & Nesting throw `/non-positive cut dimensions/i`
+    - `widthDmm: 0` -> CSV & Nesting throw `/non-positive cut dimensions/i`
+    - `widthDmm: -150` -> CSV & Nesting throw `/non-positive cut dimensions/i`
+  - **Thickness Exporter Gap (Finished & Raw Thickness):**
+    - Currently, `dxfCompiler.js`, `nestingCompiler.js` (cut list & manifest) do not reject `thicknessDmm <= 0`.
+    - Characterized in test suite. When Grok/Claude adds thickness validation, flip assertions to `.toThrow(/non-positive/i)`.
 
-3. **Atomic Rejection Contract:**
-   - When invalid drawer geometry is requested (e.g. bay width <= 51 mm), the pipeline must reject atomically.
-   - Previous design state, envelope, revision number, proposal ID/fingerprint, and Undo history stack must remain completely unchanged.
-   - Exporters must consistently refuse invalid geometry. Permanent coverage is now captured in `tests/production/invalidPartGraphRejection.test.js`.
-   - Tests must cover:
-     - Exact boundary cases: 50.9 mm, 51.0 mm, 51.1 mm.
-     - Decimal deci-mm precision (0.1 mm = 1 dmm).
-     - Zero/negative dimensions and invalid thickness.
+### Flag 3: 0.1 mm Precision Boundary vs Manufacturability
+- **Empirical Boundary:** Tested on ungrooved panels (`SHELF_FIX_L1`) at `1 dmm` ($0.1\text{ mm}$):
+  - DXF polyline outline and CSV cut-list accept $0.1\text{ mm}$ without arithmetic underflow.
+- **Critical Limitations Documented in Suite:**
+  1. *Arithmetic acceptance at $0.1\text{ mm}$ does NOT establish practical manufacturability.*
+  2. *Nesting stock packing is NOT exercised or claimed for $0.1\text{ mm}$ precision.*
+  3. *Grooved panels (e.g. `CARC_TOP`) fail DXF containment at $0.1\text{ mm}$ because the $7\text{--}10\text{ mm}$ back groove margin crosses the $0.1\text{ mm}$ outer outline.*
+
+### Flag 4: Customer-Entry Tests vs Direct Compiler Inputs & Dynamic Derivation
+- **Separation:**
+  - **Customer-Entry Tests:** Test `proposeWardrobe`, `parseConversationalCommand`, `applyConversationalEdit` ensuring atomic refusal (state, envelope, revision, undo history completely unchanged).
+  - **Direct Compiler Tests:** Test `emitDrawerBankParts` and `buildStructuralPartGraph` directly.
+- **Dynamic Derivation:**
+  - The drawer boundary must be derived dynamically from construction parameters:
+    $$\text{bayWidth} > \text{slideDeductionMm} + 2 \times \text{DRAWER\_BOX\_SIDE\_THICKNESS\_MM}$$
+  - With current parameters ($21 + 15 + 15 = 51\text{ mm}$), $51\text{ mm}$ yields back width $0\text{ mm}$.
+  - Do not hardcode $51\text{ mm}$ or assume every customer path can reach a $51\text{ mm}$ bay.
+
+### Flag 5: Preserved Browser Evidence with Actual Tested SHAs
+Every browser test run is stamped with its exact git tree:
+1. **F1 Browser Journey (5/5 PASSED):** Tested on `30b2fe9` / `bdafb42` (evidence preserved in `docs/m2/integ/evidence/f1/`).
+2. **R3F Next.js Builder (7/7 PASSED):** Tested on `30b2fe9` / `bdafb42`.
+3. **Manufacturing Menu & Nesting Report (3/3 PASSED):** Tested on `c51af19`.
+4. **Mobile Viewport & Print Window Check (PASSED):** Tested on `e47c205`.
 
 ---
 
-## 3. Peer Status & Antigravity Hand-off
+## 3. Fingerprint & Governance Status
 
-Antigravity has isolated and resolved the static builder presentation layer blockers on branch ix/mfg-boot-crash-and-nesting-report:
-
-1. **Commit:** 30b2fe9b085f057c0c037161aae0bf5993018b92
-2. **Delivered Fixes:**
-   - **index.html Boot Syntax Fix:** Escaped premature </script> tag inside printNestingReport document template literal.
-   - **Dropdown Z-Index Stacking:** Added position: relative; z-index: 50; to .b-top so #mfgMenuDropdown layers over #bld3d canvas.
-   - **Modal DOM Placement:** Closed #view-projects container to prevent #nestingReportModal from being trapped in a hidden container.
-   - **Focused Browser Regression Test:** Added 	ests/browser/mfg-nesting-report.spec.js (2/2 passing).
-3. **Local Evidence:**
-   - 
-px playwright test tests/browser/f1-journey.spec.js: **5 passed (0 failed)**.
-   - 
-px playwright test tests/browser/r3f-builder.spec.js: **7 passed (0 failed)**.
-   - 
-px playwright test tests/browser/mfg-nesting-report.spec.js: **2 passed (0 failed)**.
-   - erify:production: PASS on live Vercel deploy.
-
-*Note: Antigravity's evidence is local candidate evidence and does not represent live production deployment.*
-
----
-
-## 4. Fingerprint & Baseline Governance
-
-1. **Fingerprint Freeze:**
-   - Do **NOT** refresh the 4 hash-pin checks in 	ests/wardrobe-ai/phase2Verification.test.js at this stage.
-   - Hashes must only be minted from the final reviewed and corrected code after Claude's PL-006 boundary fix lands.
-2. **Separation of Concerns:**
-   - Clearly delineate:
-     1. **Accepting an implementation change** (bugfix/refactor).
-     2. **Updating a regression fingerprint** (updating test pins).
-     3. **Approving a furniture domain rule** (BEKZOD_APPROVED).
-     4. **Qualifying manufacturing** (CNC / drilling qualification).
-3. **Deployment Evidence Distinction:**
-   - Explicitly distinguish between “deployed SHA matches main” and “Vercel’s configured production branch is verified”.
+- **CI Fingerprints (Frozen):** Exactly 6 failed assertions across 5 files in `phase2Verification.test.js` and `frozenSurfaces.test.js`:
+  1. `src/lib/wardrobe-model/schema.js`
+  2. `src/lib/wardrobe-model/kernel.js`
+  3. `src/lib/wardrobe-model/validator.js`
+  4. `src/lib/wardrobe-tools/tools.js`
+  5. `src/app/builder/page.jsx` (2 assertions)
+- **Governance:** Fingerprints remain frozen and will not be refreshed until the final reviewed code from Grok/Claude is merged and reviewed by BEK.
