@@ -5,9 +5,9 @@ import { computeMaterialRuns, formatMaterialTupleLabel } from "../../src/compone
 
 describe("ExportMenu Multi-Run Nesting & Material Batches Suite", () => {
   it("formats material tuples into human-readable manufacturing labels", () => {
-    expect(formatMaterialTupleLabel("MEL_WHITE_18", 18)).toBe("18mm Carcass Melamine");
-    expect(formatMaterialTupleLabel("HDF_WHITE_6", 6)).toBe("6mm HDF Backing");
-    expect(formatMaterialTupleLabel("BIRCH_PLY_15", 15)).toBe("15mm Birch Ply");
+    expect(formatMaterialTupleLabel("MEL_WHITE_18", 18)).toBe("18 mm Carcass Melamine (MEL_WHITE_18)");
+    expect(formatMaterialTupleLabel("HDF_WHITE_6", 6)).toBe("6 mm HDF Backing & Drawer Bottoms (HDF_WHITE_6)");
+    expect(formatMaterialTupleLabel("BIRCH_PLY_15", 15)).toBe("15 mm Birch Plywood Drawer Boxes (BIRCH_PLY_15)");
   });
   it("computes discrete material runs for standard golden wardrobe", () => {
     const graph = buildStructuralPartGraph(goldenSpec);

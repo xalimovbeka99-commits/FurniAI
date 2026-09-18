@@ -744,13 +744,13 @@ export function generateShopDrawingsSVG(partGraph, options = {}) {
   svg += `  <g id="material_legend">\n`;
   svg += `    <rect x="${legX}" y="${legY}" width="144" height="52" fill="#f8fafc" stroke="#64748b" stroke-width="0.3" rx="1.0" />\n`;
   svg += `    <text x="${legX + 4}" y="${legY + 6}" class="legend-title">MATERIAL &amp; HARDWARE SCHEDULE</text>\n`;
-  svg += `    <text x="${legX + 4}" y="${legY + 12}" class="legend-item">â€¢ CARCASS STOCK: ${carcassCode} (18.0 mm MFC)</text>\n`;
-  svg += `    <text x="${legX + 4}" y="${legY + 18}" class="legend-item">â€¢ FACADE STOCK: ${facadeCode} (18.0 mm MFC)</text>\n`;
-  svg += `    <text x="${legX + 4}" y="${legY + 24}" class="legend-item">â€¢ BACK PANEL: 6.0 mm HDF Insert into 7.0 mm Groove</text>\n`;
-  svg += `    <text x="${legX + 4}" y="${legY + 30}" class="legend-item">â€¢ DRAWER PACK: 15.0 mm Sides/Back, 6.0 mm Bottom (HDF_WHITE_6), 18.0 mm Front</text>\n`;
-  svg += `    <text x="${legX + 4}" y="${legY + 36}" class="legend-item">â€¢ HARDWARE: UNDERMOUNT_CONCEALED_21MM runners (nominal deduction 21.0 mm)</text>\n`;
-  svg += `    <text x="${legX + 4}" y="${legY + 42}" class="legend-item">â€¢ EDGE-BANDING (1.0 mm ABS): All exposed carcass front edges &amp; facades</text>\n`;
-  svg += `    <text x="${legX + 4}" y="${legY + 48}" class="legend-item">â€¢ EDGE-BANDING (0.4 mm Melamine): Shelves front face (adjustable)</text>\n`;
+  svg += `    <text x="${legX + 4}" y="${legY + 12}" class="legend-item">• CARCASS STOCK: ${carcassCode} (18.0 mm MFC)</text>\n`;
+  svg += `    <text x="${legX + 4}" y="${legY + 18}" class="legend-item">• FACADE STOCK: ${facadeCode} (18.0 mm MFC)</text>\n`;
+  svg += `    <text x="${legX + 4}" y="${legY + 24}" class="legend-item">• BACK PANEL: 6.0 mm HDF Insert into 7.0 mm Groove</text>\n`;
+  svg += `    <text x="${legX + 4}" y="${legY + 30}" class="legend-item">• DRAWER PACK: 15.0 mm Sides/Back, 6.0 mm Bottom (HDF_WHITE_6), 18.0 mm Front</text>\n`;
+  svg += `    <text x="${legX + 4}" y="${legY + 36}" class="legend-item">• HARDWARE: UNDERMOUNT_CONCEALED_21MM slides (nominal deduction 21.0 mm)</text>\n`;
+  svg += `    <text x="${legX + 4}" y="${legY + 42}" class="legend-item">• EDGE-BANDING (1.0 mm ABS): All exposed carcass front edges &amp; facades</text>\n`;
+  svg += `    <text x="${legX + 4}" y="${legY + 48}" class="legend-item">• EDGE-BANDING (0.4 mm Melamine): Shelves front face (adjustable)</text>\n`;
   svg += `  </g>\n`;
 
   // TITLE BLOCK (Bottom-Right)
@@ -776,7 +776,7 @@ export function generateShopDrawingsSVG(partGraph, options = {}) {
   svg += `    <text x="${tbX + 4}" y="${tbY + 24}" class="title-val">${proj.sourceSpecId}</text>\n`;
   svg += `    <text x="${tbX + 76}" y="${tbY + 18}" class="title-sub">REVISION:</text>\n`;
   svg += `    <text x="${tbX + 76}" y="${tbY + 24}" class="title-val">Rev ${proj.revision}</text>\n`;
-  svg += `    <text x="${tbX + 76}" y="${tbY + 29}" class="title-sub" style="font-size:1.9px;">HW: UNDERMOUNT_CONCEALED_21MM</text>\n`;
+  svg += `    <text x="${tbX + 76}" y="${tbY + 29}" class="title-sub" style="font-size:1.9px;">SLIDES: UNDERMOUNT_CONCEALED_21MM | BOTTOMS: HDF_WHITE_6</text>\n`;
 
   svg += `    <!-- Drawing Status & Scale -->\n`;
   svg += `    <text x="${tbX + 4}" y="${tbY + 37}" class="title-sub">QUALIFICATION STATUS:</text>\n`;
@@ -786,7 +786,7 @@ export function generateShopDrawingsSVG(partGraph, options = {}) {
 
   svg += `    <text x="${tbX + 4}" y="${tbY + 49}" class="title-sub">UNITS:</text>\n`;
   svg += `    <text x="${tbX + 16}" y="${tbY + 49}" class="title-val">MILLIMETRES (mm)</text>\n`;
-  svg += `    <text x="${tbX + 76}" y="${tbY + 49}" class="title-sub">ACCURACY: Â±0.5 mm</text>\n`;
+  svg += `    <text x="${tbX + 76}" y="${tbY + 49}" class="title-sub">ACCURACY: ±0.5 mm</text>\n`;
   svg += `  </g>\n`;
 
   svg += `</svg>\n`;

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useFurnitureStore } from "@/store/furnitureStore";
 import { exportShopDrawingsSVG, exportShopDrawingsPDF } from "@/lib/drawing/projectionEngine";
 import { exportCabinetDxfZip, exportCutListCSV, formatNestingReport } from "@/lib/production/exportBridge";
-import { compileNestingManifest } from "@/lib/production/nestingCompiler";
+import { compileNestingManifest, sumEdgeBandingLinearMeters } from "@/lib/production/nestingCompiler";
 import { buildStructuralPartGraph } from "@/lib/partgraph/buildStructuralPartGraph";
 import { adaptWardrobeModelToFurniSpec } from "@/lib/partgraph/wardrobeModelAdapter";
 import goldenFixture from "@/lib/furnispec/goldenWardrobe.fixture.json";
@@ -15,20 +15,20 @@ export function formatMaterialTupleLabel(material, thicknessMm) {
   const upper = mat.toUpperCase();
 
   if (upper === "MEL_WHITE_18" || (t === 18 && (upper.includes("CARCASS") || upper.includes("MFC")))) {
-    return "18mm Carcass Melamine";
+    return "18 mm Carcass Melamine (MEL_WHITE_18)";
   }
   if (upper === "HDF_WHITE_6" || (t === 6 && (upper.includes("HDF") || upper.includes("BACK")))) {
-    return "6mm HDF Backing";
+    return "6 mm HDF Backing & Drawer Bottoms (HDF_WHITE_6)";
   }
   if (upper === "BIRCH_PLY_15" || (t === 15 && (upper.includes("BIRCH") || upper.includes("PLY") || upper.includes("DRAWER")))) {
-    return "15mm Birch Ply";
+    return "15 mm Birch Plywood Drawer Boxes (BIRCH_PLY_15)";
   }
 
   // Descriptives
-  if (t === 18) return `18mm Carcass Melamine (${mat})`;
-  if (t === 6) return `6mm HDF Backing (${mat})`;
-  if (t === 15) return `15mm Birch Ply (${mat})`;
-  return `${t ? `${t}mm ` : ""}${mat || "Unrouted Material"}`;
+  if (t === 18) return `18 mm Carcass Melamine (${mat || "MEL_WHITE_18"})`;
+  if (t === 6) return `6 mm HDF Backing & Drawer Bottoms (${mat || "HDF_WHITE_6"})`;
+  if (t === 15) return `15 mm Birch Plywood Drawer Boxes (${mat || "BIRCH_PLY_15"})`;
+  return `${t ? `${t} mm ` : ""}${mat || "Unrouted Material"}`;
 }
 
 export function computeMaterialRuns(graph) {
@@ -206,6 +206,8 @@ export default function ExportMenu() {
             ? manifest.runs.map((r) => {
                 const stockW = r.stock?.lengthMm || 2440;
                 const stockH = r.stock?.widthMm || 1220;
+                const edgeBandingMap = sumEdgeBandingLinearMeters(r.cutList || r.rows || []);
+                const linearMeters = Object.values(edgeBandingMap).reduce((a, b) => a + b, 0);
                 return {
                   id: r.groupKey || `${r.material}_${r.thicknessMm}`,
                   groupKey: r.groupKey,
@@ -214,7 +216,8 @@ export default function ExportMenu() {
                   thicknessMm: r.thicknessMm,
                   sheetCount: Number.isFinite(r.sheetCount) ? r.sheetCount : 0,
                   yieldPct: Number.isFinite(r.yieldEfficiencyPct) ? r.yieldEfficiencyPct : 0,
-                  partsCount: Array.isArray(r.items) ? r.items.length : (Array.isArray(r.cutRows) ? r.cutRows.length : 0),
+                  partsCount: Array.isArray(r.items) ? r.items.length : (Array.isArray(r.cutRows) ? r.cutRows.length : (Array.isArray(r.cutList) ? r.cutList.length : 0)),
+                  edgeBandingMeters: Number.isFinite(linearMeters) ? linearMeters : 0,
                   status: r.sheetCount > 0 ? "Optimized" : "No parts scheduled",
                   stockFormat: `${stockW} × ${stockH} mm`,
                 };
@@ -222,6 +225,7 @@ export default function ExportMenu() {
             : computeMaterialRuns(graph).map((r) => ({
                 ...r,
                 displayName: formatMaterialTupleLabel(r.id, r.id.includes("18") ? 18 : (r.id.includes("6") ? 6 : 15)),
+                edgeBandingMeters: 0,
               }));
 
           setManifestRuns(runs);
@@ -329,6 +333,7 @@ export default function ExportMenu() {
                           <span className="text-xs font-semibold text-[#1C1E21]">{run.displayName}</span>
                           <span className="text-[10px] text-[#888]">
                             {run.partsCount} {run.partsCount === 1 ? "part" : "parts"} &bull; {run.status}
+                            {run.edgeBandingMeters > 0 ? ` &bull; ${run.edgeBandingMeters.toFixed(1)} m banding` : ""}
                           </span>
                         </div>
                         <div className="flex items-center gap-4 text-right">
@@ -363,7 +368,7 @@ export default function ExportMenu() {
                       <div style="display:flex;justify-content:space-between;align-items:center;background:#FDFBF7;border:1px solid #EBE6DC;border-radius:6px;padding:8px 12px;margin-bottom:6px;">
                         <div>
                           <strong style="font-size:12px;color:#1C1E21;">${r.displayName}</strong>
-                          <div style="font-size:10px;color:#888;">${r.partsCount} parts &bull; ${r.status}</div>
+                          <div style="font-size:10px;color:#888;">${r.partsCount} parts &bull; ${r.status}${r.edgeBandingMeters > 0 ? ` &bull; ${r.edgeBandingMeters.toFixed(1)} m banding` : ""}</div>
                         </div>
                         <div style="text-align:right;">
                           <div style="font-size:12px;font-weight:700;color:#1C1E21;">${r.sheetCount} sheets (${r.stockFormat})</div>
