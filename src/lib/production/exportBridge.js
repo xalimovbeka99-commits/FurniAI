@@ -241,7 +241,8 @@ export function formatNestingReport(manifest) {
   const stockH = manifest.stock?.widthMm || 1220;
   const totalSheetM2 = (manifest.totalSheetAreaMm2 / 1e6).toFixed(2);
   const totalPanelM2 = (manifest.totalPanelAreaMm2 / 1e6).toFixed(2);
-  const yieldPct = manifest.yieldEfficiencyPct.toFixed(1);
+  // Prefer largest-run yield as headline; list per-run yields when present.
+  const yieldPct = Number(manifest.yieldEfficiencyPct ?? manifest.blendedYieldEfficiencyPct ?? 0).toFixed(1);
 
   const edgeBandingLines = [];
   const bandingEntries = Object.entries(
@@ -265,7 +266,7 @@ export function formatNestingReport(manifest) {
     "============================================================",
     `Stock Format:       ${manifest.primaryStockId} (${stockW} × ${stockH} mm)`,
     `Required Sheets:    ${manifest.sheetCount} sheets`,
-    `Material Yield:     ${yieldPct}%`,
+    `Material Yield:     ${yieldPct}% (primary run; see per-material runs)`,
     `Total Sheet Area:   ${totalSheetM2} m²`,
     `Net Panel Area:     ${totalPanelM2} m²`,
     `Kerf Width:         ${manifest.kerfMm} mm`,
@@ -276,6 +277,16 @@ export function formatNestingReport(manifest) {
       (e) => `  • ${e.label}: ${e.linearMeters.toFixed(2)} m`
     ),
     "------------------------------------------------------------",
+    ...(Array.isArray(manifest.runs) && manifest.runs.length
+      ? [
+          "MATERIAL RUNS (independent nests — yield per group):",
+          ...manifest.runs.map(
+            (r) =>
+              `  • ${r.material} @ ${r.thicknessMm} mm: ${r.sheetCount} sheet(s), yield ${Number(r.yieldEfficiencyPct).toFixed(1)}%`
+          ),
+          "------------------------------------------------------------",
+        ]
+      : []),
     `Total Parts Placed: ${manifest.cutList?.length || 0}`,
     "============================================================",
   ];
