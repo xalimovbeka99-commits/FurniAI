@@ -205,7 +205,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 
 /* ============ BUILDER VIEW ============ */
 #view-builder{position:fixed;inset:0;z-index:200;background:var(--paper);display:flex;flex-direction:column}
-.b-top{display:flex;align-items:center;justify-content:space-between;padding:13px 22px;border-bottom:1px solid var(--line-soft);background:rgba(250,249,245,.9);backdrop-filter:blur(10px);flex-shrink:0;gap:16px}
+.b-top{position:relative;z-index:50;display:flex;align-items:center;justify-content:space-between;padding:13px 22px;border-bottom:1px solid var(--line-soft);background:rgba(250,249,245,.9);backdrop-filter:blur(10px);flex-shrink:0;gap:16px}
 .b-top .left{display:flex;align-items:center;gap:18px;min-width:0}
 .b-back{font-family:'Space Mono',monospace;font-size:13px;color:var(--ink-soft);cursor:pointer;display:flex;align-items:center;gap:8px;transition:color .2s;white-space:nowrap}
 .b-back:hover{color:var(--brass)}
@@ -3258,7 +3258,7 @@ window.printNestingReport = function() {
   if (!body) return;
   const printWin = window.open('', '_blank');
   if (printWin) {
-    printWin.document.write(`<!DOCTYPE html><html><head><title>Nesting Report</title><style>body{font-family:sans-serif;padding:24px;color:#1C1E21;}</style></head><body>${body.innerHTML}<script>window.onload=function(){window.print();}</script></body></html>`);
+    printWin.document.write('<!DOCTYPE html><html><head><title>Nesting Report</title><style>body{font-family:sans-serif;padding:24px;color:#1C1E21;}</style></head><body>' + body.innerHTML + '<' + 'script>window.onload=function(){window.print();};<' + '/script></body></html>');
     printWin.document.close();
   }
 };
@@ -3737,6 +3737,8 @@ if(document.readyState!=='loading')bootWithGuard();else addEventListener('DOMCon
     </div>
     <div class="projects-grid" id="projectsGrid"></div>
   </div>
+</div>
+
 <!-- Nesting Report Modal -->
 <div id="nestingReportModal" class="nesting-report-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);backdrop-filter:blur(3px);z-index:2000;align-items:center;justify-content:center;">
   <div style="background:#FAF9F5;border:1px solid #DFD9CC;border-radius:12px;width:90%;max-width:540px;box-shadow:0 16px 40px rgba(0,0,0,0.2);overflow:hidden;">

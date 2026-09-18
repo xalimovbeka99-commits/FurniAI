@@ -1,4 +1,4 @@
-﻿# Milestone M2 Pre-Merge Audit Block
+# Milestone M2 Pre-Merge Audit Block
 
 **Status:** DRAFT — do not merge to main without BEK approval  
 **Date:** 2026-09-15 / 2026-09-16 (Asia/Dubai)  
@@ -68,7 +68,7 @@
 | Suite | Result | Notes |
 |---|---|---|
 | `npm run test:browser:r3f` | **7 passed** | Required `npm run build` first |
-| `npm run test:browser:f1` | **4 passed / 1 failed** | Fail: static-site *Add drawers* still refuses (hardware copy). Vitest DRAWER_BANK path is green |
+| `npm run test:browser:f1` | **5 passed** | Static site boot script escape fixed + runtime transport bundle rebuilt; DRAWER_BANK journey now passes (5/5) |
 
 ---
 
@@ -115,7 +115,7 @@ Built via `wardrobe_create(2400×2400×600)` → `section_add` → `component_ad
 ## Residuals / risks
 
 1. Phase 1 hash-pin vitest fails (4) — pin refresh under BEK only.  
-2. Static F1 Playwright drawer journey fails while conversational vitest path passes — surface divergence.  
+2. ~~Static F1 Playwright drawer journey fails~~ — **RESOLVED**: fixed unescaped script tag in `index.html` print template and synchronized static bundles; Playwright `test:browser:f1` is 5/5 green.  
 3. 3-bay nesting fail-closed on oversized LENGTH-grain back panel.  
 4. Path A provisional physical limits (`physicalLimitRegistry`) — not final factory law.  
 5. Live provider evals skipped — credential path UNVERIFIED.  
