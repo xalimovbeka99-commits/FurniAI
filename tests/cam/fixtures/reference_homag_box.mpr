@@ -1,0 +1,32 @@
+[HEADER]
+$P Name="REFERENCE_HOMAG_BOX"
+$P Emitter="dry-run-woodwop-mpr/0.1-stub"
+$P Unit="mm"
+$P Mode="DRY_RUN_SIMULATION_ONLY"
+$P Spindle="OFF"
+<100 \DryRunOnly=1>
+; WARNING: STUB OUTPUT — NOT A VERIFIED WOODWOP DIALECT FILE
+; Round-trip against a Homag-exported .mpr before any live use.
+[HEADER]
+[BODY]
+[OP OUTLINE_CONTOUR id=OUTLINE_001 host=BOX_SIDE]
+$P Status="DRY_RUN_ONLY"
+$P ToolDiameterMm=6
+$P Closed=1
+$P VertexCount=5
+; Contour geometry deferred — await verified WoodWOP contour macro mapping
+[OP POCKET_GROOVE id=GROOVE_001 host=BOX_SIDE]
+$P Status="DRY_RUN_ONLY"
+$P WidthMm=6
+$P DepthMm=8
+; Groove geometry deferred — await verified WoodWOP pocket macro mapping
+[OP BORE_SYSTEM_32 id=BORE32_001 host=BOX_SIDE]
+$P Status="DRY_RUN_ONLY"
+$P HardwareGate="BLOCKED_PENDING_HARDWARE_APPROVAL"
+$P DiameterMm=5
+$P DepthMm=13
+$P CenterMm=null
+; FAIL-CLOSED STUB: no WoodWOP boring / vertical drill macro emitted
+; Coordinates remain gated pending pin SKU + signed machine profile
+[END]
+<100 \DryRunOnly=1>
