@@ -4050,8 +4050,8 @@ var AiDesignerTransport = (() => {
         error: "Could not reach the FurniAI designer. Your design is unchanged."
       };
     }
-    const modelProvider = payload?.provider || (payload?.mock ? "mock" : "anthropic");
     const isMock = Boolean(payload?.mock || payload?.isMock || payload?.provider === "mock" || payload?.provider === "stub");
+    const modelProvider = isMock ? "mock" : payload?.provider === "anthropic" ? "anthropic" : typeof payload?.provider === "string" && payload.provider.trim() || "ai";
     const revalidated = validateModelProposal(
       { edits: payload.edits, unsupported: payload.unsupported, reply: payload.reply },
       { currentBayCount: factsFrom(currentObservations).bayCount ?? 2 }
