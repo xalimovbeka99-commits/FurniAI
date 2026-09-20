@@ -308,8 +308,12 @@ export async function proposeDesignChange({
     };
   }
 
-  const modelProvider = payload?.provider || (payload?.mock ? "mock" : "anthropic");
   const isMock = Boolean(payload?.mock || payload?.isMock || payload?.provider === "mock" || payload?.provider === "stub");
+  const modelProvider = isMock
+    ? "mock"
+    : payload?.provider === "anthropic"
+      ? "anthropic"
+      : (typeof payload?.provider === "string" && payload.provider.trim()) || "ai";
 
   // Defence in depth: the server already validated the model, but the browser
   // re-validates the response with the identical rules. A stale deployment, a

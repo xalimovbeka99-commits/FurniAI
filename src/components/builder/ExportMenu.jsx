@@ -155,8 +155,8 @@ export default function ExportMenu() {
     try {
       if (config && config.type === "wardrobe" && config.dimensions) {
         const model = {
-          id: `wardrobe-${Date.now()}`,
-          revision: 1,
+          id: config.id || config.specId || "wardrobe-config",
+          revision: config.revision || 1,
           widthMm: config.dimensions.width,
           heightMm: config.dimensions.height,
           depthMm: config.dimensions.depth,
