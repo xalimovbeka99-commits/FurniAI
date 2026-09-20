@@ -29,7 +29,15 @@ console.log(RULE);
 console.log("FurniAI — BOUNDED LIVE TEST · POST /api/design/propose · real provider");
 console.log(RULE);
 console.log(`provider configured : ANTHROPIC_API_KEY ${process.env.ANTHROPIC_API_KEY ? "present" : "ABSENT"} (value never read)`);
-console.log(`model requested     : ${process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6 (client default, ANTHROPIC_MODEL unset)"}`);
+// Read the default from the client rather than restating it. This line used to
+// print "claude-sonnet-4-6" as the client default, which stopped being true
+// when the default was corrected to claude-sonnet-5 — so a live run recorded
+// the wrong model in its own evidence. A hard-coded copy of a default is a
+// second source of truth, and this one was already wrong.
+const { DEFAULT_ANTHROPIC_MODEL } = await import("../src/lib/ai-provider/anthropicChatClient.js");
+console.log(
+  `model requested     : ${process.env.ANTHROPIC_MODEL || `${DEFAULT_ANTHROPIC_MODEL} (client default, ANTHROPIC_MODEL unset)`}`
+);
 console.log(`provider order      : ${process.env.AI_PROVIDER_ORDER || "anthropic,openai (default)"}`);
 console.log(`base URL            : ${process.env.ANTHROPIC_BASE_URL ? process.env.ANTHROPIC_BASE_URL + " (sandbox relay -> real api.anthropic.com)" : "direct api.anthropic.com"}`);
 console.log(`customer message    : "${MESSAGE}"`);
