@@ -2327,7 +2327,8 @@ function updateAiWardrobeSummaryUI(res) {
   setEl('revDoors', `${doorsCount} hinged doors (${doorsCount / baysCount} per bay)`);
   setOrigin('revDoorsOrigin', origins['doorCount']);
 
-  setEl('revFinish', spec.finishType ? (spec.finishType.charAt(0).toUpperCase() + spec.finishType.slice(1)) : 'Melamine');
+  const finishLabel = spec.customerFinishKey || spec.finishType || 'Melamine';
+  setEl('revFinish', finishLabel.charAt(0).toUpperCase() + finishLabel.slice(1));
   setOrigin('revFinishOrigin', origins['finishType']);
 
   setEl('revInterior', `${baysCount} bays configured`);
@@ -2815,11 +2816,9 @@ function approveAndGenerate3D() {
 }
 
 function editAnswers() {
+  // Keep prior accepted PartGraph until a new draft commits successfully.
   aiWardrobeState.approval = null;
-  aiWardrobeState.partGraph = null;
   aiWardrobeState.revision = (aiWardrobeState.revision || 1) + 1;
-  Builder.clear();
-  resetInspectionPanel();
 
   const secInput = document.getElementById('aiWardrobeInputSection');
   const secClarify = document.getElementById('aiWardrobeClarifySection');

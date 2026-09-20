@@ -3199,6 +3199,146 @@ var PartGraphBridge = (() => {
     return { valid: errors.length === 0, errors, expectedFingerprint };
   }
 
+  // src/lib/conversation/commitMaterialUpdate.js
+  function cloneJson(value) {
+    return value == null ? value : JSON.parse(JSON.stringify(value));
+  }
+  function applyCustomerFinishAnnotation({
+    materialKey,
+    spec,
+    partGraph = null,
+    observations = [],
+    origins = {}
+  } = {}) {
+    if (typeof materialKey !== "string" || materialKey.trim() === "") {
+      return { ok: false, error: "materialKey is required to commit a finish change." };
+    }
+    if (!spec || typeof spec !== "object") {
+      return { ok: false, error: "An active FurniSpec is required before a finish can be committed." };
+    }
+    const key = materialKey.trim().toLowerCase();
+    const nextSpec = {
+      ...cloneJson(spec),
+      // Keep manufacturing finishType catalog-backed.
+      finishType: spec.finishType && spec.finishType !== key ? spec.finishType : spec.finishType || "melamine",
+      customerFinishKey: key
+    };
+    if (nextSpec.finishType === key) {
+      nextSpec.finishType = "melamine";
+    }
+    if (nextSpec.materials && typeof nextSpec.materials === "object") {
+      nextSpec.materials = { ...nextSpec.materials, customerFinishKey: key };
+    }
+    const nextProposal = createProposal(nextSpec);
+    let nextPartGraph = cloneJson(partGraph);
+    if (nextPartGraph && typeof nextPartGraph === "object") {
+      nextPartGraph.summary = {
+        ...nextPartGraph.summary || {},
+        customerFinishKey: key,
+        revision: nextSpec.revision
+      };
+      if (Array.isArray(nextPartGraph.parts)) {
+        nextPartGraph.parts = nextPartGraph.parts.map((part) => ({
+          ...part,
+          customerFinishKey: key,
+          finishIntent: key
+        }));
+      }
+    }
+    const nextObservations = [
+      ...observations.filter(
+        (o) => o && o.key !== "customerFinishKey" && o.key !== "materialKey"
+      ),
+      {
+        key: "customerFinishKey",
+        value: key,
+        origin: OBSERVATION_ORIGIN.CUSTOMER_STATED,
+        sourceText: `customer finish ${key}`,
+        sourceSpan: null,
+        ruleIds: []
+      }
+    ];
+    const hasFinish = nextObservations.some((o) => o.key === "finishType");
+    if (!hasFinish) {
+      nextObservations.push({
+        key: "finishType",
+        value: nextSpec.finishType || "melamine",
+        origin: OBSERVATION_ORIGIN.DEFAULTED,
+        sourceText: "catalog manufacturing finish",
+        sourceSpan: null,
+        ruleIds: []
+      });
+    } else {
+      for (let i = 0; i < nextObservations.length; i++) {
+        if (nextObservations[i].key === "finishType" && nextObservations[i].value === key) {
+          nextObservations[i] = {
+            ...nextObservations[i],
+            value: "melamine",
+            origin: OBSERVATION_ORIGIN.DEFAULTED,
+            sourceText: "restored catalog manufacturing finish (swatch is customerFinishKey)"
+          };
+        }
+      }
+    }
+    const nextOrigins = {
+      ...origins,
+      customerFinishKey: OBSERVATION_ORIGIN.CUSTOMER_STATED
+    };
+    return {
+      ok: true,
+      materialKey: key,
+      spec: nextSpec,
+      proposal: nextProposal,
+      partGraph: nextPartGraph,
+      observations: nextObservations,
+      origins: nextOrigins,
+      revision: nextSpec.revision
+    };
+  }
+  function commitMaterialUpdate({
+    materialKey,
+    spec,
+    partGraph = null,
+    observations = [],
+    origins = {},
+    revision = void 0
+  } = {}) {
+    if (!spec || typeof spec !== "object") {
+      return { ok: false, error: "An active FurniSpec is required before a finish can be committed." };
+    }
+    const nextRevision = Number.isFinite(revision) ? revision + 1 : (Number.isFinite(spec.revision) ? spec.revision : 1) + 1;
+    const bumped = { ...cloneJson(spec), revision: nextRevision };
+    return applyCustomerFinishAnnotation({
+      materialKey,
+      spec: bumped,
+      partGraph,
+      observations,
+      origins
+    });
+  }
+  function preserveCustomerFinishOnDraft(draft, currentObservations = []) {
+    if (!draft?.ok && !draft?.spec) return draft;
+    const fromObs = currentObservations.find((o) => o?.key === "customerFinishKey")?.value || currentObservations.find((o) => o?.key === "materialKey")?.value || draft.spec?.customerFinishKey;
+    if (!fromObs) return draft;
+    const annotated = applyCustomerFinishAnnotation({
+      materialKey: fromObs,
+      spec: draft.spec,
+      partGraph: draft.partGraph,
+      observations: draft.observations || currentObservations,
+      origins: draft.origins || {}
+    });
+    if (!annotated.ok) return draft;
+    return {
+      ...draft,
+      spec: annotated.spec,
+      proposal: annotated.proposal,
+      partGraph: annotated.partGraph,
+      observations: annotated.observations,
+      origins: annotated.origins,
+      materialKey: annotated.materialKey
+    };
+  }
+
   // src/lib/conversation/gapAnalysis.js
   function analyseGaps(interpretation) {
     const observations = interpretation?.observations ?? [];
@@ -4463,11 +4603,14 @@ var PartGraphBridge = (() => {
           error: draft2.partGraphValidation.errors?.join("; ") || "Generated part graph validation failed."
         };
       }
-      return {
-        ok: true,
-        assistantReply: `Updated wardrobe design (Revision ${revision + 1}).`,
-        ...draft2
-      };
+      return preserveCustomerFinishOnDraft(
+        {
+          ok: true,
+          assistantReply: `Updated wardrobe design (Revision ${revision + 1}).`,
+          ...draft2
+        },
+        currentObservations
+      );
     }
     const materialKey = parsed.changes.materialKey;
     const changes = { ...parsed.changes };
@@ -4498,12 +4641,15 @@ var PartGraphBridge = (() => {
         error: draft.partGraphValidation.errors?.join("; ") || "Generated part graph validation failed."
       };
     }
-    return {
-      ok: true,
-      assistantReply: `${parsed.assistantReply} (Revision ${revision + 1})`,
-      materialKey,
-      ...draft
-    };
+    return preserveCustomerFinishOnDraft(
+      {
+        ok: true,
+        assistantReply: `${parsed.assistantReply} (Revision ${revision + 1})`,
+        materialKey,
+        ...draft
+      },
+      newObservations
+    );
   }
   function draftPreviewSafety(spec, partGraph) {
     const drillingOperations = (partGraph?.operations ?? []).filter((op) => /DRILL|BORE|HINGE_CUP|PIN_HOLE/i.test(op.type));
@@ -4562,79 +4708,6 @@ var PartGraphBridge = (() => {
   }
   function hardwareStatusesOf(spec) {
     return Object.fromEntries(Object.entries(spec.hardware ?? {}).map(([k, v]) => [k, v?.status ?? "UNKNOWN"]));
-  }
-
-  // src/lib/conversation/commitMaterialUpdate.js
-  function cloneJson(value) {
-    return value == null ? value : JSON.parse(JSON.stringify(value));
-  }
-  function commitMaterialUpdate({
-    materialKey,
-    spec,
-    partGraph = null,
-    observations = [],
-    origins = {},
-    revision = void 0
-  } = {}) {
-    if (typeof materialKey !== "string" || materialKey.trim() === "") {
-      return { ok: false, error: "materialKey is required to commit a finish change." };
-    }
-    if (!spec || typeof spec !== "object") {
-      return { ok: false, error: "An active FurniSpec is required before a finish can be committed." };
-    }
-    const key = materialKey.trim().toLowerCase();
-    const nextRevision = Number.isFinite(revision) ? revision + 1 : (Number.isFinite(spec.revision) ? spec.revision : 1) + 1;
-    const nextSpec = {
-      ...cloneJson(spec),
-      finishType: key,
-      revision: nextRevision
-    };
-    nextSpec.customerFinishKey = key;
-    if (nextSpec.materials && typeof nextSpec.materials === "object") {
-      nextSpec.materials = { ...nextSpec.materials, customerFinishKey: key };
-    }
-    const nextProposal = createProposal(nextSpec);
-    let nextPartGraph = cloneJson(partGraph);
-    if (nextPartGraph && typeof nextPartGraph === "object") {
-      nextPartGraph.summary = {
-        ...nextPartGraph.summary || {},
-        customerFinishKey: key,
-        revision: nextRevision
-      };
-      if (Array.isArray(nextPartGraph.parts)) {
-        nextPartGraph.parts = nextPartGraph.parts.map((part) => ({
-          ...part,
-          customerFinishKey: key,
-          // Manufacturing codes stay catalog-backed; finish intent is explicit.
-          finishIntent: key
-        }));
-      }
-    }
-    const nextObservations = [
-      ...observations.filter((o) => o && o.key !== "finishType" && o.key !== "materialKey"),
-      {
-        key: "finishType",
-        value: key,
-        origin: OBSERVATION_ORIGIN.CUSTOMER_STATED,
-        sourceText: `customer finish ${key}`,
-        sourceSpan: null,
-        ruleIds: []
-      }
-    ];
-    const nextOrigins = {
-      ...origins,
-      finishType: OBSERVATION_ORIGIN.CUSTOMER_STATED
-    };
-    return {
-      ok: true,
-      materialKey: key,
-      spec: nextSpec,
-      proposal: nextProposal,
-      partGraph: nextPartGraph,
-      observations: nextObservations,
-      origins: nextOrigins,
-      revision: nextRevision
-    };
   }
 
   // src/lib/drawing/projectionEngine.js

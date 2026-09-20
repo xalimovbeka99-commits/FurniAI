@@ -1,12 +1,12 @@
-﻿/**
+/**
  * Commit a MATERIAL_UPDATED materialKey into the canonical accepted design.
  *
  * Transport returns materialKey only (no new spec/PartGraph). Before the UI
- * treats the change as committed, this rebuilds accepted state through the
- * engineering path: updated FurniSpec + createProposal fingerprint + PartGraph
- * finish annotation. Manufacturing SKUs stay catalog-backed (melamine); the
- * customer finish is recorded on the spec and PartGraph summary so exports,
- * approval and Undo share one identity.
+ * treats the change as committed, this annotates accepted state through the
+ * engineering path: FurniSpec + createProposal fingerprint + PartGraph finish
+ * intent. Manufacturing finishType/SKU stay catalog-backed (melamine). The
+ * customer visual finish is customerFinishKey — never overwrite finishType with
+ * a swatch name, or later structural rebuilds fail materialsFor().
  */
 import { createProposal } from "./approval.js";
 import { OBSERVATION_ORIGIN } from "./intakeModel.js";
@@ -16,22 +16,15 @@ function cloneJson(value) {
 }
 
 /**
- * @param {object} args
- * @param {string} args.materialKey customer finish key (e.g. "walnut")
- * @param {object} args.spec active FurniSpec
- * @param {object|null} [args.partGraph]
- * @param {Array} [args.observations]
- * @param {object} [args.origins]
- * @param {number} [args.revision]
- * @returns {{ ok: true, spec, proposal, partGraph, observations, origins, revision, materialKey } | { ok: false, error: string }}
+ * Annotate an already-built accepted design with a customer visual finish.
+ * Does not bump revision (caller owns revision).
  */
-export function commitMaterialUpdate({
+export function applyCustomerFinishAnnotation({
   materialKey,
   spec,
   partGraph = null,
   observations = [],
   origins = {},
-  revision = undefined,
 } = {}) {
   if (typeof materialKey !== "string" || materialKey.trim() === "") {
     return { ok: false, error: "materialKey is required to commit a finish change." };
@@ -41,18 +34,16 @@ export function commitMaterialUpdate({
   }
 
   const key = materialKey.trim().toLowerCase();
-  const nextRevision = Number.isFinite(revision)
-    ? revision + 1
-    : (Number.isFinite(spec.revision) ? spec.revision : 1) + 1;
-
   const nextSpec = {
     ...cloneJson(spec),
-    finishType: key,
-    revision: nextRevision,
+    // Keep manufacturing finishType catalog-backed.
+    finishType: spec.finishType && spec.finishType !== key ? spec.finishType : (spec.finishType || "melamine"),
+    customerFinishKey: key,
   };
-  // Preserve manufacturing materials from the prior approved catalog entry.
-  // Annotate the customer finish so fingerprint + approval track the swatch.
-  nextSpec.customerFinishKey = key;
+  if (nextSpec.finishType === key) {
+    // If a prior bug wrote the swatch into finishType, restore catalog default.
+    nextSpec.finishType = "melamine";
+  }
   if (nextSpec.materials && typeof nextSpec.materials === "object") {
     nextSpec.materials = { ...nextSpec.materials, customerFinishKey: key };
   }
@@ -64,22 +55,23 @@ export function commitMaterialUpdate({
     nextPartGraph.summary = {
       ...(nextPartGraph.summary || {}),
       customerFinishKey: key,
-      revision: nextRevision,
+      revision: nextSpec.revision,
     };
     if (Array.isArray(nextPartGraph.parts)) {
       nextPartGraph.parts = nextPartGraph.parts.map((part) => ({
         ...part,
         customerFinishKey: key,
-        // Manufacturing codes stay catalog-backed; finish intent is explicit.
         finishIntent: key,
       }));
     }
   }
 
   const nextObservations = [
-    ...observations.filter((o) => o && o.key !== "finishType" && o.key !== "materialKey"),
+    ...observations.filter(
+      (o) => o && o.key !== "customerFinishKey" && o.key !== "materialKey"
+    ),
     {
-      key: "finishType",
+      key: "customerFinishKey",
       value: key,
       origin: OBSERVATION_ORIGIN.CUSTOMER_STATED,
       sourceText: `customer finish ${key}`,
@@ -87,10 +79,33 @@ export function commitMaterialUpdate({
       ruleIds: [],
     },
   ];
+  // Ensure manufacturing finishType observation remains catalog-backed.
+  const hasFinish = nextObservations.some((o) => o.key === "finishType");
+  if (!hasFinish) {
+    nextObservations.push({
+      key: "finishType",
+      value: nextSpec.finishType || "melamine",
+      origin: OBSERVATION_ORIGIN.DEFAULTED,
+      sourceText: "catalog manufacturing finish",
+      sourceSpan: null,
+      ruleIds: [],
+    });
+  } else {
+    for (let i = 0; i < nextObservations.length; i++) {
+      if (nextObservations[i].key === "finishType" && nextObservations[i].value === key) {
+        nextObservations[i] = {
+          ...nextObservations[i],
+          value: "melamine",
+          origin: OBSERVATION_ORIGIN.DEFAULTED,
+          sourceText: "restored catalog manufacturing finish (swatch is customerFinishKey)",
+        };
+      }
+    }
+  }
 
   const nextOrigins = {
     ...origins,
-    finishType: OBSERVATION_ORIGIN.CUSTOMER_STATED,
+    customerFinishKey: OBSERVATION_ORIGIN.CUSTOMER_STATED,
   };
 
   return {
@@ -101,6 +116,62 @@ export function commitMaterialUpdate({
     partGraph: nextPartGraph,
     observations: nextObservations,
     origins: nextOrigins,
-    revision: nextRevision,
+    revision: nextSpec.revision,
+  };
+}
+
+/**
+ * Commit a customer finish change: bump revision, then annotate.
+ */
+export function commitMaterialUpdate({
+  materialKey,
+  spec,
+  partGraph = null,
+  observations = [],
+  origins = {},
+  revision = undefined,
+} = {}) {
+  if (!spec || typeof spec !== "object") {
+    return { ok: false, error: "An active FurniSpec is required before a finish can be committed." };
+  }
+  const nextRevision = Number.isFinite(revision)
+    ? revision + 1
+    : (Number.isFinite(spec.revision) ? spec.revision : 1) + 1;
+  const bumped = { ...cloneJson(spec), revision: nextRevision };
+  return applyCustomerFinishAnnotation({
+    materialKey,
+    spec: bumped,
+    partGraph,
+    observations,
+    origins,
+  });
+}
+
+/**
+ * After a structural rebuild, re-apply any prior customerFinishKey from observations.
+ */
+export function preserveCustomerFinishOnDraft(draft, currentObservations = []) {
+  if (!draft?.ok && !draft?.spec) return draft;
+  const fromObs =
+    currentObservations.find((o) => o?.key === "customerFinishKey")?.value ||
+    currentObservations.find((o) => o?.key === "materialKey")?.value ||
+    draft.spec?.customerFinishKey;
+  if (!fromObs) return draft;
+  const annotated = applyCustomerFinishAnnotation({
+    materialKey: fromObs,
+    spec: draft.spec,
+    partGraph: draft.partGraph,
+    observations: draft.observations || currentObservations,
+    origins: draft.origins || {},
+  });
+  if (!annotated.ok) return draft;
+  return {
+    ...draft,
+    spec: annotated.spec,
+    proposal: annotated.proposal,
+    partGraph: annotated.partGraph,
+    observations: annotated.observations,
+    origins: annotated.origins,
+    materialKey: annotated.materialKey,
   };
 }

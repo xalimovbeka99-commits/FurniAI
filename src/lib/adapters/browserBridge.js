@@ -26,7 +26,7 @@ import {
 import { OBSERVATION_ORIGIN, BEKZOD_APPROVED_DEFAULTS } from "../conversation/intakeModel.js";
 import { createDeterministicPhraseAdapter } from "../conversation/proposalAdapter.js";
 import { createProposal, validateApproval } from "../conversation/approval.js";
-import { commitMaterialUpdate } from "../conversation/commitMaterialUpdate.js";
+import { commitMaterialUpdate, applyCustomerFinishAnnotation, preserveCustomerFinishOnDraft } from "../conversation/commitMaterialUpdate.js";
 import {
   parseAndValidateClarifyInput,
   parseDimension,
