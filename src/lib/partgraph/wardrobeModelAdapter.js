@@ -34,6 +34,8 @@ import {
   COMPONENT_TYPES,
   SIDE_INSET_STATUS,
 } from "../furnispec/schema.js";
+import { validateFurniSpec } from "../furnispec/validate.js";
+import { resolve, ruleIdOf, doorsForBayWidth } from "../rules/wardrobeRuleCatalog.js";
 import { resolve } from "../rules/wardrobeRuleCatalog.js";
 
 function pad2(n) {
@@ -108,15 +110,25 @@ export function adaptWardrobeModelToFurniSpec(wardrobeModel, options = {}) {
 
   // Reconcile bay clear widths to guarantee exact sum = availableInteriorWidthMm
   const sumRawWidths = rawSections.reduce((acc, s) => acc + (Number(s.widthMm) || 0), 0);
+  // BAY_WIDTH_CLOSURE_FAILED, not silent adjustment. The previous version
+  // rescaled every bay proportionally when the sections did not close, and
+  // then absorbed any remainder into the LAST bay - a stated 800mm section
+  // came back as 834.9mm with no notice. Everywhere else in this kernel a
+  // derivation that does not close exactly throws rather than rounds.
+  const closureDiffMm = Math.round((availableInteriorWidthMm - sumRawWidths) * 10) / 10;
+  if (closureDiffMm !== 0) {
+    const err = new Error(
+      `Bay widths do not close: sections total ${sumRawWidths}mm but ${availableInteriorWidthMm}mm is available ` +
+        `(overall ${widthMm}mm minus two ${panelThicknessMm}mm sides and ${bayCount - 1} divider(s)). ` +
+        `Difference ${closureDiffMm}mm. Adjust the section widths rather than having them adjusted for you.`
+    );
+    err.code = "BAY_WIDTH_CLOSURE_FAILED";
+    err.differenceMm = closureDiffMm;
+    throw err;
+  }
+
   const bays = rawSections.map((sec, index) => {
-    let clearWidthMm;
-    if (Math.abs(sumRawWidths - availableInteriorWidthMm) < 0.001) {
-      clearWidthMm = Number(sec.widthMm);
-    } else {
-      // Distribute available width proportionally or equally
-      const ratio = sumRawWidths > 0 ? (Number(sec.widthMm) || 1) / sumRawWidths : 1 / bayCount;
-      clearWidthMm = Math.round((availableInteriorWidthMm * ratio) * 10) / 10;
-    }
+    const clearWidthMm = Number(sec.widthMm);
 
     const bayId = sec.id || `bay-${pad2(index + 1)}`;
     const components = [];
@@ -184,14 +196,7 @@ export function adaptWardrobeModelToFurniSpec(wardrobeModel, options = {}) {
     };
   });
 
-  // Ensure exact width reconciliation for validateFurniSpec:
-  // requiredSidesWidthDmm + sumBayWidthsDmm === envWDmm
-  const currentSumBays = bays.reduce((sum, b) => sum + b.clearWidthMm, 0);
-  const diffWidth = availableInteriorWidthMm - currentSumBays;
-  if (Math.abs(diffWidth) > 0.0001 && bays.length > 0) {
-    // Add discrepancy to the last bay to guarantee exact closure
-    bays[bays.length - 1].clearWidthMm = Math.round((bays[bays.length - 1].clearWidthMm + diffWidth) * 10) / 10;
-  }
+  // Closure was asserted above, before any bay was built. Nothing is adjusted here.
 
   // Doors calculation & closure
   // Check if door components specify leaves
@@ -200,13 +205,15 @@ export function adaptWardrobeModelToFurniSpec(wardrobeModel, options = {}) {
 
   let doorCount = doorLeavesSpecified > 0
     ? doorLeavesSpecified
-    : (widthMm >= 1800 ? 4 : (widthMm >= 1000 ? 2 : 1));
+    // RULEBOOK_V0_2_DOORS_PER_BAY, per bay. A customer's stated `leaves` wins.
+    : bays.reduce((sum, bay) => sum + doorsForBayWidth(bay.clearWidthMm), 0);
 
   // Door reveals: 2.0 mm everywhere
-  const revealTopMm = 2.0;
-  const revealBottomMm = 2.0;
-  const revealPerimeterMm = 2.0;
-  const revealInterMm = 2.0;
+  const revealMm = resolve("doorRevealMm");
+  const revealTopMm = revealMm;
+  const revealBottomMm = revealMm;
+  const revealPerimeterMm = revealMm;
+  const revealInterMm = revealMm;
 
   // Door finished height = carcass.heightMm - topReveal - bottomReveal
   const doorFinishedHeightMm = carcassHeightMm - revealTopMm - revealBottomMm;
@@ -335,11 +342,14 @@ export function adaptWardrobeModelToFurniSpec(wardrobeModel, options = {}) {
     },
     clearancePolicy: {
       backPanel: {
-        grooveRootAllowanceMm: 1.5,
+        // Was 1.5, against WR-005's 1.0. An adapter emitting different
+        // clearances than the rulebook states is a second source of truth.
+        grooveRootAllowanceMm: resolve("grooveRootAllowanceMm"),
       },
       adjustableShelf: {
-        sideClearanceMm: 1.0,
-        frontSetbackMm: 10.0,
+        sideClearanceMm: resolve("adjustableShelfSideClearanceMm"),
+        // Was 10.0, against GF-ADJ-FRONT's 5.0.
+        frontSetbackMm: resolve("adjustableShelfFrontSetbackMm"),
       },
     },
     safetyAndMachining: {
@@ -349,6 +359,22 @@ export function adaptWardrobeModelToFurniSpec(wardrobeModel, options = {}) {
     },
     adapterAssumptions: assumptions,
   };
+
+  // The header promises this is "consumable by buildStructuralPartGraph()".
+  // Nothing checked it, so a malformed spec surfaced as a kernel error naming
+  // the kernel - sending the next reader to the wrong file.
+  const validation = validateFurniSpec(furniSpec);
+  if (!validation.valid) {
+    const err = new Error(
+      "adaptWardrobeModelToFurniSpec produced a FurniSpec the validator rejects: " +
+        validation.errors.slice(0, 5)
+          .map((e) => `[${e.code}] ${e.message}${e.path ? ` (at ${e.path})` : ""}`)
+          .join(" ")
+    );
+    err.code = "ADAPTED_FURNISPEC_INVALID";
+    err.validationErrors = validation.errors;
+    throw err;
+  }
 
   return furniSpec;
 }

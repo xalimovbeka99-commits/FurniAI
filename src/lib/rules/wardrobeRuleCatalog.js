@@ -126,7 +126,13 @@ export const WARDROBE_RULES = Object.freeze({
 
   // --- NOT approved. Reading these through resolve() throws by design.
   bayCountForWidth: rule("UNRULED-BAY-COUNT", null, REQUIRES_BEKZOD_RULING, "No approved rule maps overall width to a bay count. Must be asked."),
-  doorsPerBay: rule("UNRULED-DOORS-PER-BAY", null, REQUIRES_BEKZOD_RULING, "Golden, narrow and wide fixtures all use 2 doors per bay, but no Rulebook rule states it. Must be asked."),
+  // Ruled 2026-09-18 (RULEBOOK_V0_2_DOORS_PER_BAY). Supersedes
+  // UNRULED-DOORS-PER-BAY, which resolve() threw on. Keyed on the BAY's clear
+  // width, not the wardrobe's overall width: two 900mm bays and one 1800mm bay
+  // are different cabinets.
+  doorsPerBayThresholdMm: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 600.0, BEKZOD_RULING, "A bay at or above this clear width takes two door leaves; below it, one."),
+  doorsPerBayAtOrAboveThreshold: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 2, BEKZOD_RULING, "Leaves for a bay whose clear width is >= the threshold."),
+  doorsPerBayBelowThreshold: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 1, BEKZOD_RULING, "Leaves for a bay whose clear width is < the threshold."),
   unevenBayWidthDistribution: rule("UNRULED-BAY-SPLIT", null, REQUIRES_BEKZOD_RULING, "No approved rule for distributing a non-integral bay-width remainder. Must be asked."),
 });
 
@@ -156,6 +162,28 @@ export function resolve(key) {
     throw new UnapprovedRuleError(key, record);
   }
   return record.value;
+}
+
+/**
+ * Door leaves for one bay, from RULEBOOK_V0_2_DOORS_PER_BAY.
+ *
+ * Replaces the width->doorCount ladder the adapter hard-coded, which read the
+ * wardrobe's OVERALL width and invented two thresholds. This reads each bay's
+ * own clear width against one ruled threshold.
+ *
+ * @param {number} bayClearWidthMm
+ */
+export function doorsForBayWidth(bayClearWidthMm) {
+  if (!Number.isFinite(bayClearWidthMm) || bayClearWidthMm <= 0) {
+    const err = new Error(
+      `Cannot choose a door count for a bay of "${bayClearWidthMm}"mm. The ruling is keyed on bay clear width, which must be known.`
+    );
+    err.code = "DOORS_PER_BAY_AMBIGUOUS";
+    throw err;
+  }
+  return bayClearWidthMm >= resolve("doorsPerBayThresholdMm")
+    ? resolve("doorsPerBayAtOrAboveThreshold")
+    : resolve("doorsPerBayBelowThreshold");
 }
 
 /** Returns the rule ID for provenance recording without reading the value. */
