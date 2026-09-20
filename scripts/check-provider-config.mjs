@@ -39,6 +39,26 @@ if (existsSync(envFile)) {
   }
 }
 
+/**
+ * Describe a key WITHOUT emitting any of it.
+ *
+ * This line used to print `prefix ${key.slice(0, 12)}` while the file header
+ * promised it "never prints a credential". Twelve characters of an Anthropic
+ * key is its type prefix rather than its secret material, but the habit is the
+ * problem: this output gets pasted into chat logs, issue trackers and
+ * screenshots, and the next key format may put entropy in those twelve
+ * characters. The diagnostic value was telling a truncated or wrong-shaped key
+ * from a good one, and a shape check does that without printing anything.
+ */
+function describeKey(value) {
+  if (!value) return "ABSENT";
+  const shape = /^sk-ant-/.test(value)
+    ? "shape OK (sk-ant-…)"
+    : "SHAPE UNEXPECTED — an Anthropic key normally starts sk-ant-";
+  const length = value.length < 40 ? `${value.length} chars — SHORT, likely truncated` : `${value.length} chars`;
+  return `configured — ${length}, ${shape}`;
+}
+
 const key = process.env.ANTHROPIC_API_KEY || "";
 const { DEFAULT_ANTHROPIC_MODEL } = await imp("src/lib/ai-provider/anthropicChatClient.js");
 const model = process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL;
@@ -47,7 +67,7 @@ console.log(RULE);
 console.log("FurniAI — AI provider configuration check");
 console.log(RULE);
 say(".env.local", existsSync(envFile) ? `present (${fromFile.length} key(s): ${fromFile.join(", ")})` : "not present");
-say("ANTHROPIC_API_KEY", key ? `configured — ${key.length} chars, prefix ${key.slice(0, 12)}…` : "ABSENT");
+say("ANTHROPIC_API_KEY", describeKey(key));
 say("OPENAI_API_KEY", process.env.OPENAI_API_KEY ? "configured" : "absent");
 say("AI_PROVIDER_ORDER", process.env.AI_PROVIDER_ORDER || "unset (default anthropic,openai)");
 say("model the app will use", model + (process.env.ANTHROPIC_MODEL ? " (from ANTHROPIC_MODEL)" : " (built-in default)"));
