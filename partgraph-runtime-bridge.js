@@ -50,6 +50,7 @@ var PartGraphBridge = (() => {
     approveAndPreview: () => approveAndPreview,
     buildCutListRows: () => buildCutListRows,
     buildStructuralPartGraph: () => buildStructuralPartGraph,
+    commitMaterialUpdate: () => commitMaterialUpdate,
     compileCabinetDxfPackage: () => compileCabinetDxfPackage,
     compileNestingManifest: () => compileNestingManifest,
     compilePanelToDxf: () => compilePanelToDxf,
@@ -988,7 +989,13 @@ var PartGraphBridge = (() => {
     ),
     // --- NOT approved. Reading these through resolve() throws by design.
     bayCountForWidth: rule("UNRULED-BAY-COUNT", null, REQUIRES_BEKZOD_RULING, "No approved rule maps overall width to a bay count. Must be asked."),
-    doorsPerBay: rule("UNRULED-DOORS-PER-BAY", null, REQUIRES_BEKZOD_RULING, "Golden, narrow and wide fixtures all use 2 doors per bay, but no Rulebook rule states it. Must be asked."),
+    // Ruled 2026-09-18 (RULEBOOK_V0_2_DOORS_PER_BAY). Supersedes
+    // UNRULED-DOORS-PER-BAY, which resolve() threw on. Keyed on the BAY's clear
+    // width, not the wardrobe's overall width: two 900mm bays and one 1800mm bay
+    // are different cabinets.
+    doorsPerBayThresholdMm: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 600, BEKZOD_RULING, "A bay at or above this clear width takes two door leaves; below it, one."),
+    doorsPerBayAtOrAboveThreshold: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 2, BEKZOD_RULING, "Leaves for a bay whose clear width is >= the threshold."),
+    doorsPerBayBelowThreshold: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 1, BEKZOD_RULING, "Leaves for a bay whose clear width is < the threshold."),
     unevenBayWidthDistribution: rule("UNRULED-BAY-SPLIT", null, REQUIRES_BEKZOD_RULING, "No approved rule for distributing a non-integral bay-width remainder. Must be asked.")
   });
   var UnapprovedRuleError = class extends Error {
@@ -1011,6 +1018,16 @@ var PartGraphBridge = (() => {
       throw new UnapprovedRuleError(key, record);
     }
     return record.value;
+  }
+  function doorsForBayWidth(bayClearWidthMm) {
+    if (!Number.isFinite(bayClearWidthMm) || bayClearWidthMm <= 0) {
+      const err = new Error(
+        `Cannot choose a door count for a bay of "${bayClearWidthMm}"mm. The ruling is keyed on bay clear width, which must be known.`
+      );
+      err.code = "DOORS_PER_BAY_AMBIGUOUS";
+      throw err;
+    }
+    return bayClearWidthMm >= resolve("doorsPerBayThresholdMm") ? resolve("doorsPerBayAtOrAboveThreshold") : resolve("doorsPerBayBelowThreshold");
   }
   function ruleIdOf(key) {
     const record = WARDROBE_RULES[key];
@@ -3200,9 +3217,17 @@ var PartGraphBridge = (() => {
         detail = `No ${fact.label} was supplied. ${WARDROBE_RULES.bayCountForWidth.note} It cannot be inferred from the overall width.`;
         proposalBasis = WARDROBE_RULES.bayCountForWidth.id;
       } else if (fact.key === "doorCount" && has("bayCount")) {
-        proposal = get("bayCount") * 2;
-        proposalBasis = WARDROBE_RULES.doorsPerBay.id;
-        detail = `No ${fact.label} was supplied. ${WARDROBE_RULES.doorsPerBay.note} Two doors per bay is offered for confirmation only.`;
+        proposalBasis = WARDROBE_RULES.doorsPerBayThresholdMm.id;
+        const bayCount = get("bayCount");
+        const envelopeWidthMm = get("envelope.widthMm");
+        const panelTMm = WARDROBE_RULES.panelThicknessMm.value;
+        if (Number.isFinite(envelopeWidthMm) && bayCount > 0) {
+          const bayClearWidthMm = (envelopeWidthMm - 2 * panelTMm - (bayCount - 1) * panelTMm) / bayCount;
+          proposal = bayCount * doorsForBayWidth(bayClearWidthMm);
+          detail = `No ${fact.label} was supplied. ${WARDROBE_RULES.doorsPerBayThresholdMm.note} At about ${Math.round(bayClearWidthMm)}mm per bay that gives ${proposal} in total, offered for confirmation.`;
+        } else {
+          detail = `No ${fact.label} was supplied, and the door count depends on each bay's clear width, which is not yet known.`;
+        }
       } else if (fact.key === "bayLayouts" && has("bayCount")) {
         detail = `The interior layout of each of the ${get("bayCount")} bays was not described.`;
       }
@@ -4536,6 +4561,79 @@ var PartGraphBridge = (() => {
   }
   function hardwareStatusesOf(spec) {
     return Object.fromEntries(Object.entries(spec.hardware ?? {}).map(([k, v]) => [k, v?.status ?? "UNKNOWN"]));
+  }
+
+  // src/lib/conversation/commitMaterialUpdate.js
+  function cloneJson(value) {
+    return value == null ? value : JSON.parse(JSON.stringify(value));
+  }
+  function commitMaterialUpdate({
+    materialKey,
+    spec,
+    partGraph = null,
+    observations = [],
+    origins = {},
+    revision = void 0
+  } = {}) {
+    if (typeof materialKey !== "string" || materialKey.trim() === "") {
+      return { ok: false, error: "materialKey is required to commit a finish change." };
+    }
+    if (!spec || typeof spec !== "object") {
+      return { ok: false, error: "An active FurniSpec is required before a finish can be committed." };
+    }
+    const key = materialKey.trim().toLowerCase();
+    const nextRevision = Number.isFinite(revision) ? revision + 1 : (Number.isFinite(spec.revision) ? spec.revision : 1) + 1;
+    const nextSpec = {
+      ...cloneJson(spec),
+      finishType: key,
+      revision: nextRevision
+    };
+    nextSpec.customerFinishKey = key;
+    if (nextSpec.materials && typeof nextSpec.materials === "object") {
+      nextSpec.materials = { ...nextSpec.materials, customerFinishKey: key };
+    }
+    const nextProposal = createProposal(nextSpec);
+    let nextPartGraph = cloneJson(partGraph);
+    if (nextPartGraph && typeof nextPartGraph === "object") {
+      nextPartGraph.summary = {
+        ...nextPartGraph.summary || {},
+        customerFinishKey: key,
+        revision: nextRevision
+      };
+      if (Array.isArray(nextPartGraph.parts)) {
+        nextPartGraph.parts = nextPartGraph.parts.map((part) => ({
+          ...part,
+          customerFinishKey: key,
+          // Manufacturing codes stay catalog-backed; finish intent is explicit.
+          finishIntent: key
+        }));
+      }
+    }
+    const nextObservations = [
+      ...observations.filter((o) => o && o.key !== "finishType" && o.key !== "materialKey"),
+      {
+        key: "finishType",
+        value: key,
+        origin: OBSERVATION_ORIGIN.CUSTOMER_STATED,
+        sourceText: `customer finish ${key}`,
+        sourceSpan: null,
+        ruleIds: []
+      }
+    ];
+    const nextOrigins = {
+      ...origins,
+      finishType: OBSERVATION_ORIGIN.CUSTOMER_STATED
+    };
+    return {
+      ok: true,
+      materialKey: key,
+      spec: nextSpec,
+      proposal: nextProposal,
+      partGraph: nextPartGraph,
+      observations: nextObservations,
+      origins: nextOrigins,
+      revision: nextRevision
+    };
   }
 
   // src/lib/drawing/projectionEngine.js

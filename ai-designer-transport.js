@@ -23,6 +23,7 @@ var AiDesignerTransport = (() => {
     AI_DESIGNER_ENDPOINT: () => AI_DESIGNER_ENDPOINT,
     RESULT_KIND: () => RESULT_KIND,
     RESULT_SOURCE: () => RESULT_SOURCE,
+    invalidLiveStateGuardResult: () => invalidLiveStateGuardResult,
     isStaleAnswer: () => isStaleAnswer,
     isStaleForRevision: () => isStaleForRevision,
     proposeDesignChange: () => proposeDesignChange
@@ -774,7 +775,13 @@ var AiDesignerTransport = (() => {
     ),
     // --- NOT approved. Reading these through resolve() throws by design.
     bayCountForWidth: rule("UNRULED-BAY-COUNT", null, REQUIRES_BEKZOD_RULING, "No approved rule maps overall width to a bay count. Must be asked."),
-    doorsPerBay: rule("UNRULED-DOORS-PER-BAY", null, REQUIRES_BEKZOD_RULING, "Golden, narrow and wide fixtures all use 2 doors per bay, but no Rulebook rule states it. Must be asked."),
+    // Ruled 2026-09-18 (RULEBOOK_V0_2_DOORS_PER_BAY). Supersedes
+    // UNRULED-DOORS-PER-BAY, which resolve() threw on. Keyed on the BAY's clear
+    // width, not the wardrobe's overall width: two 900mm bays and one 1800mm bay
+    // are different cabinets.
+    doorsPerBayThresholdMm: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 600, BEKZOD_RULING, "A bay at or above this clear width takes two door leaves; below it, one."),
+    doorsPerBayAtOrAboveThreshold: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 2, BEKZOD_RULING, "Leaves for a bay whose clear width is >= the threshold."),
+    doorsPerBayBelowThreshold: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 1, BEKZOD_RULING, "Leaves for a bay whose clear width is < the threshold."),
     unevenBayWidthDistribution: rule("UNRULED-BAY-SPLIT", null, REQUIRES_BEKZOD_RULING, "No approved rule for distributing a non-integral bay-width remainder. Must be asked.")
   });
   var UnapprovedRuleError = class extends Error {
@@ -797,6 +804,16 @@ var AiDesignerTransport = (() => {
       throw new UnapprovedRuleError(key, record);
     }
     return record.value;
+  }
+  function doorsForBayWidth(bayClearWidthMm) {
+    if (!Number.isFinite(bayClearWidthMm) || bayClearWidthMm <= 0) {
+      const err = new Error(
+        `Cannot choose a door count for a bay of "${bayClearWidthMm}"mm. The ruling is keyed on bay clear width, which must be known.`
+      );
+      err.code = "DOORS_PER_BAY_AMBIGUOUS";
+      throw err;
+    }
+    return bayClearWidthMm >= resolve("doorsPerBayThresholdMm") ? resolve("doorsPerBayAtOrAboveThreshold") : resolve("doorsPerBayBelowThreshold");
   }
   function ruleIdOf(key) {
     const record = WARDROBE_RULES[key];
@@ -2594,9 +2611,17 @@ var AiDesignerTransport = (() => {
         detail = `No ${fact.label} was supplied. ${WARDROBE_RULES.bayCountForWidth.note} It cannot be inferred from the overall width.`;
         proposalBasis = WARDROBE_RULES.bayCountForWidth.id;
       } else if (fact.key === "doorCount" && has("bayCount")) {
-        proposal = get("bayCount") * 2;
-        proposalBasis = WARDROBE_RULES.doorsPerBay.id;
-        detail = `No ${fact.label} was supplied. ${WARDROBE_RULES.doorsPerBay.note} Two doors per bay is offered for confirmation only.`;
+        proposalBasis = WARDROBE_RULES.doorsPerBayThresholdMm.id;
+        const bayCount = get("bayCount");
+        const envelopeWidthMm = get("envelope.widthMm");
+        const panelTMm = WARDROBE_RULES.panelThicknessMm.value;
+        if (Number.isFinite(envelopeWidthMm) && bayCount > 0) {
+          const bayClearWidthMm = (envelopeWidthMm - 2 * panelTMm - (bayCount - 1) * panelTMm) / bayCount;
+          proposal = bayCount * doorsForBayWidth(bayClearWidthMm);
+          detail = `No ${fact.label} was supplied. ${WARDROBE_RULES.doorsPerBayThresholdMm.note} At about ${Math.round(bayClearWidthMm)}mm per bay that gives ${proposal} in total, offered for confirmation.`;
+        } else {
+          detail = `No ${fact.label} was supplied, and the door count depends on each bay's clear width, which is not yet known.`;
+        }
       } else if (fact.key === "bayLayouts" && has("bayCount")) {
         detail = `The interior layout of each of the ${get("bayCount")} bays was not described.`;
       }
@@ -3868,7 +3893,7 @@ var AiDesignerTransport = (() => {
     DESIGNER_UNAVAILABLE: "DESIGNER_UNAVAILABLE",
     /**
      * The answer that came back is for a design the customer has already moved
-     * past — they edited again, pressed Undo, or switched designs while it was
+     * past â€” they edited again, pressed Undo, or switched designs while it was
      * in flight. Covers changeToken mismatch and design-id mismatch (not only
      * revision inequality). Kept as STALE_REVISION for Antigravity additive
      * compatibility; see docs/m2/integ/ANTIGRAVITY_STALE_GUARD_HANDOFF.md.
@@ -3881,6 +3906,30 @@ var AiDesignerTransport = (() => {
   function readGetter(maybeGetter) {
     if (typeof maybeGetter !== "function") return void 0;
     return maybeGetter();
+  }
+  function invalidLiveStateGuardResult({
+    currentDesignId,
+    currentChangeToken,
+    currentRevision
+  } = {}) {
+    const checks = [
+      ["currentDesignId", currentDesignId],
+      ["currentChangeToken", currentChangeToken],
+      ["currentRevision", currentRevision]
+    ];
+    for (const [name, value] of checks) {
+      if (value !== void 0 && typeof value !== "function") {
+        return {
+          ok: false,
+          source: RESULT_SOURCE.DETERMINISTIC,
+          kind: RESULT_KIND.STALE_REVISION,
+          error: `Live-state guard "${name}" must be a getter function so changes during the request are detected. The design was not changed.`,
+          guardParameter: name,
+          guardParameterType: value === null ? "null" : typeof value
+        };
+      }
+    }
+    return null;
   }
   function isStaleAnswer({
     designIdAtRequest,
@@ -3932,7 +3981,7 @@ var AiDesignerTransport = (() => {
       currentChangeToken: Number.isFinite(currentChangeToken) ? currentChangeToken : null,
       revisionAtRequest: Number.isFinite(revisionAtRequest) ? revisionAtRequest : null,
       currentRevision: Number.isFinite(currentRevision) ? currentRevision : null,
-      error: "That answer arrived for an older version of your design, so it was not applied. Your current design is unchanged \u2014 please ask again."
+      error: "That answer arrived for an older version of your design, so it was not applied. Your current design is unchanged \xE2\u20AC\u201D please ask again."
     };
   }
   async function proposeDesignChange({
@@ -3948,7 +3997,7 @@ var AiDesignerTransport = (() => {
     currentChangeToken = void 0,
     /**
      * Legacy: reads the caller's CURRENT revision when the answer lands.
-     * Prefer currentChangeToken — revision rewinds on Undo.
+     * Prefer currentChangeToken â€” revision rewinds on Undo.
      */
     currentRevision = void 0
   }) {
@@ -4008,6 +4057,12 @@ var AiDesignerTransport = (() => {
         ...signal ? { signal } : {}
       });
       payload = await response.json().catch(() => null);
+      const guardMisuse = invalidLiveStateGuardResult({
+        currentDesignId,
+        currentChangeToken,
+        currentRevision
+      });
+      if (guardMisuse) return guardMisuse;
       const liveDesignId = readGetter(currentDesignId);
       const liveChangeToken = readGetter(currentChangeToken);
       const liveRevision = readGetter(currentRevision);
@@ -4051,7 +4106,7 @@ var AiDesignerTransport = (() => {
       };
     }
     const isMock = Boolean(payload?.mock || payload?.isMock || payload?.provider === "mock" || payload?.provider === "stub");
-    const modelProvider = isMock ? "mock" : payload?.provider === "anthropic" ? "anthropic" : typeof payload?.provider === "string" && payload.provider.trim() || "ai";
+    const modelProvider = isMock ? "mock" : typeof payload?.provider === "string" && payload.provider.trim() || "ai";
     const revalidated = validateModelProposal(
       { edits: payload.edits, unsupported: payload.unsupported, reply: payload.reply },
       { currentBayCount: factsFrom(currentObservations).bayCount ?? 2 }

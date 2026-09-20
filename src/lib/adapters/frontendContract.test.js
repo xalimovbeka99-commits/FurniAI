@@ -229,7 +229,7 @@ describe("STALE_REVISION — the three signals, not a revision number", () => {
     expect(result.currentDesignId).toBe("a-different-wardrobe");
   });
 
-  it("DOCUMENTS A HAZARD: plain values silently disable the guard", async () => {
+  it("fail-closes when live-state args are plain values instead of getters", async () => {
     // isStaleAnswer() activates each signal only when the parameter is a
     // FUNCTION — `typeof currentChangeToken === "function"`. With none of the
     // three passed as a getter it returns false immediately, and a stale
@@ -256,12 +256,10 @@ describe("STALE_REVISION — the three signals, not a revision number", () => {
       fetchImpl: widen(),
     });
 
-    expect(result.kind).toBe(RESULT_KIND.DESIGN_UPDATED);
-    expect(result.ok).toBe(true);
-    expect(
-      result.spec.envelope.widthMm,
-      "a stale answer was applied because the guard parameters were plain values"
-    ).toBe(2000);
+    expect(result.ok).toBe(false);
+    expect(result.kind).toBe(RESULT_KIND.STALE_REVISION);
+    expect(result.spec).toBeUndefined();
+    expect(result.error).toMatch(/getter function/i);
   });
 
   it("applies the answer when nothing moved — the guard is not a blanket refusal", async () => {
@@ -316,7 +314,7 @@ describe("provider identity", () => {
     expect(result.provider).toBe("openai");
   });
 
-  it("DOCUMENTS A DEFECT: with no provider stated, the client guesses 'anthropic'", async () => {
+  it("defaults provider to ai when the server states none", async () => {
     // `modelProvider = payload?.provider || (payload?.mock ? "mock" : "anthropic")`.
     // A server that does not echo `provider` — which is the default, since the
     // endpoint only includes it behind shouldExposeProviderDebugInfo() — makes
@@ -339,7 +337,7 @@ describe("provider identity", () => {
         reply: "Widened.",
       }),
     });
-    expect(result.provider).toBe("anthropic");
+    expect(result.provider).toBe("ai");
     expect(result.isMock).toBe(false);
   });
 });
