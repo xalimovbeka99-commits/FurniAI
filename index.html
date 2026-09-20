@@ -680,15 +680,10 @@ footer ul a:hover{opacity:1;color:var(--brass)}
           <div class="ai-w-example-box" style="margin:8px 0 10px">
             <span style="font-size:10.5px;color:var(--ink-soft);display:block;margin-bottom:4px;font-family:'Space Mono',monospace;text-transform:uppercase;letter-spacing:.08em;">Examples:</span>
             <button type="button" class="ai-w-example-chip" id="aiGoldenExamplePrompt" style="margin-bottom:4px;">A 4-door wardrobe, 1800mm wide, 2400mm high, 600mm deep, with a 100mm plinth, 2 equal bays, oak finish, and shelves</button>
-            <button type="button" class="ai-w-example-chip" id="aiMakeWardrobePrompt">âœ¦ Make me a wardrobe</button>
+            <button type="button" class="ai-w-example-chip" id="aiMakeWardrobePrompt">✦ Make me a wardrobe</button>
           </div>
           <textarea id="aiWardrobeInput" class="ai-w-textarea" rows="3" placeholder="Describe the wardrobe you want (e.g. 'Make me a wardrobe', '2000mm wide wardrobe')..."></textarea>
-          <div style="display:flex;gap:6px;align-items:center;margin-top:6px;">
-            <button type="button" class="btn sm ghost" id="aiAttachDocBtn" title="Attach photo or drawing">ðŸ“Ž Attach Photo / PDF</button>
-            <input type="file" id="aiDocFileInput" accept="image/*,.pdf" hidden>
-            <span id="aiAttachDocName" style="font-size:10.5px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;"></span>
-          </div>
-          <button class="btn sm" id="aiWardrobeSubmitBtn" style="width:100%;margin-top:8px;justify-content:center;">âœ¦ Generate Draft Preview</button>
+          <button class="btn sm" id="aiWardrobeSubmitBtn" style="width:100%;margin-top:8px;justify-content:center;">✧ Generate Draft Preview</button>
         </div>
 
         <div id="aiWardrobeClarifySection" hidden>
@@ -717,7 +712,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
             No 3D geometry has been generated yet.
           </div>
           <div id="aiDraftSafetyNotice" style="background:#fffbe6;border:1px solid #ffe58f;color:#b45309;padding:6px 8px;border-radius:6px;font-size:11px;font-weight:500;margin-bottom:8px;line-height:1.35;">
-            âš  <b>DRAFT PREVIEW ONLY â€” NOT APPROVED FOR WORKSHOP.</b> Assumed dimensions use Bekzod-approved Golden defaults. CNC manufacturing and hardware drilling remain blocked.
+            ⚠️ <b>DRAFT PREVIEW ONLY — NOT APPROVED FOR WORKSHOP.</b> Assumed dimensions use Bekzod-approved Golden defaults. CNC manufacturing and hardware drilling remain blocked.
           </div>
           <div style="font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:6px;">Specification &amp; Origins</div>
           <table class="om-table" id="aiReviewSummaryTable" style="margin-bottom:10px;font-size:11px;">
@@ -754,7 +749,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 
           <div style="display:flex;gap:6px;margin-bottom:6px;">
             <button class="btn sm" id="btnApproveGenerate3D" style="flex:1;background:var(--brass);border-color:var(--brass);color:#fff;justify-content:center;">Approve for Workshop</button>
-            <button class="btn sm ghost" id="btnUndoEdit" style="justify-content:center;" title="Revert to previous revision">â†¶ Undo</button>
+            <button class="btn sm ghost" id="btnUndoEdit" style="justify-content:center;" title="Revert to previous revision">↶ Undo</button>
           </div>
           <div style="display:flex;gap:6px;">
             <button class="btn sm ghost btn-edit-answers" id="btnReviewEditAnswers" style="flex:1;justify-content:center;">Edit description</button>
@@ -765,7 +760,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
         <div id="aiWardrobeApprovedSection" hidden>
           <div id="aiApprovedStageTag" style="font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:#15803d;background:#dcfce7;padding:3px 8px;border-radius:4px;display:inline-block;margin-bottom:8px;letter-spacing:.06em;">APPROVED FOR PREVIEW</div>
           <div style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:6px 8px;border-radius:6px;font-size:11px;margin-bottom:10px;line-height:1.35;">
-            âœ“ <b>Proposal locked and approved by customer.</b> Final 19-part PartGraph generated. Operable doors, inspection, and material swatches are active.
+            ✓ <b>Proposal locked and approved by customer.</b> Final 19-part PartGraph generated. Operable doors, inspection, and material swatches are active.
           </div>
           <button class="btn sm ghost btn-edit-answers" id="btnEditAnswers" style="width:100%;margin-bottom:6px;justify-content:center;">Edit design (invalidates approval)</button>
           <button class="btn sm ghost" id="btnStartNewWardrobe" style="width:100%;justify-content:center;">Start New Wardrobe</button>
@@ -2101,7 +2096,12 @@ let aiWardrobeState = {
   proposal: null,
   approval: null,
   partGraph: null,
+  observations: [],
+  origins: {},
+  undoStack: [],
+  isSubmitting: false,
 };
+window.aiWardrobeState = aiWardrobeState;
 
 function generateAiWardrobeSpecId() {
   const rand = Math.floor(1000 + Math.random() * 9000);
@@ -2128,6 +2128,7 @@ function initAiWardrobePanel(forceReset = false) {
       if (secApproved) secApproved.hidden = true;
       if (secReview) secReview.hidden = false;
     }
+    window.aiWardrobeState = aiWardrobeState;
     return;
   }
 
@@ -2148,6 +2149,7 @@ function initAiWardrobePanel(forceReset = false) {
     editSequence: (window.aiWardrobeState?.editSequence || 0) + 1,
     isSubmitting: false,
   };
+  window.aiWardrobeState = aiWardrobeState;
   const inp = document.getElementById('aiWardrobeInput');
   if (inp) inp.value = '';
   const convInp = document.getElementById('aiConversationalInput');
@@ -2285,18 +2287,51 @@ function updateAiWardrobeSummaryUI(res) {
   setEl('revFingerprint', prop.fingerprint || '');
 }
 
-function appendAiStreamMsg(role, text) {
+function appendAiStreamMsg(role, text, meta = {}) {
   const stream = document.getElementById('aiConversationalStream');
-  if (!stream) return;
+  if (!stream) return null;
   const div = document.createElement('div');
   div.className = 'ai-msg ' + role;
   div.dataset.role = role;
   div.style.cssText = role === 'user'
     ? 'align-self:flex-end;background:var(--brass);color:#fff;padding:4px 8px;border-radius:6px;max-width:85%;word-break:break-word;'
     : 'align-self:flex-start;background:var(--paper);border:1px solid var(--line);padding:4px 8px;border-radius:6px;max-width:85%;line-height:1.35;word-break:break-word;';
-  div.textContent = text;
+
+  if (role === 'assistant' && (meta.source || meta.provider)) {
+    const badge = document.createElement('span');
+    badge.className = 'ai-source-badge';
+    badge.style.cssText = 'display:inline-block;font-size:9px;font-family:monospace;font-weight:700;padding:1px 5px;border-radius:3px;margin-right:6px;vertical-align:middle;letter-spacing:0.04em;';
+    if (meta.source === 'DETERMINISTIC' || meta.provider === 'rules') {
+      badge.textContent = '[Rules]';
+      badge.style.background = 'rgba(0,0,0,0.06)';
+      badge.style.color = '#4b5563';
+    } else if (meta.isMock) {
+      badge.textContent = '[✦ Mock]';
+      badge.style.background = '#fef3c7';
+      badge.style.color = '#b45309';
+      badge.style.border = '1px solid #fde68a';
+    } else if (meta.provider === 'anthropic') {
+      badge.textContent = '[✦ Anthropic]';
+      badge.style.background = '#e0f2fe';
+      badge.style.color = '#0369a1';
+      badge.style.border = '1px solid #bae6fd';
+    } else {
+      badge.textContent = '[✦ AI]';
+      badge.style.background = '#f3e8ff';
+      badge.style.color = '#6b21a8';
+      badge.style.border = '1px solid #e9d5ff';
+    }
+    div.appendChild(badge);
+    const txtSpan = document.createElement('span');
+    txtSpan.textContent = text;
+    div.appendChild(txtSpan);
+  } else {
+    div.textContent = text;
+  }
+
   stream.appendChild(div);
   stream.scrollTop = stream.scrollHeight;
+  return div;
 }
 
 function runAiWardrobeDraftPreview() {
@@ -2356,8 +2391,132 @@ function runAiWardrobeDraftPreview() {
     if (stream) {
       stream.innerHTML = '';
       appendAiStreamMsg('user', text);
-      appendAiStreamMsg('assistant', `Here is your draft wardrobe (Revision 1). Unspecified dimensions use Bekzod-approved Golden defaults. Ask for changes below or click 'Approve for Workshop'.`);
+      appendAiStreamMsg('assistant', `Here is your draft wardrobe (Revision 1). Unspecified dimensions use Bekzod-approved Golden defaults. Ask for changes below or click 'Approve for Workshop'.`, { source: 'DETERMINISTIC', provider: 'rules' });
     }
+
+    // Connect the initial-description experience to Claude's agreed AI interpretation flow
+    if (globalThis.AiDesignerTransport && typeof globalThis.AiDesignerTransport.proposeDesignChange === 'function' && !globalThis.__F1_TEST_SETUP_DISABLED_TRANSPORT__) {
+      runInitialAiInterpretation(text, aiWardrobeState.editSequence, aiWardrobeState.specId);
+    }
+  }
+}
+
+async function runInitialAiInterpretation(text, requestSeq, requestSpecId) {
+  const stream = document.getElementById('aiConversationalStream');
+  let progressEl = null;
+  if (stream) {
+    progressEl = document.createElement('div');
+    progressEl.id = 'aiDraftProgress';
+    progressEl.className = 'ai-msg assistant thinking';
+    progressEl.dataset.role = 'thinking';
+    progressEl.style.cssText = 'align-self:flex-start;background:var(--paper);border:1px dashed var(--line);padding:4px 8px;border-radius:6px;max-width:85%;line-height:1.35;color:var(--ink-soft);font-style:italic;';
+    progressEl.innerHTML = '<span style="display:inline-block;margin-right:4px;">✦</span> Interpreting design with FurniAI...';
+    stream.appendChild(progressEl);
+    stream.scrollTop = stream.scrollHeight;
+  }
+
+  try {
+    const res = await globalThis.AiDesignerTransport.proposeDesignChange({
+      message: text,
+      currentObservations: aiWardrobeState.observations,
+      specId: requestSpecId,
+      revision: 1,
+      changeToken: requestSeq,
+      currentDesignId: () => aiWardrobeState.specId,
+      currentChangeToken: () => aiWardrobeState.editSequence,
+    });
+
+    if (progressEl && progressEl.parentNode) {
+      progressEl.parentNode.removeChild(progressEl);
+    }
+
+    // Protect any edits made before response arrives!
+    if (aiWardrobeState.editSequence !== requestSeq || aiWardrobeState.specId !== requestSpecId) {
+      console.warn('Discarded initial AI interpretation because user moved past initial draft');
+      return;
+    }
+
+    if (!res || res.kind === 'STALE_REVISION') {
+      return;
+    }
+
+    if (res.kind === 'DESIGN_UPDATED' || (res.ok && res.spec && res.partGraph)) {
+      const currentEnv = aiWardrobeState.spec?.envelope || {};
+      const newEnv = res.spec?.envelope || {};
+      const currentBays = (aiWardrobeState.spec?.bays && aiWardrobeState.spec.bays.length) || aiWardrobeState.spec?.bayCount || 2;
+      const newBays = (res.spec?.bays && res.spec.bays.length) || res.spec?.bayCount || 2;
+      const currentFinish = (aiWardrobeState.spec?.finishType || 'oak').toLowerCase();
+      const newFinish = (res.spec?.finishType || res.materialKey || 'oak').toLowerCase();
+
+      const hasChange = (
+        currentEnv.widthMm !== newEnv.widthMm ||
+        currentEnv.heightMm !== newEnv.heightMm ||
+        currentEnv.depthMm !== newEnv.depthMm ||
+        currentBays !== newBays ||
+        currentFinish !== newFinish
+      );
+
+      if (!hasChange) {
+        // The immediate draft already accurately captures this specification
+        return;
+      }
+
+      const prevSnapshot = {
+        spec: JSON.parse(JSON.stringify(aiWardrobeState.spec)),
+        proposal: { ...aiWardrobeState.proposal },
+        partGraph: aiWardrobeState.partGraph,
+        observations: [...aiWardrobeState.observations],
+        origins: { ...aiWardrobeState.origins },
+        revision: aiWardrobeState.revision,
+      };
+      aiWardrobeState.undoStack.push(prevSnapshot);
+      aiWardrobeState.spec = res.spec;
+      aiWardrobeState.proposal = res.proposal;
+      aiWardrobeState.partGraph = res.partGraph;
+      aiWardrobeState.observations = res.observations;
+      aiWardrobeState.origins = res.origins;
+      aiWardrobeState.revision = res.spec.revision;
+      aiWardrobeState.approval = null;
+
+      globalThis.PartGraphBridge.loadDraftPartGraph(Builder, res.partGraph);
+      if (res.materialKey) {
+        globalThis.PartGraphBridge.updateParametricMaterial(Builder, res.materialKey);
+      }
+      updateAiWardrobeSummaryUI(res);
+      appendAiStreamMsg('assistant', res.assistantReply || `Refined design based on your description (Revision ${res.spec.revision}).`, res);
+    } else if (res.kind === 'MATERIAL_UPDATED' || (res.ok && res.materialKey && !res.partGraph)) {
+      const currentFinish = (aiWardrobeState.spec?.finishType || 'oak').toLowerCase();
+      const newFinish = (res.materialKey || '').toLowerCase();
+      if (currentFinish === newFinish) {
+        return;
+      }
+
+      const prevSnapshot = {
+        spec: JSON.parse(JSON.stringify(aiWardrobeState.spec)),
+        proposal: { ...aiWardrobeState.proposal },
+        partGraph: aiWardrobeState.partGraph,
+        observations: [...aiWardrobeState.observations],
+        origins: { ...aiWardrobeState.origins },
+        revision: aiWardrobeState.revision,
+      };
+      aiWardrobeState.undoStack.push(prevSnapshot);
+      aiWardrobeState.revision = (aiWardrobeState.revision || 1) + 1;
+      if (res.observations) aiWardrobeState.observations = res.observations;
+      if (res.origins) aiWardrobeState.origins = res.origins;
+      if (globalThis.PartGraphBridge?.updateParametricMaterial) {
+        globalThis.PartGraphBridge.updateParametricMaterial(Builder, res.materialKey);
+      }
+      if (aiWardrobeState.spec) {
+        aiWardrobeState.spec = { ...aiWardrobeState.spec, finishType: res.materialKey, revision: aiWardrobeState.revision };
+      }
+      updateAiWardrobeSummaryUI({ spec: aiWardrobeState.spec, proposal: aiWardrobeState.proposal, origins: aiWardrobeState.origins, revision: aiWardrobeState.revision });
+      appendAiStreamMsg('assistant', res.assistantReply || `Applied ${res.materialKey} finish based on your description (Revision ${aiWardrobeState.revision}).`, res);
+    }
+  } catch (err) {
+    if (progressEl && progressEl.parentNode) {
+      progressEl.parentNode.removeChild(progressEl);
+    }
+    console.warn('Initial AI interpretation error:', err);
   }
 }
 
@@ -2370,6 +2529,21 @@ async function runAiWardrobeConversationalEdit(cmdText) {
   const convInp = document.getElementById('aiConversationalInput');
   if (sendBtn) sendBtn.disabled = true;
   if (convInp) convInp.disabled = true;
+
+  appendAiStreamMsg('user', cmdText);
+
+  // Show thinking indicator in conversation stream
+  const stream = document.getElementById('aiConversationalStream');
+  let thinkingEl = null;
+  if (stream) {
+    thinkingEl = document.createElement('div');
+    thinkingEl.className = 'ai-msg assistant thinking';
+    thinkingEl.dataset.role = 'thinking';
+    thinkingEl.style.cssText = 'align-self:flex-start;background:var(--paper);border:1px dashed var(--line);padding:4px 8px;border-radius:6px;max-width:85%;line-height:1.35;color:var(--ink-soft);font-style:italic;';
+    thinkingEl.innerHTML = '<span style="display:inline-block;margin-right:4px;">✦</span> Thinking...';
+    stream.appendChild(thinkingEl);
+    stream.scrollTop = stream.scrollHeight;
+  }
 
   const currentSeq = (aiWardrobeState.editSequence || 0) + 1;
   aiWardrobeState.editSequence = currentSeq;
@@ -2414,6 +2588,9 @@ async function runAiWardrobeConversationalEdit(cmdText) {
       error: err?.message || 'Could not reach the FurniAI designer. Your design is unchanged.',
     };
   } finally {
+    if (thinkingEl && thinkingEl.parentNode) {
+      thinkingEl.parentNode.removeChild(thinkingEl);
+    }
     aiWardrobeState.isSubmitting = false;
     if (sendBtn) sendBtn.disabled = false;
     if (convInp) convInp.disabled = false;
@@ -2435,8 +2612,7 @@ async function runAiWardrobeConversationalEdit(cmdText) {
 
   if (kind === 'STALE_REVISION') {
     // Transport already refused apply; keep UI discard path consistent.
-    appendAiStreamMsg('user', cmdText);
-    appendAiStreamMsg('assistant', res.error || 'That answer arrived too late and was not applied. Your design is unchanged.');
+    appendAiStreamMsg('assistant', res.error || 'That answer arrived too late and was not applied. Your design is unchanged.', res);
     return;
   }
 
@@ -2457,8 +2633,7 @@ async function runAiWardrobeConversationalEdit(cmdText) {
     }
 
     updateAiWardrobeSummaryUI(res);
-    appendAiStreamMsg('user', cmdText);
-    appendAiStreamMsg('assistant', res.assistantReply || `Updated wardrobe to Revision ${res.spec.revision}.`);
+    appendAiStreamMsg('assistant', res.assistantReply || `Updated wardrobe to Revision ${res.spec.revision}.`, res);
   } else if (kind === 'MATERIAL_UPDATED' || (res.ok && res.materialKey && !res.partGraph)) {
     // 2. MATERIAL_UPDATED: visual swatch changed, 3D geometry unchanged
     aiWardrobeState.undoStack.push(prevSnapshot);
@@ -2490,39 +2665,33 @@ async function runAiWardrobeConversationalEdit(cmdText) {
       origins: aiWardrobeState.origins,
       revision: aiWardrobeState.revision,
     });
-    appendAiStreamMsg('user', cmdText);
-    appendAiStreamMsg('assistant', res.assistantReply || `Changed finish to ${res.materialKey}. (Revision ${aiWardrobeState.revision})`);
+    appendAiStreamMsg('assistant', res.assistantReply || `Changed finish to ${res.materialKey}. (Revision ${aiWardrobeState.revision})`, res);
   } else if (kind === 'NEEDS_MORE_DETAIL') {
     // 3. NEEDS_MORE_DETAIL: model requires additional clarification; design is preserved
-    appendAiStreamMsg('user', cmdText);
-    appendAiStreamMsg('assistant', res.assistantReply || res.error || 'I need a little more detail before I can change the design.');
+    appendAiStreamMsg('assistant', res.assistantReply || res.error || 'I need a little more detail before I can change the design.', res);
   } else if (kind === 'UNSUPPORTED') {
     // 4. UNSUPPORTED: request is outside manufacturing slice; explain reason and offer alternative
-    appendAiStreamMsg('user', cmdText);
     let msg = res.error;
     if (Array.isArray(res.unsupported) && res.unsupported.length > 0) {
       const details = res.unsupported.map((u) => u.alternative ? `${u.reason} (Alternative: ${u.alternative})` : u.reason).join('; ');
       msg = details || res.error;
     }
-    appendAiStreamMsg('assistant', `Sorry â€” ${msg}`);
+    appendAiStreamMsg('assistant', `Sorry — ${msg}`, res);
   } else if (kind === 'REJECTED') {
     // 5. REJECTED: validation or kernel rule failure; design is preserved
-    appendAiStreamMsg('user', cmdText);
-    appendAiStreamMsg('assistant', `Sorry â€” ${res.error || 'The requested change could not be applied.'}`);
+    appendAiStreamMsg('assistant', `Sorry — ${res.error || 'The requested change could not be applied.'}`, res);
   } else if (kind === 'DESIGNER_UNAVAILABLE') {
     // 6. DESIGNER_UNAVAILABLE: provider/network error; design is preserved
-    appendAiStreamMsg('user', cmdText);
-    appendAiStreamMsg('assistant', `Sorry â€” ${res.error || 'The FurniAI designer is not available right now. Your design is unchanged.'}`);
+    appendAiStreamMsg('assistant', `Sorry — ${res.error || 'The FurniAI designer is not available right now. Your design is unchanged.'}`, res);
   } else if (res.error) {
     // Fallback for generic errors
-    appendAiStreamMsg('user', cmdText);
-    appendAiStreamMsg('assistant', `Sorry â€” ${res.error}`);
+    appendAiStreamMsg('assistant', `Sorry — ${res.error}`, res);
   }
 }
 
 function undoLastAiWardrobeEdit() {
   if (!aiWardrobeState.undoStack || aiWardrobeState.undoStack.length === 0) {
-    appendAiStreamMsg('assistant', 'Nothing to undo.');
+    appendAiStreamMsg('assistant', 'Nothing to undo.', { source: 'DETERMINISTIC', provider: 'rules' });
     return;
   }
   // Invalidate any in-flight requests by incrementing sequence
@@ -2543,7 +2712,7 @@ function undoLastAiWardrobeEdit() {
     globalThis.PartGraphBridge.updateParametricMaterial(Builder, prev.spec.finishType);
   }
   updateAiWardrobeSummaryUI({ spec: prev.spec, proposal: prev.proposal, origins: prev.origins, revision: prev.revision });
-  appendAiStreamMsg('assistant', `Reverted to Revision ${prev.revision} (${prev.spec.envelope.widthMm} mm wide).`);
+  appendAiStreamMsg('assistant', `Reverted to Revision ${prev.revision} (${prev.spec.envelope.widthMm} mm wide).`, { source: 'DETERMINISTIC', provider: 'rules' });
 }
 
 function runAiWardrobePropose() {
@@ -2626,7 +2795,7 @@ function approveAndGenerate3D() {
     if (secReview) secReview.hidden = true;
     if (secApproved) secApproved.hidden = false;
 
-    appendAiStreamMsg('assistant', `âœ“ Proposal locked and approved for workshop review (Revision ${aiWardrobeState.revision}).`);
+    appendAiStreamMsg('assistant', `✓ Proposal locked and approved for workshop review (Revision ${aiWardrobeState.revision}).`, { source: 'DETERMINISTIC', provider: 'rules' });
   } else {
     console.error('Approval rejected:', previewResult.approvalValidation);
   }
@@ -2666,6 +2835,16 @@ function bindAiWardrobeEvents() {
       const inp = document.getElementById('aiWardrobeInput');
       if (inp) {
         inp.value = 'Make me a wardrobe';
+        runAiWardrobeDraftPreview();
+      }
+    });
+  }
+
+  const inp = document.getElementById('aiWardrobeInput');
+  if (inp) {
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
         runAiWardrobeDraftPreview();
       }
     });
@@ -2760,24 +2939,6 @@ function bindAiWardrobeEvents() {
   if (clarifyResetBtn) {
     clarifyResetBtn.addEventListener('click', () => {
       initAiWardrobePanel(true);
-    });
-  }
-
-  // Document / photo attachment binding
-  const attachDocBtn = document.getElementById('aiAttachDocBtn');
-  const docFileInput = document.getElementById('aiDocFileInput');
-  const docNameSpan = document.getElementById('aiAttachDocName');
-  if (attachDocBtn && docFileInput) {
-    attachDocBtn.addEventListener('click', () => docFileInput.click());
-    docFileInput.addEventListener('change', () => {
-      const file = docFileInput.files && docFileInput.files[0];
-      if (!file) return;
-      if (docNameSpan) docNameSpan.textContent = `${file.name} (${Math.round(file.size / 1024)} KB)`;
-      if (file.type.startsWith('image/')) {
-        appendAiStreamMsg('assistant', `Photo attached: "${file.name}". Visual styling noted (modern wood finish). Enter specifications to customize dimensions.`);
-      } else if (file.type === 'application/pdf') {
-        appendAiStreamMsg('assistant', `PDF attached: "${file.name}". Note: Technical CAD drawing extraction requires backend vision service; please specify dimensions in text.`);
-      }
     });
   }
 }

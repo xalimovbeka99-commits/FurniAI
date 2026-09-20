@@ -809,6 +809,8 @@ var AiDesignerTransport = (() => {
   var DRAWER_BOX_SIDE_THICKNESS_MM = 15;
   var DRAWER_SIDE_DEPTH_SETBACK_MM = 50;
   var DRAWER_BOTTOM_SIDE_INSET_TOTAL_MM = 10;
+  var DRAWER_BOTTOM_MATERIAL_CODE = "HDF_WHITE_6";
+  var DRAWER_BOTTOM_THICKNESS_MM = 6;
   function emitDrawerBankParts({
     comp,
     bay,
@@ -824,9 +826,19 @@ var AiDesignerTransport = (() => {
     const revealMm = resolve("drawerFrontRevealMm");
     const slideDeductionMm = resolve("drawerSlideWidthDeductionMm");
     const frontThicknessMm = resolve("panelThicknessMm");
-    const bottomThicknessMm = Math.max(6, resolve("backThicknessMm"));
+    const bottomThicknessMm = DRAWER_BOTTOM_THICKNESS_MM;
     const rows = Math.max(1, Number(comp.rows) || 1);
     const bankHeightMm = comp.heightMm != null ? Number(comp.heightMm) : rows * DEFAULT_DRAWER_ROW_HEIGHT_MM;
+    if (comp.heightMm != null) {
+      const bankHeightDmm = Math.round(bankHeightMm * 10);
+      if (Math.abs(bankHeightMm * 10 - bankHeightDmm) > 1e-9 || bankHeightDmm % rows !== 0) {
+        const err = new Error(
+          `Drawer bank "${comp.id || "?"}": ${bankHeightMm}mm over ${rows} rows does not divide to an exact 0.1mm row height.`
+        );
+        err.code = "DEGENERATE_DRAWER_GEOMETRY";
+        throw err;
+      }
+    }
     const drawerHeightMm = bankHeightMm / rows;
     const frontHeightMm = drawerHeightMm - 2 * revealMm;
     const boxHeightMm = frontHeightMm;
@@ -836,6 +848,23 @@ var AiDesignerTransport = (() => {
     const backWidthMm = bayWidthMm - slideDeductionMm - 2 * DRAWER_BOX_SIDE_THICKNESS_MM;
     const bottomWidthMm = bayWidthMm - slideDeductionMm - DRAWER_BOTTOM_SIDE_INSET_TOTAL_MM;
     const bottomDepthMm = sideLengthMm - DRAWER_BOX_SIDE_THICKNESS_MM;
+    const degenerate = [
+      ["front width", frontWidthMm],
+      ["front height", frontHeightMm],
+      ["box height", boxHeightMm],
+      ["side length", sideLengthMm],
+      ["back width", backWidthMm],
+      ["bottom width", bottomWidthMm],
+      ["bottom depth", bottomDepthMm],
+      ["bottom thickness", bottomThicknessMm]
+    ].filter(([, value]) => !(value > 0));
+    if (degenerate.length > 0) {
+      const err = new Error(
+        `Drawer bank "${comp.id}" computes non-positive ${degenerate.map(([what, value]) => `${what} (${value}mm)`).join(", ")}. A ${bayWidthMm}mm bay cannot carry a drawer box: the back is bay - ${slideDeductionMm} - 2 x ${DRAWER_BOX_SIDE_THICKNESS_MM}, so the bay must exceed ${slideDeductionMm + 2 * DRAWER_BOX_SIDE_THICKNESS_MM}mm.`
+      );
+      err.code = "DEGENERATE_DRAWER_GEOMETRY";
+      throw err;
+    }
     const halfDeductionMm = slideDeductionMm / 2;
     const boxMinXMm = bay.minXDmm / 10 + halfDeductionMm;
     const boxMaxXMm = bay.maxXDmm / 10 - halfDeductionMm;
@@ -986,7 +1015,7 @@ var AiDesignerTransport = (() => {
         id: bottomId,
         bayIndex: bay.index,
         role: PART_ROLES.DRAWER_BOTTOM,
-        materialCode: matCarcass,
+        materialCode: DRAWER_BOTTOM_MATERIAL_CODE,
         lengthDmm: bottomWidthDmm,
         widthDmm: bottomDepthDmm,
         thicknessDmm: bottomThickDmm,
@@ -3942,6 +3971,8 @@ var AiDesignerTransport = (() => {
         return {
           ok: true,
           source: RESULT_SOURCE.DETERMINISTIC,
+          provider: "rules",
+          isMock: false,
           kind: RESULT_KIND.MATERIAL_UPDATED,
           materialKey: parsed.changes.materialKey,
           assistantReply: parsed.assistantReply
@@ -3949,15 +3980,17 @@ var AiDesignerTransport = (() => {
       }
       const applied2 = applyConversationalEdit({ currentObservations, commandText: message, specId, revision });
       if (applied2.ok) {
-        return { ...applied2, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.DESIGN_UPDATED };
+        return { ...applied2, source: RESULT_SOURCE.DETERMINISTIC, provider: "rules", isMock: false, kind: RESULT_KIND.DESIGN_UPDATED };
       }
       const kind = Array.isArray(applied2.unsupported) && applied2.unsupported.length > 0 ? RESULT_KIND.UNSUPPORTED : RESULT_KIND.REJECTED;
-      return { ...applied2, source: RESULT_SOURCE.DETERMINISTIC, kind };
+      return { ...applied2, source: RESULT_SOURCE.DETERMINISTIC, provider: "rules", isMock: false, kind };
     }
     if (typeof fetchImpl !== "function") {
       return {
         ok: false,
         source: RESULT_SOURCE.MODEL,
+        provider: "none",
+        isMock: false,
         kind: RESULT_KIND.DESIGNER_UNAVAILABLE,
         error: "The FurniAI designer is not reachable from this browser. Your design is unchanged."
       };
@@ -3999,6 +4032,8 @@ var AiDesignerTransport = (() => {
         return {
           ok: false,
           source: RESULT_SOURCE.MODEL,
+          provider: payload?.provider ?? "server",
+          isMock: Boolean(payload?.mock || payload?.isMock || payload?.provider === "mock"),
           kind: RESULT_KIND.DESIGNER_UNAVAILABLE,
           code: payload?.code ?? `HTTP_${response.status}`,
           error: payload?.error ?? "The FurniAI designer is not available right now. Your design is unchanged."
@@ -4008,11 +4043,15 @@ var AiDesignerTransport = (() => {
       return {
         ok: false,
         source: RESULT_SOURCE.MODEL,
+        provider: "network",
+        isMock: false,
         kind: RESULT_KIND.DESIGNER_UNAVAILABLE,
         code: err?.name === "AbortError" ? "ABORTED" : "NETWORK_ERROR",
         error: "Could not reach the FurniAI designer. Your design is unchanged."
       };
     }
+    const modelProvider = payload?.provider || (payload?.mock ? "mock" : "anthropic");
+    const isMock = Boolean(payload?.mock || payload?.isMock || payload?.provider === "mock" || payload?.provider === "stub");
     const revalidated = validateModelProposal(
       { edits: payload.edits, unsupported: payload.unsupported, reply: payload.reply },
       { currentBayCount: factsFrom(currentObservations).bayCount ?? 2 }
@@ -4024,6 +4063,8 @@ var AiDesignerTransport = (() => {
       return {
         ok: false,
         source: RESULT_SOURCE.MODEL,
+        provider: modelProvider,
+        isMock,
         kind: unsupported.length > 0 ? RESULT_KIND.UNSUPPORTED : clientRejected.length > 0 ? RESULT_KIND.REJECTED : RESULT_KIND.NEEDS_MORE_DETAIL,
         assistantReply: payload.reply || "",
         unsupported,
@@ -4037,6 +4078,8 @@ var AiDesignerTransport = (() => {
       return {
         ok: true,
         source: RESULT_SOURCE.MODEL,
+        provider: modelProvider,
+        isMock,
         kind: RESULT_KIND.MATERIAL_UPDATED,
         materialKey,
         assistantReply: payload.reply || `Changed finish to ${materialKey}.`,
@@ -4049,6 +4092,8 @@ var AiDesignerTransport = (() => {
       return {
         ...applied,
         source: RESULT_SOURCE.MODEL,
+        provider: modelProvider,
+        isMock,
         kind: RESULT_KIND.REJECTED,
         assistantReply: payload.reply || "",
         unsupported
@@ -4057,6 +4102,8 @@ var AiDesignerTransport = (() => {
     return {
       ...applied,
       source: RESULT_SOURCE.MODEL,
+      provider: modelProvider,
+      isMock,
       kind: RESULT_KIND.DESIGN_UPDATED,
       materialKey: materialKey ?? applied.materialKey ?? null,
       assistantReply: payload.reply || applied.assistantReply,
