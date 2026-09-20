@@ -2499,7 +2499,7 @@ async function runInitialAiInterpretation(text, requestSeq, requestSpecId) {
       const newEnv = res.spec?.envelope || {};
       const currentBays = (aiWardrobeState.spec?.bays && aiWardrobeState.spec.bays.length) || aiWardrobeState.spec?.bayCount || 2;
       const newBays = (res.spec?.bays && res.spec.bays.length) || res.spec?.bayCount || 2;
-      const currentFinish = (aiWardrobeState.spec?.finishType || 'oak').toLowerCase();
+      const currentFinish = (aiWardrobeState.spec?.customerFinishKey || aiWardrobeState.spec?.finishType || 'oak').toLowerCase();
       const newFinish = (res.spec?.finishType || res.materialKey || 'oak').toLowerCase();
 
       const hasChange = (
@@ -2539,7 +2539,7 @@ async function runInitialAiInterpretation(text, requestSeq, requestSpecId) {
       updateAiWardrobeSummaryUI(res);
       appendAiStreamMsg('assistant', res.assistantReply || `Refined design based on your description (Revision ${res.spec.revision}).`, res);
     } else if (res.kind === 'MATERIAL_UPDATED' || (res.ok && res.materialKey && !res.partGraph)) {
-      const currentFinish = (aiWardrobeState.spec?.finishType || 'oak').toLowerCase();
+      const currentFinish = (aiWardrobeState.spec?.customerFinishKey || aiWardrobeState.spec?.finishType || 'oak').toLowerCase();
       const newFinish = (res.materialKey || '').toLowerCase();
       if (currentFinish === newFinish) {
         return;
@@ -2670,12 +2670,40 @@ async function runAiWardrobeConversationalEdit(cmdText) {
     aiWardrobeState.revision = res.spec.revision;
     aiWardrobeState.approval = null; // edits invalidate approval
 
-    globalThis.PartGraphBridge.loadDraftPartGraph(Builder, res.partGraph);
-    if (res.materialKey) {
-      globalThis.PartGraphBridge.updateParametricMaterial(Builder, res.materialKey);
+    // Preserve customer visual finish across structural rebuilds (Verifier/Demo C).
+    const priorFinish = prevSnapshot.spec?.customerFinishKey
+      || aiWardrobeState.spec?.customerFinishKey
+      || (aiWardrobeState.observations || []).find((o) => o.key === 'customerFinishKey')?.value;
+    if (priorFinish && !res.spec?.customerFinishKey && globalThis.PartGraphBridge?.applyCustomerFinishAnnotation) {
+      const annotated = globalThis.PartGraphBridge.applyCustomerFinishAnnotation({
+        materialKey: priorFinish,
+        spec: res.spec,
+        partGraph: res.partGraph,
+        observations: res.observations || aiWardrobeState.observations || [],
+        origins: res.origins || aiWardrobeState.origins || {},
+      });
+      if (annotated.ok) {
+        res = { ...res, ...annotated, kind: res.kind, ok: true, assistantReply: res.assistantReply };
+        aiWardrobeState.spec = annotated.spec;
+        aiWardrobeState.proposal = annotated.proposal;
+        aiWardrobeState.partGraph = annotated.partGraph;
+        aiWardrobeState.observations = annotated.observations;
+        aiWardrobeState.origins = annotated.origins;
+      }
+    }
+    globalThis.PartGraphBridge.loadDraftPartGraph(Builder, aiWardrobeState.partGraph || res.partGraph);
+    const finishKey = res.materialKey || res.spec?.customerFinishKey || priorFinish;
+    if (finishKey && globalThis.PartGraphBridge?.updateParametricMaterial) {
+      globalThis.PartGraphBridge.updateParametricMaterial(Builder, finishKey);
     }
 
-    updateAiWardrobeSummaryUI(res);
+    updateAiWardrobeSummaryUI({
+      spec: aiWardrobeState.spec || res.spec,
+      proposal: aiWardrobeState.proposal || res.proposal,
+      partGraph: aiWardrobeState.partGraph || res.partGraph,
+      origins: aiWardrobeState.origins || res.origins,
+      revision: aiWardrobeState.revision || res.spec?.revision,
+    });
     appendAiStreamMsg('assistant', res.assistantReply || `Updated wardrobe to Revision ${res.spec.revision}.`, res);
   } else if (kind === 'MATERIAL_UPDATED' || (res.ok && res.materialKey && !res.partGraph)) {
     aiWardrobeState.undoStack.push(prevSnapshot);
