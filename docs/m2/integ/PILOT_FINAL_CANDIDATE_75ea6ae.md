@@ -51,3 +51,7 @@ No main merge.
 2. **Doors-per-bay exact values** — Bekzod: approve or revise PROVISIONAL numbers.
 3. **Browser matrix sign-off** — DemoTester (desktop+390 journey on 75ea6ae).
 4. **Independent finish/export matrix** — Verifier (no production fixes).
+
+
+## Update
+Nominated tip: `60589e5b8a9bc4bd678de1bbee725df4481af207`. Playwright: **10 passed** (state-protection, journey desktop+390, F1). Evidence class: BROWSER/MOCKED.
