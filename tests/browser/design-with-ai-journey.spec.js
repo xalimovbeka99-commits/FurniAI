@@ -263,7 +263,7 @@ test.describe("Design with AI — Comprehensive Customer Journey & Live Readines
     await saveScreenshot(page, "06-subsequent-valid-edit.png");
 
     // -------------------------------------------------------------
-    // STEP 9: 390px Mobile Viewport Verification
+    // STEP 9: 390px Mobile Viewport & Virtual Keyboard Simulation
     // -------------------------------------------------------------
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(500);
@@ -284,29 +284,91 @@ test.describe("Design with AI — Comprehensive Customer Journey & Live Readines
 
     await saveScreenshot(page, "07-mobile-390px-layout.png");
 
+    // Simulate virtual keyboard open (viewport height reduced to 480px)
+    await page.setViewportSize({ width: 390, height: 480 });
+    await page.waitForTimeout(300);
+    await expect(canvas).toBeVisible();
+    await expect(convInput).toBeVisible();
+    await expect(sendBtn).toBeVisible();
+    const keyboardScrollWidth = await page.evaluate(() => document.body.scrollWidth);
+    expect(keyboardScrollWidth).toBeLessThanOrEqual(390);
+
+    await saveScreenshot(page, "07b-mobile-390px-keyboard-simulated.png");
+
+    // Restore desktop viewport for final verification
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.waitForTimeout(300);
+
     // -------------------------------------------------------------
-    // STEP 10: Clearly Distinguish Mock from Anthropic Results
+    // STEP 10: Export Data Reconciliation & Truthful Source Labels
     // -------------------------------------------------------------
-    // Verify that mocked responses produce '[✦ Mock]' badge and live Anthropic responses produce '[✦ Anthropic]' badge
+    // A. Export Data Verification: confirm visible dimensions and export data refer to the same accepted revision
+    const exportCheck = await page.evaluate(() => {
+      const pg = getActivePartGraph();
+      if (!pg) return { ok: false, error: "No active part graph" };
+      const env = pg.summary?.envelope;
+      const topPanel = pg.parts?.find((p) => (p.id || p.partId) === "CARC_TOP");
+      const topLengthMm = topPanel
+        ? (topPanel.finished?.lengthDmm ?? topPanel.lengthDmm) / 10
+        : null;
+      const cutList = globalThis.PartGraphBridge?.compileNestingManifest
+        ? globalThis.PartGraphBridge.compileNestingManifest(pg)
+        : null;
+
+      return {
+        ok: true,
+        envelopeWidthMm: env?.widthDmm ? env.widthDmm / 10 : null,
+        envelopeHeightMm: env?.heightDmm ? env.heightDmm / 10 : null,
+        topLengthMm,
+        sheetCount: cutList?.sheetCount,
+      };
+    });
+
+    expect(exportCheck.ok).toBe(true);
+    expect(exportCheck.envelopeWidthMm).toBe(nextState.widthMm); // 2000
+    expect(exportCheck.envelopeHeightMm).toBe(nextState.heightMm); // 2100
+    expect(exportCheck.topLengthMm).toBe(nextState.widthMm); // 2000
+
+    // B. Truthful Source Badges Verification:
+    // - [Rules] for deterministic execution
+    // - [Mock] for explicit mock responses
+    // - [Anthropic] ONLY when reliable response metadata identifies Anthropic
+    // - [AI] for other model responses (a 200 HTTP response with missing provider does not become [Anthropic])
     await page.evaluate(() => {
+      const msgRules = appendAiStreamMsg("assistant", "Deterministic rule response", {
+        source: "DETERMINISTIC",
+        provider: "rules",
+      });
       const msgMock = appendAiStreamMsg("assistant", "Mocked layout response", {
         source: "MODEL",
         provider: "anthropic",
         isMock: true,
       });
-      const msgLive = appendAiStreamMsg("assistant", "Live Anthropic response", {
+      const msgLiveAnthropic = appendAiStreamMsg("assistant", "Verified Anthropic response", {
         source: "MODEL",
         provider: "anthropic",
         isMock: false,
       });
+      const msgGenericAi = appendAiStreamMsg("assistant", "Generic AI response", {
+        source: "MODEL",
+        provider: "ai",
+        isMock: false,
+      });
+      msgRules.id = "test-rules-msg";
       msgMock.id = "test-mock-msg";
-      msgLive.id = "test-live-msg";
+      msgLiveAnthropic.id = "test-live-msg";
+      msgGenericAi.id = "test-generic-ai-msg";
     });
 
+    const rulesBadge = page.locator("#test-rules-msg .ai-source-badge");
     const mockBadge = page.locator("#test-mock-msg .ai-source-badge");
     const liveBadge = page.locator("#test-live-msg .ai-source-badge");
-    await expect(mockBadge).toHaveText("[✦ Mock]");
-    await expect(liveBadge).toHaveText("[✦ Anthropic]");
+    const aiBadge = page.locator("#test-generic-ai-msg .ai-source-badge");
+
+    await expect(rulesBadge).toHaveText("[Rules]");
+    await expect(mockBadge).toHaveText("[Mock]");
+    await expect(liveBadge).toHaveText("[Anthropic]");
+    await expect(aiBadge).toHaveText("[AI]");
 
     await saveScreenshot(page, "08-mock-vs-anthropic-badges.png");
   });
