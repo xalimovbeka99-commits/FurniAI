@@ -8,14 +8,14 @@
  *
  * ONE public call. Order of resolution:
  *
- *   1. DETERMINISTIC — the existing `parseConversationalCommand` runs first,
+ *   1. DETERMINISTIC â€” the existing `parseConversationalCommand` runs first,
  *      in the browser, with no network call. "Make it 2000 mm wide" and its
  *      rewordings already resolve here: instant, free, offline, and identical
  *      to what ships today. A deterministic rejection (negative, imprecise,
  *      out-of-range) is returned as-is and the model is never consulted.
- *   2. MODEL — only phrasings the deterministic parser does not recognise are
+ *   2. MODEL â€” only phrasings the deterministic parser does not recognise are
  *      sent to POST /api/design/propose, which returns PROPOSED EDITS ONLY.
- *   3. KERNEL — those proposed edits are replayed through the existing
+ *   3. KERNEL â€” those proposed edits are replayed through the existing
  *      `applyConversationalEdit` via a proposal-only adapter. The deterministic
  *      validator and kernel own every dimension and all geometry; a model
  *      proposal that fails validation changes nothing.
@@ -44,7 +44,7 @@ export const RESULT_KIND = Object.freeze({
   DESIGNER_UNAVAILABLE: "DESIGNER_UNAVAILABLE",
   /**
    * The answer that came back is for a design the customer has already moved
-   * past — they edited again, pressed Undo, or switched designs while it was
+   * past â€” they edited again, pressed Undo, or switched designs while it was
    * in flight. Covers changeToken mismatch and design-id mismatch (not only
    * revision inequality). Kept as STALE_REVISION for Antigravity additive
    * compatibility; see docs/m2/integ/ANTIGRAVITY_STALE_GUARD_HANDOFF.md.
@@ -62,21 +62,52 @@ function readGetter(maybeGetter) {
 }
 
 /**
+ * Live-state args must be getters. A plain value captured before await cannot
+ * detect later edits/Undo — fail closed with a non-committing result.
+ * @returns {null|object} null when OK; otherwise a non-committing result
+ */
+export function invalidLiveStateGuardResult({
+  currentDesignId,
+  currentChangeToken,
+  currentRevision,
+} = {}) {
+  const checks = [
+    ["currentDesignId", currentDesignId],
+    ["currentChangeToken", currentChangeToken],
+    ["currentRevision", currentRevision],
+  ];
+  for (const [name, value] of checks) {
+    if (value !== undefined && typeof value !== "function") {
+      return {
+        ok: false,
+        source: RESULT_SOURCE.DETERMINISTIC,
+        kind: RESULT_KIND.STALE_REVISION,
+        error:
+          `Live-state guard "${name}" must be a getter function so changes during the request are detected. The design was not changed.`,
+        guardParameter: name,
+        guardParameterType: value === null ? "null" : typeof value,
+      };
+    }
+  }
+  return null;
+}
+
+/**
  * Reject an answer that targets a design the customer has already moved past.
  *
  * BEK contract (revision alone is NOT sufficient):
  *   1. Identify the design (specId / design id).
- *   2. Use a change token that does NOT rewind on Undo — monotonic; bumps on
+ *   2. Use a change token that does NOT rewind on Undo â€” monotonic; bumps on
  *      every committed edit AND every Undo.
  *   3. Reject outdated and out-of-order responses.
  *
  * Why revision is insufficient:
- *   - Undo typically restores the previous revision number. edit(rev1→2) then
- *     Undo(rev2→1) leaves currentRevision === revisionAtRequest, so a delayed
+ *   - Undo typically restores the previous revision number. edit(rev1â†’2) then
+ *     Undo(rev2â†’1) leaves currentRevision === revisionAtRequest, so a delayed
  *     answer for the pre-Undo request would incorrectly apply.
  *   - Two designs can share the same revision number after a switch.
  *
- * `currentDesignId` / `currentChangeToken` are read when the answer lands —
+ * `currentDesignId` / `currentChangeToken` are read when the answer lands â€”
  * pass getters, not snapshots, or the check compares two copies of the same
  * stale value.
  *
@@ -157,7 +188,7 @@ function staleResult({
     revisionAtRequest: Number.isFinite(revisionAtRequest) ? revisionAtRequest : null,
     currentRevision: Number.isFinite(currentRevision) ? currentRevision : null,
     error:
-      "That answer arrived for an older version of your design, so it was not applied. Your current design is unchanged — please ask again.",
+      "That answer arrived for an older version of your design, so it was not applied. Your current design is unchanged â€” please ask again.",
   };
 }
 
@@ -189,7 +220,7 @@ export async function proposeDesignChange({
   currentChangeToken = undefined,
   /**
    * Legacy: reads the caller's CURRENT revision when the answer lands.
-   * Prefer currentChangeToken — revision rewinds on Undo.
+   * Prefer currentChangeToken â€” revision rewinds on Undo.
    */
   currentRevision = undefined,
 }) {
@@ -262,6 +293,13 @@ export async function proposeDesignChange({
 
     // One checkpoint for every branch below. Placed here rather than at each
     // return so a branch added later cannot quietly skip it.
+    const guardMisuse = invalidLiveStateGuardResult({
+      currentDesignId,
+      currentChangeToken,
+      currentRevision,
+    });
+    if (guardMisuse) return guardMisuse;
+
     const liveDesignId = readGetter(currentDesignId);
     const liveChangeToken = readGetter(currentChangeToken);
     const liveRevision = readGetter(currentRevision);
@@ -311,8 +349,6 @@ export async function proposeDesignChange({
   const isMock = Boolean(payload?.mock || payload?.isMock || payload?.provider === "mock" || payload?.provider === "stub");
   const modelProvider = isMock
     ? "mock"
-    : payload?.provider === "anthropic"
-      ? "anthropic"
       : (typeof payload?.provider === "string" && payload.provider.trim()) || "ai";
 
   // Defence in depth: the server already validated the model, but the browser

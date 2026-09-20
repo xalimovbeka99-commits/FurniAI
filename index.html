@@ -659,7 +659,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
         <div id="mfgMenuDropdown" class="mfg-menu-dropdown">
           <div class="mfg-menu-header">Blueprints &amp; Technical 2D</div>
           <button type="button" class="mfg-menu-item" id="btnExportShopDrawings" onclick="handleExportShopDrawings('SVG')">📐 Shop Blueprints (SVG)</button>
-          <button type="button" class="mfg-menu-item" id="btnExportShopDrawingsPdf" onclick="handleExportShopDrawings('PDF')">📄 Shop Blueprints (PDF)</button>
+          <button type="button" class="mfg-menu-item" id="btnExportShopDrawingsPdf" onclick="handleExportShopDrawings('PDF')">📄 Shop Blueprints (Print / Save as PDF)</button>
           <div class="mfg-menu-divider"></div>
           <div class="mfg-menu-header">Fabrication &amp; CNC</div>
           <button type="button" class="mfg-menu-item" id="btnExportCncDxf" onclick="handleExportCncDxfZip()">📦 CNC Package (DXF ZIP)</button>
@@ -2239,6 +2239,50 @@ function parseAndValidateClarifyInput(gapKey, rawVal, currentBayCount) {
   return { ok: false, error: 'Clarification parser unavailable.' };
 }
 
+
+  function commitAiMaterialUpdate(materialKey, res) {
+    const bridge = globalThis.PartGraphBridge;
+    if (!bridge || typeof bridge.commitMaterialUpdate !== "function") {
+      console.warn("commitMaterialUpdate unavailable; finish not committed");
+      return false;
+    }
+    const committed = bridge.commitMaterialUpdate({
+      materialKey,
+      spec: aiWardrobeState.spec,
+      partGraph: aiWardrobeState.partGraph,
+      observations: aiWardrobeState.observations || [],
+      origins: aiWardrobeState.origins || {},
+      revision: aiWardrobeState.revision,
+    });
+    if (!committed.ok) {
+      console.warn("commitMaterialUpdate failed:", committed.error);
+      return false;
+    }
+    aiWardrobeState.spec = committed.spec;
+    aiWardrobeState.proposal = committed.proposal;
+    aiWardrobeState.partGraph = committed.partGraph;
+    aiWardrobeState.observations = committed.observations;
+    aiWardrobeState.origins = committed.origins;
+    aiWardrobeState.revision = committed.revision;
+    aiWardrobeState.approval = null;
+    if (typeof bridge.updateParametricMaterial === "function") {
+      bridge.updateParametricMaterial(Builder, materialKey);
+    }
+    updateAiWardrobeSummaryUI({
+      spec: aiWardrobeState.spec,
+      proposal: aiWardrobeState.proposal,
+      partGraph: aiWardrobeState.partGraph,
+      origins: aiWardrobeState.origins,
+      revision: aiWardrobeState.revision,
+    });
+    appendAiStreamMsg(
+      "assistant",
+      (res && res.assistantReply) || ("Changed finish to " + materialKey + ". (Revision " + aiWardrobeState.revision + ")"),
+      res || {}
+    );
+    return true;
+  }
+
 function updateAiWardrobeSummaryUI(res) {
   if (res.partGraph) globalThis.currentPartGraph = res.partGraph;
   else if (window.aiWardrobeState && window.aiWardrobeState.partGraph) globalThis.currentPartGraph = window.aiWardrobeState.partGraph;
@@ -2317,7 +2361,7 @@ function appendAiStreamMsg(role, text, meta = {}) {
       badge.style.background = '#fef3c7';
       badge.style.color = '#b45309';
       badge.style.border = '1px solid #fde68a';
-    } else if (!meta.isMock && meta.provider === 'anthropic') {
+    } else if (!meta.isMock && meta.provider === 'anthropic' && globalThis.__FURNIAI_DEBUG_PROVIDER__) {
       badge.textContent = '[Anthropic]';
       badge.dataset.source = 'anthropic';
       badge.style.background = '#e0f2fe';
@@ -2499,7 +2543,6 @@ async function runInitialAiInterpretation(text, requestSeq, requestSpecId) {
       if (currentFinish === newFinish) {
         return;
       }
-
       const prevSnapshot = {
         spec: JSON.parse(JSON.stringify(aiWardrobeState.spec)),
         proposal: { ...aiWardrobeState.proposal },
@@ -2509,17 +2552,7 @@ async function runInitialAiInterpretation(text, requestSeq, requestSpecId) {
         revision: aiWardrobeState.revision,
       };
       aiWardrobeState.undoStack.push(prevSnapshot);
-      aiWardrobeState.revision = (aiWardrobeState.revision || 1) + 1;
-      if (res.observations) aiWardrobeState.observations = res.observations;
-      if (res.origins) aiWardrobeState.origins = res.origins;
-      if (globalThis.PartGraphBridge?.updateParametricMaterial) {
-        globalThis.PartGraphBridge.updateParametricMaterial(Builder, res.materialKey);
-      }
-      if (aiWardrobeState.spec) {
-        aiWardrobeState.spec = { ...aiWardrobeState.spec, finishType: res.materialKey, revision: aiWardrobeState.revision };
-      }
-      updateAiWardrobeSummaryUI({ spec: aiWardrobeState.spec, proposal: aiWardrobeState.proposal, origins: aiWardrobeState.origins, revision: aiWardrobeState.revision });
-      appendAiStreamMsg('assistant', res.assistantReply || `Applied ${res.materialKey} finish based on your description (Revision ${aiWardrobeState.revision}).`, res);
+      commitAiMaterialUpdate(res.materialKey, res);
     }
   } catch (err) {
     if (progressEl && progressEl.parentNode) {
@@ -2644,38 +2677,9 @@ async function runAiWardrobeConversationalEdit(cmdText) {
     updateAiWardrobeSummaryUI(res);
     appendAiStreamMsg('assistant', res.assistantReply || `Updated wardrobe to Revision ${res.spec.revision}.`, res);
   } else if (kind === 'MATERIAL_UPDATED' || (res.ok && res.materialKey && !res.partGraph)) {
-    // 2. MATERIAL_UPDATED: visual swatch changed, 3D geometry unchanged
     aiWardrobeState.undoStack.push(prevSnapshot);
-    aiWardrobeState.revision = (aiWardrobeState.revision || 1) + 1;
-    aiWardrobeState.approval = null;
-    if (res.observations) aiWardrobeState.observations = res.observations;
-    if (res.origins) aiWardrobeState.origins = res.origins;
-
-    if (globalThis.PartGraphBridge && typeof globalThis.PartGraphBridge.updateParametricMaterial === 'function') {
-      globalThis.PartGraphBridge.updateParametricMaterial(Builder, res.materialKey);
-    }
-    if (aiWardrobeState.spec) {
-      aiWardrobeState.spec = {
-        ...aiWardrobeState.spec,
-        finishType: res.materialKey,
-        revision: aiWardrobeState.revision,
-      };
-    }
-    if (aiWardrobeState.proposal) {
-      aiWardrobeState.proposal = {
-        ...aiWardrobeState.proposal,
-        revision: aiWardrobeState.revision,
-      };
-    }
-
-    updateAiWardrobeSummaryUI({
-      spec: aiWardrobeState.spec,
-      proposal: aiWardrobeState.proposal,
-      origins: aiWardrobeState.origins,
-      revision: aiWardrobeState.revision,
-    });
-    appendAiStreamMsg('assistant', res.assistantReply || `Changed finish to ${res.materialKey}. (Revision ${aiWardrobeState.revision})`, res);
-  } else if (kind === 'NEEDS_MORE_DETAIL') {
+    commitAiMaterialUpdate(res.materialKey, res);
+  } else if (kind === 'NEEDS_MORE_DETAIL') {  } else if (kind === 'NEEDS_MORE_DETAIL') {
     // 3. NEEDS_MORE_DETAIL: model requires additional clarification; design is preserved
     appendAiStreamMsg('assistant', res.assistantReply || res.error || 'I need a little more detail before I can change the design.', res);
   } else if (kind === 'UNSUPPORTED') {

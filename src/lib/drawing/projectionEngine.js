@@ -825,7 +825,8 @@ export function exportShopDrawingsSVG(partGraph, filename, options = {}) {
 }
 
 /**
- * Browser print / PDF export trigger for shop drawings.
+ * Browser print / Save-as-PDF trigger for shop drawings.
+ * Opens a print dialog (window.print). NOT a binary PDF file download.
  *
  * @param {object} partGraph
  * @param {string} [filename]

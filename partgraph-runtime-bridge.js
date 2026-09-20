@@ -50,6 +50,7 @@ var PartGraphBridge = (() => {
     approveAndPreview: () => approveAndPreview,
     buildCutListRows: () => buildCutListRows,
     buildStructuralPartGraph: () => buildStructuralPartGraph,
+    commitMaterialUpdate: () => commitMaterialUpdate,
     compileCabinetDxfPackage: () => compileCabinetDxfPackage,
     compileNestingManifest: () => compileNestingManifest,
     compilePanelToDxf: () => compilePanelToDxf,
@@ -899,12 +900,13 @@ var PartGraphBridge = (() => {
     RULEBOOK_V0_1: "RULEBOOK_V0_1",
     GOLDEN_FIXTURE_BEKZOD_APPROVED: "GOLDEN_FIXTURE_BEKZOD_APPROVED",
     BEKZOD_RULING: "BEKZOD_RULING",
-    REQUIRES_BEKZOD_RULING: "REQUIRES_BEKZOD_RULING"
+    REQUIRES_BEKZOD_RULING: "REQUIRES_BEKZOD_RULING",
+    PROVISIONAL_PENDING_BEKZOD: "PROVISIONAL_PENDING_BEKZOD"
   });
   function rule(id, value, provenance, note) {
     return Object.freeze({ id, value, provenance, note });
   }
-  var { RULEBOOK_V0_1, GOLDEN_FIXTURE_BEKZOD_APPROVED, BEKZOD_RULING, REQUIRES_BEKZOD_RULING } = RULE_PROVENANCE;
+  var { RULEBOOK_V0_1, GOLDEN_FIXTURE_BEKZOD_APPROVED, BEKZOD_RULING, REQUIRES_BEKZOD_RULING, PROVISIONAL_PENDING_BEKZOD } = RULE_PROVENANCE;
   var WARDROBE_RULES = Object.freeze({
     constructionStyle: rule("WR-001", "CAP_STYLE", RULEBOOK_V0_1, "Cap Style (Style B): top/bottom cap the outer sides and divider."),
     panelThicknessMm: rule("WR-003", 18, RULEBOOK_V0_1, "Carcass panels, shelves, divider, doors and plinth rails."),
@@ -992,9 +994,9 @@ var PartGraphBridge = (() => {
     // UNRULED-DOORS-PER-BAY, which resolve() threw on. Keyed on the BAY's clear
     // width, not the wardrobe's overall width: two 900mm bays and one 1800mm bay
     // are different cabinets.
-    doorsPerBayThresholdMm: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 600, BEKZOD_RULING, "A bay at or above this clear width takes two door leaves; below it, one."),
-    doorsPerBayAtOrAboveThreshold: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 2, BEKZOD_RULING, "Leaves for a bay whose clear width is >= the threshold."),
-    doorsPerBayBelowThreshold: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 1, BEKZOD_RULING, "Leaves for a bay whose clear width is < the threshold."),
+    doorsPerBayThresholdMm: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 600, PROVISIONAL_PENDING_BEKZOD, "A bay at or above this clear width takes two door leaves; below it, one."),
+    doorsPerBayAtOrAboveThreshold: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 2, PROVISIONAL_PENDING_BEKZOD, "Leaves for a bay whose clear width is >= the threshold."),
+    doorsPerBayBelowThreshold: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 1, PROVISIONAL_PENDING_BEKZOD, "Leaves for a bay whose clear width is < the threshold."),
     unevenBayWidthDistribution: rule("UNRULED-BAY-SPLIT", null, REQUIRES_BEKZOD_RULING, "No approved rule for distributing a non-integral bay-width remainder. Must be asked.")
   });
   var UnapprovedRuleError = class extends Error {
@@ -4560,6 +4562,79 @@ var PartGraphBridge = (() => {
   }
   function hardwareStatusesOf(spec) {
     return Object.fromEntries(Object.entries(spec.hardware ?? {}).map(([k, v]) => [k, v?.status ?? "UNKNOWN"]));
+  }
+
+  // src/lib/conversation/commitMaterialUpdate.js
+  function cloneJson(value) {
+    return value == null ? value : JSON.parse(JSON.stringify(value));
+  }
+  function commitMaterialUpdate({
+    materialKey,
+    spec,
+    partGraph = null,
+    observations = [],
+    origins = {},
+    revision = void 0
+  } = {}) {
+    if (typeof materialKey !== "string" || materialKey.trim() === "") {
+      return { ok: false, error: "materialKey is required to commit a finish change." };
+    }
+    if (!spec || typeof spec !== "object") {
+      return { ok: false, error: "An active FurniSpec is required before a finish can be committed." };
+    }
+    const key = materialKey.trim().toLowerCase();
+    const nextRevision = Number.isFinite(revision) ? revision + 1 : (Number.isFinite(spec.revision) ? spec.revision : 1) + 1;
+    const nextSpec = {
+      ...cloneJson(spec),
+      finishType: key,
+      revision: nextRevision
+    };
+    nextSpec.customerFinishKey = key;
+    if (nextSpec.materials && typeof nextSpec.materials === "object") {
+      nextSpec.materials = { ...nextSpec.materials, customerFinishKey: key };
+    }
+    const nextProposal = createProposal(nextSpec);
+    let nextPartGraph = cloneJson(partGraph);
+    if (nextPartGraph && typeof nextPartGraph === "object") {
+      nextPartGraph.summary = {
+        ...nextPartGraph.summary || {},
+        customerFinishKey: key,
+        revision: nextRevision
+      };
+      if (Array.isArray(nextPartGraph.parts)) {
+        nextPartGraph.parts = nextPartGraph.parts.map((part) => ({
+          ...part,
+          customerFinishKey: key,
+          // Manufacturing codes stay catalog-backed; finish intent is explicit.
+          finishIntent: key
+        }));
+      }
+    }
+    const nextObservations = [
+      ...observations.filter((o) => o && o.key !== "finishType" && o.key !== "materialKey"),
+      {
+        key: "finishType",
+        value: key,
+        origin: OBSERVATION_ORIGIN.CUSTOMER_STATED,
+        sourceText: `customer finish ${key}`,
+        sourceSpan: null,
+        ruleIds: []
+      }
+    ];
+    const nextOrigins = {
+      ...origins,
+      finishType: OBSERVATION_ORIGIN.CUSTOMER_STATED
+    };
+    return {
+      ok: true,
+      materialKey: key,
+      spec: nextSpec,
+      proposal: nextProposal,
+      partGraph: nextPartGraph,
+      observations: nextObservations,
+      origins: nextOrigins,
+      revision: nextRevision
+    };
   }
 
   // src/lib/drawing/projectionEngine.js

@@ -21,6 +21,7 @@ export const RULE_PROVENANCE = Object.freeze({
   GOLDEN_FIXTURE_BEKZOD_APPROVED: "GOLDEN_FIXTURE_BEKZOD_APPROVED",
   BEKZOD_RULING: "BEKZOD_RULING",
   REQUIRES_BEKZOD_RULING: "REQUIRES_BEKZOD_RULING",
+  PROVISIONAL_PENDING_BEKZOD: "PROVISIONAL_PENDING_BEKZOD",
 });
 
 export const RULE_CATALOG_VERSION = "wardrobe-rules/0.1";
@@ -30,7 +31,7 @@ function rule(id, value, provenance, note) {
   return Object.freeze({ id, value, provenance, note });
 }
 
-const { RULEBOOK_V0_1, GOLDEN_FIXTURE_BEKZOD_APPROVED, BEKZOD_RULING, REQUIRES_BEKZOD_RULING } = RULE_PROVENANCE;
+const { RULEBOOK_V0_1, GOLDEN_FIXTURE_BEKZOD_APPROVED, BEKZOD_RULING, REQUIRES_BEKZOD_RULING, PROVISIONAL_PENDING_BEKZOD } = RULE_PROVENANCE;
 
 export const WARDROBE_RULES = Object.freeze({
   constructionStyle: rule("WR-001", "CAP_STYLE", RULEBOOK_V0_1, "Cap Style (Style B): top/bottom cap the outer sides and divider."),
@@ -130,9 +131,9 @@ export const WARDROBE_RULES = Object.freeze({
   // UNRULED-DOORS-PER-BAY, which resolve() threw on. Keyed on the BAY's clear
   // width, not the wardrobe's overall width: two 900mm bays and one 1800mm bay
   // are different cabinets.
-  doorsPerBayThresholdMm: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 600.0, BEKZOD_RULING, "A bay at or above this clear width takes two door leaves; below it, one."),
-  doorsPerBayAtOrAboveThreshold: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 2, BEKZOD_RULING, "Leaves for a bay whose clear width is >= the threshold."),
-  doorsPerBayBelowThreshold: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 1, BEKZOD_RULING, "Leaves for a bay whose clear width is < the threshold."),
+  doorsPerBayThresholdMm: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 600.0, PROVISIONAL_PENDING_BEKZOD, "A bay at or above this clear width takes two door leaves; below it, one."),
+  doorsPerBayAtOrAboveThreshold: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 2, PROVISIONAL_PENDING_BEKZOD, "Leaves for a bay whose clear width is >= the threshold."),
+  doorsPerBayBelowThreshold: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 1, PROVISIONAL_PENDING_BEKZOD, "Leaves for a bay whose clear width is < the threshold."),
   unevenBayWidthDistribution: rule("UNRULED-BAY-SPLIT", null, REQUIRES_BEKZOD_RULING, "No approved rule for distributing a non-integral bay-width remainder. Must be asked."),
 });
 
