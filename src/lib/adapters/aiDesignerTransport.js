@@ -214,6 +214,8 @@ export async function proposeDesignChange({
       return {
         ok: true,
         source: RESULT_SOURCE.DETERMINISTIC,
+        provider: "rules",
+        isMock: false,
         kind: RESULT_KIND.MATERIAL_UPDATED,
         materialKey: parsed.changes.materialKey,
         assistantReply: parsed.assistantReply,
@@ -221,12 +223,12 @@ export async function proposeDesignChange({
     }
     const applied = applyConversationalEdit({ currentObservations, commandText: message, specId, revision });
     if (applied.ok) {
-      return { ...applied, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.DESIGN_UPDATED };
+      return { ...applied, source: RESULT_SOURCE.DETERMINISTIC, provider: "rules", isMock: false, kind: RESULT_KIND.DESIGN_UPDATED };
     }
     const kind = Array.isArray(applied.unsupported) && applied.unsupported.length > 0
       ? RESULT_KIND.UNSUPPORTED
       : RESULT_KIND.REJECTED;
-    return { ...applied, source: RESULT_SOURCE.DETERMINISTIC, kind };
+    return { ...applied, source: RESULT_SOURCE.DETERMINISTIC, provider: "rules", isMock: false, kind };
   }
 
   // ---- 2. Model, for phrasings the parser does not recognise ------------
@@ -234,6 +236,8 @@ export async function proposeDesignChange({
     return {
       ok: false,
       source: RESULT_SOURCE.MODEL,
+      provider: "none",
+      isMock: false,
       kind: RESULT_KIND.DESIGNER_UNAVAILABLE,
       error: "The FurniAI designer is not reachable from this browser. Your design is unchanged.",
     };
@@ -285,6 +289,8 @@ export async function proposeDesignChange({
       return {
         ok: false,
         source: RESULT_SOURCE.MODEL,
+        provider: payload?.provider ?? "server",
+        isMock: Boolean(payload?.mock || payload?.isMock || payload?.provider === "mock"),
         kind: RESULT_KIND.DESIGNER_UNAVAILABLE,
         code: payload?.code ?? `HTTP_${response.status}`,
         error: payload?.error ?? "The FurniAI designer is not available right now. Your design is unchanged.",
@@ -294,11 +300,16 @@ export async function proposeDesignChange({
     return {
       ok: false,
       source: RESULT_SOURCE.MODEL,
+      provider: "network",
+      isMock: false,
       kind: RESULT_KIND.DESIGNER_UNAVAILABLE,
       code: err?.name === "AbortError" ? "ABORTED" : "NETWORK_ERROR",
       error: "Could not reach the FurniAI designer. Your design is unchanged.",
     };
   }
+
+  const modelProvider = payload?.provider || (payload?.mock ? "mock" : "anthropic");
+  const isMock = Boolean(payload?.mock || payload?.isMock || payload?.provider === "mock" || payload?.provider === "stub");
 
   // Defence in depth: the server already validated the model, but the browser
   // re-validates the response with the identical rules. A stale deployment, a
@@ -315,6 +326,8 @@ export async function proposeDesignChange({
     return {
       ok: false,
       source: RESULT_SOURCE.MODEL,
+      provider: modelProvider,
+      isMock,
       kind: unsupported.length > 0
         ? RESULT_KIND.UNSUPPORTED
         : clientRejected.length > 0
@@ -334,6 +347,8 @@ export async function proposeDesignChange({
     return {
       ok: true,
       source: RESULT_SOURCE.MODEL,
+      provider: modelProvider,
+      isMock,
       kind: RESULT_KIND.MATERIAL_UPDATED,
       materialKey,
       assistantReply: payload.reply || `Changed finish to ${materialKey}.`,
@@ -349,6 +364,8 @@ export async function proposeDesignChange({
     return {
       ...applied,
       source: RESULT_SOURCE.MODEL,
+      provider: modelProvider,
+      isMock,
       kind: RESULT_KIND.REJECTED,
       assistantReply: payload.reply || "",
       unsupported,
@@ -358,6 +375,8 @@ export async function proposeDesignChange({
   return {
     ...applied,
     source: RESULT_SOURCE.MODEL,
+    provider: modelProvider,
+    isMock,
     kind: RESULT_KIND.DESIGN_UPDATED,
     materialKey: materialKey ?? applied.materialKey ?? null,
     assistantReply: payload.reply || applied.assistantReply,
