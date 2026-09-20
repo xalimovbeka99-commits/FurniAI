@@ -26,7 +26,13 @@ function synthModel(sectionWidthMm) {
   return {
     id: "w-pl006",
     revision: 7,
-    widthMm: 900,
+    // Derived, not fixed at 900. This fixture previously declared widthMm: 900
+    // with a single 250mm section - which does not close - and relied on the
+    // adapter silently rescaling the section to fit. The adapter now refuses a
+    // non-closing model (BAY_WIDTH_CLOSURE_FAILED), so the fixture states a
+    // width consistent with its own section. The PL-006 assertions below are
+    // unchanged; only the fixture's internal arithmetic is.
+    widthMm: sectionWidthMm + 2 * 18,
     heightMm: 2100,
     depthMm: 600,
     panelThicknessMm: 18,
