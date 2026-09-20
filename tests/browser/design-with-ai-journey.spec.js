@@ -367,9 +367,10 @@ test.describe("Design with AI — Comprehensive Customer Journey & Live Readines
 
     await expect(rulesBadge).toHaveText("[Rules]");
     await expect(mockBadge).toHaveText("[Mock]");
-    await expect(liveBadge).toHaveText("[Anthropic]");
+    // Customer-facing copy stays neutral; Anthropic only with __FURNIAI_DEBUG_PROVIDER__.
+    await expect(liveBadge).toHaveText("[AI]");
     await expect(aiBadge).toHaveText("[AI]");
 
-    await saveScreenshot(page, "08-mock-vs-anthropic-badges.png");
+    await saveScreenshot(page, "08-mock-vs-ai-badges.png");
   });
 });
