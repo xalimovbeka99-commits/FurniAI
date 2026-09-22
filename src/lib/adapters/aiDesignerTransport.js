@@ -58,7 +58,13 @@ function factsFrom(observations) {
 
 function readGetter(maybeGetter) {
   if (typeof maybeGetter !== "function") return undefined;
-  return maybeGetter();
+  try {
+    return maybeGetter();
+  } catch {
+    // Thrown live-state readers fail closed as stale metadata (undefined),
+    // never as an uncaught network error.
+    return undefined;
+  }
 }
 
 /**
@@ -139,13 +145,15 @@ export function isStaleAnswer({
 
   if (hasDesignGuard) {
     const nowId = readGetter(currentDesignId);
-    if (designIdAtRequest == null || nowId == null || nowId === "") return false;
+    // Unreadable live design id (throw → undefined) fails closed as stale.
+    if (designIdAtRequest == null || nowId == null || nowId === "") return true;
     if (String(nowId) !== String(designIdAtRequest)) return true;
   }
 
   if (hasTokenGuard) {
     const nowToken = readGetter(currentChangeToken);
-    if (!Number.isFinite(nowToken) || !Number.isFinite(changeTokenAtRequest)) return false;
+    // Unreadable or non-finite live token fails closed as stale.
+    if (!Number.isFinite(nowToken) || !Number.isFinite(changeTokenAtRequest)) return true;
     // Strict inequality: any bump (edit, Undo, or out-of-order) is stale.
     if (nowToken !== changeTokenAtRequest) return true;
   }
@@ -153,7 +161,7 @@ export function isStaleAnswer({
   if (hasRevisionGuard && !hasTokenGuard) {
     // Legacy path only when changeToken is not supplied.
     const now = readGetter(currentRevision);
-    if (!Number.isFinite(now) || !Number.isFinite(revisionAtRequest)) return false;
+    if (!Number.isFinite(now) || !Number.isFinite(revisionAtRequest)) return true;
     if (now !== revisionAtRequest) return true;
   }
 
