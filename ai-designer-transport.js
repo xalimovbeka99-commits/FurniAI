@@ -26,7 +26,8 @@ var AiDesignerTransport = (() => {
     invalidLiveStateGuardResult: () => invalidLiveStateGuardResult,
     isStaleAnswer: () => isStaleAnswer,
     isStaleForRevision: () => isStaleForRevision,
-    proposeDesignChange: () => proposeDesignChange
+    proposeDesignChange: () => proposeDesignChange,
+    readLiveStateGuards: () => readLiveStateGuards
   });
 
   // src/lib/furnispec/schema.js
@@ -4031,12 +4032,27 @@ var AiDesignerTransport = (() => {
   }
   function readGetter(maybeGetter) {
     if (typeof maybeGetter !== "function") return void 0;
-    return maybeGetter();
+    try {
+      return maybeGetter();
+    } catch {
+      return void 0;
+    }
+  }
+  function guardRefusal(fields) {
+    return {
+      ok: false,
+      source: RESULT_SOURCE.DETERMINISTIC,
+      kind: RESULT_KIND.STALE_REVISION,
+      ...fields
+    };
   }
   function invalidLiveStateGuardResult({
     currentDesignId,
     currentChangeToken,
-    currentRevision
+    currentRevision,
+    designIdAtRequest = void 0,
+    changeTokenAtRequest = void 0,
+    revisionAtRequest = void 0
   } = {}) {
     const checks = [
       ["currentDesignId", currentDesignId],
@@ -4045,17 +4061,58 @@ var AiDesignerTransport = (() => {
     ];
     for (const [name, value] of checks) {
       if (value !== void 0 && typeof value !== "function") {
-        return {
-          ok: false,
-          source: RESULT_SOURCE.DETERMINISTIC,
-          kind: RESULT_KIND.STALE_REVISION,
+        return guardRefusal({
           error: `Live-state guard "${name}" must be a getter function so changes during the request are detected. The design was not changed.`,
           guardParameter: name,
           guardParameterType: value === null ? "null" : typeof value
-        };
+        });
+      }
+    }
+    const pairs = [
+      ["currentDesignId", currentDesignId, "specId", designIdAtRequest != null && designIdAtRequest !== ""],
+      ["currentChangeToken", currentChangeToken, "changeToken", Number.isFinite(changeTokenAtRequest)]
+    ];
+    if (typeof currentChangeToken !== "function") {
+      pairs.push(["currentRevision", currentRevision, "revision", Number.isFinite(revisionAtRequest)]);
+    }
+    for (const [name, getter, counterpart, counterpartOk] of pairs) {
+      if (typeof getter === "function" && !counterpartOk) {
+        return guardRefusal({
+          error: `Live-state guard "${name}" was supplied without "${counterpart}" at request time, so staleness cannot be decided. The design was not changed.`,
+          guardParameter: counterpart,
+          guardMisconfigured: true
+        });
       }
     }
     return null;
+  }
+  function readLiveStateGuards({
+    currentDesignId,
+    currentChangeToken,
+    currentRevision
+  } = {}) {
+    const out = {};
+    const slots = [
+      ["currentDesignId", currentDesignId, "liveDesignId"],
+      ["currentChangeToken", currentChangeToken, "liveChangeToken"],
+      ["currentRevision", currentRevision, "liveRevision"]
+    ];
+    for (const [name, getter, field] of slots) {
+      if (typeof getter !== "function") continue;
+      try {
+        out[field] = getter();
+      } catch (err) {
+        return {
+          failure: guardRefusal({
+            guardParameter: name,
+            guardThrew: true,
+            guardErrorName: typeof err?.name === "string" ? err.name : "Error",
+            error: "That answer could not be checked against your current design, so it was not applied. Your current design is unchanged \u2014 please ask again."
+          })
+        };
+      }
+    }
+    return out;
   }
   function isStaleAnswer({
     designIdAtRequest,
@@ -4071,17 +4128,17 @@ var AiDesignerTransport = (() => {
     if (!hasDesignGuard && !hasTokenGuard && !hasRevisionGuard) return false;
     if (hasDesignGuard) {
       const nowId = readGetter(currentDesignId);
-      if (designIdAtRequest == null || nowId == null || nowId === "") return false;
+      if (designIdAtRequest == null || nowId == null || nowId === "") return true;
       if (String(nowId) !== String(designIdAtRequest)) return true;
     }
     if (hasTokenGuard) {
       const nowToken = readGetter(currentChangeToken);
-      if (!Number.isFinite(nowToken) || !Number.isFinite(changeTokenAtRequest)) return false;
+      if (!Number.isFinite(nowToken) || !Number.isFinite(changeTokenAtRequest)) return true;
       if (nowToken !== changeTokenAtRequest) return true;
     }
     if (hasRevisionGuard && !hasTokenGuard) {
       const now = readGetter(currentRevision);
-      if (!Number.isFinite(now) || !Number.isFinite(revisionAtRequest)) return false;
+      if (!Number.isFinite(now) || !Number.isFinite(revisionAtRequest)) return true;
       if (now !== revisionAtRequest) return true;
     }
     return false;
@@ -4186,19 +4243,23 @@ var AiDesignerTransport = (() => {
       const guardMisuse = invalidLiveStateGuardResult({
         currentDesignId,
         currentChangeToken,
-        currentRevision
+        currentRevision,
+        designIdAtRequest: specId,
+        changeTokenAtRequest: changeToken,
+        revisionAtRequest: revision
       });
       if (guardMisuse) return guardMisuse;
-      const liveDesignId = readGetter(currentDesignId);
-      const liveChangeToken = readGetter(currentChangeToken);
-      const liveRevision = readGetter(currentRevision);
+      const guardRead = readLiveStateGuards({ currentDesignId, currentChangeToken, currentRevision });
+      if (guardRead.failure) return guardRead.failure;
+      const { liveDesignId, liveChangeToken, liveRevision } = guardRead;
+      const frozen = (value, supplied) => typeof supplied === "function" ? () => value : void 0;
       if (isStaleAnswer({
         designIdAtRequest: specId,
         changeTokenAtRequest: changeToken,
-        currentDesignId,
-        currentChangeToken,
+        currentDesignId: frozen(liveDesignId, currentDesignId),
+        currentChangeToken: frozen(liveChangeToken, currentChangeToken),
         revisionAtRequest: revision,
-        currentRevision
+        currentRevision: frozen(liveRevision, currentRevision)
       })) {
         return staleResult({
           designIdAtRequest: specId,
