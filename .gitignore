@@ -45,3 +45,4 @@ yarn-error.log*
 debug.log
 .env*
 Claude outputs/
+db-test-payloads/

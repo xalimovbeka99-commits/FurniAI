@@ -58,38 +58,139 @@ function factsFrom(observations) {
 
 function readGetter(maybeGetter) {
   if (typeof maybeGetter !== "function") return undefined;
-  return maybeGetter();
+  try {
+    return maybeGetter();
+  } catch {
+    // Thrown live-state readers fail closed as stale metadata (undefined),
+    // never as an uncaught network error.
+    return undefined;
+  }
+}
+
+/** Shape every guard refusal shares. Carries no geometry, by construction. */
+function guardRefusal(fields) {
+  return {
+    ok: false,
+    source: RESULT_SOURCE.DETERMINISTIC,
+    kind: RESULT_KIND.STALE_REVISION,
+    ...fields,
+  };
 }
 
 /**
- * Live-state args must be getters. A plain value captured before await cannot
- * detect later edits/Undo — fail closed with a non-committing result.
+ * Live-state args must be getters, and each live getter needs the at-request
+ * value it will be compared against. Both failures are MISCONFIGURATION, and
+ * both fail closed — but they are named, which is the whole point.
+ *
+ * Why naming matters here. `isStaleAnswer` already refuses when a guard cannot
+ * be evaluated, so a UI that supplies `currentChangeToken` while forgetting to
+ * send `changeToken` has EVERY model answer refused as "stale". That is the
+ * correct safety outcome and a terrible diagnostic: the integrator sees a
+ * designer that never applies anything, with nothing naming the cause. The
+ * check below fires first and says which parameter is missing, so the same
+ * refusal is fixable in one request instead of a debugging session.
+ *
  * @returns {null|object} null when OK; otherwise a non-committing result
  */
 export function invalidLiveStateGuardResult({
+  currentSessionId,
   currentDesignId,
   currentChangeToken,
   currentRevision,
+  sessionIdAtRequest = undefined,
+  designIdAtRequest = undefined,
+  changeTokenAtRequest = undefined,
+  revisionAtRequest = undefined,
 } = {}) {
   const checks = [
+    ["currentSessionId", currentSessionId],
     ["currentDesignId", currentDesignId],
     ["currentChangeToken", currentChangeToken],
     ["currentRevision", currentRevision],
   ];
   for (const [name, value] of checks) {
     if (value !== undefined && typeof value !== "function") {
-      return {
-        ok: false,
-        source: RESULT_SOURCE.DETERMINISTIC,
-        kind: RESULT_KIND.STALE_REVISION,
-        error:
-          `Live-state guard "${name}" must be a getter function so changes during the request are detected. The design was not changed.`,
+      return guardRefusal({
+        error: `Live-state guard "${name}" must be a getter function so changes during the request are detected. The design was not changed.`,
         guardParameter: name,
         guardParameterType: value === null ? "null" : typeof value,
-      };
+      });
+    }
+  }
+
+  // A live getter with no at-request counterpart cannot decide anything.
+  const pairs = [
+    ["currentSessionId", currentSessionId, "sessionId", sessionIdAtRequest != null && sessionIdAtRequest !== ""],
+    ["currentDesignId", currentDesignId, "specId", designIdAtRequest != null && designIdAtRequest !== ""],
+    ["currentChangeToken", currentChangeToken, "changeToken", Number.isFinite(changeTokenAtRequest)],
+  ];
+  // The legacy revision guard only decides when no changeToken guard is present.
+  if (typeof currentChangeToken !== "function") {
+    pairs.push(["currentRevision", currentRevision, "revision", Number.isFinite(revisionAtRequest)]);
+  }
+  for (const [name, getter, counterpart, counterpartOk] of pairs) {
+    if (typeof getter === "function" && !counterpartOk) {
+      return guardRefusal({
+        error: `Live-state guard "${name}" was supplied without "${counterpart}" at request time, so staleness cannot be decided. The design was not changed.`,
+        guardParameter: counterpart,
+        guardMisconfigured: true,
+      });
     }
   }
   return null;
+}
+
+/**
+ * Read all three live-state getters EXACTLY ONCE, catching a getter that
+ * throws — UI store torn down mid-request, component unmounted, revoked proxy.
+ *
+ * `readGetter` above already swallows the throw, so such a getter yields
+ * `undefined` and `isStaleAnswer` refuses: the answer was already discarded and
+ * the design already preserved. What was missing is WHICH guard failed and
+ * that it failed at all — a torn-down store and a genuine edit-during-flight
+ * produced the same opaque STALE_REVISION. This names it.
+ *
+ * Reading once also matters: the getters used to be invoked twice — once to
+ * capture the evidence reported in `staleResult`, once again inside
+ * `isStaleAnswer` — so a value that moved between the two reads could produce a
+ * refusal whose reported evidence disagreed with the decision actually taken.
+ * One read now backs both.
+ *
+ * The thrown error's MESSAGE is deliberately not propagated (only its
+ * constructor name), so nothing the store was carrying reaches the customer.
+ *
+ * @returns {{ liveDesignId?: any, liveChangeToken?: any, liveRevision?: any, failure?: object }}
+ */
+export function readLiveStateGuards({
+  currentSessionId,
+  currentDesignId,
+  currentChangeToken,
+  currentRevision,
+} = {}) {
+  const out = {};
+  const slots = [
+    ["currentSessionId", currentSessionId, "liveSessionId"],
+    ["currentDesignId", currentDesignId, "liveDesignId"],
+    ["currentChangeToken", currentChangeToken, "liveChangeToken"],
+    ["currentRevision", currentRevision, "liveRevision"],
+  ];
+  for (const [name, getter, field] of slots) {
+    if (typeof getter !== "function") continue;
+    try {
+      out[field] = getter();
+    } catch (err) {
+      return {
+        failure: guardRefusal({
+          guardParameter: name,
+          guardThrew: true,
+          guardErrorName: typeof err?.name === "string" ? err.name : "Error",
+          error:
+            "That answer could not be checked against your current design, so it was not applied. Your current design is unchanged — please ask again.",
+        }),
+      };
+    }
+  }
+  return out;
 }
 
 /**
@@ -124,28 +225,49 @@ export function invalidLiveStateGuardResult({
  * @returns {boolean} true when the answer is stale and must be discarded
  */
 export function isStaleAnswer({
+  sessionIdAtRequest,
   designIdAtRequest,
   changeTokenAtRequest,
+  currentSessionId,
   currentDesignId,
   currentChangeToken,
   revisionAtRequest,
   currentRevision,
 } = {}) {
+  const hasSessionGuard = typeof currentSessionId === "function";
   const hasDesignGuard = typeof currentDesignId === "function";
   const hasTokenGuard = typeof currentChangeToken === "function";
   const hasRevisionGuard = typeof currentRevision === "function";
 
-  if (!hasDesignGuard && !hasTokenGuard && !hasRevisionGuard) return false;
+  if (!hasSessionGuard && !hasDesignGuard && !hasTokenGuard && !hasRevisionGuard) return false;
+
+  // SESSION FIRST — it is the only signal that survives a reopen.
+  //
+  // designId and changeToken are both scoped to one browsing session.
+  // Reopening a saved design restarts the client's token counter and leaves
+  // the design id identical, so an answer belonging to the PREVIOUS session
+  // matches both of them once the new session's counter climbs back through
+  // the same value, and applies to the revision the customer just restored.
+  // Durable reopen is what created a second session to be confused with.
+  if (hasSessionGuard) {
+    const nowSession = readGetter(currentSessionId);
+    // Unreadable (a throw yields undefined) or absent fails closed, the same
+    // way the other signals do.
+    if (sessionIdAtRequest == null || nowSession == null || nowSession === "") return true;
+    if (String(nowSession) !== String(sessionIdAtRequest)) return true;
+  }
 
   if (hasDesignGuard) {
     const nowId = readGetter(currentDesignId);
-    if (designIdAtRequest == null || nowId == null || nowId === "") return false;
+    // Unreadable live design id (throw → undefined) fails closed as stale.
+    if (designIdAtRequest == null || nowId == null || nowId === "") return true;
     if (String(nowId) !== String(designIdAtRequest)) return true;
   }
 
   if (hasTokenGuard) {
     const nowToken = readGetter(currentChangeToken);
-    if (!Number.isFinite(nowToken) || !Number.isFinite(changeTokenAtRequest)) return false;
+    // Unreadable or non-finite live token fails closed as stale.
+    if (!Number.isFinite(nowToken) || !Number.isFinite(changeTokenAtRequest)) return true;
     // Strict inequality: any bump (edit, Undo, or out-of-order) is stale.
     if (nowToken !== changeTokenAtRequest) return true;
   }
@@ -153,7 +275,7 @@ export function isStaleAnswer({
   if (hasRevisionGuard && !hasTokenGuard) {
     // Legacy path only when changeToken is not supplied.
     const now = readGetter(currentRevision);
-    if (!Number.isFinite(now) || !Number.isFinite(revisionAtRequest)) return false;
+    if (!Number.isFinite(now) || !Number.isFinite(revisionAtRequest)) return true;
     if (now !== revisionAtRequest) return true;
   }
 
@@ -170,6 +292,8 @@ export function isStaleForRevision({ revisionAtRequest, currentRevision } = {}) 
 
 /** The refusal a stale answer becomes. It carries no geometry, by construction. */
 function staleResult({
+  sessionIdAtRequest,
+  currentSessionId,
   designIdAtRequest,
   changeTokenAtRequest,
   currentDesignId,
@@ -181,6 +305,8 @@ function staleResult({
     ok: false,
     source: RESULT_SOURCE.DETERMINISTIC,
     kind: RESULT_KIND.STALE_REVISION,
+    sessionIdAtRequest: sessionIdAtRequest ?? null,
+    currentSessionId: currentSessionId ?? null,
     designIdAtRequest: designIdAtRequest ?? null,
     currentDesignId: currentDesignId ?? null,
     changeTokenAtRequest: Number.isFinite(changeTokenAtRequest) ? changeTokenAtRequest : null,
@@ -202,6 +328,8 @@ function staleResult({
  * @param {string} [args.endpoint]
  * @param {typeof fetch} [args.fetchImpl] injectable for tests
  * @param {AbortSignal} [args.signal]
+ * @param {string} [args.sessionId] opaque id of the session issuing this request
+ * @param {() => string} [args.currentSessionId] live session id getter
  * @param {() => string} [args.currentDesignId] live design id getter
  * @param {() => number} [args.currentChangeToken] live changeToken getter
  * @param {() => number} [args.currentRevision] legacy revision getter
@@ -213,9 +341,11 @@ export async function proposeDesignChange({
   specId,
   revision = 1,
   changeToken = undefined,
+  sessionId = undefined,
   endpoint = AI_DESIGNER_ENDPOINT,
   fetchImpl = typeof fetch === "function" ? fetch : null,
   signal = undefined,
+  currentSessionId = undefined,
   currentDesignId = undefined,
   currentChangeToken = undefined,
   /**
@@ -294,26 +424,42 @@ export async function proposeDesignChange({
     // One checkpoint for every branch below. Placed here rather than at each
     // return so a branch added later cannot quietly skip it.
     const guardMisuse = invalidLiveStateGuardResult({
+      currentSessionId,
       currentDesignId,
       currentChangeToken,
       currentRevision,
+      sessionIdAtRequest: sessionId,
+      designIdAtRequest: specId,
+      changeTokenAtRequest: changeToken,
+      revisionAtRequest: revision,
     });
     if (guardMisuse) return guardMisuse;
 
-    const liveDesignId = readGetter(currentDesignId);
-    const liveChangeToken = readGetter(currentChangeToken);
-    const liveRevision = readGetter(currentRevision);
+    // Read the getters once, naming one that throws. `guardRead.failure` is
+    // already a complete non-committing result.
+    const guardRead = readLiveStateGuards({ currentSessionId, currentDesignId, currentChangeToken, currentRevision });
+    if (guardRead.failure) return guardRead.failure;
+
+    const { liveSessionId, liveDesignId, liveChangeToken, liveRevision } = guardRead;
+    // Re-present the single read as getters so isStaleAnswer's published
+    // `typeof === "function"` activation contract is untouched, while the
+    // decision and the evidence below come from the same read.
+    const frozen = (value, supplied) => (typeof supplied === "function" ? () => value : undefined);
     if (
       isStaleAnswer({
+        sessionIdAtRequest: sessionId,
         designIdAtRequest: specId,
         changeTokenAtRequest: changeToken,
-        currentDesignId,
-        currentChangeToken,
+        currentSessionId: frozen(liveSessionId, currentSessionId),
+        currentDesignId: frozen(liveDesignId, currentDesignId),
+        currentChangeToken: frozen(liveChangeToken, currentChangeToken),
         revisionAtRequest: revision,
-        currentRevision,
+        currentRevision: frozen(liveRevision, currentRevision),
       })
     ) {
       return staleResult({
+        sessionIdAtRequest: sessionId,
+        currentSessionId: liveSessionId,
         designIdAtRequest: specId,
         changeTokenAtRequest: changeToken,
         currentDesignId: liveDesignId,

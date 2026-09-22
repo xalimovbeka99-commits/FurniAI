@@ -239,7 +239,7 @@ describe("STALE_REVISION — the three signals, not a revision number", () => {
     // reflects the live value, where a plain value captured at call time
     // cannot. The hazard is that the wrong type fails open and says nothing.
     //
-    // Asserted as-is rather than fixed: aiDesignerTransport.js is shared with
+    // Contract (fail-closed): aiDesignerTransport.js is shared with
     // Antigravity. The proposed correction — throw on a non-function, or
     // accept values and compare them — is in the contract document for
     // agreement first. Until then the getter form is mandatory, not stylistic.
@@ -282,6 +282,33 @@ describe("STALE_REVISION — the three signals, not a revision number", () => {
   });
 });
 
+
+  it("fail-closes when a live-state getter throws", async () => {
+    const design = activeDesign();
+    const result = await proposeDesignChange({
+      message: MODEL_ONLY,
+      currentObservations: design.observations,
+      specId: SPEC_ID,
+      revision: 1,
+      changeToken: 1,
+      currentDesignId: () => SPEC_ID,
+      currentChangeToken: () => {
+        throw new Error("token reader boom");
+      },
+      fetchImpl: fetchReturning({
+        ok: true,
+        provider: "anthropic",
+        edits: [{ key: "envelope.widthMm", value: 2000 }],
+        reply: "Opened to 2000 mm.",
+        unsupported: [],
+      }),
+    });
+    expect(result.ok).toBe(false);
+    expect(result.kind).toBe(RESULT_KIND.STALE_REVISION);
+    expect(result.spec == null).toBe(true);
+    expect(result.partGraph == null).toBe(true);
+  });
+
 describe("provider identity", () => {
   it("labels the deterministic path 'rules', which is not a model at all", async () => {
     const design = activeDesign();
@@ -320,7 +347,7 @@ describe("provider identity", () => {
     // endpoint only includes it behind shouldExposeProviderDebugInfo() — makes
     // the browser label an OpenAI failover response "anthropic".
     //
-    // This is asserted as-is rather than fixed here: aiDesignerTransport.js is
+    // Contract (neutral ai): aiDesignerTransport.js is
     // shared with Antigravity, and the correction ("ai" or "unknown") is
     // proposed in the contract document for agreement first. The test is the
     // reason the UI must NOT display result.provider to a customer.
