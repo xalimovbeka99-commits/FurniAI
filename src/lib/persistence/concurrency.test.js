@@ -274,8 +274,10 @@ describe("ownership under real RLS semantics", () => {
       () => asOther.saveRevision({ userId: OTHER, designId, revision: 2, expectedPreviousRevision: 1, ...payload({ revision: 2 }) }),
     ]) {
       const err = await call().catch((e) => e);
-      expect(err.code, "cross-user access must be refused on every endpoint").toBeDefined();
-      expect([PERSISTENCE_ERROR.MISSING_DESIGN, PERSISTENCE_ERROR.UNAUTHORIZED]).toContain(err.code);
+      expect(err.code, "cross-user access must be refused on every endpoint").toBe(
+        PERSISTENCE_ERROR.MISSING_DESIGN
+      );
+      expect(err.status, "and must be indistinguishable from a design that does not exist").toBe(404);
     }
   });
 

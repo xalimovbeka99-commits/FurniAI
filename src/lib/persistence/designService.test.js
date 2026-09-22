@@ -62,6 +62,8 @@ describe("designService persistence", () => {
   });
 
   it("rejects cross-user access without leaking existence", async () => {
+    // 404, identical to a design that does not exist. A 403 here would be an
+    // existence oracle: anyone holding an id would learn whether it is real.
     const created = await service.createDesign({ userId: "user-a" });
     const payload = validPayload();
     await service.saveRevision({
@@ -73,7 +75,7 @@ describe("designService persistence", () => {
 
     await expect(
       service.getRevision({ userId: "user-b", designId: created.designId, revision: 1 })
-    ).rejects.toMatchObject({ code: PERSISTENCE_ERROR.UNAUTHORIZED });
+    ).rejects.toMatchObject({ code: PERSISTENCE_ERROR.MISSING_DESIGN, status: 404 });
 
     await expect(
       service.saveRevision({
@@ -82,7 +84,7 @@ describe("designService persistence", () => {
         revision: 2,
         ...validPayload({ revision: 2, specId: payload.furniSpec.specId }),
       })
-    ).rejects.toMatchObject({ code: PERSISTENCE_ERROR.UNAUTHORIZED });
+    ).rejects.toMatchObject({ code: PERSISTENCE_ERROR.MISSING_DESIGN, status: 404 });
   });
 
   it("rejects stale revision when expectedPreviousRevision mismatches", async () => {

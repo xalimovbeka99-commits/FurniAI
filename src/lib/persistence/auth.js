@@ -92,20 +92,22 @@ export async function resolveCaller(req, opts = {}) {
     throw new PersistenceError(PERSISTENCE_ERROR.MISSING_AUTH, "Sign in is required to save or open a design.");
   }
 
+  // A rejected token is INVALID AUTHENTICATION, not a refused design: it says
+  // nothing about whether any particular design exists, so it stays 401.
   if (!res.ok) {
-    throw new PersistenceError(PERSISTENCE_ERROR.UNAUTHORIZED, "You cannot access this design.", { status: 403 });
+    throw new PersistenceError(PERSISTENCE_ERROR.MISSING_AUTH, "Sign in is required to save or open a design.", { status: 401 });
   }
 
   let body;
   try {
     body = await res.json();
   } catch {
-    throw new PersistenceError(PERSISTENCE_ERROR.UNAUTHORIZED, "You cannot access this design.", { status: 403 });
+    throw new PersistenceError(PERSISTENCE_ERROR.MISSING_AUTH, "Sign in is required to save or open a design.", { status: 401 });
   }
 
   const userId = typeof body?.id === "string" ? body.id.trim() : "";
   if (!userId) {
-    throw new PersistenceError(PERSISTENCE_ERROR.UNAUTHORIZED, "You cannot access this design.", { status: 403 });
+    throw new PersistenceError(PERSISTENCE_ERROR.MISSING_AUTH, "Sign in is required to save or open a design.", { status: 401 });
   }
   return { userId, accessToken: token };
 }

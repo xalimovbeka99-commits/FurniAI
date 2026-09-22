@@ -5,6 +5,9 @@
  */
 
 import { fingerprintFurniSpec } from "../conversation/approval.js";
+import { sha256Hex } from "../conversation/fingerprint.js";
+import { serializeCanonicalJson } from "../furnispec/normalize.js";
+import { validateFurniSpec } from "../furnispec/validate.js";
 import { validatePartGraph } from "../partgraph/validatePartGraph.js";
 import { PersistenceError, PERSISTENCE_ERROR } from "./errors.js";
 import { getSharedMemoryStore } from "./memoryStore.js";
@@ -112,6 +115,7 @@ export function createDesignService(deps = {}) {
       const revNum = requirePositiveInt(revision, "revision");
       assertFurniSpec(furniSpec);
       assertPartGraph(partGraph);
+      assertSpecGraphConsistency(furniSpec, partGraph);
 
       let expectedFp;
       try {
@@ -138,17 +142,43 @@ export function createDesignService(deps = {}) {
       // identical body. Answering 409 there tells a customer their work was
       // rejected when it is sitting safely in the database.
       //
-      // "Identical" means the same revision number carrying the same
-      // FurniSpec fingerprint and the same specId. That is a replay of one
-      // write, not a second write, so returning the stored row mutates
-      // nothing and is truthful. It stays correct even if later revisions
-      // have since been saved, because a stored revision is immutable.
+      // "Identical" spans EVERY persisted field, not the spec alone — see
+      // revisionContentDigest. Two requests can agree on the FurniSpec
+      // fingerprint and still disagree about the PartGraph, the provenance or
+      // the validation status being stored; reporting the second as an exact
+      // save of the first would be a false statement about the database.
+      //
+      // A true replay mutates nothing, so returning the stored row is
+      // truthful. It stays correct even if later revisions have since been
+      // saved, because a stored revision is immutable.
+      const normalizedStatus =
+        typeof validationStatus === "string" && validationStatus.trim()
+          ? validationStatus.trim()
+          : "ACCEPTED";
+      const requestDigest = revisionContentDigest({
+        fingerprint: expectedFp,
+        specId: furniSpec.specId ?? null,
+        revision: revNum,
+        partGraph,
+        origins,
+        validationStatus: normalizedStatus,
+      });
+
       const alreadyStored = await store.getRevision(designId, revNum);
       if (alreadyStored) {
-        const replay =
-          alreadyStored.fingerprint === expectedFp &&
-          (alreadyStored.furniSpec?.specId ?? null) === (furniSpec.specId ?? null);
-        if (replay) return idempotentResult(designId, alreadyStored);
+        if (storedContentDigest(alreadyStored) === requestDigest) {
+          return idempotentResult(designId, alreadyStored);
+        }
+        // Same revision number, different content. Whoever is right, this
+        // caller is not replaying its own save and must not be told it is.
+        throw new PersistenceError(
+          PERSISTENCE_ERROR.STALE_REVISION,
+          "A different design is already saved as that revision. Reload the design and try again.",
+          {
+            status: 409,
+            details: { latestRevision: alreadyStored.revision, requestedRevision: revNum },
+          }
+        );
       }
 
       const latest = await store.getLatestRevision(designId);
@@ -226,10 +256,7 @@ export function createDesignService(deps = {}) {
           furniSpec,
           partGraph,
           origins,
-          validationStatus:
-            typeof validationStatus === "string" && validationStatus.trim()
-              ? validationStatus.trim()
-              : "ACCEPTED",
+          validationStatus: normalizedStatus,
           createdAt: new Date().toISOString(),
         });
       } catch (err) {
@@ -239,11 +266,7 @@ export function createDesignService(deps = {}) {
         // back what they wrote to say which of two very different things
         // happened.
         const winner = await store.getRevision(designId, revNum);
-        if (
-          winner &&
-          winner.fingerprint === expectedFp &&
-          (winner.furniSpec?.specId ?? null) === (furniSpec.specId ?? null)
-        ) {
+        if (winner && storedContentDigest(winner) === requestDigest) {
           // Our own write, replayed — or an identical concurrent one. Either
           // way the stored revision is exactly what this caller asked for.
           return idempotentResult(designId, winner);
@@ -284,6 +307,18 @@ export function createDesignService(deps = {}) {
  * save so a client needs no special path, plus `idempotentReplay: true` so
  * one that wants to tell them apart can.
  */
+/** The same digest, computed from a row as it was stored. */
+function storedContentDigest(row) {
+  return revisionContentDigest({
+    fingerprint: row.fingerprint,
+    specId: row.furniSpec?.specId ?? null,
+    revision: row.revision,
+    partGraph: row.partGraph,
+    origins: row.origins ?? null,
+    validationStatus: row.validationStatus ?? null,
+  });
+}
+
 function idempotentResult(designId, row) {
   return {
     ok: true,
@@ -307,11 +342,24 @@ async function requireOwnedDesign(store, userId, designId) {
     throw new PersistenceError(PERSISTENCE_ERROR.BAD_REQUEST, "designId is required.");
   }
   const design = await store.getDesign(designId);
-  if (!design) {
-    throw new PersistenceError(PERSISTENCE_ERROR.MISSING_DESIGN, "That design was not found.");
-  }
-  if (design.ownerUserId !== userId) {
-    throw new PersistenceError(PERSISTENCE_ERROR.UNAUTHORIZED, "You cannot access this design.", { status: 403 });
+  // ONE answer for "not yours" and "not there".
+  //
+  // A 403 for another customer's design and a 404 for one that does not exist
+  // is an existence oracle: anyone holding a design id learns whether it is
+  // real. Under RLS the deployed path already behaved this way — PostgREST
+  // returns an empty result for rows it hides rather than an error — so the
+  // in-memory store's 403 was both a leak AND a divergence between
+  // environments, which meant the cross-user test proved something the
+  // deployment did not do. Both now answer 404.
+  //
+  // Authentication failures are different and stay 401: those say nothing
+  // about any particular design.
+  if (!design || design.ownerUserId !== userId) {
+    throw new PersistenceError(
+      PERSISTENCE_ERROR.MISSING_DESIGN,
+      "That design was not found.",
+      { status: 404 }
+    );
   }
   return design;
 }
@@ -337,12 +385,152 @@ function assertFurniSpec(spec) {
   if (spec.apiKey || spec.ANTHROPIC_API_KEY || spec.OPENAI_API_KEY || spec.authorization) {
     throw new PersistenceError(PERSISTENCE_ERROR.BAD_REQUEST, "Credentials must not be stored with a design.");
   }
+
+  // The AUTHORITATIVE validator, not a shape check.
+  //
+  // The fingerprint is computed FROM the submitted spec, so tampering with
+  // the spec and re-fingerprinting produces a perfectly consistent pair. It
+  // proves the spec arrived intact; it says nothing about whether the spec
+  // is a wardrobe that can be built. A spec whose bays no longer add up to
+  // its envelope passed every check here and was stored immutably.
+  const result = validateFurniSpec(spec);
+  if (!result.valid) {
+    throw new PersistenceError(
+      PERSISTENCE_ERROR.INVALID_FURNISPEC,
+      "The FurniSpec failed validation and cannot be saved.",
+      { status: 400, details: { errors: (result.errors || []).slice(0, 20) } }
+    );
+  }
+}
+
+/**
+ * The PartGraph must describe THIS FurniSpec.
+ *
+ * Both can be individually valid and still belong to different designs: a
+ * valid 1800 mm spec stored with a valid 2400 mm graph is a lie that survives
+ * every other check, and once saved it is immutable, reopened as
+ * authoritative, and exported as a cutting list.
+ *
+ * Identity alone is not enough either — a graph can carry the right
+ * `sourceSpecId` and the wrong geometry — so the envelope is compared too.
+ * The compiler records it in deci-mm.
+ */
+function assertSpecGraphConsistency(spec, partGraph) {
+  const graphSpecId = partGraph.sourceSpecId ?? null;
+  if (graphSpecId != null && String(graphSpecId) !== String(spec.specId)) {
+    throw new PersistenceError(
+      PERSISTENCE_ERROR.INVALID_PARTGRAPH,
+      "The PartGraph does not describe this FurniSpec and cannot be saved.",
+      { status: 400, details: { specId: spec.specId, partGraphSpecId: graphSpecId } }
+    );
+  }
+
+  const graphRevision = partGraph.sourceRevision ?? null;
+  if (
+    graphRevision != null &&
+    spec.revision != null &&
+    Number(graphRevision) !== Number(spec.revision)
+  ) {
+    throw new PersistenceError(
+      PERSISTENCE_ERROR.INVALID_PARTGRAPH,
+      "The PartGraph was built from a different revision of this FurniSpec and cannot be saved.",
+      { status: 400, details: { specRevision: spec.revision, partGraphRevision: graphRevision } }
+    );
+  }
+
+  const env = partGraph.summary?.envelope;
+  if (env) {
+    const expected = {
+      widthDmm: Math.round(Number(spec.envelope.widthMm) * 10),
+      heightDmm: Math.round(Number(spec.envelope.heightMm) * 10),
+      depthDmm: Math.round(Number(spec.envelope.depthMm) * 10),
+    };
+    const disagreements = Object.entries(expected).filter(
+      ([k, v]) => Number.isFinite(v) && Number(env[k]) !== v
+    );
+    if (disagreements.length > 0) {
+      throw new PersistenceError(
+        PERSISTENCE_ERROR.INVALID_PARTGRAPH,
+        "The PartGraph envelope does not match the FurniSpec and cannot be saved.",
+        {
+          status: 400,
+          details: {
+            envelope: { expected, actual: { ...env } },
+            disagreed: disagreements.map(([k]) => k),
+          },
+        }
+      );
+    }
+  }
+}
+
+/**
+ * Fields that decide whether two save requests are THE SAME request.
+ *
+ * The FurniSpec fingerprint covers the spec and nothing else, so two requests
+ * can agree on it and still disagree about the geometry and provenance being
+ * stored. Answering "already saved, identical" to the second would be a false
+ * statement about what is in the database.
+ *
+ * Equivalence therefore spans every field a revision persists:
+ *   specId, revision, FurniSpec (via its fingerprint), PartGraph, origins,
+ *   validationStatus.
+ * Canonical serialization makes key order irrelevant, so a re-serialized but
+ * semantically identical retry is still recognised as a replay.
+ */
+export function revisionContentDigest({
+  fingerprint,
+  specId,
+  revision,
+  partGraph,
+  origins,
+  validationStatus,
+}) {
+  return sha256Hex(
+    serializeCanonicalJson({
+      fingerprint: fingerprint ?? null,
+      specId: specId ?? null,
+      revision: revision ?? null,
+      partGraph: partGraph ?? null,
+      origins: origins ?? null,
+      validationStatus: validationStatus ?? null,
+    })
+  );
 }
 
 function assertPartGraph(partGraph) {
   if (!partGraph || typeof partGraph !== "object") {
     throw new PersistenceError(PERSISTENCE_ERROR.INVALID_PARTGRAPH, "PartGraph must be an object.");
   }
+
+  // An UNSUPPORTED component does NOT make the graph invalid — a diagnostic
+  // graph is meant to validate while recording what the kernel could not
+  // represent. That is exactly why this needs its own check: such a graph
+  // passed validation and was stored as though the design were complete,
+  // silently missing whatever the customer asked for that the kernel cannot
+  // build.
+  const outcomes = Array.isArray(partGraph.componentOutcomes) ? partGraph.componentOutcomes : [];
+  const unsupportedOutcomes = outcomes.filter((o) => o && o.outcome === "UNSUPPORTED");
+  const unsupportedCount = Number(partGraph.summary?.unsupportedComponents ?? 0);
+  if (unsupportedOutcomes.length > 0 || unsupportedCount > 0) {
+    throw new PersistenceError(
+      PERSISTENCE_ERROR.UNSUPPORTED_COMPONENT,
+      "This design includes an unsupported component and cannot be saved.",
+      {
+        status: 400,
+        details: {
+          unsupported: unsupportedOutcomes.slice(0, 20).map((o) => ({
+            componentId: o.componentId ?? null,
+            componentType: o.componentType ?? null,
+            bayIndex: o.bayIndex ?? null,
+            reason: o.reason ?? null,
+          })),
+          unsupportedComponents: unsupportedCount || unsupportedOutcomes.length,
+        },
+      }
+    );
+  }
+
   const result = validatePartGraph(partGraph);
   if (!result.valid) {
     const unsupported = (result.errors || []).some(

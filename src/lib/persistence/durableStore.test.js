@@ -136,7 +136,7 @@ describe("row-level security is enforced by Postgres, not only by our code", () 
     expect(sent).not.toMatch(/service_role|SERVICE_ROLE|service-role/i);
   });
 
-  it("turns a Postgres RLS refusal into UNAUTHORIZED, not a 500", async () => {
+  it("turns a Postgres RLS refusal into the same 404 a missing design gets", async () => {
     const { impl } = restStub([["wardrobe_revisions", fail(403)]]);
     const store = createSupabaseDesignStore({
       url: URL_BASE,
@@ -146,8 +146,8 @@ describe("row-level security is enforced by Postgres, not only by our code", () 
     });
 
     await expect(store.getRevision("design-a", 1)).rejects.toMatchObject({
-      code: PERSISTENCE_ERROR.UNAUTHORIZED,
-      status: 403,
+      code: PERSISTENCE_ERROR.MISSING_DESIGN,
+      status: 404,
     });
   });
 
@@ -250,7 +250,7 @@ describe("identity survives a real round trip through the durable store", () => 
 
     await expect(
       service.getRevision({ userId: "user-b", designId: "design-a", revision: 1 })
-    ).rejects.toMatchObject({ code: PERSISTENCE_ERROR.UNAUTHORIZED });
+    ).rejects.toMatchObject({ code: PERSISTENCE_ERROR.MISSING_DESIGN });
   });
 });
 

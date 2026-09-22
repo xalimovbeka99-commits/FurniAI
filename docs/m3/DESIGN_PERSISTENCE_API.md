@@ -27,8 +27,8 @@ Every endpoint requires a Supabase access token:
 Authorization: Bearer <supabase-access-token>
 ```
 
-- Missing, malformed or empty → `401 MISSING_AUTH`.
-- Rejected by Supabase → `403 UNAUTHORIZED`.
+- Missing, malformed, empty **or rejected by Supabase** → `401 MISSING_AUTH`. An invalid
+  token is an authentication failure and says nothing about any particular design.
 - The token is used to resolve the caller **and** to query Postgres as that caller, so
   row-level security applies to every read and write. It is never logged, never returned,
   and never written into a design.
@@ -78,10 +78,23 @@ Read this section before writing any client code; most of the error cases follow
    saved record; the specId identifies the FurniSpec lineage inside it.
 5. **The server recomputes the fingerprint** from the submitted FurniSpec and rejects the
    save if it disagrees with the one you sent.
-6. **Retrying an identical save is safe.** Same revision + same fingerprint + same specId
-   returns the stored revision with `idempotentReplay: true` and HTTP `200`. Nothing is
-   created, nothing is overwritten.
-7. **Undo history stays client-side for the pilot.** Only accepted revisions are saved.
+6. **The server validates what you send, and that the parts agree with each other.** The
+   fingerprint proves the spec arrived intact; it proves nothing about whether the spec is
+   buildable or whether the PartGraph describes *that* spec. Every save runs the
+   authoritative `validateFurniSpec` and `validatePartGraph`, checks the graph's
+   `sourceSpecId`, `sourceRevision` and envelope against the spec, and refuses any graph
+   whose ledger records an `UNSUPPORTED` component. **The server never substitutes
+   recompiled geometry for what you sent** — it stores your PartGraph exactly, or refuses
+   the save.
+7. **Retrying an identical save is safe — and "identical" means every persisted field.**
+   Equivalence is a canonical digest over `specId`, `revision`, the FurniSpec fingerprint,
+   the PartGraph, `origins` and `validationStatus`. Key order does not matter. A true
+   replay returns the stored revision with `idempotentReplay: true` and HTTP `200`.
+
+   A request that matches the spec fingerprint but differs in PartGraph, provenance or
+   validation status is **not** a replay and is refused with `STALE_REVISION` — reporting it
+   as an exact save would be a false statement about what is in the database.
+8. **Undo history stays client-side for the pilot.** Only accepted revisions are saved.
 
 ### Concurrency, stated precisely
 
@@ -200,29 +213,33 @@ Every error body is `{ "ok": false, "code": "...", "error": "...", "details"?: {
 
 | Code | HTTP | When |
 |---|---|---|
-| `MISSING_AUTH` | 401 | No/invalid Bearer token |
-| `UNAUTHORIZED` | 403 | Token rejected, or a write refused by RLS |
-| `MISSING_DESIGN` | 404 | Unknown design or revision — **and cross-tenant reads, see below** |
+| `MISSING_AUTH` | 401 | No, malformed or rejected Bearer token |
+| `MISSING_DESIGN` | 404 | Unknown design or revision, **and any access to another owner's design — read or write** |
 | `STALE_REVISION` | 409 | `expectedPreviousRevision` ≠ latest; revision does not advance by 1; or a concurrent writer took the number first (`details.concurrent`) |
 | `CONFLICT_REVISION` | 409 | Store-level unique violation the service could not reclassify |
 | `CONFLICT_DESIGN` | 409 | Supplied `designId` already exists |
 | `FINGERPRINT_MISMATCH` | 409 | Body fingerprint ≠ recomputed, `details.expectedFingerprint` |
-| `INVALID_FURNISPEC` | 400 | Spec shape invalid or unfingerprintable |
-| `INVALID_PARTGRAPH` | 400 | PartGraph validation failed, `details.errors` |
-| `UNSUPPORTED_COMPONENT` | 400 | PartGraph contains an unsupported component |
+| `INVALID_FURNISPEC` | 400 | Spec shape invalid, unfingerprintable, **or rejected by `validateFurniSpec`** (`details.errors`) |
+| `INVALID_PARTGRAPH` | 400 | PartGraph validation failed (`details.errors`), **or it does not describe this spec** (`details.specId` / `details.envelope`) |
+| `UNSUPPORTED_COMPONENT` | 400 | The graph's ledger records a component the kernel could not represent (`details.unsupported`) |
 | `BAD_REQUEST` | 400 | Malformed body, missing `expectedPreviousRevision`, specId change, credential-shaped field |
 | `STORAGE_UNAVAILABLE` | 502 / 503 | The store failed or was unreachable |
 | `METHOD_NOT_ALLOWED` | 405 | Wrong verb |
 
-**Cross-tenant reads return 404, not 403.** Under RLS, PostgREST returns an empty result for
-rows the caller cannot see rather than an error, so another user's design is indistinguishable
-from one that does not exist. That is the safer behaviour (it does not confirm existence) and
-it is intentional. Writes into another user's design are refused by the WITH CHECK policy and
-surface as `403 UNAUTHORIZED`. **Treat both as "you cannot have this."**
+**There is no `403`. Another owner's design answers exactly as a nonexistent one: `404
+MISSING_DESIGN`, same status, same code, same message, on every endpoint, for reads and
+writes alike, in every store.**
 
-Note that the in-memory store used for local development returns `403 UNAUTHORIZED` for a
-cross-user read where the deployed path returns `404`. Do not branch UI behaviour on that
-difference.
+This is deliberate. A `403` for a real design and a `404` for a fabricated id is an
+existence oracle — anyone holding an id learns whether it belongs to a real customer. It
+also used to be a divergence: under RLS the deployed path already answered `404` (PostgREST
+returns an empty result for rows it hides rather than an error) while the in-memory store
+used locally answered `403`, so the cross-user test proved something the deployment did not
+do. Both now answer `404`, and `saveConsistency.test.js` asserts the two refusals are
+byte-identical.
+
+For the UI this simplifies to one rule: **`404` means "you cannot have this", without
+implying anything about whether it exists.** `401` remains the only "sign in again" signal.
 
 ---
 

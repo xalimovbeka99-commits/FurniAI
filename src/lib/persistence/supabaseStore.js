@@ -20,8 +20,9 @@
  * service-role key. The row-level security policies in schema.sql therefore
  * apply to each query: Postgres itself refuses to return or write another
  * user's rows. The ownership check in designService.js remains the first line
- * of defence and still produces the correct 403/404; this is the second,
- * independent one. A bug in the service layer cannot, on its own, expose one
+ * of defence and answers 404 — the same answer a nonexistent design gets, so
+ * neither layer reveals whether another customer's design exists; this is the
+ * second, independent one. A bug in the service layer cannot, on its own, expose one
  * customer's designs to another.
  *
  * A service-role key would defeat exactly that property, so this file never
@@ -124,14 +125,16 @@ export function createSupabaseDesignStore({ url, anonKey, accessToken, fetchImpl
     }
 
     if (res.status === 401 || res.status === 403) {
-      // RLS refused a WRITE (WITH CHECK). Note that RLS does NOT produce this
-      // on a read: PostgREST returns 200 with an empty array for rows the
-      // caller cannot see, so cross-tenant reads surface as "not found"
-      // rather than "forbidden". See concurrency.test.js.
+      // RLS refused a WRITE (WITH CHECK). RLS does NOT produce this on a read:
+      // PostgREST returns 200 with an empty array for rows the caller cannot
+      // see. Either way the caller is touching a design that is not theirs,
+      // and the answer must be the same one a nonexistent design gets —
+      // otherwise the write path becomes the existence oracle the read path
+      // deliberately is not.
       throw new PersistenceError(
-        PERSISTENCE_ERROR.UNAUTHORIZED,
-        "You cannot access this design.",
-        { status: 403 }
+        PERSISTENCE_ERROR.MISSING_DESIGN,
+        "That design was not found.",
+        { status: 404 }
       );
     }
     if (res.status === 409) {
