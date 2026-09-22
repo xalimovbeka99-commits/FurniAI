@@ -26,7 +26,9 @@ export default async function handler(req, res) {
         validationStatus: body?.validationStatus ?? null,
         expectedPreviousRevision: body?.expectedPreviousRevision,
       });
-      json(res, 201, out);
+      // 201 Created for a new revision; 200 for a replay of one already
+      // stored, which created nothing.
+      json(res, out?.idempotentReplay ? 200 : 201, out);
     });
   }
   return methodNotAllowed(res, "GET, POST");

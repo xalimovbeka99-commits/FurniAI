@@ -91,6 +91,17 @@ export function createSupabaseDesignStore({ url, anonKey, accessToken, fetchImpl
    * raw provider body — a Postgres error string can quote row contents.
    */
   async function rest(path, { method = "GET", body, prefer } = {}) {
+    // Which table and which kind of operation this is, so a failure can be
+    // described truthfully. The old mapping was blind to both: every 409
+    // became CONFLICT_REVISION ("that revision already exists and cannot be
+    // overwritten") even when a DESIGN id collided, and every failure —
+    // including a failed READ — told the customer "Your design was not
+    // saved", which on a reopen is simply untrue and sends them looking for
+    // work they never lost.
+    const table = String(path).split("?")[0];
+    const isWrite = method !== "GET";
+    const notSaved = isWrite ? " Your design was not saved." : "";
+
     let res;
     try {
       res = await doFetch(`${base}/rest/v1/${path}`, {
@@ -106,15 +117,17 @@ export function createSupabaseDesignStore({ url, anonKey, accessToken, fetchImpl
       });
     } catch {
       throw new PersistenceError(
-        PERSISTENCE_ERROR.BAD_REQUEST,
-        "The design store could not be reached. Your design was not saved.",
+        PERSISTENCE_ERROR.STORAGE_UNAVAILABLE,
+        `The design store could not be reached.${notSaved}`,
         { status: 503 }
       );
     }
 
     if (res.status === 401 || res.status === 403) {
-      // RLS refused. Deliberately indistinguishable from "not found" at the
-      // service boundary; see requireOwnedDesign in designService.js.
+      // RLS refused a WRITE (WITH CHECK). Note that RLS does NOT produce this
+      // on a read: PostgREST returns 200 with an empty array for rows the
+      // caller cannot see, so cross-tenant reads surface as "not found"
+      // rather than "forbidden". See concurrency.test.js.
       throw new PersistenceError(
         PERSISTENCE_ERROR.UNAUTHORIZED,
         "You cannot access this design.",
@@ -122,18 +135,28 @@ export function createSupabaseDesignStore({ url, anonKey, accessToken, fetchImpl
       );
     }
     if (res.status === 409) {
-      // unique (design_id, revision) — an immutable revision already exists.
+      if (table === REVISIONS) {
+        // unique (design_id, revision). The service decides whether this is a
+        // client replaying its own save or another writer having advanced the
+        // design first — those need different answers, and only the service
+        // can tell them apart.
+        throw new PersistenceError(
+          PERSISTENCE_ERROR.CONFLICT_REVISION,
+          "That revision already exists and cannot be overwritten.",
+          { status: 409 }
+        );
+      }
       throw new PersistenceError(
-        PERSISTENCE_ERROR.CONFLICT_REVISION,
-        "That revision already exists and cannot be overwritten.",
+        PERSISTENCE_ERROR.CONFLICT_DESIGN,
+        "A design with that id already exists.",
         { status: 409 }
       );
     }
     if (!res.ok) {
       throw new PersistenceError(
-        PERSISTENCE_ERROR.BAD_REQUEST,
-        "The design store rejected the request. Your design was not saved.",
-        { status: 502 }
+        PERSISTENCE_ERROR.STORAGE_UNAVAILABLE,
+        `The design store rejected the request.${notSaved}`,
+        { status: res.status >= 500 ? 503 : 502 }
       );
     }
     if (res.status === 204) return null;

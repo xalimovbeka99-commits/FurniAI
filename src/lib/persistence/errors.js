@@ -14,6 +14,15 @@ export const PERSISTENCE_ERROR = Object.freeze({
   INVALID_PARTGRAPH: "INVALID_PARTGRAPH",
   UNSUPPORTED_COMPONENT: "UNSUPPORTED_COMPONENT",
   BAD_REQUEST: "BAD_REQUEST",
+  /**
+   * The store itself failed or refused — unreachable, timed out, or answered
+   * an error we did not ask for. Distinct from BAD_REQUEST, which blames the
+   * caller: a 5xx carrying a 4xx-shaped code makes the class of failure
+   * unreadable in logs and sends the UI down the wrong branch.
+   */
+  STORAGE_UNAVAILABLE: "STORAGE_UNAVAILABLE",
+  /** A design id that already exists. NOT a revision conflict. */
+  CONFLICT_DESIGN: "CONFLICT_DESIGN",
 });
 
 export class PersistenceError extends Error {
@@ -41,8 +50,11 @@ function statusFor(code) {
       return 404;
     case PERSISTENCE_ERROR.STALE_REVISION:
     case PERSISTENCE_ERROR.CONFLICT_REVISION:
+    case PERSISTENCE_ERROR.CONFLICT_DESIGN:
     case PERSISTENCE_ERROR.FINGERPRINT_MISMATCH:
       return 409;
+    case PERSISTENCE_ERROR.STORAGE_UNAVAILABLE:
+      return 503;
     case PERSISTENCE_ERROR.INVALID_FURNISPEC:
     case PERSISTENCE_ERROR.INVALID_PARTGRAPH:
     case PERSISTENCE_ERROR.UNSUPPORTED_COMPONENT:

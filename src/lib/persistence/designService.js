@@ -103,6 +103,12 @@ export function createDesignService(deps = {}) {
       requireUser(userId);
       await requireOwnedDesign(store, userId, designId);
 
+      // The contract documents `"expectedPreviousRevision": null` for the
+      // first revision, which genuinely has no predecessor. Treat null and
+      // undefined alike, or a client following the documented example is
+      // rejected for saying "there is none" correctly.
+      if (expectedPreviousRevision === null) expectedPreviousRevision = undefined;
+
       const revNum = requirePositiveInt(revision, "revision");
       assertFurniSpec(furniSpec);
       assertPartGraph(partGraph);
@@ -125,7 +131,41 @@ export function createDesignService(deps = {}) {
         );
       }
 
+      // ---- Idempotent replay, checked BEFORE the sequence rules ----------
+      //
+      // The commonest real failure is not a race, it is a lost response: the
+      // insert commits, the reply never arrives, the client retries the
+      // identical body. Answering 409 there tells a customer their work was
+      // rejected when it is sitting safely in the database.
+      //
+      // "Identical" means the same revision number carrying the same
+      // FurniSpec fingerprint and the same specId. That is a replay of one
+      // write, not a second write, so returning the stored row mutates
+      // nothing and is truthful. It stays correct even if later revisions
+      // have since been saved, because a stored revision is immutable.
+      const alreadyStored = await store.getRevision(designId, revNum);
+      if (alreadyStored) {
+        const replay =
+          alreadyStored.fingerprint === expectedFp &&
+          (alreadyStored.furniSpec?.specId ?? null) === (furniSpec.specId ?? null);
+        if (replay) return idempotentResult(designId, alreadyStored);
+      }
+
       const latest = await store.getLatestRevision(designId);
+
+      // ---- Compare-and-swap intent is mandatory after the first revision --
+      //
+      // `expectedPreviousRevision` was optional, so a client could append
+      // blind and skip the only thing that makes a concurrent write safe.
+      // Nothing in the system could tell a considered append from a guess.
+      if (latest && expectedPreviousRevision === undefined) {
+        throw new PersistenceError(
+          PERSISTENCE_ERROR.BAD_REQUEST,
+          "expectedPreviousRevision is required when the design already has a saved revision. Send the revision number you are building on.",
+          { status: 400, details: { latestRevision: latest.revision } }
+        );
+      }
+
       if (latest) {
         const prevSpecId = latest.furniSpec?.specId;
         const nextSpecId = furniSpec.specId;
@@ -167,28 +207,65 @@ export function createDesignService(deps = {}) {
         );
       }
 
-      const existing = await store.getRevision(designId, revNum);
-      if (existing) {
+      // ---- The write, and the only real serialization point ---------------
+      //
+      // Every check above reads before it acts, so two writers can both pass
+      // all of them. None of that is mutual exclusion. The ONE thing that
+      // actually decides which writer takes a revision number is
+      // `unique (design_id, revision)` in the database — and a constraint on
+      // its own only guarantees that one row exists, not that the loser is
+      // told anything useful. The checks above exist to produce good errors
+      // in the common sequential case; the constraint produces the guarantee;
+      // the catch below translates its verdict truthfully.
+      let saved;
+      try {
+        saved = await store.appendRevision({
+          designId,
+          revision: revNum,
+          fingerprint: expectedFp,
+          furniSpec,
+          partGraph,
+          origins,
+          validationStatus:
+            typeof validationStatus === "string" && validationStatus.trim()
+              ? validationStatus.trim()
+              : "ACCEPTED",
+          createdAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        if (err?.code !== PERSISTENCE_ERROR.CONFLICT_REVISION) throw err;
+
+        // Someone got here first, between our checks and our insert. Read
+        // back what they wrote to say which of two very different things
+        // happened.
+        const winner = await store.getRevision(designId, revNum);
+        if (
+          winner &&
+          winner.fingerprint === expectedFp &&
+          (winner.furniSpec?.specId ?? null) === (furniSpec.specId ?? null)
+        ) {
+          // Our own write, replayed — or an identical concurrent one. Either
+          // way the stored revision is exactly what this caller asked for.
+          return idempotentResult(designId, winner);
+        }
+        // A different design took this revision number while we were in
+        // flight. This caller has nothing to overwrite and did nothing wrong;
+        // their view of the design is simply out of date. Reporting
+        // CONFLICT_REVISION here would tell the UI the customer tried to
+        // overwrite their own work.
         throw new PersistenceError(
-          PERSISTENCE_ERROR.CONFLICT_REVISION,
-          "That revision already exists and cannot be overwritten.",
-          { status: 409 }
+          PERSISTENCE_ERROR.STALE_REVISION,
+          "Another revision was saved first. Reload the design and try again.",
+          {
+            status: 409,
+            details: {
+              latestRevision: winner?.revision ?? revNum,
+              requestedRevision: revNum,
+              concurrent: true,
+            },
+          }
         );
       }
-
-      const saved = await store.appendRevision({
-        designId,
-        revision: revNum,
-        fingerprint: expectedFp,
-        furniSpec,
-        partGraph,
-        origins,
-        validationStatus:
-          typeof validationStatus === "string" && validationStatus.trim()
-            ? validationStatus.trim()
-            : "ACCEPTED",
-        createdAt: new Date().toISOString(),
-      });
 
       return {
         ok: true,
@@ -199,6 +276,23 @@ export function createDesignService(deps = {}) {
         validationStatus: saved.validationStatus,
       };
     },
+  };
+}
+
+/**
+ * The answer to a save that was already stored. Shaped exactly like a fresh
+ * save so a client needs no special path, plus `idempotentReplay: true` so
+ * one that wants to tell them apart can.
+ */
+function idempotentResult(designId, row) {
+  return {
+    ok: true,
+    designId,
+    revision: row.revision,
+    fingerprint: row.fingerprint,
+    createdAt: row.createdAt,
+    validationStatus: row.validationStatus ?? null,
+    idempotentReplay: true,
   };
 }
 
