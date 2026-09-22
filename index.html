@@ -3,28 +3,28 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FurniAI â€” Custom furniture, built to the millimetre</title>
+<title>FurniAI — Custom furniture, built to the millimetre</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,400..600&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <script>
-/* Boot-failure guard (M1.1) â€” must load BEFORE the main app script below.
+/* Boot-failure guard (M1.1) — must load BEFORE the main app script below.
    Three.js/Supabase are now same-origin vendored files (never fetched from
    a third-party CDN at runtime), so a network-caused blank Builder should
    no longer be reachable at all. This stays as defense-in-depth: several
    of the app's top-level statements (e.g. `new THREE.Group()`) run at
-   script-parse time, outside any function â€” if THREE were ever undefined
+   script-parse time, outside any function — if THREE were ever undefined
    for any reason (a future regression, a corrupted deploy), that throw
    happens before the main script defines boot() or anything else, so a
    try/catch *inside* that same script cannot catch it. A separate,
    earlier global error listener is the only mechanism that can. */
-/* Single shared entry point for any FATAL 3D-initialization failure â€” both
+/* Single shared entry point for any FATAL 3D-initialization failure — both
    this file's own top-level-statement guard (below) and Builder.init()'s
    catch block (see the protected Builder object further down) call this
    SAME function, so there is exactly one failure-panel implementation, not
    two that can drift. Hero/gallery WebGL failures are deliberately NOT
    fatal (a missing hero animation or missing thumbnails still leaves a
-   usable landing page) and do not call this â€” they keep their existing
+   usable landing page) and do not call this — they keep their existing
    console.warn()-and-degrade behavior. Only a failure that prevents the
    specifically-requested experience (the Builder the user opened) shows
    this UI. Never includes a stack trace in the DOM; the real error is only
@@ -362,7 +362,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
   .draw{stroke-dashoffset:0}
   .dimlayer .fade{opacity:.7}
 }
-/* â”€â”€ Factory Order Modal â”€â”€ */
+/* ── Factory Order Modal ── */
 .om-overlay{position:fixed;inset:0;background:rgba(28,30,33,.78);backdrop-filter:blur(8px);z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px}
 .om-box{background:#FAF9F5;border-radius:18px;width:min(660px,100%);max-height:92vh;display:flex;flex-direction:column;box-shadow:0 32px 80px rgba(0,0,0,.28)}
 .om-head{display:flex;justify-content:space-between;align-items:center;padding:20px 26px 18px;border-bottom:1px solid #EDE8DC}
@@ -393,7 +393,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 .om-btn-engine{background:#00B4D8;color:#fff}
 .om-btn-print{background:#F4F2EB;color:#1C1E21;border:1px solid #DFD9CC}
 .om-btn-wa{background:#25D366;color:#fff}
-/* â”€â”€ Auth â”€â”€ */
+/* ── Auth ── */
 .auth-overlay{position:fixed;inset:0;background:rgba(28,30,33,.78);backdrop-filter:blur(8px);z-index:9500;display:flex;align-items:center;justify-content:center;padding:16px}
 .auth-box{background:#FAF9F5;border-radius:18px;width:min(400px,100%);padding:32px 28px;box-shadow:0 32px 80px rgba(0,0,0,.28);position:relative}
 .auth-close{position:absolute;top:16px;right:16px;background:none;border:none;cursor:pointer;font-size:16px;color:#5C626E;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center}
@@ -412,7 +412,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 .auth-toggle{text-align:center;margin-top:16px;font-size:12.5px;color:#5C626E}
 .auth-toggle a{color:var(--brass);cursor:pointer;font-weight:600}
 .auth-error{font-size:12px;color:#c0392b;margin-top:8px;min-height:16px}
-/* â”€â”€ My Projects â”€â”€ */
+/* ── My Projects ── */
 #view-projects{position:fixed;inset:0;z-index:200;background:var(--paper);overflow:hidden}
 .projects-grid{flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;padding:4px}
 .project-card{border:1px solid var(--line-soft);border-radius:14px;padding:16px;cursor:pointer;transition:border-color .2s;position:relative;background:#fff}
@@ -457,7 +457,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 .ai-drawer .ai-msgs{padding:14px;min-height:120px;max-height:280px}
 .ai-drawer .ai-inputrow{padding:10px 14px}
 @media (max-width:720px){.ai-drawer{right:10px;left:10px;width:auto}}
-/* Mobile AI overrides â€” placed after the base .ai-* rules above so they actually win the cascade
+/* Mobile AI overrides — placed after the base .ai-* rules above so they actually win the cascade
    (equal specificity + later source order beats being nested in an earlier media query) */
 @media(max-width:680px){
   .ai-fab{right:16px;bottom:calc(84px + env(safe-area-inset-bottom))}
@@ -469,6 +469,31 @@ footer ul a:hover{opacity:1;color:var(--brass)}
   .ai-inputrow input,.ai-send{min-height:46px}
   .ai-chip{padding:9px 13px;font-size:11.5px;min-height:38px}
 }
+
+/* Studio Redesign: Hide obsolete floating drawer and catalog cycling in custom/parametric mode */
+.ai-fab, .ai-drawer { display: none !important; }
+.b-main.custom-type ~ .b-nav .b-nav-btn,
+.b-main.custom-type ~ .b-nav .b-nav-pos,
+.b-main.ai-wardrobe-mode ~ .b-top .b-nav-btn,
+.b-main.ai-wardrobe-mode ~ .b-top .b-nav-pos { display: none !important; }
+.custom-type .b-nav-btn, .custom-type .b-nav-pos { display: none !important; }
+#view-builder .b-nav-btn.hidden-mode, #view-builder .b-nav-pos.hidden-mode { display: none !important; }
+
+/* Studio Redesign: Panel sizing & 3D Prominence */
+@media (min-width: 1001px) {
+  .b-main.ai-wardrobe-mode .b-panel.left { width: 370px; flex-shrink: 0; }
+  .b-main.ai-wardrobe-mode .b-panel.right { width: 300px; flex-shrink: 0; }
+  .b-main.ai-wardrobe-mode .b-stage { flex: 1; min-width: 0; }
+}
+
+/* Studio Redesign: Mobile 390px input & keyboard ergonomics */
+@media (max-width: 680px) {
+  .b-panel { max-height: 52vh; padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
+  #aiConversationalInput { min-height: 44px; font-size: 13px; }
+  #aiConversationalSendBtn { min-height: 44px; min-width: 68px; font-size: 12px; }
+  .ai-refine-chip { min-height: 36px; padding: 6px 12px; }
+}
+
 </style>
 </head>
 <body>
@@ -476,14 +501,14 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 <!-- ===================== LANDING ===================== -->
 <div id="view-landing">
 <header id="hd">
-  <div class="brand" onclick="go('#/')">Furni<b>AI</b> <span class="tag">DXB Â· made to measure</span></div>
+  <div class="brand" onclick="go('#/')">Furni<b>AI</b> <span class="tag">DXB · made to measure</span></div>
   <nav>
     <a href="#how" class="lnk">How it works</a>
     <a href="#gallery" class="lnk">Gallery</a>
     <a href="#built" class="lnk">Built to spec</a>
     <a href="#materials" class="lnk">Materials</a>
     <div class="nav-cta">
-      <button class="btn" id="createWithFurniAiNavBtn" onclick="go('#/build/ai-wardrobe')">Design with AI <span class="arr">â†’</span></button>
+      <button class="btn" id="createWithFurniAiNavBtn" onclick="go('#/build/ai-wardrobe')">Design with AI <span class="arr">→</span></button>
       <a href="#gallery" class="btn ghost">Browse</a>
       <button class="btn ghost" onclick="go('#/build/0')">Start designing</button>
       <button class="btn ghost" id="authBtn" onclick="openAuthModal()">Sign in</button>
@@ -500,18 +525,18 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 <section class="hero wrap">
   <div class="hero-grid">
     <div>
-      <span class="eyebrow reveal">Custom furniture Â· UAE workshop</span>
+      <span class="eyebrow reveal">Custom furniture · UAE workshop</span>
       <h1 class="reveal">Furniture you can <em>measure</em> before it exists.</h1>
-      <p class="lede reveal">Pick a piece, shape it on screen â€” width, doors, drawers, finish â€” and watch the model update with it. What you approve is cut to the millimetre in our workshop. Same look, made to your measurements.</p>
+      <p class="lede reveal">Pick a piece, shape it on screen — width, doors, drawers, finish — and watch the model update with it. What you approve is cut to the millimetre in our workshop. Same look, made to your measurements.</p>
       <div class="hero-actions reveal">
-        <button class="btn lg" id="createWithFurniAiHeroBtn" onclick="go('#/build/ai-wardrobe')">âœ¦ Design with AI <span class="arr">â†’</span></button>
-        <button class="btn ghost lg" id="designWithAiSecondaryBtn" onclick="startAIDesigner()">âœ¦ Design with AI</button>
+        <button class="btn lg" id="createWithFurniAiHeroBtn" onclick="go('#/build/ai-wardrobe')">✦ Design with AI <span class="arr">→</span></button>
+        <button class="btn ghost lg" id="designWithAiSecondaryBtn" onclick="startAIDesigner()">✦ Design with AI</button>
         <button class="btn ghost lg" onclick="go('#/build/0')">Browse the catalog</button>
       </div>
       <div class="spec-strip reveal">
         <div class="item"><span class="n">8</span><span class="l">Type families</span></div>
         <div class="item"><span class="n">480+</span><span class="l">Configurations</span></div>
-        <div class="item"><span class="n">Â±1mm</span><span class="l">Cut tolerance</span></div>
+        <div class="item"><span class="n">±1mm</span><span class="l">Cut tolerance</span></div>
         <div class="item"><span class="n">CNC</span><span class="l">Production-ready</span></div>
       </div>
     </div>
@@ -519,7 +544,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
       <div class="stage-shell">
         <canvas id="hero3d"></canvas>
         <svg class="dimlayer" id="dimsvg" viewBox="0 0 500 520" preserveAspectRatio="none"></svg>
-        <div class="stage-tag">WARDROBE Â· 2400 Ã— 2400 Ã— 600 mm Â· <b>oak</b></div>
+        <div class="stage-tag">WARDROBE · 2400 × 2400 × 600 mm · <b>oak</b></div>
       </div>
     </div>
   </div>
@@ -527,8 +552,8 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 
 <div class="ticker" aria-hidden="true">
   <div class="ticker-track">
-    <span class="it">Parametric, not hardcoded<span class="dot">â—†</span>Cut list on every order<span class="dot">â—†</span>Walnut Â· Oak Â· Graphite<span class="dot">â—†</span>Glass &amp; mirror doors<span class="dot">â—†</span>Soft-close drawers<span class="dot">â—†</span>Warm LED lighting<span class="dot">â—†</span>Made in the UAE<span class="dot">â—†</span></span>
-    <span class="it">Parametric, not hardcoded<span class="dot">â—†</span>Cut list on every order<span class="dot">â—†</span>Walnut Â· Oak Â· Graphite<span class="dot">â—†</span>Glass &amp; mirror doors<span class="dot">â—†</span>Soft-close drawers<span class="dot">â—†</span>Warm LED lighting<span class="dot">â—†</span>Made in the UAE<span class="dot">â—†</span></span>
+    <span class="it">Parametric, not hardcoded<span class="dot">◆</span>Cut list on every order<span class="dot">◆</span>Walnut · Oak · Graphite<span class="dot">◆</span>Glass &amp; mirror doors<span class="dot">◆</span>Soft-close drawers<span class="dot">◆</span>Warm LED lighting<span class="dot">◆</span>Made in the UAE<span class="dot">◆</span></span>
+    <span class="it">Parametric, not hardcoded<span class="dot">◆</span>Cut list on every order<span class="dot">◆</span>Walnut · Oak · Graphite<span class="dot">◆</span>Glass &amp; mirror doors<span class="dot">◆</span>Soft-close drawers<span class="dot">◆</span>Warm LED lighting<span class="dot">◆</span>Made in the UAE<span class="dot">◆</span></span>
   </div>
 </div>
 
@@ -539,9 +564,9 @@ footer ul a:hover{opacity:1;color:var(--brass)}
   </div>
   <div class="pipeline reveal">
     <div class="step"><span class="num">01</span><h3>Browse</h3><p>Open the gallery of wardrobes, kitchens, walk-ins and more. Filter by room, style and size.</p><span class="ai">AI helps you find it</span></div>
-    <div class="step"><span class="num">02</span><h3>Customise</h3><p>Adjust width, height, depth, doors, drawers, handles and finish. The 3D model updates on every change.</p><span class="ai no">No AI â€” exact maths</span></div>
-    <div class="step"><span class="num">03</span><h3>Review &amp; lock</h3><p>Lock the design. The exact configuration you reviewed is frozen to your order â€” nothing drifts after.</p><span class="ai no">No AI â€” frozen config</span></div>
-    <div class="step"><span class="num">04</span><h3>We build</h3><p>The system generates a cut list and a production pack in millimetres. The workshop cuts, drills and assembles.</p><span class="ai no">No AI â€” deterministic</span></div>
+    <div class="step"><span class="num">02</span><h3>Customise</h3><p>Adjust width, height, depth, doors, drawers, handles and finish. The 3D model updates on every change.</p><span class="ai no">No AI — exact maths</span></div>
+    <div class="step"><span class="num">03</span><h3>Review &amp; lock</h3><p>Lock the design. The exact configuration you reviewed is frozen to your order — nothing drifts after.</p><span class="ai no">No AI — frozen config</span></div>
+    <div class="step"><span class="num">04</span><h3>We build</h3><p>The system generates a cut list and a production pack in millimetres. The workshop cuts, drills and assembles.</p><span class="ai no">No AI — deterministic</span></div>
   </div>
 </section>
 
@@ -559,17 +584,17 @@ footer ul a:hover{opacity:1;color:var(--brass)}
       <div class="copy">
         <span class="eyebrow">The honest part</span>
         <h2>Rendered means nothing. <em>Built</em> is the whole point.</h2>
-        <p>A 3D viewer is easy. The hard, valuable thing is that what you see can actually be cut and assembled. So the model and the cut data all come from the same parameters â€” generated by exact code, never guessed.</p>
+        <p>A 3D viewer is easy. The hard, valuable thing is that what you see can actually be cut and assembled. So the model and the cut data all come from the same parameters — generated by exact code, never guessed.</p>
         <div class="pts">
-          <div class="pt"><span class="k">01</span><span class="v"><b>Nothing shown that can't be built.</b> Every model is made of real, cuttable panels â€” by construction.</span></div>
-          <div class="pt"><span class="k">02</span><span class="v"><b>One set of numbers, everywhere.</b> The model, the cut list and the production pack are generated from the same parameters â€” nothing re-typed, nothing re-drawn.</span></div>
+          <div class="pt"><span class="k">01</span><span class="v"><b>Nothing shown that can't be built.</b> Every model is made of real, cuttable panels — by construction.</span></div>
+          <div class="pt"><span class="k">02</span><span class="v"><b>One set of numbers, everywhere.</b> The model, the cut list and the production pack are generated from the same parameters — nothing re-typed, nothing re-drawn.</span></div>
           <div class="pt"><span class="k">03</span><span class="v"><b>Made to measure, not to a photo.</b> We match the look and start from sizes that work, then you confirm.</span></div>
         </div>
       </div>
       <div class="cutlist">
-        <div class="bar"><span>cutlist Â· order #FA-2041</span><span class="live"><span class="blip"></span>live</span></div>
-        <table class="cl"><thead><tr><th>Part</th><th>Material</th><th>LÃ—W (mm)</th><th>Qty</th></tr></thead><tbody id="clBody"></tbody></table>
-        <div class="foot"><span>units: mm</span><span>edge-banded âœ“</span><span>BAZIS-ready</span></div>
+        <div class="bar"><span>cutlist · order #FA-2041</span><span class="live"><span class="blip"></span>live</span></div>
+        <table class="cl"><thead><tr><th>Part</th><th>Material</th><th>L×W (mm)</th><th>Qty</th></tr></thead><tbody id="clBody"></tbody></table>
+        <div class="foot"><span>units: mm</span><span>edge-banded ✓</span><span>BAZIS-ready</span></div>
       </div>
     </div>
   </div>
@@ -587,7 +612,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
   <span class="eyebrow reveal" style="justify-content:center">Ready when you are</span>
   <h2 class="reveal">Design it tonight. <em>We'll cut it</em> this week.</h2>
   <div class="row reveal">
-    <button class="btn lg" onclick="go('#/build/0')">Open the configurator <span class="arr">â†’</span></button>
+    <button class="btn lg" onclick="go('#/build/0')">Open the configurator <span class="arr">→</span></button>
     <a href="#top" class="btn ghost lg">Back to top</a>
   </div>
 </section>
@@ -597,13 +622,13 @@ footer ul a:hover{opacity:1;color:var(--brass)}
     <div class="foot-grid">
       <div>
         <div class="brand">Furni<b>AI</b></div>
-        <p class="about">Custom furniture designed on screen and built to the millimetre in our UAE workshop. A design is data â€” so it stays buildable from first click to final cut.</p>
+        <p class="about">Custom furniture designed on screen and built to the millimetre in our UAE workshop. A design is data — so it stays buildable from first click to final cut.</p>
       </div>
       <div><h4>Product</h4><ul><li><a href="#gallery">Gallery</a></li><li><a href="#how">How it works</a></li><li><a href="javascript:go('#/build/0')">Configurator</a></li><li><a href="#materials">Materials</a></li></ul></div>
       <div><h4>Pieces</h4><ul><li><a href="#gallery">Wardrobes</a></li><li><a href="#gallery">Kitchens</a></li><li><a href="#gallery">Walk-ins</a></li><li><a href="#gallery">Vanities</a></li></ul></div>
       <div><h4>Workshop</h4><ul><li><a href="#top">About</a></li><li><a href="#top">Delivery zones</a></li><li><a href="#top">Trade enquiries</a></li><li><a href="#top">Contact</a></li></ul></div>
     </div>
-    <div class="foot-base"><span>Â© 2026 FurniAI Â· Dubai, UAE</span><span>cut to Â±1 mm Â· built to spec</span></div>
+    <div class="foot-base"><span>© 2026 FurniAI · Dubai, UAE</span><span>cut to ±1 mm · built to spec</span></div>
   </div>
 </footer>
 </div><!-- /view-landing -->
@@ -613,7 +638,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
   <div class="ai-wrap">
     <div class="ai-head">
       <div class="ai-brand">Furni<b>AI</b> Designer</div>
-      <button class="ai-back" onclick="go('#/')">â† Back</button>
+      <button class="ai-back" onclick="go('#/')">← Back</button>
     </div>
     <div class="ai-chat">
       <div class="ai-msgs" id="aiMsgs"></div>
@@ -623,11 +648,11 @@ footer ul a:hover{opacity:1;color:var(--brass)}
         <button class="ai-chip">Build a luxury TV unit with LED lighting</button>
         <button class="ai-chip">Create a walk-in wardrobe with glass doors</button>
       </div>
-      <div class="ai-img-preview" id="aiImgPreview" hidden><img id="aiImgPreviewThumb"><button id="aiImgPreviewRemove" title="Remove photo">âœ•</button></div>
+      <div class="ai-img-preview" id="aiImgPreview" hidden><img id="aiImgPreviewThumb"><button id="aiImgPreviewRemove" title="Remove photo">✕</button></div>
       <div class="ai-inputrow">
-        <button class="ai-attach" id="aiAttachBtn" title="Attach a photo of furniture">ðŸ“·</button>
+        <button class="ai-attach" id="aiAttachBtn" title="Attach a photo of furniture">📷</button>
         <input type="file" id="aiImgInput" accept="image/*" hidden>
-        <input type="text" id="aiInput" placeholder="Describe the furniture you want, or attach a photoâ€¦">
+        <input type="text" id="aiInput" placeholder="Describe the furniture you want, or attach a photo…">
         <button class="ai-send" id="aiSend">Send</button>
       </div>
     </div>
@@ -639,13 +664,13 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 <div id="view-builder" hidden>
   <div class="b-top">
     <div class="left">
-      <div class="b-back" onclick="go('#/')">â† <span>Gallery</span></div>
+      <div class="b-back" onclick="go('#/')">← <span>Gallery</span></div>
       <div class="b-title"><span class="t" id="bType">wardrobe</span><span id="bName">Glass Wardrobe</span></div>
     </div>
     <div id="parametricBadge" class="parametric-badge" hidden>
       <span class="p-tag">PARAMETRIC PARTGRAPH</span>
       <span class="p-spec" id="pSpecId">furnispec-golden-wardrobe-01</span>
-      <span class="p-dims" id="pDims">1800 Ã— 2400 Ã— 600 mm</span>
+      <span class="p-dims" id="pDims">1800 × 2400 × 600 mm</span>
       <span class="p-parts" id="pParts">19 structural panels</span>
       <span class="p-pill">WORKSHOP REVIEW</span>
       <span class="p-pill alert">CNC: NOT QUALIFIED</span>
@@ -659,7 +684,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
         <div id="mfgMenuDropdown" class="mfg-menu-dropdown">
           <div class="mfg-menu-header">Blueprints &amp; Technical 2D</div>
           <button type="button" class="mfg-menu-item" id="btnExportShopDrawings" onclick="handleExportShopDrawings('SVG')">📐 Shop Blueprints (SVG)</button>
-          <button type="button" class="mfg-menu-item" id="btnExportShopDrawingsPdf" onclick="handleExportShopDrawings('PDF')">📄 Shop Blueprints (Print / Save as PDF)</button>
+          <button type="button" class="mfg-menu-item" id="btnExportShopDrawingsPdf" onclick="handleExportShopDrawings('PDF')" title="Open browser print preview to print drawings or save as PDF">📄 Shop Blueprints (Print / Save as PDF)</button>
           <div class="mfg-menu-divider"></div>
           <div class="mfg-menu-header">Fabrication &amp; CNC</div>
           <button type="button" class="mfg-menu-item" id="btnExportCncDxf" onclick="handleExportCncDxfZip()">📦 CNC Package (DXF ZIP)</button>
@@ -776,10 +801,10 @@ footer ul a:hover{opacity:1;color:var(--brass)}
         <option value="solid">Solid panel</option><option value="glass">Glass panel</option>
         <option value="mirror">Full mirror</option><option value="open">Open (no door)</option>
       </select></div>
-      <div class="b-custom-note custom-only">This is a custom, AI-composed design â€” use the chat to change its shape (add/remove/move parts). Material still applies below.</div>
+      <div class="b-custom-note custom-only">This is a custom, AI-composed design — use the chat to change its shape (add/remove/move parts). Material still applies below.</div>
       <div class="b-ptitle">Preview</div>
-      <button class="b-act" id="toggle-doors">âŠŸ Open / close doors</button>
-      <button class="b-act" id="toggle-drawers">âŠ¡ Open / close drawers</button>
+      <button class="b-act" id="toggle-doors">⊟ Open / close doors</button>
+      <button class="b-act" id="toggle-drawers">⊡ Open / close drawers</button>
     </aside>
 
     <div class="b-mobile-tabs">
@@ -789,8 +814,8 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 
     <div class="b-stage">
       <canvas id="bld3d"></canvas>
-      <div class="b-hint">Click or tap a door / drawer to open Â· drag to orbit</div>
-      <div class="b-dims-tag" id="bDimsTag">2400 Ã— 2400 Ã— 600 <b>mm</b></div>
+      <div class="b-hint">Click or tap a door / drawer to open · drag to orbit</div>
+      <div class="b-dims-tag" id="bDimsTag">2400 × 2400 × 600 <b>mm</b></div>
     </div>
 
     <aside class="b-panel right">
@@ -799,7 +824,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
         <div class="b-ptitle" style="margin-top:0;">Panel Inspection</div>
         <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;">
           <div class="p-pill alert" id="badgeCncSafety" style="text-align:center;padding:5px 8px;font-size:9.5px;font-weight:700;">
-            WORKSHOP REVIEW â€” NOT CNC QUALIFIED
+            WORKSHOP REVIEW — NOT CNC QUALIFIED
           </div>
           <div class="p-pill alert" id="badgeDrillingBlocked" style="text-align:center;padding:5px 8px;font-size:9.5px;font-weight:700;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;">
             HARDWARE DRILLING: BLOCKED
@@ -807,10 +832,10 @@ footer ul a:hover{opacity:1;color:var(--brass)}
         </div>
         <div class="om-summary" style="padding:10px 12px;gap:6px 10px;font-size:11px;">
           <div class="om-k">Selected Part</div><div class="om-v" id="inspectPartId">None selected</div>
-          <div class="om-k">Finished LÃ—WÃ—T</div><div class="om-v" id="inspectFinishedDims">â€”</div>
-          <div class="om-k">Raw Cut LÃ—WÃ—T</div><div class="om-v" id="inspectRawDims">â€”</div>
-          <div class="om-k">Material</div><div class="om-v" id="inspectMaterial">â€”</div>
-          <div class="om-k">Edge-Banding</div><div class="om-v" id="inspectEdgeBanding">â€”</div>
+          <div class="om-k">Finished L×W×T</div><div class="om-v" id="inspectFinishedDims">—</div>
+          <div class="om-k">Raw Cut L×W×T</div><div class="om-v" id="inspectRawDims">—</div>
+          <div class="om-k">Material</div><div class="om-v" id="inspectMaterial">—</div>
+          <div class="om-k">Edge-Banding</div><div class="om-v" id="inspectEdgeBanding">—</div>
         </div>
         <div style="font-size:11px;color:var(--ink-soft);margin-top:8px;margin-bottom:12px;font-style:italic;">
           Click or tap any door or structural panel in the 3D stage to inspect its cutting dimensions.
@@ -833,18 +858,18 @@ footer ul a:hover{opacity:1;color:var(--brass)}
         <option value="warm">Warm white</option><option value="cool">Cool white</option><option value="off">Off</option>
       </select></div>
       <div class="b-ptitle">Production</div>
-      <div class="b-cta-row"><button class="b-act" id="bSave">ðŸ’¾ Save design</button><button class="b-finish" id="bFinish">Generate production documents</button></div>
+      <div class="b-cta-row"><button class="b-act" id="bSave">💾 Save design</button><button class="b-finish" id="bFinish">Generate production documents</button></div>
     </aside>
   </div>
-  <button class="ai-fab" id="aiFab" title="Ask AI to modify this design">âœ¦ Ask AI</button>
+  <button class="ai-fab" id="aiFab" title="Ask AI to modify this design">✦ Ask AI</button>
   <div class="ai-drawer" id="aiDrawer" hidden>
-    <div class="ai-drawer-head"><span>AI Designer</span><button id="aiDrawerClose">âœ•</button></div>
+    <div class="ai-drawer-head"><span>AI Designer</span><button id="aiDrawerClose">✕</button></div>
     <div class="ai-msgs" id="aiDrawerMsgs"></div>
-    <div class="ai-img-preview" id="aiDrawerImgPreview" hidden><img id="aiDrawerImgPreviewThumb"><button id="aiDrawerImgPreviewRemove" title="Remove photo">âœ•</button></div>
+    <div class="ai-img-preview" id="aiDrawerImgPreview" hidden><img id="aiDrawerImgPreviewThumb"><button id="aiDrawerImgPreviewRemove" title="Remove photo">✕</button></div>
     <div class="ai-inputrow">
-      <button class="ai-attach" id="aiDrawerAttachBtn" title="Attach a photo of furniture">ðŸ“·</button>
+      <button class="ai-attach" id="aiDrawerAttachBtn" title="Attach a photo of furniture">📷</button>
       <input type="file" id="aiDrawerImgInput" accept="image/*" hidden>
-      <input type="text" id="aiDrawerInput" placeholder="e.g. make it wider, add a drawerâ€¦">
+      <input type="text" id="aiDrawerInput" placeholder="e.g. make it wider, add a drawer…">
       <button class="ai-send" id="aiDrawerSend">Send</button>
     </div>
   </div>
@@ -1018,7 +1043,7 @@ const MATKEYS=['oak','walnut','white','grey','taupe','cream','black','navy','sag
 window.MAT=MAT;window.MATKEYS=MATKEYS;
 
 /* ===== landing: cut list ===== */
-const CL=[['Side panel L','Oak 18mm','2382 Ã— 582','2'],['Top / bottom','Oak 18mm','2364 Ã— 582','2'],['Back panel','MDF 6mm','2364 Ã— 2346','1'],['Shelf','Oak 18mm','582 Ã— 564','4'],['Door â€” glass','Alu + glass','1180 Ã— 596','4'],['Drawer front','Oak 18mm','582 Ã— 178','3'],['Drawer box side','Birch 12mm','540 Ã— 150','6'],['Plinth','Oak 18mm','2364 Ã— 80','1']];
+const CL=[['Side panel L','Oak 18mm','2382 × 582','2'],['Top / bottom','Oak 18mm','2364 × 582','2'],['Back panel','MDF 6mm','2364 × 2346','1'],['Shelf','Oak 18mm','582 × 564','4'],['Door — glass','Alu + glass','1180 × 596','4'],['Drawer front','Oak 18mm','582 × 178','3'],['Drawer box side','Birch 12mm','540 × 150','6'],['Plinth','Oak 18mm','2364 × 80','1']];
 const clb=document.getElementById('clBody');
 CL.forEach(r=>{const tr=document.createElement('tr');tr.innerHTML=`<td><b>${r[0]}</b></td><td>${r[1]}</td><td class="mm">${r[2]}</td><td>${r[3]}</td>`;clb.appendChild(tr)});
 
@@ -1159,20 +1184,20 @@ const grid=document.getElementById('galleryGrid');
 DESIGNS.forEach((g,i)=>{
   const card=document.createElement('div');card.className='card reveal';
   const typeLabel=g.type.replace(/_/g,' ');
-  card.innerHTML=`<div class="canvas-box"><div class="open-pill">Customise â†’</div><canvas></canvas></div>
+  card.innerHTML=`<div class="canvas-box"><div class="open-pill">Customise →</div><canvas></canvas></div>
     <div class="meta"><div class="type">${typeLabel}</div><h3>${g.name}</h3>
     <div class="dims"><span>W <b>${g.w}</b></span><span>H <b>${g.h}</b></span><span>D <b>${g.d}</b> cm</span></div></div>`;
   card.addEventListener('click',()=>go('#/build/'+i));
   grid.appendChild(card);io.observe(card);
 });
 
-// Shared, ownership-aware disposal for any Three.js Object3D subtree â€”
+// Shared, ownership-aware disposal for any Three.js Object3D subtree —
 // used by both the gallery's temporary thumbnail scenes and Builder.clear()
 // (see below), so there is exactly one implementation to keep correct
 // instead of two that can silently drift apart. A `Set` per dispose-call
 // guarantees each geometry/material/texture is disposed AT MOST ONCE even
 // when multiple meshes reference the same one (e.g. makeDrawer()'s shared
-// `cmat` across a drawer box's bottom/left/right/back panels) â€” calling
+// `cmat` across a drawer box's bottom/left/right/back panels) — calling
 // dispose() twice on the same resource is the exact class of bug this
 // exists to prevent. `_grainTex`/`_mirrorEnv` are the two global, cached,
 // cross-scene-lifetime assets (see grainTexture()/mirrorEnvMap()) and must
@@ -1301,7 +1326,7 @@ function initGalleryThumbnails(){
 }
 
 /* ============================================================
-   BUILDER â€” full parametric configurator (corner shapes, drawer boxes)
+   BUILDER — full parametric configurator (corner shapes, drawer boxes)
    ============================================================ */
 const Builder={
   ready:false, scene:null,cam:null,ren:null, parts:[],doorObjs:[],drawerObjs:[],
@@ -1327,7 +1352,7 @@ const Builder={
       this.ren.toneMappingExposure=1.05;
     }catch(err){
       // Fatal: the user specifically opened the Builder and it cannot
-      // start â€” unlike Hero/gallery WebGL failures (cosmetic, degrade
+      // start — unlike Hero/gallery WebGL failures (cosmetic, degrade
       // silently), this one must be visible rather than leave a blank
       // canvas with only a console warning nobody but a developer sees.
       console.error('Builder WebGL initialization failed:',err);
@@ -1870,7 +1895,7 @@ const Builder={
   },
 
   updateDimsTag(){const c=this.cfg;
-    document.getElementById('bDimsTag').innerHTML=`${c.w*10} Ã— ${c.h*10} Ã— ${c.d*10} <b>mm</b>`},
+    document.getElementById('bDimsTag').innerHTML=`${c.w*10} × ${c.h*10} × ${c.d*10} <b>mm</b>`},
 
   applyConfiguration(configuration){
     if(!configuration||typeof configuration!=='object'||Array.isArray(configuration))throw new TypeError('Builder configuration must be an object.');
@@ -1906,8 +1931,17 @@ const Builder={
       document.getElementById('bName').textContent='Golden Wardrobe';
       document.getElementById('bType').textContent='parametric';
       document.getElementById('bPos').textContent='ORACLE';
-      document.getElementById('bDimsTag').innerHTML='1800 Ã— 2400 Ã— 600 <b>mm</b>';
-      if(bm){bm.classList.add('custom-type');bm.classList.remove('ai-wardrobe-mode');}
+      document.getElementById('bDimsTag').innerHTML='1800 × 2400 × 600 <b>mm</b>';
+      if(bm){
+        bm.classList.add('custom-type');
+        bm.classList.remove('ai-wardrobe-mode');
+        const bPrev = document.getElementById('bPrev');
+        const bNext = document.getElementById('bNext');
+        const bPos = document.getElementById('bPos');
+        if(bPrev) bPrev.style.display = 'none';
+        if(bNext) bNext.style.display = 'none';
+        if(bPos) bPos.style.display = 'none';
+      }
       if(aiPanel)aiPanel.style.display='none';
       if(inspPanel)inspPanel.style.display='block';
       if(globalThis.PartGraphBridge&&typeof globalThis.PartGraphBridge.loadGoldenWardrobe==='function'){
@@ -1924,7 +1958,7 @@ const Builder={
       document.getElementById('bName').textContent='AI Parametric Wardrobe';
       document.getElementById('bType').textContent='conversation-to-3d';
       document.getElementById('bPos').textContent='AI';
-      document.getElementById('bDimsTag').innerHTML='1800 Ã— 2400 Ã— 600 <b>mm</b>';
+      document.getElementById('bDimsTag').innerHTML='1800 × 2400 × 600 <b>mm</b>';
       if(bm){
         bm.classList.add('custom-type');
         bm.classList.add('ai-wardrobe-mode');
@@ -1950,6 +1984,12 @@ const Builder={
     }
     this.isParametric=false;
     if(badge)badge.hidden=true;
+      const bPrev = document.getElementById('bPrev');
+      const bNext = document.getElementById('bNext');
+      const bPos = document.getElementById('bPos');
+      if(bPrev) bPrev.style.display = '';
+      if(bNext) bNext.style.display = '';
+      if(bPos) bPos.style.display = '';
     if(bm){bm.classList.remove('ai-wardrobe-mode');}
     if(aiPanel)aiPanel.style.display='none';
     if(inspPanel)inspPanel.style.display='none';
@@ -2180,13 +2220,13 @@ function resetInspectionPanel() {
   const elId = document.getElementById('inspectPartId');
   if (elId) elId.textContent = 'None selected';
   const elDims = document.getElementById('inspectFinishedDims');
-  if (elDims) elDims.textContent = 'â€”';
+  if (elDims) elDims.textContent = '—';
   const elRaw = document.getElementById('inspectRawDims');
-  if (elRaw) elRaw.textContent = 'â€”';
+  if (elRaw) elRaw.textContent = '—';
   const elMat = document.getElementById('inspectMaterial');
-  if (elMat) elMat.textContent = 'â€”';
+  if (elMat) elMat.textContent = '—';
   const elEdges = document.getElementById('inspectEdgeBanding');
-  if (elEdges) elEdges.textContent = 'â€”';
+  if (elEdges) elEdges.textContent = '—';
 }
 
 function selectPartForInspection(mesh) {
@@ -2200,9 +2240,9 @@ function selectPartForInspection(mesh) {
   const elDims = document.getElementById('inspectFinishedDims');
   if (elDims) {
     if (dims) {
-      elDims.textContent = `${dims.lengthMm} Ã— ${dims.widthMm} Ã— ${dims.thicknessMm} mm`;
+      elDims.textContent = `${dims.lengthMm} × ${dims.widthMm} × ${dims.thicknessMm} mm`;
     } else {
-      elDims.textContent = 'â€”';
+      elDims.textContent = '—';
     }
   }
 
@@ -2210,9 +2250,9 @@ function selectPartForInspection(mesh) {
   const elRaw = document.getElementById('inspectRawDims');
   if (elRaw) {
     if (raw) {
-      elRaw.textContent = `${raw.lengthMm} Ã— ${raw.widthMm} Ã— ${raw.thicknessMm} mm`;
+      elRaw.textContent = `${raw.lengthMm} × ${raw.widthMm} × ${raw.thicknessMm} mm`;
     } else {
-      elRaw.textContent = 'â€”';
+      elRaw.textContent = '—';
     }
   }
 
@@ -2998,11 +3038,11 @@ function generatePanelList(cfg){
   const mat=MAT[cfg.mat].label;const rows=[];
   const add=(name,material,w,h,thickness,qty,grain,edge)=>rows.push({name,material,w,h,thickness,qty,grain,edge});
   if(cfg.type==='custom'){
-    // No preset shape to reason about â€” one row per part, straight from
+    // No preset shape to reason about — one row per part, straight from
     // what the AI actually placed (see set_custom_design in api/chat.js).
     (cfg.parts||[]).forEach(p=>{
       const label=p.role.charAt(0).toUpperCase()+p.role.slice(1);
-      add(label,mat,Math.round(p.w*10),Math.round(p.h*10),Math.round(p.d*10),1,'â€”','â€”');
+      add(label,mat,Math.round(p.w*10),Math.round(p.h*10),Math.round(p.d*10),1,'—','—');
     });
   } else if(cfg.type==='wardrobe'||cfg.type==='bookshelf'){
     add('Side panel',mat,H,D,T,2,'Vertical','2 edges (front+bottom)');
@@ -3049,10 +3089,10 @@ function generatePanelList(cfg){
   }
   return rows;
 }
-// Real Blum Clip Top cup (Ã˜35mm, 13mm deep, 22.5mm in from the door edge).
+// Real Blum Clip Top cup (Ø35mm, 13mm deep, 22.5mm in from the door edge).
 // Count follows Blum's own placement algorithm: hinges start 100mm from the
 // door's top/bottom edge, with one more added past 1200mm and another past
-// 1800mm of door height â€” so this is keyed off each door PANEL's own height
+// 1800mm of door height — so this is keyed off each door PANEL's own height
 // (mm), not the overall cabinet height, which is what let a short kitchen
 // door (always well under 1200mm) get over-counted before.
 function hingeSpecFor(doorHeightMm){
@@ -3060,7 +3100,7 @@ function hingeSpecFor(doorHeightMm){
   if(doorHeightMm>1200)return{count:3,model:'Blum CLIP top BLUMOTION, full overlay, soft-close'};
   return{count:2,model:'Blum CLIP top BLUMOTION, full overlay, soft-close'};
 }
-// Slide model tier by bay size â€” a proxy for load (bigger drawers hold more),
+// Slide model tier by bay size — a proxy for load (bigger drawers hold more),
 // not a real fill/weight calculation, but a real supplier tier instead of one
 // generic "soft-close runner" line for every drawer regardless of size.
 function slideSpecFor(bayWidthMm,depthMm){
@@ -3068,7 +3108,7 @@ function slideSpecFor(bayWidthMm,depthMm){
   if(bayWidthMm>600||depthMm>550)return{model:'Blum Tandem plus 563H, full-extension, soft-close, undermount',loadKg:50};
   return{model:'Blum Tandem 550H, full-extension, soft-close, undermount',loadKg:30};
 }
-const HANDLE_PACK_SIZE=10; // placeholder â€” set to your real supplier's pack size
+const HANDLE_PACK_SIZE=10; // placeholder — set to your real supplier's pack size
 function generateHardwareList(cfg,panels){
   const hw=[];
   const doorPanels=panels.filter(p=>/door/i.test(p.name)&&!/drawer/i.test(p.name));
@@ -3076,11 +3116,11 @@ function generateHardwareList(cfg,panels){
   const shelfQty=cfg.shelves||0;
   doorPanels.forEach(p=>{
     const h=hingeSpecFor(p.h);
-    hw.push({name:'Concealed hinges â€” '+h.model,qty:p.qty*h.count,note:h.count+' per door ('+Math.round(p.h)+'mm tall)'});
+    hw.push({name:'Concealed hinges — '+h.model,qty:p.qty*h.count,note:h.count+' per door ('+Math.round(p.h)+'mm tall)'});
   });
   drawerFrontPanels.forEach(p=>{
     const s=slideSpecFor(p.w,cfg.d*10);
-    hw.push({name:'Drawer slides â€” '+s.model,qty:p.qty,note:'1 pair per drawer, rated '+s.loadKg+'kg'});
+    hw.push({name:'Drawer slides — '+s.model,qty:p.qty,note:'1 pair per drawer, rated '+s.loadKg+'kg'});
   });
   if(shelfQty>0)hw.push({name:'Shelf support pegs',qty:shelfQty*4,note:'4 per shelf'});
   if(cfg.handle&&cfg.handle!=='none'){
@@ -3089,7 +3129,7 @@ function generateHardwareList(cfg,panels){
     const qty=doorQty+drawerQty;
     if(qty>0){
       const packs=Math.ceil(qty/HANDLE_PACK_SIZE);
-      hw.push({name:label,qty,note:'1 per door/drawer â€” order '+packs+' pack(s) of '+HANDLE_PACK_SIZE});
+      hw.push({name:label,qty,note:'1 per door/drawer — order '+packs+' pack(s) of '+HANDLE_PACK_SIZE});
     }
   }
   if(cfg.type==='sideboard'||cfg.type==='vanity_freestanding')hw.push({name:'Adjustable metal legs',qty:4,note:'levelling feet'});
@@ -3160,7 +3200,7 @@ async function downloadProductionPack(cfg,projectId){
     return;
   }
   btn.disabled=true;
-  btn.textContent='Running engineering checksâ€¦';
+  btn.textContent='Running engineering checks…';
   setProductionStatus('loading','Deterministic engine running','Validating geometry, machining, nesting, hardware and production-pack consistency.');
   try{
     const {data:sessionData,error:sessionError}=await sb.auth.getSession();
@@ -3196,7 +3236,7 @@ async function downloadProductionPack(cfg,projectId){
     link.click();
     link.remove();
     setTimeout(()=>URL.revokeObjectURL(href),30000);
-    setProductionStatus('passed','Engineering checks passed Â· build '+buildId,'Factory-review ZIP downloaded. Manufacturing release is still blocked until the selected factory profile passes physical qualification.');
+    setProductionStatus('passed','Engineering checks passed · build '+buildId,'Factory-review ZIP downloaded. Manufacturing release is still blocked until the selected factory profile passes physical qualification.');
     btn.textContent='Download pack again';
   }catch(error){
     setProductionStatus('failed','Production pack not generated',error.message||'The production engine could not generate this pack.');
@@ -3211,14 +3251,14 @@ function openOrderModal(cfg){
   const hardware=generateHardwareList(cfg,panels);
   document.getElementById('omName').textContent=cfg.name;
   document.getElementById('omType').textContent=cfg.type.replace(/_/g,' ');
-  document.getElementById('omDims').textContent=cfg.w*10+' Ã— '+cfg.h*10+' Ã— '+cfg.d*10+' mm';
+  document.getElementById('omDims').textContent=cfg.w*10+' × '+cfg.h*10+' × '+cfg.d*10+' mm';
   document.getElementById('omMat').textContent=MAT[cfg.mat].label+' ('+MAT[cfg.mat].code+')';
-  document.getElementById('omDoor').textContent=cfg.doorType+' Â· '+cfg.handle+' handle Â· LED '+cfg.led;
+  document.getElementById('omDoor').textContent=cfg.doorType+' · '+cfg.handle+' handle · LED '+cfg.led;
   document.getElementById('omOrderId').textContent=projectId;
   const tb=document.getElementById('omCutBody');tb.innerHTML='';
-  panels.forEach((p,i)=>{const tr=document.createElement('tr');tr.innerHTML='<td>'+(i+1)+'</td><td>'+p.name+'</td><td>'+p.material+'</td><td class="mm">'+p.w+' Ã— '+p.h+'</td><td>Ã—'+p.qty+'</td>';tb.appendChild(tr)});
+  panels.forEach((p,i)=>{const tr=document.createElement('tr');tr.innerHTML='<td>'+(i+1)+'</td><td>'+p.name+'</td><td>'+p.material+'</td><td class="mm">'+p.w+' × '+p.h+'</td><td>×'+p.qty+'</td>';tb.appendChild(tr)});
   const hb=document.getElementById('omHwBody');hb.innerHTML='';
-  hardware.forEach(h=>{const tr=document.createElement('tr');tr.innerHTML='<td>'+h.name+'</td><td>Ã—'+h.qty+'</td><td>'+h.note+'</td>';hb.appendChild(tr)});
+  hardware.forEach(h=>{const tr=document.createElement('tr');tr.innerHTML='<td>'+h.name+'</td><td>×'+h.qty+'</td><td>'+h.note+'</td>';hb.appendChild(tr)});
   const modal=document.getElementById('orderModal');modal.hidden=false;
   const engineBtn=document.getElementById('omEngine');
   const unsupported=PRODUCTION_PACK_UNSUPPORTED[cfg.type];
@@ -3234,18 +3274,18 @@ function openOrderModal(cfg){
     engineBtn.onclick=()=>downloadProductionPack(cfg,projectId);
   }
   function updWA(){
-    const name=document.getElementById('omCustName').value.trim()||'â€”';
-    const phone=document.getElementById('omCustPhone').value.trim()||'â€”';
+    const name=document.getElementById('omCustName').value.trim()||'—';
+    const phone=document.getElementById('omCustPhone').value.trim()||'—';
     const zone=document.getElementById('omCustZone').value;
     let msg='*FurniAI Factory Order*\n\n*Order ID:* '+projectId+'\n*Customer:* '+name+'\n*Phone:* '+phone+'\n*Zone:* '+zone+'\n\n';
     msg+='*Design:* '+cfg.name+'\n*Type:* '+cfg.type.replace(/_/g,' ')+'\n';
-    msg+='*Dimensions:* '+cfg.w*10+'mm W Ã— '+cfg.h*10+'mm H Ã— '+cfg.d*10+'mm D\n';
+    msg+='*Dimensions:* '+cfg.w*10+'mm W × '+cfg.h*10+'mm H × '+cfg.d*10+'mm D\n';
     msg+='*Material:* '+MAT[cfg.mat].label+' ('+MAT[cfg.mat].code+')\n';
     msg+='*Door:* '+cfg.doorType+' | *Handle:* '+cfg.handle+' | *LED:* '+cfg.led+'\n';
     msg+='\n*Panel List:*\n';
-    panels.forEach((p,i)=>{msg+=(i+1)+'. '+p.name+' | '+p.material+' | '+p.w+'Ã—'+p.h+'Ã—'+p.thickness+'mm | Ã—'+p.qty+'\n'});
+    panels.forEach((p,i)=>{msg+=(i+1)+'. '+p.name+' | '+p.material+' | '+p.w+'×'+p.h+'×'+p.thickness+'mm | ×'+p.qty+'\n'});
     msg+='\n*Hardware:*\n';
-    hardware.forEach(h=>{msg+='- '+h.name+' Ã—'+h.qty+'\n'});
+    hardware.forEach(h=>{msg+='- '+h.name+' ×'+h.qty+'\n'});
     msg+='\n_Sent via FurniAI Configurator_';
     document.getElementById('omWA').href='https://wa.me/?text='+encodeURIComponent(msg);
   }
@@ -3255,10 +3295,10 @@ function openOrderModal(cfg){
   document.getElementById('omCustZone').onchange=updWA;
   document.getElementById('omClose').onclick=()=>{modal.hidden=true};
   document.getElementById('omPrint').onclick=()=>{
-    const custName=document.getElementById('omCustName').value.trim()||'â€”';
+    const custName=document.getElementById('omCustName').value.trim()||'—';
     const dateStr=new Date().toLocaleDateString('en-AE');
     const pw=window.open('','_blank','width=900,height=700');
-    pw.document.write('<!DOCTYPE html><html><head><title>FurniAI Production Pack â€” '+cfg.name+'</title><style>'+
+    pw.document.write('<!DOCTYPE html><html><head><title>FurniAI Production Pack — '+cfg.name+'</title><style>'+
       'body{font-family:monospace;padding:0;color:#111;max-width:900px;margin:0 auto}'+
       'section{padding:32px 36px;page-break-after:always}section:last-child{page-break-after:auto}'+
       'h1{font-size:20px;margin:0 0 4px}h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:#555;border-bottom:1px solid #ddd;padding-bottom:8px;margin:0 0 16px}'+
@@ -3279,17 +3319,17 @@ function openOrderModal(cfg){
       '<b>Material</b><span>'+MAT[cfg.mat].label+' ('+MAT[cfg.mat].code+')</span>'+
       '<b>Door / Handle / LED</b><span>'+cfg.doorType+' \xb7 '+cfg.handle+' \xb7 '+cfg.led+'</span>'+
       '</div><p style="margin-top:60px;font-size:11px;color:#aaa">Generated by FurniAI \xb7 furnia.vercel.app</p></section>');
-    pw.document.write('<section><h2>Technical Drawing â€” Orthographic Views</h2>'+buildTechnicalDrawings(cfg)+'</section>');
+    pw.document.write('<section><h2>Technical Drawing — Orthographic Views</h2>'+buildTechnicalDrawings(cfg)+'</section>');
     pw.document.write('<section><h2>Panel List</h2><table><thead><tr><th>#</th><th>Part</th><th>Material</th><th>W (mm)</th><th>H (mm)</th><th>Thk (mm)</th><th>Qty</th></tr></thead><tbody>');
     panels.forEach((p,i)=>pw.document.write('<tr><td>'+(i+1)+'</td><td>'+p.name+'</td><td>'+p.material+'</td><td>'+p.w+'</td><td>'+p.h+'</td><td>'+p.thickness+'</td><td>\xd7'+p.qty+'</td></tr>'));
     pw.document.write('</tbody></table></section>');
     pw.document.write('<section><h2>Hardware List</h2><table><thead><tr><th>Item</th><th>Qty</th><th>Note</th></tr></thead><tbody>');
     hardware.forEach(h=>pw.document.write('<tr><td>'+h.name+'</td><td>\xd7'+h.qty+'</td><td>'+h.note+'</td></tr>'));
     pw.document.write('</tbody></table></section>');
-    pw.document.write('<section><h2>CNC Cutting List</h2><table><thead><tr><th>#</th><th>Part</th><th>W Ã— H (mm)</th><th>Grain</th><th>Edge Banding</th><th>Qty</th></tr></thead><tbody>');
+    pw.document.write('<section><h2>CNC Cutting List</h2><table><thead><tr><th>#</th><th>Part</th><th>W × H (mm)</th><th>Grain</th><th>Edge Banding</th><th>Qty</th></tr></thead><tbody>');
     panels.forEach((p,i)=>pw.document.write('<tr><td>'+(i+1)+'</td><td>'+p.name+'</td><td>'+p.w+' \xd7 '+p.h+'</td><td>'+p.grain+'</td><td>'+p.edge+'</td><td>\xd7'+p.qty+'</td></tr>'));
     pw.document.write('</tbody></table></section>');
-    pw.document.write('<section><h2>Assembly Blueprint â€” Component Key</h2>'+buildAssemblyBlueprint(panels)+'</section>');
+    pw.document.write('<section><h2>Assembly Blueprint — Component Key</h2>'+buildAssemblyBlueprint(panels)+'</section>');
     pw.document.write('<p style="text-align:center;font-size:10px;color:#aaa;padding:0 36px 30px">FurniAI \xb7 Dubai, UAE \xb7 '+dateStr+' \xb7 furnia.vercel.app</p>');
     pw.document.write('</body></html>');
     pw.document.close();pw.print();
@@ -3315,7 +3355,7 @@ function renderAiMsg(containerId,cls,text,imageDataUrl){
   c.appendChild(div);c.scrollTop=c.scrollHeight;
   return div;
 }
-// Downscale to a max dimension and re-encode as JPEG â€” vision models don't need
+// Downscale to a max dimension and re-encode as JPEG — vision models don't need
 // full-resolution photos, and this keeps the request well under serverless
 // body-size limits regardless of the original photo's size.
 function resizeImageFile(file,maxDim){
@@ -3351,7 +3391,7 @@ function bindImageAttach(attachBtnId,fileInputId,previewId,thumbId,removeId,setP
       setPending(img);
       if(thumb)thumb.src=img.dataUrl;
       if(preview)preview.hidden=false;
-    }catch(e){alert('Could not read that image â€” try a different file.')}
+    }catch(e){alert('Could not read that image — try a different file.')}
   });
   if(removeBtn)removeBtn.addEventListener('click',()=>{setPending(null);if(preview)preview.hidden=true});
 }
@@ -3469,7 +3509,7 @@ async function aiSendMessage(text,targetMsgsId,isDrawer,image){
   // Scoped to M1: only an already-active wardrobe routes to the canonical
   // Wardrobe AI bridge. Every other furniture type (kitchen, vanity,
   // bookshelf, sideboard, walk-in, custom) keeps using /api/chat exactly as
-  // before â€” the adapter always sets type:"wardrobe", so routing this
+  // before — the adapter always sets type:"wardrobe", so routing this
   // unconditionally would silently replace a kitchen/vanity mid-edit with a
   // wardrobe the customer never asked for.
   if(isDrawer&&!image&&Builder.cfg&&Builder.cfg.type==='wardrobe')return wardrobeAiSendMessage(text,targetMsgsId);
@@ -3484,7 +3524,7 @@ async function aiSendMessage(text,targetMsgsId,isDrawer,image){
     : msgText;
   aiHistory.push({role:'user',content});
   renderAiMsg(targetMsgsId,'user',text,image&&image.dataUrl);
-  const thinking=renderAiMsg(targetMsgsId,'thinking','Thinkingâ€¦');
+  const thinking=renderAiMsg(targetMsgsId,'thinking','Thinking…');
   try{
     const body={messages:aiHistory};
     if(isDrawer&&Builder.cfg)body.currentConfig=Builder.cfg;
@@ -3496,9 +3536,9 @@ async function aiSendMessage(text,targetMsgsId,isDrawer,image){
     const data=await res.json();
     if(thinking)thinking.remove();
     if(data.error){
-      renderAiMsg(targetMsgsId,'assistant','Sorry â€” '+data.error);
+      renderAiMsg(targetMsgsId,'assistant','Sorry — '+data.error);
     }else{
-      aiHistory.push({role:'assistant',content:data.reply||'â€¦'});
+      aiHistory.push({role:'assistant',content:data.reply||'…'});
       renderAiMsg(targetMsgsId,'assistant',data.reply||'Here you go.');
       if(data.config){
         if(isDrawer){
@@ -3525,7 +3565,7 @@ async function aiSendMessage(text,targetMsgsId,isDrawer,image){
     }
   }catch(e){
     if(thinking)thinking.remove();
-    renderAiMsg(targetMsgsId,'assistant','Network error â€” please try again.');
+    renderAiMsg(targetMsgsId,'assistant','Network error — please try again.');
   }
   aiBusy=false;
   if(sendBtn)sendBtn.disabled=false;
@@ -3535,7 +3575,7 @@ async function wardrobeAiSendMessage(text,targetMsgsId){
   aiBusy=true;
   const sendBtn=document.getElementById('aiDrawerSend');if(sendBtn)sendBtn.disabled=true;
   renderAiMsg(targetMsgsId,'user',text);
-  const thinking=renderAiMsg(targetMsgsId,'thinking','Thinkingâ€¦');
+  const thinking=renderAiMsg(targetMsgsId,'thinking','Thinking…');
   try{
     const res=await fetch('/api/wardrobe/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
       message:text,model:wardrobeAiModel,conversation:wardrobeAiConversation
@@ -3548,7 +3588,7 @@ async function wardrobeAiSendMessage(text,targetMsgsId){
     Builder.applyWardrobeModel(data.model);
     wardrobeAiModel=data.model;
     wardrobeAiConversation=Array.isArray(data.conversation)?data.conversation:wardrobeAiConversation;
-    renderAiMsg(targetMsgsId,'assistant',data.assistantMessage||`Wardrobe updated Â· revision ${data.revision}`);
+    renderAiMsg(targetMsgsId,'assistant',data.assistantMessage||`Wardrobe updated · revision ${data.revision}`);
   }catch(error){
     if(thinking)thinking.remove();
     const safeMessage=error&&error.name==='LegacyBuilderAdapterError'
@@ -3560,7 +3600,7 @@ async function wardrobeAiSendMessage(text,targetMsgsId){
   }
 }
 // Similar Design Finder (Skill #4): attribute-overlap scoring against the
-// existing catalog â€” no embeddings/vision model needed, just the same
+// existing catalog — no embeddings/vision model needed, just the same
 // vocabulary set_furniture_config already produces. Deliberately simple:
 // type match matters most, then material/door/handle/led, then a small
 // bonus for close overall dimensions.
@@ -3581,7 +3621,7 @@ function findSimilarDesigns(cfg,topN){
 }
 // Renders the chip row and returns true if anything was shown. `onPick` fires
 // when the user clicks an existing design instead of waiting to be taken to
-// their new AI-generated one â€” the caller uses this to cancel that handoff.
+// their new AI-generated one — the caller uses this to cancel that handoff.
 function renderSimilarDesigns(containerId,cfg,onPick){
   const matches=findSimilarDesigns(cfg,3).filter(m=>m.score>=40);
   if(!matches.length)return false;
@@ -3600,12 +3640,12 @@ function renderSimilarDesigns(containerId,cfg,onPick){
 // Auto-repair (cabinet-mcp pattern): a "warning" finding with a computed
 // fix (see constructionValidator.js) gets a one-click chip instead of
 // leaving the customer to work out new numbers from the prose message.
-// `onApply(fix)` is supplied by the caller rather than hardcoded here â€” for
+// `onApply(fix)` is supplied by the caller rather than hardcoded here — for
 // a fresh design (still pending, not yet pushed to DESIGNS/navigated to)
 // applying a fix means correcting that pending config and opening THAT
 // version instead; for a live in-builder refinement, Builder.cfg already IS
 // the current design, so it can merge straight in. Touching Builder.cfg
-// directly for the former case is the bug this fixes â€” it isn't the new
+// directly for the former case is the bug this fixes — it isn't the new
 // design yet at click time, since navigation is deliberately delayed so the
 // chip is visible at all.
 function renderFixChips(containerId,findings,onApply){
@@ -3616,11 +3656,11 @@ function renderFixChips(containerId,findings,onApply){
   div.innerHTML='Suggested fix: ';
   fixable.forEach(f=>{
     const chip=document.createElement('button');chip.className='ai-similar-chip';
-    const desc=Object.entries(f.fix).map(([k,v])=>k+' â†’ '+v).join(', ');
+    const desc=Object.entries(f.fix).map(([k,v])=>k+' → '+v).join(', ');
     chip.textContent='Apply: '+desc;
     chip.addEventListener('click',()=>{
       onApply(f.fix);
-      chip.disabled=true;chip.textContent='âœ“ Applied';
+      chip.disabled=true;chip.textContent='✓ Applied';
     });
     div.appendChild(chip);
   });
@@ -3711,7 +3751,7 @@ function setAuthMode(mode){
   document.getElementById('authTitle').textContent=mode==='signin'?'Sign in to FurniAI':'Create your account';
   document.getElementById('authSubmitBtn').textContent=mode==='signin'?'Sign in':'Sign up';
   const t=document.getElementById('authToggle');
-  t.innerHTML=mode==='signin'?'Donâ€™t have an account? <a id="authToggleLink">Sign up</a>':'Already have an account? <a id="authToggleLink">Sign in</a>';
+  t.innerHTML=mode==='signin'?'Don’t have an account? <a id="authToggleLink">Sign up</a>':'Already have an account? <a id="authToggleLink">Sign in</a>';
   document.getElementById('authToggleLink').addEventListener('click',()=>setAuthMode(mode==='signin'?'signup':'signin'));
   document.getElementById('authError').textContent='';
 }
@@ -3762,7 +3802,7 @@ async function saveCurrentDesign(){
   const {data,error}=await sb.from('projects').insert({user_id:currentUser.id,name,config:Builder.cfg}).select().single();
   if(error){alert('Could not save: '+error.message);return}
   alert('Saved to My Projects.');
-  recentDesignsCache=null; // stale now â€” refetch next time the AI needs context
+  recentDesignsCache=null; // stale now — refetch next time the AI needs context
   // Link the active AI conversation (if any) to the design it produced, so
   // "another one like the one from last month" can eventually trace back to it.
   if(currentConversationId&&data){
@@ -3770,7 +3810,7 @@ async function saveCurrentDesign(){
   }
 }
 /* AI memory (pillar 6): persist the chat + surface past designs as context.
-   Best-effort only â€” a failed save here should never block the chat UI. */
+   Best-effort only — a failed save here should never block the chat UI. */
 async function loadRecentDesignsForAI(){
   if(!authConfigured()||!currentUser||!sb)return[];
   try{
@@ -3788,11 +3828,11 @@ async function saveAiConversation(){
       const {data,error}=await sb.from('ai_conversations').insert({user_id:currentUser.id,messages:aiHistory}).select().single();
       if(!error&&data)currentConversationId=data.id;
     }
-  }catch(e){/* memory is best-effort â€” never surface this to the chat UI */}
+  }catch(e){/* memory is best-effort — never surface this to the chat UI */}
 }
 // Correction logging (pillar 8): the AI calls log_correction server-side
 // when the customer corrects something it got wrong (usually a photo
-// misread) â€” the actual write happens here, same best-effort, never-block
+// misread) — the actual write happens here, same best-effort, never-block
 // pattern as saveAiConversation. Signed-out users just don't get logged;
 // the design fix itself already happened regardless.
 async function saveAiCorrection(correction,furnitureType){
@@ -3805,21 +3845,21 @@ async function saveAiCorrection(correction,furnitureType){
       wrong_value:correction.wrongValue,
       correct_value:correction.correctValue,
     });
-  }catch(e){/* best-effort â€” never surface this to the chat UI */}
+  }catch(e){/* best-effort — never surface this to the chat UI */}
 }
 async function loadProjects(){
   const grid=document.getElementById('projectsGrid');
   if(!authConfigured()){grid.innerHTML='<div class="projects-empty">Accounts are not set up on this deployment yet.</div>';return}
   if(!currentUser){grid.innerHTML='<div class="projects-empty">Sign in to see your saved designs.</div>';openAuthModal();return}
-  grid.innerHTML='<div class="projects-empty">Loadingâ€¦</div>';
+  grid.innerHTML='<div class="projects-empty">Loading…</div>';
   const {data,error}=await sb.from('projects').select('*').order('created_at',{ascending:false});
   if(error){grid.innerHTML='<div class="projects-empty">Could not load projects: '+error.message+'</div>';return}
-  if(!data||data.length===0){grid.innerHTML='<div class="projects-empty">No saved designs yet â€” open the configurator and hit â€œSave designâ€.</div>';return}
+  if(!data||data.length===0){grid.innerHTML='<div class="projects-empty">No saved designs yet — open the configurator and hit “Save design”.</div>';return}
   grid.innerHTML='';
   data.forEach(row=>{
     const c=row.config;
     const card=document.createElement('div');card.className='project-card';
-    card.innerHTML='<button class="pc-del" title="Delete">âœ•</button><div class="pc-name">'+row.name+'</div><div class="pc-meta">'+c.type.replace(/_/g,' ')+' Â· '+c.w+'Ã—'+c.h+'Ã—'+c.d+' cm</div>';
+    card.innerHTML='<button class="pc-del" title="Delete">✕</button><div class="pc-name">'+row.name+'</div><div class="pc-meta">'+c.type.replace(/_/g,' ')+' · '+c.w+'×'+c.h+'×'+c.d+' cm</div>';
     card.addEventListener('click',e=>{
       if(e.target.classList.contains('pc-del'))return;
       DESIGNS.push(c);go('#/build/'+(DESIGNS.length-1));
@@ -3852,21 +3892,21 @@ function bootWithGuard(){
 if(document.readyState!=='loading')bootWithGuard();else addEventListener('DOMContentLoaded',bootWithGuard);
 </script>
 
-<!-- â•â•â•â•â•â•â•â•â•â•â• FACTORY ORDER MODAL â•â•â•â•â•â•â•â•â•â•â• -->
+<!-- ═══════════ FACTORY ORDER MODAL ═══════════ -->
 <div id="orderModal" class="om-overlay" hidden>
   <div class="om-box">
     <div class="om-head">
       <span class="om-title">Factory Order Sheet</span>
-      <button class="om-close" id="omClose">âœ•</button>
+      <button class="om-close" id="omClose">✕</button>
     </div>
     <div class="om-body">
       <div class="om-summary">
-        <span class="om-k">Order ID</span><span class="om-v" id="omOrderId">â€”</span>
-        <span class="om-k">Design</span><span class="om-v" id="omName">â€”</span>
-        <span class="om-k">Type</span><span class="om-v" id="omType">â€”</span>
-        <span class="om-k">Dimensions</span><span class="om-v" id="omDims">â€”</span>
-        <span class="om-k">Material</span><span class="om-v" id="omMat">â€”</span>
-        <span class="om-k">Finish</span><span class="om-v" id="omDoor">â€”</span>
+        <span class="om-k">Order ID</span><span class="om-v" id="omOrderId">—</span>
+        <span class="om-k">Design</span><span class="om-v" id="omName">—</span>
+        <span class="om-k">Type</span><span class="om-v" id="omType">—</span>
+        <span class="om-k">Dimensions</span><span class="om-v" id="omDims">—</span>
+        <span class="om-k">Material</span><span class="om-v" id="omMat">—</span>
+        <span class="om-k">Finish</span><span class="om-v" id="omDoor">—</span>
       </div>
       <div class="om-engine-status" id="omEngineStatus" aria-live="polite">
         <strong>Production engine connected</strong>
@@ -3907,10 +3947,10 @@ if(document.readyState!=='loading')bootWithGuard();else addEventListener('DOMCon
   </div>
 </div>
 
-<!-- â•â•â•â•â•â•â•â•â•â•â• AUTH MODAL â•â•â•â•â•â•â•â•â•â•â• -->
+<!-- ═══════════ AUTH MODAL ═══════════ -->
 <div id="authModal" class="auth-overlay" hidden>
   <div class="auth-box">
-    <button class="auth-close" onclick="closeAuthModal()">âœ•</button>
+    <button class="auth-close" onclick="closeAuthModal()">✕</button>
     <div class="auth-title" id="authTitle">Sign in to FurniAI</div>
     <div class="auth-sub">Save your designs and pick up where you left off.</div>
     <button class="auth-google" id="authGoogleBtn">
@@ -3930,12 +3970,12 @@ if(document.readyState!=='loading')bootWithGuard();else addEventListener('DOMCon
   </div>
 </div>
 
-<!-- â•â•â•â•â•â•â•â•â•â•â• MY PROJECTS â•â•â•â•â•â•â•â•â•â•â• -->
+<!-- ═══════════ MY PROJECTS ═══════════ -->
 <div id="view-projects" hidden>
   <div class="ai-wrap">
     <div class="ai-head">
       <div class="ai-brand">My Projects</div>
-      <button class="ai-back" onclick="go('#/')">â† Back</button>
+      <button class="ai-back" onclick="go('#/')">← Back</button>
     </div>
     <div class="projects-grid" id="projectsGrid"></div>
   </div>

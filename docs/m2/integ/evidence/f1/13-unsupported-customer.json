@@ -7,8 +7,8 @@
     "finishType": "melamine",
     "bayCount": 2,
     "doorCount": 4,
-    "fingerprint": "fs256:09d012c2c8724c5ab5aee595e78fb2628402cdd5d9a2eb04785b956a7c1447cf",
-    "proposalId": "furnispec-ai-wardrobe-1498",
+    "fingerprint": "fs256:c0bf3a14cd56b04052d57be12d3cd32a4c1eec1e9c58ba3812f4304624b6d5ec",
+    "proposalId": "furnispec-ai-wardrobe-4806",
     "parametricMat": "white",
     "structural": 19,
     "preview": 2,
@@ -156,8 +156,8 @@
     "finishType": "melamine",
     "bayCount": 2,
     "doorCount": 4,
-    "fingerprint": "fs256:09d012c2c8724c5ab5aee595e78fb2628402cdd5d9a2eb04785b956a7c1447cf",
-    "proposalId": "furnispec-ai-wardrobe-1498",
+    "fingerprint": "fs256:c0bf3a14cd56b04052d57be12d3cd32a4c1eec1e9c58ba3812f4304624b6d5ec",
+    "proposalId": "furnispec-ai-wardrobe-4806",
     "parametricMat": "white",
     "structural": 19,
     "preview": 2,
@@ -297,7 +297,7 @@
     "revWidthLabel": "1800 mm",
     "revRevisionLabel": "1"
   },
-  "assistantText": "Sorry â€” I can't add handles to the design yet. Your wardrobe is unchanged.",
+  "assistantText": "[Rules]Sorry — I can't add handles to the design yet. Your wardrobe is unchanged.",
   "userText": "Add black handles",
   "prevAssistants": 1
 }
