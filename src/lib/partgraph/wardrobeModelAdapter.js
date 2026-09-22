@@ -36,7 +36,6 @@ import {
 } from "../furnispec/schema.js";
 import { validateFurniSpec } from "../furnispec/validate.js";
 import { resolve, ruleIdOf, doorsForBayWidth } from "../rules/wardrobeRuleCatalog.js";
-import { resolve } from "../rules/wardrobeRuleCatalog.js";
 
 function pad2(n) {
   return String(n).padStart(2, "0");
