@@ -1921,6 +1921,7 @@ const Builder={
   updateNav(){document.getElementById('bPos').textContent=(this.currentIdx+1)+' / '+DESIGNS.length},
 
   load(idx){
+    if (typeof rotateStudioSession === 'function') rotateStudioSession();
     const badge=document.getElementById('parametricBadge');
     const bm=document.querySelector('.b-main');
     const aiPanel=document.getElementById('aiWardrobePanel');
@@ -2124,8 +2125,23 @@ const Builder={
 };
 window.Builder=Builder;
 
-/* ===== Gate G4.1: Visible Conversation-to-3D AI Wardrobe ===== */
+/* ===== Gate G4.1 & M3: Studio Session Lifecycle & Visible Conversation-to-3D AI Wardrobe ===== */
+let activeStudioSessionId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'session-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+
+function rotateStudioSession() {
+  activeStudioSessionId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'session-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+  if (window.aiWardrobeState) {
+    window.aiWardrobeState.sessionId = activeStudioSessionId;
+    window.aiWardrobeState.editSequence = 0;
+  }
+  return activeStudioSessionId;
+}
+
+window.getActiveStudioSessionId = () => activeStudioSessionId;
+window.rotateStudioSession = rotateStudioSession;
+
 let aiWardrobeState = {
+  sessionId: activeStudioSessionId,
   text: '',
   answers: {},
   specId: null,
@@ -2143,12 +2159,35 @@ let aiWardrobeState = {
 };
 window.aiWardrobeState = aiWardrobeState;
 
+function reopenAiWardrobeDesign(savedState) {
+  rotateStudioSession();
+  aiWardrobeState = {
+    ...savedState,
+    sessionId: activeStudioSessionId,
+    editSequence: 0,
+    undoStack: [],
+    isSubmitting: false,
+  };
+  window.aiWardrobeState = aiWardrobeState;
+  if (aiWardrobeState.partGraph && globalThis.PartGraphBridge?.loadDraftPartGraph) {
+    globalThis.PartGraphBridge.loadDraftPartGraph(Builder, aiWardrobeState.partGraph);
+  }
+  if (typeof updateAiWardrobeSummaryTable === 'function' && aiWardrobeState.spec) {
+    updateAiWardrobeSummaryTable(aiWardrobeState.spec);
+  }
+  return aiWardrobeState;
+}
+window.reopenAiWardrobeDesign = reopenAiWardrobeDesign;
+
 function generateAiWardrobeSpecId() {
   const rand = Math.floor(1000 + Math.random() * 9000);
   return `furnispec-ai-wardrobe-${rand}`;
 }
 
 function initAiWardrobePanel(forceReset = false) {
+  if (forceReset) {
+    rotateStudioSession();
+  }
   if (!forceReset && aiWardrobeState && aiWardrobeState.partGraph) {
     if (globalThis.PartGraphBridge && typeof globalThis.PartGraphBridge.loadDraftPartGraph === 'function') {
       globalThis.PartGraphBridge.loadDraftPartGraph(Builder, aiWardrobeState.partGraph);
@@ -2175,6 +2214,7 @@ function initAiWardrobePanel(forceReset = false) {
   Builder.clear();
   resetInspectionPanel();
   aiWardrobeState = {
+    sessionId: activeStudioSessionId,
     text: '',
     answers: {},
     specId: generateAiWardrobeSpecId(),
@@ -2186,7 +2226,7 @@ function initAiWardrobePanel(forceReset = false) {
     observations: [],
     origins: {},
     undoStack: [],
-    editSequence: (window.aiWardrobeState?.editSequence || 0) + 1,
+    editSequence: 0,
     isSubmitting: false,
   };
   window.aiWardrobeState = aiWardrobeState;
@@ -2509,6 +2549,7 @@ async function runInitialAiInterpretation(text, requestSeq, requestSpecId) {
     stream.scrollTop = stream.scrollHeight;
   }
 
+  const capturedSessionId = activeStudioSessionId;
   try {
     const res = await globalThis.AiDesignerTransport.proposeDesignChange({
       message: text,
@@ -2518,6 +2559,8 @@ async function runInitialAiInterpretation(text, requestSeq, requestSpecId) {
       changeToken: requestSeq,
       currentDesignId: () => aiWardrobeState.specId,
       currentChangeToken: () => aiWardrobeState.editSequence,
+      sessionId: capturedSessionId,
+      currentSessionId: () => activeStudioSessionId,
     });
 
     if (progressEl && progressEl.parentNode) {
@@ -2525,8 +2568,12 @@ async function runInitialAiInterpretation(text, requestSeq, requestSpecId) {
     }
 
     // Protect any edits made before response arrives!
-    if (aiWardrobeState.editSequence !== requestSeq || aiWardrobeState.specId !== requestSpecId) {
-      console.warn('Discarded initial AI interpretation because user moved past initial draft');
+    if (
+      aiWardrobeState.sessionId !== capturedSessionId ||
+      aiWardrobeState.editSequence !== requestSeq ||
+      aiWardrobeState.specId !== requestSpecId
+    ) {
+      console.warn('Discarded initial AI interpretation because user moved past initial draft or session rotated');
       return;
     }
 
@@ -2628,6 +2675,7 @@ async function runAiWardrobeConversationalEdit(cmdText) {
     stream.scrollTop = stream.scrollHeight;
   }
 
+  const capturedSessionId = activeStudioSessionId;
   const currentSeq = (aiWardrobeState.editSequence || 0) + 1;
   aiWardrobeState.editSequence = currentSeq;
   const expectedSpecId = aiWardrobeState.specId;
@@ -2655,6 +2703,8 @@ async function runAiWardrobeConversationalEdit(cmdText) {
         changeToken: currentSeq,
         currentDesignId: () => aiWardrobeState.specId,
         currentChangeToken: () => aiWardrobeState.editSequence,
+        sessionId: capturedSessionId,
+        currentSessionId: () => activeStudioSessionId,
       });
     } else if (globalThis.PartGraphBridge && typeof globalThis.PartGraphBridge.applyConversationalEdit === 'function') {
       res = globalThis.PartGraphBridge.applyConversationalEdit({
@@ -2679,23 +2729,24 @@ async function runAiWardrobeConversationalEdit(cmdText) {
     if (convInp) convInp.disabled = false;
   }
 
-  // Prevent stale responses from overwriting newer edits, Undo results, or a newly started design
-  if (
-    aiWardrobeState.editSequence !== currentSeq ||
-    aiWardrobeState.specId !== expectedSpecId ||
-    aiWardrobeState.revision !== expectedRevision
-  ) {
-    console.warn('Discarded stale conversational edit response');
-    return;
-  }
-
   if (!res) return;
 
   const kind = res.kind;
 
   if (kind === 'STALE_REVISION') {
     // Transport already refused apply; keep UI discard path consistent.
-    appendAiStreamMsg('assistant', res.error || 'That answer arrived too late and was not applied. Your design is unchanged.', res);
+    appendAiStreamMsg('assistant', res.error || 'That answer arrived for an older session of your design, so it was not applied. Your current design is unchanged — please ask again.', res);
+    return;
+  }
+
+  // Prevent stale responses from overwriting newer edits, Undo results, a newly started design, or another session
+  if (
+    aiWardrobeState.sessionId !== capturedSessionId ||
+    aiWardrobeState.editSequence !== currentSeq ||
+    aiWardrobeState.specId !== expectedSpecId ||
+    aiWardrobeState.revision !== expectedRevision
+  ) {
+    console.warn('Discarded stale conversational edit response');
     return;
   }
 

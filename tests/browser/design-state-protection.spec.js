@@ -351,4 +351,119 @@ test.describe("Design with AI — Real State Protection & Geometry Invariants", 
 
     await saveScreenshot(page, "state-prot-04-design-reset-preserved.png");
   });
+
+  test("5. Reopening the same design on the same page during an in-flight request: session ID rotates; matching token from new session does not cross over; delayed response rejected with STALE_REVISION; canvas state unchanged", async ({
+    page,
+  }) => {
+    // 1. Establish initial design state (1800mm wide)
+    const initialState = await getSummaryAndGeometryState(page);
+    expect(initialState.widthMm).toBe(1800);
+    expect(initialState.threeMeshTopWidthMm).toBe(1800);
+
+    const result = await page.evaluate(async () => {
+      const state = window.aiWardrobeState;
+      const initialSessionId = window.getActiveStudioSessionId();
+      const initialToken = state.editSequence;
+      const specId = state.specId;
+      const revision = state.revision;
+
+      // Save a snapshot of the design to simulate reopening the exact same design
+      const savedDesignClone = {
+        text: state.text,
+        answers: { ...state.answers },
+        specId: state.specId,
+        spec: JSON.parse(JSON.stringify(state.spec)),
+        revision: state.revision,
+        currentStage: state.currentStage,
+        proposal: { ...state.proposal },
+        approval: state.approval,
+        partGraph: state.partGraph,
+        observations: [...state.observations],
+        origins: { ...state.origins },
+      };
+
+      // 2. Start a slow in-flight AI request in Session A (asking for 2400 mm)
+      const inFlightPromise = globalThis.AiDesignerTransport.proposeDesignChange({
+        message: "Could you stretch this wardrobe to 2400 mm please?",
+        currentObservations: state.observations,
+        specId,
+        revision,
+        changeToken: initialToken,
+        currentDesignId: () => window.aiWardrobeState.specId,
+        currentChangeToken: () => window.aiWardrobeState.editSequence,
+        sessionId: initialSessionId,
+        currentSessionId: () => window.getActiveStudioSessionId(),
+        fetchImpl: async () => {
+          // Simulate network latency
+          await new Promise((r) => setTimeout(r, 60));
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              ok: true,
+              edits: [{ key: "envelope.widthMm", value: 2400 }],
+              reply: "Stretched to 2400 mm",
+            }),
+          };
+        },
+      });
+
+      // 3. Without reloading, customer reopens the same saved design on the same page
+      // Reopening rotates the session to Session B and restarts token to 0
+      window.reopenAiWardrobeDesign(savedDesignClone);
+      const sessionBId = window.getActiveStudioSessionId();
+
+      // 4. In Session B, customer makes a valid conversational edit to 2000 mm
+      // Token advances, matching the numeric range of the previous session
+      await window.runAiWardrobeConversationalEdit("Make it 2000 mm wide.");
+
+      // 5. Delayed AI answer from Session A now arrives
+      const delayedRes = await inFlightPromise;
+
+      return {
+        initialSessionId,
+        sessionBId,
+        sessionsDiffer: initialSessionId !== sessionBId,
+        delayedResKind: delayedRes.kind,
+        delayedResOk: delayedRes.ok,
+        guardParameter: delayedRes.guardParameter,
+        error: delayedRes.error,
+        sessionIdAtRequest: delayedRes.sessionIdAtRequest,
+        currentSessionIdDecided: delayedRes.currentSessionId,
+      };
+    });
+
+    // Verify session rotated
+    expect(result.sessionsDiffer).toBe(true);
+
+    // Verify delayed response from Session A was strictly refused with STALE_REVISION
+    expect(result.delayedResKind).toBe("STALE_REVISION");
+    expect(result.delayedResOk).toBe(false);
+    expect(result.sessionIdAtRequest).toBe(result.initialSessionId);
+    expect(result.currentSessionIdDecided).toBe(result.sessionBId);
+
+    // 6. Verify canvas state and 3D geometry in Session B are UNCHANGED:
+    // Width must be 2000mm from Session B's edit, NOT overwritten by Session A's delayed 2400mm
+    const finalState = await getSummaryAndGeometryState(page);
+    expect(finalState.widthMm).toBe(2000);
+    expect(finalState.carcTopLengthMm).toBe(2000);
+    expect(finalState.threeMeshTopWidthMm).toBe(2000);
+
+    // 7. Control in the same journey: A subsequent request issued in Session B applies normally
+    const convInput = page.locator("#aiConversationalInput");
+    const sendBtn = page.locator("#aiConversationalSendBtn");
+    await convInput.fill("Make it 2100 mm wide.");
+    await sendBtn.click();
+    await page.waitForFunction(() => {
+      const el = document.getElementById("revRevision");
+      const w = document.getElementById("revWidth");
+      return el && el.textContent === "3" && w && w.textContent.includes("2100");
+    });
+
+    const controlState = await getSummaryAndGeometryState(page);
+    expect(controlState.widthMm).toBe(2100);
+    expect(controlState.threeMeshTopWidthMm).toBe(2100);
+
+    await saveScreenshot(page, "state-prot-05-same-page-reopen-session-guard.png");
+  });
 });
