@@ -1,7 +1,11 @@
 # Proposal — a session signal for the stale guard
 
-**Status:** PROPOSED. Not implemented. Requires the integration lead's agreement, because
-it changes `src/lib/adapters/aiDesignerTransport.js`, a shared transport file.
+**Status: SUPERSEDED — IMPLEMENTED 2026-09-22.** Assigned to Claude by the coordination
+decision and now in `src/lib/adapters/aiDesignerTransport.js`, covered by
+`src/lib/adapters/sessionIdentityGuard.test.js`. The client-side calling contract is
+`../SESSION_ID_CALLING_CONTRACT.md`. This file is kept for the reasoning and the rejected
+alternatives; **the contract doc is authoritative**. The feature is not complete until the
+browser caller passes the arguments.
 **Raised by:** backend/persistence owner, 2026-09-22.
 **Demonstrated by:** `src/lib/adapters/sessionIdentityCharacterization.test.js` (passing —
 it records today's behaviour).

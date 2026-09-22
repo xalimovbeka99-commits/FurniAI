@@ -4047,14 +4047,17 @@ var AiDesignerTransport = (() => {
     };
   }
   function invalidLiveStateGuardResult({
+    currentSessionId,
     currentDesignId,
     currentChangeToken,
     currentRevision,
+    sessionIdAtRequest = void 0,
     designIdAtRequest = void 0,
     changeTokenAtRequest = void 0,
     revisionAtRequest = void 0
   } = {}) {
     const checks = [
+      ["currentSessionId", currentSessionId],
       ["currentDesignId", currentDesignId],
       ["currentChangeToken", currentChangeToken],
       ["currentRevision", currentRevision]
@@ -4069,6 +4072,7 @@ var AiDesignerTransport = (() => {
       }
     }
     const pairs = [
+      ["currentSessionId", currentSessionId, "sessionId", sessionIdAtRequest != null && sessionIdAtRequest !== ""],
       ["currentDesignId", currentDesignId, "specId", designIdAtRequest != null && designIdAtRequest !== ""],
       ["currentChangeToken", currentChangeToken, "changeToken", Number.isFinite(changeTokenAtRequest)]
     ];
@@ -4087,12 +4091,14 @@ var AiDesignerTransport = (() => {
     return null;
   }
   function readLiveStateGuards({
+    currentSessionId,
     currentDesignId,
     currentChangeToken,
     currentRevision
   } = {}) {
     const out = {};
     const slots = [
+      ["currentSessionId", currentSessionId, "liveSessionId"],
       ["currentDesignId", currentDesignId, "liveDesignId"],
       ["currentChangeToken", currentChangeToken, "liveChangeToken"],
       ["currentRevision", currentRevision, "liveRevision"]
@@ -4115,17 +4121,25 @@ var AiDesignerTransport = (() => {
     return out;
   }
   function isStaleAnswer({
+    sessionIdAtRequest,
     designIdAtRequest,
     changeTokenAtRequest,
+    currentSessionId,
     currentDesignId,
     currentChangeToken,
     revisionAtRequest,
     currentRevision
   } = {}) {
+    const hasSessionGuard = typeof currentSessionId === "function";
     const hasDesignGuard = typeof currentDesignId === "function";
     const hasTokenGuard = typeof currentChangeToken === "function";
     const hasRevisionGuard = typeof currentRevision === "function";
-    if (!hasDesignGuard && !hasTokenGuard && !hasRevisionGuard) return false;
+    if (!hasSessionGuard && !hasDesignGuard && !hasTokenGuard && !hasRevisionGuard) return false;
+    if (hasSessionGuard) {
+      const nowSession = readGetter(currentSessionId);
+      if (sessionIdAtRequest == null || nowSession == null || nowSession === "") return true;
+      if (String(nowSession) !== String(sessionIdAtRequest)) return true;
+    }
     if (hasDesignGuard) {
       const nowId = readGetter(currentDesignId);
       if (designIdAtRequest == null || nowId == null || nowId === "") return true;
@@ -4147,6 +4161,8 @@ var AiDesignerTransport = (() => {
     return isStaleAnswer({ revisionAtRequest, currentRevision });
   }
   function staleResult({
+    sessionIdAtRequest,
+    currentSessionId,
     designIdAtRequest,
     changeTokenAtRequest,
     currentDesignId,
@@ -4158,6 +4174,8 @@ var AiDesignerTransport = (() => {
       ok: false,
       source: RESULT_SOURCE.DETERMINISTIC,
       kind: RESULT_KIND.STALE_REVISION,
+      sessionIdAtRequest: sessionIdAtRequest ?? null,
+      currentSessionId: currentSessionId ?? null,
       designIdAtRequest: designIdAtRequest ?? null,
       currentDesignId: currentDesignId ?? null,
       changeTokenAtRequest: Number.isFinite(changeTokenAtRequest) ? changeTokenAtRequest : null,
@@ -4173,9 +4191,11 @@ var AiDesignerTransport = (() => {
     specId,
     revision = 1,
     changeToken = void 0,
+    sessionId = void 0,
     endpoint = AI_DESIGNER_ENDPOINT,
     fetchImpl = typeof fetch === "function" ? fetch : null,
     signal = void 0,
+    currentSessionId = void 0,
     currentDesignId = void 0,
     currentChangeToken = void 0,
     /**
@@ -4241,27 +4261,33 @@ var AiDesignerTransport = (() => {
       });
       payload = await response.json().catch(() => null);
       const guardMisuse = invalidLiveStateGuardResult({
+        currentSessionId,
         currentDesignId,
         currentChangeToken,
         currentRevision,
+        sessionIdAtRequest: sessionId,
         designIdAtRequest: specId,
         changeTokenAtRequest: changeToken,
         revisionAtRequest: revision
       });
       if (guardMisuse) return guardMisuse;
-      const guardRead = readLiveStateGuards({ currentDesignId, currentChangeToken, currentRevision });
+      const guardRead = readLiveStateGuards({ currentSessionId, currentDesignId, currentChangeToken, currentRevision });
       if (guardRead.failure) return guardRead.failure;
-      const { liveDesignId, liveChangeToken, liveRevision } = guardRead;
+      const { liveSessionId, liveDesignId, liveChangeToken, liveRevision } = guardRead;
       const frozen = (value, supplied) => typeof supplied === "function" ? () => value : void 0;
       if (isStaleAnswer({
+        sessionIdAtRequest: sessionId,
         designIdAtRequest: specId,
         changeTokenAtRequest: changeToken,
+        currentSessionId: frozen(liveSessionId, currentSessionId),
         currentDesignId: frozen(liveDesignId, currentDesignId),
         currentChangeToken: frozen(liveChangeToken, currentChangeToken),
         revisionAtRequest: revision,
         currentRevision: frozen(liveRevision, currentRevision)
       })) {
         return staleResult({
+          sessionIdAtRequest: sessionId,
+          currentSessionId: liveSessionId,
           designIdAtRequest: specId,
           changeTokenAtRequest: changeToken,
           currentDesignId: liveDesignId,
