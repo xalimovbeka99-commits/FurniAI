@@ -30,6 +30,17 @@ export const PERSISTENCE_ERROR = Object.freeze({
    * bypassing this service. Never returned for a save.
    */
   REVISION_INTEGRITY_FAILED: "REVISION_INTEGRITY_FAILED",
+  /**
+   * The deployment has no durable store configured. Distinct from
+   * MISSING_AUTH: a signed-in customer must not be told to sign in when the
+   * real problem is that saving is switched off on this deployment.
+   */
+  PERSISTENCE_NOT_CONFIGURED: "PERSISTENCE_NOT_CONFIGURED",
+  /**
+   * The sign-in provider could not be asked (network error or 5xx). An outage
+   * is not the customer's mistake and must not be reported as "sign in".
+   */
+  AUTH_UNAVAILABLE: "AUTH_UNAVAILABLE",
 });
 
 export class PersistenceError extends Error {
@@ -62,6 +73,8 @@ function statusFor(code) {
     case PERSISTENCE_ERROR.REVISION_INTEGRITY_FAILED:
       return 409;
     case PERSISTENCE_ERROR.STORAGE_UNAVAILABLE:
+    case PERSISTENCE_ERROR.PERSISTENCE_NOT_CONFIGURED:
+    case PERSISTENCE_ERROR.AUTH_UNAVAILABLE:
       return 503;
     case PERSISTENCE_ERROR.INVALID_FURNISPEC:
     case PERSISTENCE_ERROR.INVALID_PARTGRAPH:

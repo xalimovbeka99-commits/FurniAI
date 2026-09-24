@@ -62,7 +62,7 @@ export function getService(caller = { accessToken: null }) {
 
   if (isDeployed()) {
     throw new PersistenceError(
-      PERSISTENCE_ERROR.BAD_REQUEST,
+      PERSISTENCE_ERROR.PERSISTENCE_NOT_CONFIGURED,
       "Design saving is not configured on this deployment. Nothing was saved.",
       { status: 503 }
     );

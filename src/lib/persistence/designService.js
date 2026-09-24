@@ -22,10 +22,21 @@ export function createDesignService(deps = {}) {
   return {
     async createDesign({ userId, name, designId } = {}) {
       requireUser(userId);
+      // Design ids are assigned by the server. The primary key is GLOBAL, so
+      // a client-chosen id that collides with another customer's design
+      // answered 409 CONFLICT_DESIGN — telling the caller that id belongs to
+      // a real customer, and bypassing the "hidden = nonexistent = 404" rule.
+      // Refused whatever its value, so the refusal itself reveals nothing.
+      if (designId !== undefined && designId !== null) {
+        throw new PersistenceError(
+          PERSISTENCE_ERROR.BAD_REQUEST,
+          "designId is assigned by the server and must not be sent when creating a design.",
+          { status: 400 }
+        );
+      }
       const row = await store.createDesign({
         ownerUserId: userId,
         name: typeof name === "string" && name.trim() ? name.trim() : "Untitled wardrobe",
-        designId,
       });
       return {
         ok: true,
@@ -103,7 +114,22 @@ export function createDesignService(deps = {}) {
       };
     },
 
-    async saveRevision({
+    async saveRevision(args = {}) {
+      try {
+        return await saveRevisionUnchecked(args);
+      } catch (err) {
+        // A save that fails because the store cannot be reached must SAY the
+        // design was not saved — even when the failing call was one of the
+        // reads the save makes first, whose own message is read-shaped.
+        if (err instanceof PersistenceError && err.code === PERSISTENCE_ERROR.STORAGE_UNAVAILABLE && !/not saved/i.test(err.message)) {
+          throw new PersistenceError(err.code, `${err.message} Your design was not saved.`, { status: err.status, details: err.details });
+        }
+        throw err;
+      }
+    },
+  };
+
+  async function saveRevisionUnchecked({
       userId,
       designId,
       revision,
@@ -323,8 +349,7 @@ export function createDesignService(deps = {}) {
         createdAt: saved.createdAt,
         validationStatus: saved.validationStatus,
       };
-    },
-  };
+  }
 }
 
 /**

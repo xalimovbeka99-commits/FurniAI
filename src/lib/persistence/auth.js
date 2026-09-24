@@ -67,10 +67,14 @@ export async function resolveCaller(req, opts = {}) {
   const supabaseUrl = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
   const anon = process.env.SUPABASE_ANON_KEY || "";
   if (!supabaseUrl || !anon) {
+    // The caller DID present a credential; there is simply nothing configured
+    // to check it against. Telling a signed-in customer to "sign in" sends
+    // them round a loop that cannot succeed and hides the real fault (Preview
+    // and Production both lacked SUPABASE_URL when this was found).
     throw new PersistenceError(
-      PERSISTENCE_ERROR.MISSING_AUTH,
-      "Sign in is required to save or open a design.",
-      { status: 401 }
+      PERSISTENCE_ERROR.PERSISTENCE_NOT_CONFIGURED,
+      "Design saving is not available on this deployment right now. Nothing was saved or opened.",
+      { status: 503 }
     );
   }
 
@@ -89,7 +93,20 @@ export async function resolveCaller(req, opts = {}) {
       },
     });
   } catch {
-    throw new PersistenceError(PERSISTENCE_ERROR.MISSING_AUTH, "Sign in is required to save or open a design.");
+    // Could not ASK. That is an outage, not a rejected credential.
+    throw new PersistenceError(
+      PERSISTENCE_ERROR.AUTH_UNAVAILABLE,
+      "Sign-in could not be checked right now. Nothing was saved or opened — please try again shortly.",
+      { status: 503 }
+    );
+  }
+
+  if (res.status >= 500) {
+    throw new PersistenceError(
+      PERSISTENCE_ERROR.AUTH_UNAVAILABLE,
+      "Sign-in could not be checked right now. Nothing was saved or opened — please try again shortly.",
+      { status: 503 }
+    );
   }
 
   // A rejected token is INVALID AUTHENTICATION, not a refused design: it says
