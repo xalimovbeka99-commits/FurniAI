@@ -23,6 +23,13 @@ export const PERSISTENCE_ERROR = Object.freeze({
   STORAGE_UNAVAILABLE: "STORAGE_UNAVAILABLE",
   /** A design id that already exists. NOT a revision conflict. */
   CONFLICT_DESIGN: "CONFLICT_DESIGN",
+  /**
+   * A STORED revision no longer verifies (fingerprint, validator or compiler)
+   * and is therefore not served as authoritative geometry. Reachable because
+   * RLS lets an owner INSERT into their own design directly through PostgREST,
+   * bypassing this service. Never returned for a save.
+   */
+  REVISION_INTEGRITY_FAILED: "REVISION_INTEGRITY_FAILED",
 });
 
 export class PersistenceError extends Error {
@@ -52,6 +59,7 @@ function statusFor(code) {
     case PERSISTENCE_ERROR.CONFLICT_REVISION:
     case PERSISTENCE_ERROR.CONFLICT_DESIGN:
     case PERSISTENCE_ERROR.FINGERPRINT_MISMATCH:
+    case PERSISTENCE_ERROR.REVISION_INTEGRITY_FAILED:
       return 409;
     case PERSISTENCE_ERROR.STORAGE_UNAVAILABLE:
       return 503;
