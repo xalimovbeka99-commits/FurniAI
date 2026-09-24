@@ -45,10 +45,17 @@ create policy "Owners can update their wardrobe designs"
   on public.wardrobe_designs for update
   using (auth.uid() = owner_user_id);
 
+-- NO delete policy on wardrobe_designs, deliberately.
+--
+-- `wardrobe_revisions.design_id` is ON DELETE CASCADE, and a referential
+-- action is not subject to RLS. So an owner allowed to DELETE a design could
+-- erase every "immutable" revision of it in one request, whatever the
+-- revisions table's own policies say. Verified against PostgreSQL 16 +
+-- PostgREST 12 by scripts/verify-persistence-db.mjs (T5): with the policy
+-- present the owner's DELETE removed the design and all of its revisions.
+-- There is no delete endpoint in the API; if one is ever wanted it should be
+-- a soft delete, not a cascade. Teardown uses the SQL editor.
 drop policy if exists "Owners can delete their wardrobe designs" on public.wardrobe_designs;
-create policy "Owners can delete their wardrobe designs"
-  on public.wardrobe_designs for delete
-  using (auth.uid() = owner_user_id);
 
 create index if not exists wardrobe_designs_owner_user_id_idx
   on public.wardrobe_designs(owner_user_id);
@@ -106,3 +113,30 @@ create policy "Owners can insert their wardrobe revisions"
 
 create index if not exists wardrobe_revisions_design_id_idx
   on public.wardrobe_revisions(design_id);
+
+-- ---------------------------------------------------------------------------
+-- Privileges. Supabase grants ALL on public tables to anon and authenticated
+-- by default, which leaves RLS as the only barrier. These narrow the grants
+-- so the table privileges say the same thing the policies do.
+--
+--   anon           nothing at all — every design operation needs a caller.
+--   authenticated  designs:   SELECT, INSERT, and UPDATE of (name, updated_at)
+--                             only. Without the column list the UPDATE policy
+--                             allowed an owner to rewrite `id` or
+--                             `owner_user_id` (the latter only to themselves,
+--                             but `id` freely on a design with no revisions).
+--                  revisions: SELECT and INSERT. No UPDATE, no DELETE — the
+--                             missing policies already deny them; revoking the
+--                             privilege makes that a permission error instead
+--                             of a silent zero-row success.
+-- Idempotent: REVOKE and GRANT may be repeated.
+-- ---------------------------------------------------------------------------
+revoke all on public.wardrobe_designs from anon;
+revoke all on public.wardrobe_revisions from anon;
+
+revoke update, delete, truncate on public.wardrobe_designs from authenticated;
+grant select, insert on public.wardrobe_designs to authenticated;
+grant update (name, updated_at) on public.wardrobe_designs to authenticated;
+
+revoke update, delete, truncate on public.wardrobe_revisions from authenticated;
+grant select, insert on public.wardrobe_revisions to authenticated;
