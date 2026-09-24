@@ -4020,7 +4020,7 @@ var AiDesignerTransport = (() => {
     DESIGNER_UNAVAILABLE: "DESIGNER_UNAVAILABLE",
     /**
      * The answer that came back is for a design the customer has already moved
-     * past â€” they edited again, pressed Undo, or switched designs while it was
+     * past — they edited again, pressed Undo, or switched designs while it was
      * in flight. Covers changeToken mismatch and design-id mismatch (not only
      * revision inequality). Kept as STALE_REVISION for Antigravity additive
      * compatibility; see docs/m2/integ/ANTIGRAVITY_STALE_GUARD_HANDOFF.md.
@@ -4182,7 +4182,7 @@ var AiDesignerTransport = (() => {
       currentChangeToken: Number.isFinite(currentChangeToken) ? currentChangeToken : null,
       revisionAtRequest: Number.isFinite(revisionAtRequest) ? revisionAtRequest : null,
       currentRevision: Number.isFinite(currentRevision) ? currentRevision : null,
-      error: "That answer arrived for an older version of your design, so it was not applied. Your current design is unchanged \xE2\u20AC\u201D please ask again."
+      error: "That answer arrived for an older version of your design, so it was not applied. Your current design is unchanged \u2014 please ask again."
     };
   }
   async function proposeDesignChange({
@@ -4200,7 +4200,7 @@ var AiDesignerTransport = (() => {
     currentChangeToken = void 0,
     /**
      * Legacy: reads the caller's CURRENT revision when the answer lands.
-     * Prefer currentChangeToken â€” revision rewinds on Undo.
+     * Prefer currentChangeToken — revision rewinds on Undo.
      */
     currentRevision = void 0
   }) {
@@ -4247,6 +4247,53 @@ var AiDesignerTransport = (() => {
         error: "The FurniAI designer is not reachable from this browser. Your design is unchanged."
       };
     }
+    const preflightMisuse = invalidLiveStateGuardResult({
+      currentSessionId,
+      currentDesignId,
+      currentChangeToken,
+      currentRevision,
+      sessionIdAtRequest: typeof currentSessionId === "function" ? sessionId ?? "captured-at-request-start" : sessionId,
+      designIdAtRequest: specId,
+      changeTokenAtRequest: changeToken,
+      revisionAtRequest: revision
+    });
+    if (preflightMisuse) return preflightMisuse;
+    let sessionAtRequest = sessionId;
+    if (typeof currentSessionId === "function") {
+      let started;
+      try {
+        started = currentSessionId();
+      } catch (err) {
+        return guardRefusal({
+          guardParameter: "currentSessionId",
+          guardPhase: "request-start",
+          guardThrew: true,
+          guardErrorName: typeof err?.name === "string" ? err.name : "Error",
+          error: "Your current design could not be identified, so nothing was asked. Your design is unchanged \u2014 please try again."
+        });
+      }
+      if (started == null || started === "") {
+        return guardRefusal({
+          guardParameter: "currentSessionId",
+          guardPhase: "request-start",
+          error: "Your current design could not be identified, so nothing was asked. Your design is unchanged \u2014 please try again."
+        });
+      }
+      if (sessionId != null && sessionId !== "" && String(sessionId) !== String(started)) {
+        return {
+          ...staleResult({
+            sessionIdAtRequest: sessionId,
+            currentSessionId: started,
+            designIdAtRequest: specId,
+            changeTokenAtRequest: changeToken,
+            revisionAtRequest: revision
+          }),
+          guardPhase: "request-start",
+          sessionNotLiveAtRequest: true
+        };
+      }
+      sessionAtRequest = sessionId != null && sessionId !== "" ? sessionId : started;
+    }
     let payload;
     try {
       const response = await fetchImpl(endpoint, {
@@ -4265,7 +4312,7 @@ var AiDesignerTransport = (() => {
         currentDesignId,
         currentChangeToken,
         currentRevision,
-        sessionIdAtRequest: sessionId,
+        sessionIdAtRequest: sessionAtRequest,
         designIdAtRequest: specId,
         changeTokenAtRequest: changeToken,
         revisionAtRequest: revision
@@ -4276,7 +4323,7 @@ var AiDesignerTransport = (() => {
       const { liveSessionId, liveDesignId, liveChangeToken, liveRevision } = guardRead;
       const frozen = (value, supplied) => typeof supplied === "function" ? () => value : void 0;
       if (isStaleAnswer({
-        sessionIdAtRequest: sessionId,
+        sessionIdAtRequest: sessionAtRequest,
         designIdAtRequest: specId,
         changeTokenAtRequest: changeToken,
         currentSessionId: frozen(liveSessionId, currentSessionId),
@@ -4286,7 +4333,7 @@ var AiDesignerTransport = (() => {
         currentRevision: frozen(liveRevision, currentRevision)
       })) {
         return staleResult({
-          sessionIdAtRequest: sessionId,
+          sessionIdAtRequest: sessionAtRequest,
           currentSessionId: liveSessionId,
           designIdAtRequest: specId,
           changeTokenAtRequest: changeToken,

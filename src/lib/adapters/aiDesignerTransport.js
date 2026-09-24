@@ -8,14 +8,14 @@
  *
  * ONE public call. Order of resolution:
  *
- *   1. DETERMINISTIC â€” the existing `parseConversationalCommand` runs first,
+ *   1. DETERMINISTIC — the existing `parseConversationalCommand` runs first,
  *      in the browser, with no network call. "Make it 2000 mm wide" and its
  *      rewordings already resolve here: instant, free, offline, and identical
  *      to what ships today. A deterministic rejection (negative, imprecise,
  *      out-of-range) is returned as-is and the model is never consulted.
- *   2. MODEL â€” only phrasings the deterministic parser does not recognise are
+ *   2. MODEL — only phrasings the deterministic parser does not recognise are
  *      sent to POST /api/design/propose, which returns PROPOSED EDITS ONLY.
- *   3. KERNEL â€” those proposed edits are replayed through the existing
+ *   3. KERNEL — those proposed edits are replayed through the existing
  *      `applyConversationalEdit` via a proposal-only adapter. The deterministic
  *      validator and kernel own every dimension and all geometry; a model
  *      proposal that fails validation changes nothing.
@@ -44,7 +44,7 @@ export const RESULT_KIND = Object.freeze({
   DESIGNER_UNAVAILABLE: "DESIGNER_UNAVAILABLE",
   /**
    * The answer that came back is for a design the customer has already moved
-   * past â€” they edited again, pressed Undo, or switched designs while it was
+   * past — they edited again, pressed Undo, or switched designs while it was
    * in flight. Covers changeToken mismatch and design-id mismatch (not only
    * revision inequality). Kept as STALE_REVISION for Antigravity additive
    * compatibility; see docs/m2/integ/ANTIGRAVITY_STALE_GUARD_HANDOFF.md.
@@ -198,17 +198,17 @@ export function readLiveStateGuards({
  *
  * BEK contract (revision alone is NOT sufficient):
  *   1. Identify the design (specId / design id).
- *   2. Use a change token that does NOT rewind on Undo â€” monotonic; bumps on
+ *   2. Use a change token that does NOT rewind on Undo — monotonic; bumps on
  *      every committed edit AND every Undo.
  *   3. Reject outdated and out-of-order responses.
  *
  * Why revision is insufficient:
- *   - Undo typically restores the previous revision number. edit(rev1â†’2) then
- *     Undo(rev2â†’1) leaves currentRevision === revisionAtRequest, so a delayed
+ *   - Undo typically restores the previous revision number. edit(rev1→2) then
+ *     Undo(rev2→1) leaves currentRevision === revisionAtRequest, so a delayed
  *     answer for the pre-Undo request would incorrectly apply.
  *   - Two designs can share the same revision number after a switch.
  *
- * `currentDesignId` / `currentChangeToken` are read when the answer lands â€”
+ * `currentDesignId` / `currentChangeToken` are read when the answer lands —
  * pass getters, not snapshots, or the check compares two copies of the same
  * stale value.
  *
@@ -314,7 +314,7 @@ function staleResult({
     revisionAtRequest: Number.isFinite(revisionAtRequest) ? revisionAtRequest : null,
     currentRevision: Number.isFinite(currentRevision) ? currentRevision : null,
     error:
-      "That answer arrived for an older version of your design, so it was not applied. Your current design is unchanged â€” please ask again.",
+      "That answer arrived for an older version of your design, so it was not applied. Your current design is unchanged — please ask again.",
   };
 }
 
@@ -350,7 +350,7 @@ export async function proposeDesignChange({
   currentChangeToken = undefined,
   /**
    * Legacy: reads the caller's CURRENT revision when the answer lands.
-   * Prefer currentChangeToken â€” revision rewinds on Undo.
+   * Prefer currentChangeToken — revision rewinds on Undo.
    */
   currentRevision = undefined,
 }) {
@@ -407,6 +407,77 @@ export async function proposeDesignChange({
   // The deterministic path above completes synchronously, so nothing can have
   // moved underneath it. Everything below awaits the network, which is exactly
   // where a second edit, an Undo, or a design switch can land first.
+
+  // ---- Pre-flight: decided BEFORE the paid call ---------------------------
+  //
+  // Misconfiguration used to be detected only after the provider answered,
+  // so a half-wired caller paid for a model call on every request and then
+  // discarded it. Nothing below depends on the answer, so it runs first.
+  //
+  // The session half of the session pair is supplied by the transport's own
+  // start read (below) when the caller does not pass `sessionId`, so it can
+  // never be "missing" here — only mistyped.
+  const preflightMisuse = invalidLiveStateGuardResult({
+    currentSessionId,
+    currentDesignId,
+    currentChangeToken,
+    currentRevision,
+    sessionIdAtRequest: typeof currentSessionId === "function" ? sessionId ?? "captured-at-request-start" : sessionId,
+    designIdAtRequest: specId,
+    changeTokenAtRequest: changeToken,
+    revisionAtRequest: revision,
+  });
+  if (preflightMisuse) return preflightMisuse;
+
+  // ---- Session identity, captured WHEN THE REQUEST STARTS -----------------
+  //
+  // The transport reads the live session itself, once, now — so the identity
+  // an answer is later compared against is the session that was live when
+  // the request left, not whatever value a caller happened to capture (a
+  // caller that captured it after an await, or from the wrong store, would
+  // otherwise defeat the guard silently). A caller may still pass
+  // `sessionId`; it must then agree with the live session at start, or the
+  // request is being issued FROM a session the customer has already left and
+  // is refused without spending a model call.
+  let sessionAtRequest = sessionId;
+  if (typeof currentSessionId === "function") {
+    let started;
+    try {
+      started = currentSessionId();
+    } catch (err) {
+      return guardRefusal({
+        guardParameter: "currentSessionId",
+        guardPhase: "request-start",
+        guardThrew: true,
+        guardErrorName: typeof err?.name === "string" ? err.name : "Error",
+        error:
+          "Your current design could not be identified, so nothing was asked. Your design is unchanged — please try again.",
+      });
+    }
+    if (started == null || started === "") {
+      return guardRefusal({
+        guardParameter: "currentSessionId",
+        guardPhase: "request-start",
+        error:
+          "Your current design could not be identified, so nothing was asked. Your design is unchanged — please try again.",
+      });
+    }
+    if (sessionId != null && sessionId !== "" && String(sessionId) !== String(started)) {
+      return {
+        ...staleResult({
+          sessionIdAtRequest: sessionId,
+          currentSessionId: started,
+          designIdAtRequest: specId,
+          changeTokenAtRequest: changeToken,
+          revisionAtRequest: revision,
+        }),
+        guardPhase: "request-start",
+        sessionNotLiveAtRequest: true,
+      };
+    }
+    sessionAtRequest = sessionId != null && sessionId !== "" ? sessionId : started;
+  }
+
   let payload;
   try {
     const response = await fetchImpl(endpoint, {
@@ -428,7 +499,7 @@ export async function proposeDesignChange({
       currentDesignId,
       currentChangeToken,
       currentRevision,
-      sessionIdAtRequest: sessionId,
+      sessionIdAtRequest: sessionAtRequest,
       designIdAtRequest: specId,
       changeTokenAtRequest: changeToken,
       revisionAtRequest: revision,
@@ -447,7 +518,7 @@ export async function proposeDesignChange({
     const frozen = (value, supplied) => (typeof supplied === "function" ? () => value : undefined);
     if (
       isStaleAnswer({
-        sessionIdAtRequest: sessionId,
+        sessionIdAtRequest: sessionAtRequest,
         designIdAtRequest: specId,
         changeTokenAtRequest: changeToken,
         currentSessionId: frozen(liveSessionId, currentSessionId),
@@ -458,7 +529,7 @@ export async function proposeDesignChange({
       })
     ) {
       return staleResult({
-        sessionIdAtRequest: sessionId,
+        sessionIdAtRequest: sessionAtRequest,
         currentSessionId: liveSessionId,
         designIdAtRequest: specId,
         changeTokenAtRequest: changeToken,

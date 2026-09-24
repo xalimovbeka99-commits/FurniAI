@@ -175,7 +175,10 @@ describe("the session guard fails closed on every misuse", () => {
     expect(result.guardParameterType).toBe("string");
   });
 
-  it("refuses a live session getter supplied without sessionId, and names the missing half", async () => {
+  it("accepts a live session getter WITHOUT sessionId: the transport captures the session at request start", async () => {
+    // Contract change (docs/m3/SESSION_ID_CALLING_CONTRACT.md §2): this used to
+    // be a named misconfiguration. The transport now reads currentSessionId()
+    // itself when the request starts, so the getter alone is a complete guard.
     const before = activeDesign();
     const result = await proposeDesignChange({
       message: MODEL_ONLY,
@@ -185,13 +188,11 @@ describe("the session guard fails closed on every misuse", () => {
       changeToken: 7,
       fetchImpl: widen(),
       currentChangeToken: () => 7,
-      currentSessionId: () => "session-2", // no sessionId at request time
+      currentSessionId: () => "session-2",
     });
 
-    expect(result.ok).toBe(false);
-    expect(result.guardMisconfigured).toBe(true);
-    expect(result.guardParameter).toBe("sessionId");
-    expect(result.error).toMatch(/sessionId/);
+    expect(result.ok).toBe(true);
+    expect(result.kind).toBe(RESULT_KIND.DESIGN_UPDATED);
   });
 
   it("refuses when the session getter THROWS, and names it without leaking the message", async () => {
@@ -227,9 +228,9 @@ describe("the session guard fails closed on every misuse", () => {
     }
   });
 
-  it("reads the session getter exactly once", async () => {
+  it("reads the session getter exactly twice on a healthy request: once at start, once when the answer lands", async () => {
     const before = activeDesign();
-    const getter = vi.fn(() => "session-2");
+    const getter = vi.fn(() => "session-1");
 
     await proposeDesignChange({
       ...AFTER_REOPEN,
@@ -238,7 +239,24 @@ describe("the session guard fails closed on every misuse", () => {
       currentSessionId: getter,
     });
 
+    expect(getter).toHaveBeenCalledTimes(2);
+  });
+
+  it("reads it once, and never calls the provider, when the request is already stale at start", async () => {
+    const before = activeDesign();
+    const getter = vi.fn(() => "session-2");
+    const fetchImpl = widen();
+
+    const result = await proposeDesignChange({
+      ...AFTER_REOPEN, // sessionId "session-1" while "session-2" is live
+      currentObservations: before.observations,
+      fetchImpl,
+      currentSessionId: getter,
+    });
+
+    expect(result.kind).toBe(RESULT_KIND.STALE_REVISION);
     expect(getter).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
 
