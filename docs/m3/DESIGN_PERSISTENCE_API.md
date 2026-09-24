@@ -11,11 +11,16 @@ values, CNC qualification.
 > handoff, comment or message disagrees with it, this file is correct — it is written
 > against the code and is covered by `src/lib/persistence/*.test.js`.
 >
-> **Verification status:** the application-level protocol is tested against an in-process
-> store and a fake PostgREST that enforces `unique (design_id, revision)` and models RLS.
-> **Durability and concurrency have NOT been verified against a real Postgres.** See
-> `PERSISTENCE_DB_TEST_PROCEDURE.md`. Until §4.1 and §4.3 of that document pass, do not
-> describe this as proven durable.
+> **Verification status (2026-09-24):**
+>
+> | Layer | Verified? | How |
+> |---|---|---|
+> | Application protocol | yes | `src/lib/persistence/*.test.js` (in-process store, fake PostgREST) |
+> | PostgreSQL 16 + PostgREST 12 + RLS + the committed migration | **yes, locally** | `node scripts/verify-persistence-db.mjs --local` — real database, real handlers in separate OS processes; 8/8 pass, evidence in `docs/m3/evidence/` |
+> | Supabase Auth (GoTrue), the Supabase gateway, a hosted project | **no** | `--target` mode exists and has **not been run**; it needs an approved non-production project |
+>
+> Say "verified against PostgreSQL locally", not "verified on Supabase", until `--target`
+> has passed.
 
 ---
 
@@ -27,8 +32,17 @@ Every endpoint requires a Supabase access token:
 Authorization: Bearer <supabase-access-token>
 ```
 
-- Missing, malformed, empty **or rejected by Supabase** → `401 MISSING_AUTH`. An invalid
-  token is an authentication failure and says nothing about any particular design.
+| Situation | Answer | UI meaning |
+|---|---|---|
+| No / malformed / empty `Authorization` | `401 MISSING_AUTH` | sign in |
+| Token the auth provider **rejects** (401/403 from `/auth/v1/user`) | `401 MISSING_AUTH` | sign in again |
+| Auth provider **unreachable or 5xx** | `503 AUTH_UNAVAILABLE` | try again shortly — *not* a sign-in problem |
+| Deployment has no durable store configured, credential presented | `503 PERSISTENCE_NOT_CONFIGURED` | saving is unavailable here — *not* a sign-in problem |
+
+`401` is the **only** "sign in" signal. Before 2026-09-24 the last three rows all answered
+`401`, so a signed-in customer on Preview or Production (neither has `SUPABASE_URL` today)
+was told to sign in, in a loop that could not succeed.
+
 - The token is used to resolve the caller **and** to query Postgres as that caller, so
   row-level security applies to every read and write. It is never logged, never returned,
   and never written into a design.
@@ -54,8 +68,8 @@ re-enabled from the dashboard.
 | `FURNIAI_PERSISTENCE_TEST_AUTH` | never set it anywhere | Inert on deployments; has no legitimate deployed use. |
 
 A deployed environment with `SUPABASE_URL` / `SUPABASE_ANON_KEY` unset **fails closed**:
-`503`, *"Design saving is not configured on this deployment. Nothing was saved."* It does
-not silently fall back to an in-memory store.
+`503 PERSISTENCE_NOT_CONFIGURED`. It does not silently fall back to an in-memory store, and
+it does not tell a signed-in customer to sign in.
 
 Changing an environment variable does not trigger a redeploy. Redeploy for it to take
 effect.
@@ -78,14 +92,21 @@ Read this section before writing any client code; most of the error cases follow
    saved record; the specId identifies the FurniSpec lineage inside it.
 5. **The server recomputes the fingerprint** from the submitted FurniSpec and rejects the
    save if it disagrees with the one you sent.
-6. **The server validates what you send, and that the parts agree with each other.** The
-   fingerprint proves the spec arrived intact; it proves nothing about whether the spec is
-   buildable or whether the PartGraph describes *that* spec. Every save runs the
-   authoritative `validateFurniSpec` and `validatePartGraph`, checks the graph's
-   `sourceSpecId`, `sourceRevision` and envelope against the spec, and refuses any graph
-   whose ledger records an `UNSUPPORTED` component. **The server never substitutes
-   recompiled geometry for what you sent** — it stores your PartGraph exactly, or refuses
-   the save.
+6. **The saved PartGraph must be exactly what the compiler makes of the saved FurniSpec.**
+   The fingerprint proves the spec arrived intact; it proves nothing about whether the spec
+   is buildable or whether the PartGraph describes *that* spec. Every save runs, in order:
+   `validateFurniSpec`; `validatePartGraph` and the unsupported-component ledger; the
+   identity/envelope checks; then **recompiles the spec with `buildStructuralPartGraph`**
+   (pure and deterministic) and requires the submitted graph to equal it canonically (key
+   order irrelevant). A spec the compiler cannot build, or that compiles to a graph its own
+   validator rejects, is `INVALID_FURNISPEC`; a graph that differs from the compiled one is
+   `INVALID_PARTGRAPH` with `details.compiledMismatch` naming the differing fields and part
+   ids. **The server never substitutes recompiled geometry for what you sent** — it stores
+   your PartGraph byte-for-byte, or refuses the save. Every refusal happens before the
+   write: no row, no history change.
+
+   *Client consequence:* send the PartGraph the pipeline produced for this exact FurniSpec.
+   Do not hand-edit a graph, and do not pair a spec with a graph from an earlier edit.
 7. **Retrying an identical save is safe — and "identical" means every persisted field.**
    Equivalence is a canonical digest over `specId`, `revision`, the FurniSpec fingerprint,
    the PartGraph, `origins` and `validationStatus`. Key order does not matter. A true
@@ -95,6 +116,14 @@ Read this section before writing any client code; most of the error cases follow
    validation status is **not** a replay and is refused with `STALE_REVISION` — reporting it
    as an exact save would be a false statement about what is in the database.
 8. **Undo history stays client-side for the pilot.** Only accepted revisions are saved.
+9. **Reopen serves only a revision that still verifies.** RLS lets an owner INSERT into
+   their own design directly through PostgREST with their own session token, bypassing this
+   API. RLS confines the damage to their own design; reopen re-runs the fingerprint,
+   validators and compiler check and answers `409 REVISION_INTEGRITY_FAILED` (reason code
+   only, no contents) rather than serving such a row as authoritative geometry.
+10. **`expectedPreviousRevision` on a design with no history is refused** (`409
+    STALE_REVISION`, `latestRevision: null`) — the client believes in history that does not
+    exist, so it has the wrong design or a stale view.
 
 ### Concurrency, stated precisely
 
@@ -103,8 +132,22 @@ single serialization point is `unique (design_id, revision)` in Postgres. Exactl
 takes a revision number; the other is told **`STALE_REVISION`** (not `CONFLICT_REVISION` —
 it had nothing to overwrite) with `details.concurrent: true`.
 
-**This is not a claim of application-level mutual exclusion, and it is not proven.** It rests
-on a database constraint that has not yet been verified to exist on a real deployment.
+This is not application-level mutual exclusion. It has now been **observed on a real
+PostgreSQL 16**: 50 rounds × 8 writers, each a separate OS process with its own connection,
+released at the same instant — exactly one `201` per round, every loser `409
+STALE_REVISION`, never `CONFLICT_REVISION`, exactly one row per revision (T2 in
+`docs/m3/evidence/dbverify-local-after.txt`). It has **not** been observed on a hosted
+Supabase project.
+
+### Immutability, stated precisely
+
+Revisions cannot be updated or deleted by any non-service role: there is no UPDATE/DELETE
+policy **and** the privilege is revoked. Designs cannot be deleted by their owner either —
+`wardrobe_revisions.design_id` is `ON DELETE CASCADE` and a referential action is not
+subject to RLS, so an owner allowed to delete a design could erase all of its "immutable"
+revisions in one request. That was true of the migration until 2026-09-24 (observed: owner
+`DELETE` design → 1 row, revisions afterwards 0) and is now closed. Owners may update only
+`name` and `updated_at` on a design.
 
 ---
 
@@ -116,7 +159,10 @@ Request:
 ```json
 { "name": "Living room wardrobe" }
 ```
-`designId` may optionally be supplied; a colliding id returns `409 CONFLICT_DESIGN`.
+**Design ids are assigned by the server.** Sending `designId` is `400 BAD_REQUEST`,
+whatever its value. (It used to be accepted; because the primary key is global, creating
+with another customer's id answered `409 CONFLICT_DESIGN` — an existence oracle. No client
+sent one.) A lost response on create is harmless: retrying creates a second, empty shell.
 
 `201`:
 ```json
@@ -211,35 +257,41 @@ This is the only endpoint that returns the full FurniSpec and PartGraph.
 Every error body is `{ "ok": false, "code": "...", "error": "...", "details"?: {...} }`.
 `error` is customer-safe: it never names a provider, an environment variable or a credential.
 
-| Code | HTTP | When |
-|---|---|---|
-| `MISSING_AUTH` | 401 | No, malformed or rejected Bearer token |
-| `MISSING_DESIGN` | 404 | Unknown design or revision, **and any access to another owner's design — read or write** |
-| `STALE_REVISION` | 409 | `expectedPreviousRevision` ≠ latest; revision does not advance by 1; or a concurrent writer took the number first (`details.concurrent`) |
-| `CONFLICT_REVISION` | 409 | Store-level unique violation the service could not reclassify |
-| `CONFLICT_DESIGN` | 409 | Supplied `designId` already exists |
-| `FINGERPRINT_MISMATCH` | 409 | Body fingerprint ≠ recomputed, `details.expectedFingerprint` |
-| `INVALID_FURNISPEC` | 400 | Spec shape invalid, unfingerprintable, **or rejected by `validateFurniSpec`** (`details.errors`) |
-| `INVALID_PARTGRAPH` | 400 | PartGraph validation failed (`details.errors`), **or it does not describe this spec** (`details.specId` / `details.envelope`) |
-| `UNSUPPORTED_COMPONENT` | 400 | The graph's ledger records a component the kernel could not represent (`details.unsupported`) |
-| `BAD_REQUEST` | 400 | Malformed body, missing `expectedPreviousRevision`, specId change, credential-shaped field |
-| `STORAGE_UNAVAILABLE` | 502 / 503 | The store failed or was unreachable |
-| `METHOD_NOT_ALLOWED` | 405 | Wrong verb |
+| Code | HTTP | When | Nothing was written? |
+|---|---|---|---|
+| `MISSING_AUTH` | 401 | No, malformed or **rejected** Bearer token | yes |
+| `AUTH_UNAVAILABLE` | 503 | The auth provider could not be asked (network / 5xx) | yes |
+| `PERSISTENCE_NOT_CONFIGURED` | 503 | This deployment has no durable store | yes |
+| `MISSING_DESIGN` | 404 | Unknown **or malformed** design id, unknown revision, **and any access to another owner's design — read or write** | yes |
+| `STALE_REVISION` | 409 | `expectedPreviousRevision` ≠ latest (or claims history on an empty design); revision does not advance by 1; a concurrent writer took the number (`details.concurrent`); or same revision number, different content | yes |
+| `CONFLICT_REVISION` | 409 | Store-level unique violation the service could not reclassify (not observed on the real database) | yes |
+| `CONFLICT_DESIGN` | 409 | Unreachable through the API now that ids are server-assigned; kept in the enum | yes |
+| `FINGERPRINT_MISMATCH` | 409 | Body fingerprint ≠ recomputed, `details.expectedFingerprint` | yes |
+| `REVISION_INTEGRITY_FAILED` | 409 | **Reopen only**: the stored row no longer verifies, `details.reason` | nothing changed |
+| `INVALID_FURNISPEC` | 400 | Shape, `validateFurniSpec` (`details.errors`), compile failure (`details.compileError`), or compiles to invalid geometry (`details.compiledGraphInvalid`) | yes |
+| `INVALID_PARTGRAPH` | 400 | `validatePartGraph` (`details.errors`), identity/envelope mismatch, or not the compiler's graph for this spec (`details.compiledMismatch`) | yes |
+| `UNSUPPORTED_COMPONENT` | 400 | The graph's ledger records a component the kernel could not represent (`details.unsupported`) | yes |
+| `BAD_REQUEST` | 400 | Malformed body, missing `expectedPreviousRevision`, specId change, credential-shaped field, client-supplied `designId` | yes |
+| `STORAGE_UNAVAILABLE` | 502 / 503 | The store failed or was unreachable. On a save the message says the design was **not saved**; on a read it makes no claim about saving | yes |
+| `METHOD_NOT_ALLOWED` | 405 | Wrong verb | yes |
 
-**There is no `403`. Another owner's design answers exactly as a nonexistent one: `404
-MISSING_DESIGN`, same status, same code, same message, on every endpoint, for reads and
-writes alike, in every store.**
+`UNAUTHORIZED` (403) remains in the enum for compatibility and is never emitted.
 
-This is deliberate. A `403` for a real design and a `404` for a fabricated id is an
-existence oracle — anyone holding an id learns whether it belongs to a real customer. It
-also used to be a divergence: under RLS the deployed path already answered `404` (PostgREST
-returns an empty result for rows it hides rather than an error) while the in-memory store
-used locally answered `403`, so the cross-user test proved something the deployment did not
-do. Both now answer `404`, and `saveConsistency.test.js` asserts the two refusals are
-byte-identical.
+### Hidden and nonexistent designs — one answer
 
-For the UI this simplifies to one rule: **`404` means "you cannot have this", without
-implying anything about whether it exists.** `401` remains the only "sign in again" signal.
+**There is no `403`. Another owner's design, a nonexistent design and a malformed design id
+all answer exactly the same: `404 MISSING_DESIGN`, same status, same code, same message, on
+every endpoint, for reads and writes, in every store.** Verified byte-for-byte on the real
+database for all four design endpoints (T1, T6).
+
+A `403` for a real design and a `404` for a fabricated id is an existence oracle. So was the
+old `409 CONFLICT_DESIGN` on create, and so was the old `502` for a malformed id on the
+deployed path (PostgreSQL rejects a bad uuid with `22P02`; PostgREST returns `400`; the
+store reported an outage) while the local store said `404`. All three are closed.
+
+For the UI this is one rule: **`404` means "you cannot have this", without implying
+anything about whether it exists.** `401` is the only "sign in again" signal; `503` is
+"try again later / not available here".
 
 ---
 
@@ -283,25 +335,66 @@ const reopened = await (await fetch(
 // reopened.furniSpec / .partGraph / .fingerprint / .specId restore identity exactly.
 ```
 
+### Save-conflict recovery — the algorithm
+
+```text
+POST revision N+1 with expectedPreviousRevision N
+├─ 201                        saved. latest = N+1.
+├─ 200 idempotentReplay:true  it was already saved (your earlier response was lost). latest = N+1.
+├─ network error / timeout    you do not know. Resend the IDENTICAL body (same revision,
+│                             same expectedPreviousRevision, same content):
+│                               200 replay → it had been saved; 201 → it is now;
+│                               409 → someone else's save won (below).
+├─ 409 STALE_REVISION         someone else saved first (another tab or device), or your
+│                             view is stale. Do NOT retry blind and do NOT bump the number.
+│                             GET /api/designs/:id → latestRevision; GET that revision;
+│                             show the customer both; they choose; save their choice as
+│                             latest+1 with expectedPreviousRevision = latest.
+├─ 400 INVALID_* / UNSUPPORTED_COMPONENT
+│                             the design itself is not saveable. Nothing was written. Keep
+│                             the customer's on-screen state; do not retry the same body.
+├─ 401 MISSING_AUTH           sign in again, then resend the same body.
+├─ 503 AUTH_UNAVAILABLE / STORAGE_UNAVAILABLE
+│                             nothing was saved (or: unknown — resend identical body later).
+└─ 503 PERSISTENCE_NOT_CONFIGURED
+                              saving is off on this deployment; say so, keep local state.
+```
+
+A refused save never changes stored history, and it must not change the client's active
+design either: keep what is on screen.
+
 ### Client responsibilities
 
 - Save only **accepted** revisions; never overwrite.
 - Always send `expectedPreviousRevision` after the first save.
-- On `STALE_REVISION`, reload and let the customer re-apply — never retry blind.
-- Safe to retry the **identical** body on a timeout; that is idempotent by contract.
+- Never send `designId` to `POST /api/designs`.
+- Send the PartGraph the pipeline produced for exactly this FurniSpec.
+- On `STALE_REVISION`, reload and let the customer choose — never retry blind.
+- Safe to retry the **identical** body on a timeout; that is idempotent by contract, and it
+  has been exercised with the response genuinely lost after commit (T3).
 - On reopen, replace in-memory state from the response. Do not merge it into a stale cache.
 - Export identity after reopen must come from the returned PartGraph and fingerprint.
-- **Reset the session change token on every reopen** — and see the open item below.
+- **On reopen, rotate the editing-session id and restart the change token** — see §7.
 
 ---
 
-## 7. Open item affecting reopen
+## 7. Reopen and the editing session
 
-Reopening restores design identity correctly on the server. On the **client**, the stale
-guard cannot currently tell one session from another: reopening the same design restarts the
-change-token counter, so an in-flight answer from the previous session can match both guard
-signals and apply.
+Server-side identity after reopen is exact. Client-side, the AI transport now refuses an
+answer from a session the customer has left (`06cbdcf`, extended in `5cda494`), and
+Antigravity wired the rotation in `de5ebec`. The contract is
+`SESSION_ID_CALLING_CONTRACT.md`. The five identities involved are distinct and must not be
+substituted for each other:
 
-Demonstrated in `src/lib/adapters/sessionIdentityCharacterization.test.js`; the fix is
-specified in `proposals/SESSION_IDENTITY_GUARD.md`. It needs a change to a shared transport
-file and is **not implemented** — it is for the integration lead to schedule.
+| Identity | Where | Changes on |
+|---|---|---|
+| Design identity | `designId` (server), `specId` (spec lineage) | never, for one design |
+| Stored revision | `revision` in these endpoints | each accepted save (immutable once written) |
+| Displayed revision | the UI's revision counter | edit (+1), Undo (−1) |
+| Change token | `changeToken` | every edit **and** every Undo; restarts on reopen |
+| Editing session | `sessionId` (browser only, never sent here) | page load, reopen, design switch, reset |
+
+**Not yet wired:** `index.html` does not call these endpoints. `reopenAiWardrobeDesign()`
+restores a client-side snapshot. Durable save/reopen reaches a customer only when the UI
+calls §4 — that is Antigravity's integration, and the browser journey for it does not exist
+yet.
