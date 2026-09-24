@@ -10,9 +10,12 @@
  * a customer and useless to an operator. This tells the operator.
  *
  * Never prints a credential. Makes at most ONE 1-token probe, and only when a
- * key is present; a rejected key fails at 401 and costs nothing.
+ * key is present; a rejected key fails at 401 and costs nothing. A VALID key's
+ * probe is a real, billed (1-token) call — use --config-only when no paid call
+ * is authorized.
  *
- *   node scripts/check-provider-config.mjs
+ *   node scripts/check-provider-config.mjs                # config + one probe
+ *   node scripts/check-provider-config.mjs --config-only  # config only, no network
  *
  * Exit: 0 ok · 1 not configured · 2 auth · 3 quota/rate/outage ·
  *       4 model access · 5 network · 6 application error
@@ -59,7 +62,10 @@ function describeKey(value) {
   return `configured — ${length}, ${shape}`;
 }
 
+const CONFIG_ONLY = process.argv.includes("--config-only");
 const key = process.env.ANTHROPIC_API_KEY || "";
+const { describeProviderConfig } = await imp("src/lib/ai-provider/providerConfigReport.js");
+const report = describeProviderConfig(process.env);
 const { DEFAULT_ANTHROPIC_MODEL } = await imp("src/lib/ai-provider/anthropicChatClient.js");
 const model = process.env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL;
 
@@ -68,7 +74,10 @@ console.log("FurniAI — AI provider configuration check");
 console.log(RULE);
 say(".env.local", existsSync(envFile) ? `present (${fromFile.length} key(s): ${fromFile.join(", ")})` : "not present");
 say("ANTHROPIC_API_KEY", describeKey(key));
-say("OPENAI_API_KEY", process.env.OPENAI_API_KEY ? "configured" : "absent");
+say("ANTHROPIC state", `${report.providers.anthropic.state}${report.providers.anthropic.shape ? ` (${report.providers.anthropic.shape})` : ""}`);
+say("OPENAI_API_KEY", `${report.providers.openai.state}${report.providers.openai.shape ? ` (${report.providers.openai.shape})` : ""}`);
+say("router would attempt", report.wouldAttempt.length ? report.wouldAttempt.join(" -> ") : "nothing (-> 503 AI_PROVIDER_NOT_CONFIGURED)");
+say("persistence", report.persistence.configured ? "SUPABASE_URL + SUPABASE_ANON_KEY configured" : `not configured${report.persistence.prefixedOnly ? " — only NEXT_PUBLIC_ names are set, which nothing reads" : ""}`);
 say("AI_PROVIDER_ORDER", process.env.AI_PROVIDER_ORDER || "unset (default anthropic,openai)");
 say("model the app will use", model + (process.env.ANTHROPIC_MODEL ? " (from ANTHROPIC_MODEL)" : " (built-in default)"));
 
@@ -79,6 +88,10 @@ function finish(verdict, code, action, relay) {
   console.log(`ACTION : ${action}`);
   console.log(RULE);
   process.exit(code);
+}
+
+if (CONFIG_ONLY) {
+  finish(`CONFIG ONLY — ${report.verdict} (no provider was contacted)`, report.wouldAttempt.length ? 0 : 1, report.meaning);
 }
 
 if (!key) {
