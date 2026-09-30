@@ -91,6 +91,20 @@ describe("reducer — open lifecycle", () => {
     expect(reducer(s, { type: ACTION.OPEN_DISMISS })).toBe(s);
   });
 
+  it("openEnabled defaults to true and is fixed in state", () => {
+    expect(createInitialState().openEnabled).toBe(true);
+    expect(createInitialState({ openEnabled: false }).openEnabled).toBe(false);
+  });
+
+  it("OPEN DISABLED — OPEN_REQUEST is ignored when openEnabled is false", () => {
+    const s = createInitialState({ openEnabled: false });
+    expect(reducer(s, { type: ACTION.OPEN_REQUEST, seq: 1, designId: "d-1" })).toBe(s);
+    // listing still works
+    const l = reducer(reducer(s, { type: ACTION.LIST_REQUEST, seq: 1 }), { type: ACTION.LIST_SUCCESS, seq: 1, designs: [ROW] });
+    expect(l.list.status).toBe(LIST_STATUS.LIST);
+    expect(l.openEnabled).toBe(false);
+  });
+
   it("unknown actions return the same state", () => {
     const s = createInitialState();
     expect(reducer(s, { type: "NOPE" })).toBe(s);

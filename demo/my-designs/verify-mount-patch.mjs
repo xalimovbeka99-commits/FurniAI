@@ -59,7 +59,7 @@ const server = createServer(async (req, res) => {
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const origin = `http://127.0.0.1:${server.address().port}`;
 
-const CLIENT_STUB = () => {
+const CLIENT_STUB = (withReopen) => {
   window.__fmdCalls = [];
   window.FurniDesignsApi = {
     createDesignsApiClient(opts) {
@@ -72,19 +72,19 @@ const CLIENT_STUB = () => {
       };
     },
   };
-  window.reopenDesignFromApi = (selection, record) => { window.__reopened = { selection, fingerprint: record && record.fingerprint }; };
+  if (withReopen) window.reopenDesignFromApi = (selection, record) => { window.__reopened = { selection, fingerprint: record && record.fingerprint }; };
 };
 
 const { chromium } = await import("@playwright/test");
 const browser = await chromium.launch();
 const report = {};
 try {
-  for (const variant of ["with-client", "without-client"]) {
+  for (const variant of ["with-client", "without-reopen", "without-client"]) {
     const page = await browser.newPage({ viewport: { width: 1100, height: 760 } });
     const errors = [];
     page.on("pageerror", (e) => errors.push(String(e && e.message)));
     await page.route("**/*", (route) => (route.request().url().startsWith(origin) ? route.continue() : route.abort()));
-    if (variant === "with-client") await page.addInitScript(CLIENT_STUB);
+    if (variant !== "without-client") await page.addInitScript(CLIENT_STUB, variant === "with-client");
     await page.goto(`${origin}/#/projects`);
     await page.waitForFunction(() => window.__furniaiBootOk === true, null, { timeout: 10000 }).catch(() => {});
     const r = { bootOk: await page.evaluate(() => window.__furniaiBootOk === true) };
@@ -113,6 +113,25 @@ try {
       await mkdir(dirname(shot), { recursive: true });
       await page.screenshot({ path: shot });
       r.screenshot = shot;
+    } else if (variant === "without-reopen") {
+      await page.waitForSelector("#myDesignsRoot .fmd-open", { timeout: 10000 });
+      await page.evaluate(() => {
+        const m = document.getElementById("authModal");
+        if (m) { m.hidden = true; m.style.display = "none"; m.classList.remove("open", "show", "active"); }
+      });
+      await page.click("#myDesignsRoot .fmd-open", { force: true }).catch(() => {});
+      await page.waitForTimeout(200);
+      Object.assign(r, await page.evaluate(() => ({
+        rootHidden: document.getElementById("myDesignsRoot").hidden,
+        buttons: document.querySelectorAll("#myDesignsRoot .fmd-open").length,
+        allDisabled: [...document.querySelectorAll("#myDesignsRoot .fmd-open")].every((b) => b.disabled),
+        notice: document.querySelector("#myDesignsRoot .fmd-notice")?.textContent || null,
+        calls: window.__fmdCalls.map((c) => c[0]),
+        reopenDefined: typeof window.reopenDesignFromApi === "function",
+      })));
+      const shot = join(repo, "docs/m3/artifacts/my-designs/patched-index-open-disabled.png");
+      await page.screenshot({ path: shot });
+      r.screenshot = shot;
     } else {
       await page.waitForTimeout(500);
       Object.assign(r, await page.evaluate(() => ({
@@ -134,6 +153,12 @@ const ok =
   report["with-client"].reopened?.selection?.designId === "3f7d2c1e-9a4b-4c7e-8f10-2b6a9d0e1c11" &&
   report["with-client"].reopened?.selection?.revision === 2 &&
   report["without-client"].rootHidden === true &&
+  report["without-reopen"].rootHidden === false &&
+  report["without-reopen"].buttons > 0 &&
+  report["without-reopen"].allDisabled === true &&
+  !!report["without-reopen"].notice &&
+  JSON.stringify(report["without-reopen"].calls) === JSON.stringify(["listDesigns"]) &&
+  report["without-reopen"].pageErrors.length === 0 &&
   report["with-client"].pageErrors.length === 0 &&
   report["without-client"].pageErrors.length === 0;
 console.log(ok ? "MOUNT PATCH SMOKE: PASS (MOCKED)" : "MOUNT PATCH SMOKE: FAIL");

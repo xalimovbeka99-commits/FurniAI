@@ -80,7 +80,12 @@ import { MY_DESIGNS_CSS, MY_DESIGNS_STYLE_ID } from "./styles.js";
 /**
  * @typedef {Object} MountMyDesignsOptions
  * @property {DesignsApiClientLike} client  injected; required
- * @property {(selection: OpenDesignSelection, record: OpenDesignRecord) => (void|Promise<void>)} onOpenDesign  required
+ * @property {(selection: OpenDesignSelection, record: OpenDesignRecord) => (void|Promise<void>)} [onOpenDesign]
+ *   required unless openEnabled is false
+ * @property {boolean} [openEnabled=true]
+ *   Fixed at mount. false = the list still loads and renders, every Open button is
+ *   disabled with an explanatory notice, and openDesign() makes no request. For a
+ *   Studio build without a reopen handler: the panel is shown, not hidden.
  * @property {() => (string|null|undefined|Promise<string|null|undefined>)} [getAccessToken]
  *   Optional. When supplied, a falsy result means "signed out" and NO request is made.
  * @property {() => void} [onSignIn]  shows a "Sign in" button in signed-out states
@@ -106,6 +111,7 @@ export function mountMyDesigns(rootEl, options = /** @type {any} */ ({})) {
     injectStyles = true,
     autoLoad = true,
     title,
+    openEnabled = true,
   } = options;
   const doc = options.document || (rootEl && rootEl.ownerDocument) || globalThis.document;
 
@@ -116,14 +122,17 @@ export function mountMyDesigns(rootEl, options = /** @type {any} */ ({})) {
       throw new TypeError(`mountMyDesigns: client.${m} must be a function (inject createDesignsApiClient()).`);
     }
   }
-  if (typeof onOpenDesign !== "function") throw new TypeError("mountMyDesigns: onOpenDesign must be a function.");
+  if (typeof openEnabled !== "boolean") throw new TypeError("mountMyDesigns: openEnabled must be a boolean when given.");
+  if (openEnabled && typeof onOpenDesign !== "function") {
+    throw new TypeError("mountMyDesigns: onOpenDesign must be a function (or pass openEnabled: false).");
+  }
   if (getAccessToken !== undefined && typeof getAccessToken !== "function") {
     throw new TypeError("mountMyDesigns: getAccessToken must be a function when given.");
   }
 
   if (injectStyles) ensureStyles(doc, MY_DESIGNS_STYLE_ID, MY_DESIGNS_CSS);
 
-  let state = createInitialState();
+  let state = createInitialState({ openEnabled });
   let destroyed = false;
   let listSeq = 0;
   let openSeq = 0;
@@ -137,6 +146,7 @@ export function mountMyDesigns(rootEl, options = /** @type {any} */ ({})) {
     onSignIn: typeof onSignIn === "function" ? onSignIn : null,
     formatDate,
     title,
+    openEnabled,
   });
 
   function dispatch(action) {
@@ -192,7 +202,7 @@ export function mountMyDesigns(rootEl, options = /** @type {any} */ ({})) {
   }
 
   async function openDesign(designId) {
-    if (destroyed) return;
+    if (destroyed || !openEnabled) return;
     // Only ids the SERVER listed can be opened. An id from anywhere else
     // (a stale button, a caller's guess) is refused without a request.
     const row = state.list.designs.find((d) => d.designId === designId);

@@ -11,7 +11,7 @@
  *    where the customer left it.
  */
 
-import { LIST_STATUS, OPEN_STATUS, ERROR_KIND, messageFor } from "./state.js";
+import { LIST_STATUS, OPEN_STATUS, ERROR_KIND, OPEN_DISABLED_NOTICE, messageFor } from "./state.js";
 
 let instanceCounter = 0;
 
@@ -25,6 +25,7 @@ let instanceCounter = 0;
  *   onSignIn?: (() => void) | null,
  *   formatDate: (iso: string|null) => string,
  *   title?: string,
+ *   openEnabled?: boolean,
  * }} handlers
  */
 export function createView(doc, rootEl, handlers) {
@@ -44,12 +45,18 @@ export function createView(doc, rootEl, handlers) {
   head.appendChild(title);
   head.appendChild(refreshBtn);
 
+  const openEnabled = handlers.openEnabled !== false;
+  const noticeId = `fmd-notice-${n}`;
   const status = el(doc, "p", { class: "fmd-status", role: "status", "aria-live": "polite" });
   const alert = el(doc, "div", { class: "fmd-alert", role: "alert" });
   const body = el(doc, "div", { class: "fmd-body" });
 
   section.appendChild(head);
   section.appendChild(status);
+  if (!openEnabled) {
+    section.setAttribute("data-open-enabled", "false");
+    section.appendChild(el(doc, "p", { class: "fmd-notice", id: noticeId }, OPEN_DISABLED_NOTICE));
+  }
   section.appendChild(alert);
   section.appendChild(body);
   rootEl.appendChild(section);
@@ -115,8 +122,9 @@ export function createView(doc, rootEl, handlers) {
         type: "button",
         class: "fmd-open",
         "data-design-id": d.designId,
-        "aria-describedby": metaId,
+        "aria-describedby": openEnabled ? metaId : `${metaId} ${noticeId}`,
       });
+      if (!openEnabled) btn.disabled = true;
       btn.appendChild(el(doc, "span", { class: "fmd-name" }, d.name && d.name.trim() ? d.name : "Untitled design"));
       const when = handlers.formatDate(d.updatedAt || d.createdAt);
       btn.appendChild(el(doc, "span", { class: "fmd-meta", id: metaId }, when ? `Updated ${when}` : "Saved design"));
@@ -131,7 +139,7 @@ export function createView(doc, rootEl, handlers) {
   function renderOpen(open) {
     const opening = open.status === OPEN_STATUS.OPENING;
     for (const [id, btn] of openButtons) {
-      btn.disabled = opening;
+      btn.disabled = opening || !openEnabled;
       if (opening && id === open.designId) btn.setAttribute("aria-busy", "true");
       else btn.removeAttribute("aria-busy");
       if (open.status === OPEN_STATUS.OPENED && id === open.designId) btn.setAttribute("aria-current", "true");

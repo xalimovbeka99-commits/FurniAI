@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { mountMyDesigns } from "./mountMyDesigns.js";
-import { ERROR_KIND, LIST_STATUS, OPEN_STATUS } from "./state.js";
+import { ERROR_KIND, LIST_STATUS, OPEN_STATUS, OPEN_DISABLED_NOTICE } from "./state.js";
 import { createFakeDesignsApiClient, demoSeed, fakeErrors } from "./fakeDesignsApiClient.js";
 import { createFakeDocument, byClass, byTag, byAttr, deferred, flush } from "./__tests__/fakeDom.js";
 import {
@@ -37,6 +37,7 @@ function setup({ seed = SEED, token = "tok-1", ...rest } = {}) {
     document: doc,
     formatDate: (iso) => (iso ? iso.slice(0, 10) : ""),
     autoLoad: rest.autoLoad ?? true,
+    ...("openEnabled" in rest ? { openEnabled: rest.openEnabled } : {}),
   });
   const section = () => byClass(root, "fmd")[0];
   const openButton = (id) => byAttr(root, "data-design-id", id)[0];
@@ -512,5 +513,67 @@ describe("fake client stays faithful to the pinned server shapes", () => {
     await expect(c.getRevision(BEDROOM.designId, 99)).rejects.toMatchObject({ status: 404, code: "MISSING_DESIGN" });
     expect(fakeErrors.missingAuth()).toMatchObject({ status: 401, code: "MISSING_AUTH" });
     expect(fakeErrors.integrity()).toMatchObject({ status: 409, code: "REVISION_INTEGRITY_FAILED" });
+  });
+});
+
+describe("Open disabled at mount (openEnabled: false) — panel shown, not hidden", () => {
+  it("lists the server designs with every Open button disabled and an explanatory notice", async () => {
+    const t = setup({ openEnabled: false });
+    await flush();
+    expect(t.handle.getState().openEnabled).toBe(false);
+    expect(t.handle.getState().list.status).toBe(LIST_STATUS.LIST);
+    expect(t.section().getAttribute("data-open-enabled")).toBe("false");
+    const buttons = byClass(t.root, "fmd-open");
+    expect(buttons.length).toBe(4);
+    expect(buttons.every((b) => b.disabled)).toBe(true);
+    const notice = byClass(t.root, "fmd-notice")[0];
+    expect(notice.textContent).toBe(OPEN_DISABLED_NOTICE);
+    for (const b of buttons) expect(b.getAttribute("aria-describedby").split(" ")).toContain(notice.id);
+    // Refresh stays usable; the list is not hidden
+    expect(byClass(t.root, "fmd-refresh")[0].disabled).toBe(false);
+  });
+
+  it("clicking or calling openDesign makes no request and never calls onOpenDesign", async () => {
+    const t = setup({ openEnabled: false });
+    await flush();
+    t.openButton(BEDROOM.designId).click();
+    await t.handle.openDesign(BEDROOM.designId);
+    await flush();
+    expect(t.client.calls.map((c) => c.method)).toEqual(["listDesigns"]);
+    expect(t.onOpenDesign).not.toHaveBeenCalled();
+    expect(t.handle.getState().open.status).toBe(OPEN_STATUS.IDLE);
+  });
+
+  it("stays disabled across refresh (fixed at mount)", async () => {
+    const t = setup({ openEnabled: false });
+    await flush();
+    await t.handle.refresh();
+    await flush();
+    expect(byClass(t.root, "fmd-open").every((b) => b.disabled)).toBe(true);
+    expect(byClass(t.root, "fmd-notice").length).toBe(1);
+  });
+
+  it("empty and error states still render normally", async () => {
+    const e = setup({ openEnabled: false, seed: { designs: [] } });
+    await flush();
+    expect(e.handle.getState().list.status).toBe(LIST_STATUS.EMPTY);
+    const f = setup({ openEnabled: false, seed: { ...SEED, fail: { listDesigns: fakeErrors.missingAuth() } } });
+    await flush();
+    expect(f.handle.getState().list.error.kind).toBe(ERROR_KIND.SIGNED_OUT);
+  });
+
+  it("onOpenDesign is optional when openEnabled is false; openEnabled must be boolean", () => {
+    const doc = createFakeDocument();
+    const root = doc.createElement("div");
+    const client = createFakeDesignsApiClient();
+    expect(() => mountMyDesigns(root, { client, openEnabled: false, document: doc, autoLoad: false })).not.toThrow();
+    expect(() => mountMyDesigns(root, { client, onOpenDesign() {}, openEnabled: "no", document: doc })).toThrow(/openEnabled/);
+  });
+
+  it("default (openEnabled omitted) renders no notice and enabled buttons", async () => {
+    const t = await mountedList();
+    expect(byClass(t.root, "fmd-notice").length).toBe(0);
+    expect(byClass(t.root, "fmd-open").some((b) => b.disabled)).toBe(false);
+    expect(t.section().hasAttribute("data-open-enabled")).toBe(false);
   });
 });

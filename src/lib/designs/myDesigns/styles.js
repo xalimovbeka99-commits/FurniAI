@@ -16,6 +16,7 @@ export const MY_DESIGNS_CSS = `
 .fmd-primary{background:var(--ink,#1C1E21);color:var(--paper,#FAF9F5);border:1px solid var(--ink,#1C1E21);padding:6px 14px}
 .fmd-status{min-height:1.4em;margin:0 0 8px;font-size:13px;color:var(--muted,#5F6368)}
 .fmd-alert:empty{display:none}
+.fmd-notice{margin:0 0 12px;padding:10px 12px;border:1px solid var(--line,#DFD9CC);border-radius:10px;background:var(--paper-2,#F4F2EB);font-size:13px}
 .fmd-alert{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #E5B9B0;background:#FBEFEC;color:#7A2E1F;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:14px}
 .fmd-panel{border:1px dashed var(--line,#DFD9CC);border-radius:12px;padding:28px 20px;text-align:center;font-size:14px}
 .fmd-panel p{margin:0 0 12px}

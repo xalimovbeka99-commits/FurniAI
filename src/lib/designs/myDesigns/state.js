@@ -54,9 +54,14 @@ export const ACTION = Object.freeze({
   OPEN_DISMISS: "OPEN_DISMISS",
 });
 
-/** @returns {MyDesignsState} */
-export function createInitialState() {
+/**
+ * @param {{ openEnabled?: boolean }} [options]
+ *   openEnabled=false renders the list with every Open disabled (fixed at mount).
+ * @returns {MyDesignsState}
+ */
+export function createInitialState(options = {}) {
   return Object.freeze({
+    openEnabled: options.openEnabled !== false,
     list: Object.freeze({ status: LIST_STATUS.IDLE, designs: Object.freeze([]), error: null, seq: 0 }),
     open: Object.freeze({ status: OPEN_STATUS.IDLE, designId: null, revision: null, name: null, error: null, seq: 0 }),
   });
@@ -67,7 +72,7 @@ export function createInitialState() {
  * @typedef {{ kind: string, status: number|null, code: string|null }} UiError
  * @typedef {{ status: string, designs: ReadonlyArray<DesignRow>, error: UiError|null, seq: number }} ListState
  * @typedef {{ status: string, designId: string|null, revision: number|null, name: string|null, error: UiError|null, seq: number }} OpenState
- * @typedef {{ list: ListState, open: OpenState }} MyDesignsState
+ * @typedef {{ openEnabled: boolean, list: ListState, open: OpenState }} MyDesignsState
  */
 
 /**
@@ -107,6 +112,8 @@ export function reducer(state, action) {
         list: freeze({ status: LIST_STATUS.ERROR, designs: Object.freeze([]), error: freeze({ ...action.error }), seq: state.list.seq }),
       });
     case ACTION.OPEN_REQUEST:
+      // Open disabled at mount: nothing can start an open, whatever dispatches it.
+      if (!state.openEnabled) return state;
       return freeze({
         ...state,
         open: freeze({
@@ -313,6 +320,9 @@ export function messageFor(error, phase) {
         : "Your designs could not be loaded right now. Please try again.";
   }
 }
+
+/** Shown once, above the list, when Open was disabled at mount. */
+export const OPEN_DISABLED_NOTICE = "Opening a saved design is not available in this version of the Studio yet. Your designs are safe and listed below.";
 
 function freeze(o) {
   return Object.freeze(o);

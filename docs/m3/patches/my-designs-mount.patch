@@ -16,7 +16,7 @@
  }
  
  function startHeroLoop(){
-@@ -3926,6 +3928,36 @@
+@@ -3926,6 +3928,37 @@
    });
  }
  
@@ -24,7 +24,9 @@
 +/* Lists the signed-in customer's server-saved designs and hands the chosen one to the Studio.
 +   The designs client is Antigravity's createDesignsApiClient (src/lib/persistence/designsApiClient.js),
 +   expected on window.FurniDesignsApi; the reopen is Antigravity's window.reopenDesignFromApi.
-+   If either bundle is absent the panel stays hidden and the legacy grid below is unchanged. */
++   Without reopenDesignFromApi at mount the panel is still SHOWN, with Open disabled.
++   Without the module or client bundle there is nothing to list: the panel stays hidden
++   and the legacy grid below is unchanged. */
 +let myDesignsHandle=null;
 +async function myDesignsAccessToken(){
 +  if(!sb)return null;
@@ -38,22 +40,21 @@
 +  const lib=window.FurniMyDesigns, api=window.FurniDesignsApi;
 +  if(!lib||typeof lib.mountMyDesigns!=='function'||!api||typeof api.createDesignsApiClient!=='function'){root.hidden=true;return}
 +  root.hidden=false;
++  const canReopen=typeof window.reopenDesignFromApi==='function';
 +  myDesignsHandle=lib.mountMyDesigns(root,{
 +    client:api.createDesignsApiClient({getAccessToken:myDesignsAccessToken}),
 +    getAccessToken:myDesignsAccessToken,
 +    onSignIn:openAuthModal,
++    openEnabled:canReopen,
 +    // selection = {designId, revision, name}, all read from the server; record = the reopen body.
-+    onOpenDesign:function(selection,record){
-+      if(typeof window.reopenDesignFromApi!=='function')throw new Error('reopenDesignFromApi is not available');
-+      return window.reopenDesignFromApi(selection,record);
-+    }
++    onOpenDesign:function(selection,record){return window.reopenDesignFromApi(selection,record)}
 +  });
 +}
 +
  /* ===== boot ===== */
  function boot(){
    heroInit();
-@@ -4028,6 +4060,7 @@
+@@ -4028,6 +4061,7 @@
        <div class="ai-brand">My Projects</div>
        <button class="ai-back" onclick="go('#/')">← Back</button>
      </div>

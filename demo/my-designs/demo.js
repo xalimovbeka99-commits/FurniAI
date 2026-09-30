@@ -9,7 +9,7 @@ const never = () => new Promise(() => {});
 const seed = demoSeed();
 const [BEDROOM, , , SHELL] = seed.designs;
 
-/** @type {Record<string, { label: string, client: () => object, token?: string|null, open?: string }>} */
+/** @type {Record<string, { label: string, client: () => object, token?: string|null, open?: string, openEnabled?: boolean }>} */
 const SCENARIOS = {
   loading: { label: "Loading", client: () => createFakeDesignsApiClient({ ...seed, gate: never }) },
   empty: { label: "Empty", client: () => createFakeDesignsApiClient({ designs: [] }) },
@@ -24,6 +24,7 @@ const SCENARIOS = {
   "open-404": { label: "Open 404", open: BEDROOM.designId, client: () => createFakeDesignsApiClient({ ...seed, fail: { getDesign: fakeErrors.notFound() } }) },
   "open-no-revision": { label: "Open: no revision", open: SHELL.designId, client: () => createFakeDesignsApiClient(seed) },
   "open-integrity": { label: "Open 409 integrity", open: BEDROOM.designId, client: () => createFakeDesignsApiClient({ ...seed, fail: { getRevision: fakeErrors.integrity(2) } }) },
+  "open-disabled": { label: "Open disabled (no reopen)", openEnabled: false, client: () => createFakeDesignsApiClient(seed) },
   "open-network": { label: "Open network", open: BEDROOM.designId, client: () => createFakeDesignsApiClient({ ...seed, fail: { getRevision: fakeErrors.network() } }) },
 };
 
@@ -41,6 +42,7 @@ function run(name) {
   const token = "token" in sc ? sc.token : "demo-token";
   handle = mountMyDesigns(root, {
     client: sc.client(),
+    openEnabled: sc.openEnabled !== false,
     getAccessToken: async () => token,
     onSignIn: () => { log.textContent = "onSignIn() called — the Studio would open its sign-in modal."; },
     onOpenDesign: (selection, record) => {
