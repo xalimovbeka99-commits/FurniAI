@@ -21,8 +21,11 @@ var AiDesignerTransport = (() => {
   var aiDesignerTransport_exports = {};
   __export(aiDesignerTransport_exports, {
     AI_DESIGNER_ENDPOINT: () => AI_DESIGNER_ENDPOINT,
+    REOPEN_OUTCOME: () => REOPEN_OUTCOME,
     RESULT_KIND: () => RESULT_KIND,
     RESULT_SOURCE: () => RESULT_SOURCE,
+    SAVE_OUTCOME: () => SAVE_OUTCOME,
+    createDesignSaveCoordinator: () => createDesignSaveCoordinator,
     invalidLiveStateGuardResult: () => invalidLiveStateGuardResult,
     isStaleAnswer: () => isStaleAnswer,
     isStaleForRevision: () => isStaleForRevision,
@@ -4156,6 +4159,276 @@ var AiDesignerTransport = (() => {
       edits.push({ key, value: parsed.value, sourceText: typeof edit.sourceText === "string" ? edit.sourceText : null });
     }
     return { ok: errors.length === 0, edits, unsupported, reply, errors };
+  }
+
+  // src/lib/persistence/designSaveCoordinator.js
+  var SAVE_OUTCOME = Object.freeze({
+    SAVED: "SAVED",
+    /** The server already had exactly this revision (an earlier answer was lost). */
+    REPLAYED: "REPLAYED",
+    /** The session changed while the request was in flight; nothing was applied. */
+    DISCARDED_STALE_SESSION: "DISCARDED_STALE_SESSION",
+    /** Someone else saved first. `latest` describes what is stored. */
+    CONFLICT: "CONFLICT",
+    /** The design itself is not saveable (400 / fingerprint / integrity). Keep on-screen state. */
+    REFUSED: "REFUSED",
+    /** 401 — sign in again, then call retryPending(). */
+    SIGN_IN: "SIGN_IN",
+    /** Outcome unknown (network, timeout, 5xx). The identical body is kept for retryPending(). */
+    UNCONFIRMED: "UNCONFIRMED",
+    /** This deployment has no durable store. Keep local state. */
+    NOT_CONFIGURED: "NOT_CONFIGURED",
+    /** The design no longer exists for this caller (404). */
+    MISSING_DESIGN: "MISSING_DESIGN"
+  });
+  var REOPEN_OUTCOME = Object.freeze({
+    REOPENED: "REOPENED",
+    /** A later reopen or reset happened while this one was loading. */
+    SUPERSEDED: "SUPERSEDED",
+    NO_SAVED_REVISION: "NO_SAVED_REVISION",
+    REFUSED: "REFUSED",
+    SIGN_IN: "SIGN_IN",
+    UNAVAILABLE: "UNAVAILABLE",
+    MISSING_DESIGN: "MISSING_DESIGN",
+    NOT_CONFIGURED: "NOT_CONFIGURED"
+  });
+  var UNKNOWN_OUTCOME_CODES = /* @__PURE__ */ new Set(["NETWORK", "STORAGE_UNAVAILABLE", "AUTH_UNAVAILABLE", "UNKNOWN"]);
+  function classify(err) {
+    const code = err && typeof err.code === "string" ? err.code : "UNKNOWN";
+    const status = err && typeof err.status === "number" ? err.status : void 0;
+    if (code === "MISSING_AUTH" || status === 401) return { kind: "SIGN_IN", code };
+    if (code === "PERSISTENCE_NOT_CONFIGURED") return { kind: "NOT_CONFIGURED", code };
+    if (code === "MISSING_DESIGN" || status === 404) return { kind: "MISSING_DESIGN", code };
+    if (code === "STALE_REVISION") return { kind: "CONFLICT", code };
+    if (UNKNOWN_OUTCOME_CODES.has(code) || status !== void 0 && status >= 500) return { kind: "UNKNOWN", code };
+    return { kind: "REFUSED", code };
+  }
+  var safeError = (err) => ({
+    code: err && typeof err.code === "string" ? err.code : "UNKNOWN",
+    status: err && typeof err.status === "number" ? err.status : void 0,
+    message: err && typeof err.message === "string" ? err.message : "",
+    details: err && err.details && typeof err.details === "object" ? err.details : void 0
+  });
+  function createDesignSaveCoordinator({ client, getToken, getSessionId } = {}) {
+    for (const m of ["createDesign", "saveAcceptedRevision", "getDesign", "getRevision"]) {
+      if (!client || typeof client[m] !== "function") {
+        throw new TypeError(`createDesignSaveCoordinator: client.${m} is required.`);
+      }
+    }
+    if (typeof getSessionId !== "function") throw new TypeError("createDesignSaveCoordinator: getSessionId is required.");
+    if (typeof getToken !== "function") throw new TypeError("createDesignSaveCoordinator: getToken is required.");
+    let binding = { sessionId: null, designId: null, specId: null, storedRevision: null, name: null };
+    let pending = null;
+    let queue = Promise.resolve();
+    let navTicket = 0;
+    let savedChangeToken = null;
+    const live = () => getSessionId();
+    const bindingIsLive = (b) => b === binding && b.sessionId === live();
+    function snapshot() {
+      return {
+        sessionId: binding.sessionId,
+        designId: binding.designId,
+        specId: binding.specId,
+        storedRevision: binding.storedRevision,
+        name: binding.name,
+        savedChangeToken,
+        hasUnconfirmedSave: pending !== null && pending.binding === binding
+      };
+    }
+    function reset(sessionId = live()) {
+      navTicket += 1;
+      binding = { sessionId, designId: null, specId: null, storedRevision: null, name: null };
+      pending = null;
+      savedChangeToken = null;
+      return snapshot();
+    }
+    function bind({ sessionId = live(), designId, specId = null, storedRevision, name = null, changeToken = null }) {
+      navTicket += 1;
+      binding = { sessionId, designId, specId, storedRevision, name };
+      pending = null;
+      savedChangeToken = changeToken;
+      return snapshot();
+    }
+    async function send(req) {
+      return client.saveAcceptedRevision({ ...req.body, designId: req.designId, token: req.token });
+    }
+    function landed(b, req, saved, replay) {
+      b.storedRevision = saved.revision;
+      if (req.body.furniSpec && typeof req.body.furniSpec.specId === "string") b.specId = req.body.furniSpec.specId;
+      if (b === binding) savedChangeToken = req.changeToken;
+      if (pending === req) pending = null;
+      return {
+        status: replay ? SAVE_OUTCOME.REPLAYED : SAVE_OUTCOME.SAVED,
+        designId: b.designId,
+        storedRevision: saved.revision,
+        fingerprint: saved.fingerprint,
+        savedChangeToken: req.changeToken
+      };
+    }
+    async function onSaveError(b, req, err) {
+      const c = classify(err);
+      const error = safeError(err);
+      if (c.kind === "UNKNOWN") {
+        pending = req;
+        return { status: SAVE_OUTCOME.UNCONFIRMED, designId: b.designId, error };
+      }
+      if (c.kind === "SIGN_IN") {
+        pending = req;
+        return { status: SAVE_OUTCOME.SIGN_IN, designId: b.designId, error };
+      }
+      if (pending === req) pending = null;
+      if (c.kind === "CONFLICT") {
+        let latest = null;
+        try {
+          const token = await getToken();
+          const summary = await client.getDesign({ designId: b.designId, token });
+          latest = summary && summary.latestRevision ? summary.latestRevision : null;
+        } catch {
+          latest = null;
+        }
+        return {
+          status: SAVE_OUTCOME.CONFLICT,
+          designId: b.designId,
+          storedRevision: b.storedRevision,
+          latest,
+          error
+        };
+      }
+      if (c.kind === "NOT_CONFIGURED") return { status: SAVE_OUTCOME.NOT_CONFIGURED, error };
+      if (c.kind === "MISSING_DESIGN") return { status: SAVE_OUTCOME.MISSING_DESIGN, designId: b.designId, error };
+      return { status: SAVE_OUTCOME.REFUSED, designId: b.designId, error };
+    }
+    async function resend(b, req) {
+      try {
+        const token = await getToken() || req.token;
+        const saved = await send({ ...req, token });
+        if (!bindingIsLive(b)) return { status: SAVE_OUTCOME.DISCARDED_STALE_SESSION, designId: b.designId };
+        return landed(b, req, saved, saved && saved.idempotentReplay === true);
+      } catch (err) {
+        if (!bindingIsLive(b)) return { status: SAVE_OUTCOME.DISCARDED_STALE_SESSION, designId: b.designId };
+        return onSaveError(b, req, err);
+      }
+    }
+    async function doSave({ furniSpec, partGraph, fingerprint, origins = {}, name, changeToken = null, validationStatus = "ACCEPTED" }) {
+      const b = binding;
+      const startedIn = live();
+      if (b.sessionId !== startedIn) {
+        return { status: SAVE_OUTCOME.DISCARDED_STALE_SESSION, designId: b.designId };
+      }
+      if (pending && pending.binding === b) {
+        const first = await resend(b, pending);
+        if (first.status !== SAVE_OUTCOME.SAVED && first.status !== SAVE_OUTCOME.REPLAYED) return first;
+      }
+      const token = await getToken();
+      if (!token) return { status: SAVE_OUTCOME.SIGN_IN, designId: b.designId, error: { code: "MISSING_AUTH" } };
+      if (!b.designId) {
+        let created;
+        try {
+          created = await client.createDesign({ name: name || b.name || "Wardrobe design", token });
+        } catch (err) {
+          if (!bindingIsLive(b)) return { status: SAVE_OUTCOME.DISCARDED_STALE_SESSION, designId: null };
+          const c = classify(err);
+          const status = c.kind === "SIGN_IN" ? SAVE_OUTCOME.SIGN_IN : c.kind === "NOT_CONFIGURED" ? SAVE_OUTCOME.NOT_CONFIGURED : c.kind === "UNKNOWN" ? SAVE_OUTCOME.UNCONFIRMED : SAVE_OUTCOME.REFUSED;
+          return { status, designId: null, error: safeError(err) };
+        }
+        if (!bindingIsLive(b)) {
+          return {
+            status: SAVE_OUTCOME.DISCARDED_STALE_SESSION,
+            designId: null,
+            orphanedDesignId: created && created.designId ? created.designId : null
+          };
+        }
+        b.designId = created.designId;
+        b.name = created.name ?? name ?? null;
+      }
+      const prior = b.storedRevision;
+      const req = {
+        binding: b,
+        designId: b.designId,
+        token,
+        changeToken,
+        body: {
+          revision: prior == null ? 1 : prior + 1,
+          expectedPreviousRevision: prior == null ? null : prior,
+          fingerprint,
+          furniSpec,
+          partGraph,
+          origins,
+          validationStatus
+        }
+      };
+      try {
+        const saved = await send(req);
+        if (!bindingIsLive(b)) return { status: SAVE_OUTCOME.DISCARDED_STALE_SESSION, designId: b.designId };
+        return landed(b, req, saved, saved && saved.idempotentReplay === true);
+      } catch (err) {
+        if (!bindingIsLive(b)) return { status: SAVE_OUTCOME.DISCARDED_STALE_SESSION, designId: b.designId };
+        return onSaveError(b, req, err);
+      }
+    }
+    function save(args) {
+      const run = queue.then(() => doSave(args));
+      queue = run.catch(() => void 0);
+      return run;
+    }
+    function retryPending() {
+      const run = queue.then(async () => {
+        const b = binding;
+        if (!pending || pending.binding !== b) return { status: SAVE_OUTCOME.SAVED, designId: b.designId, storedRevision: b.storedRevision, nothingPending: true };
+        if (b.sessionId !== live()) return { status: SAVE_OUTCOME.DISCARDED_STALE_SESSION, designId: b.designId };
+        return resend(b, pending);
+      });
+      queue = run.catch(() => void 0);
+      return run;
+    }
+    function adoptLatestAsBase(latestRevision) {
+      if (!Number.isInteger(latestRevision) || latestRevision < 1) {
+        throw new TypeError("adoptLatestAsBase requires the stored latest revision number.");
+      }
+      binding.storedRevision = latestRevision;
+      savedChangeToken = null;
+      return snapshot();
+    }
+    async function reopen({ designId, revision } = {}) {
+      navTicket += 1;
+      const ticket = navTicket;
+      const superseded = () => ticket !== navTicket;
+      try {
+        const token = await getToken();
+        if (!token) return { status: REOPEN_OUTCOME.SIGN_IN };
+        let rev = revision;
+        let summary = null;
+        if (rev == null) {
+          summary = await client.getDesign({ designId, token });
+          if (superseded()) return { status: REOPEN_OUTCOME.SUPERSEDED };
+          rev = summary && summary.latestRevision ? summary.latestRevision.revision : null;
+          if (rev == null) return { status: REOPEN_OUTCOME.NO_SAVED_REVISION, designId };
+        }
+        const payload = await client.getRevision({ designId, revision: rev, token });
+        if (superseded()) return { status: REOPEN_OUTCOME.SUPERSEDED };
+        return {
+          status: REOPEN_OUTCOME.REOPENED,
+          designId: payload.designId || designId,
+          storedRevision: payload.revision,
+          specId: payload.furniSpec && payload.furniSpec.specId,
+          name: summary && summary.design ? summary.design.name : null,
+          payload
+        };
+      } catch (err) {
+        if (superseded()) return { status: REOPEN_OUTCOME.SUPERSEDED };
+        const c = classify(err);
+        const error = safeError(err);
+        if (c.kind === "SIGN_IN") return { status: REOPEN_OUTCOME.SIGN_IN, error };
+        if (c.kind === "MISSING_DESIGN") return { status: REOPEN_OUTCOME.MISSING_DESIGN, error };
+        if (c.kind === "NOT_CONFIGURED") return { status: REOPEN_OUTCOME.NOT_CONFIGURED, error };
+        if (c.kind === "UNKNOWN") return { status: REOPEN_OUTCOME.UNAVAILABLE, error };
+        return { status: REOPEN_OUTCOME.REFUSED, error };
+      }
+    }
+    function isSaved(currentChangeToken) {
+      return savedChangeToken !== null && currentChangeToken === savedChangeToken && binding.sessionId === live();
+    }
+    return { save, retryPending, reopen, bind, reset, adoptLatestAsBase, isSaved, snapshot };
   }
 
   // src/lib/adapters/aiDesignerTransport.js

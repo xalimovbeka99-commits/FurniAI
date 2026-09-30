@@ -641,3 +641,11 @@ export async function proposeDesignChange({
     rejected: clientRejected,
   };
 }
+
+// Client half of the /api/designs contract (session-safe save/reopen). Shipped in
+// this bundle so the Studio can use it without another script tag or build entry.
+export {
+  createDesignSaveCoordinator,
+  SAVE_OUTCOME,
+  REOPEN_OUTCOME,
+} from "../persistence/designSaveCoordinator.js";
