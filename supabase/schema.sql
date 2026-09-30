@@ -171,10 +171,10 @@ create policy "Owners can update their wardrobe designs"
   on public.wardrobe_designs for update
   using (auth.uid() = owner_user_id);
 
+-- No delete policy: revisions cascade from the design, and a cascade is not
+-- subject to RLS, so an owner DELETE would erase "immutable" history. Kept in
+-- step with supabase/migrations/2026-09-22_wardrobe_design_persistence.sql.
 drop policy if exists "Owners can delete their wardrobe designs" on public.wardrobe_designs;
-create policy "Owners can delete their wardrobe designs"
-  on public.wardrobe_designs for delete
-  using (auth.uid() = owner_user_id);
 
 create index if not exists wardrobe_designs_owner_user_id_idx
   on public.wardrobe_designs(owner_user_id);
@@ -218,3 +218,12 @@ create policy "Owners can insert their wardrobe revisions"
 
 create index if not exists wardrobe_revisions_design_id_idx
   on public.wardrobe_revisions(design_id);
+
+-- Privileges narrowed to match the policies (see the migration for reasons).
+revoke all on public.wardrobe_designs from anon;
+revoke all on public.wardrobe_revisions from anon;
+revoke update, delete, truncate on public.wardrobe_designs from authenticated;
+grant select, insert on public.wardrobe_designs to authenticated;
+grant update (name, updated_at) on public.wardrobe_designs to authenticated;
+revoke update, delete, truncate on public.wardrobe_revisions from authenticated;
+grant select, insert on public.wardrobe_revisions to authenticated;

@@ -1,8 +1,44 @@
 # Real-database test procedure — durable save/reopen
 
-**Status: NOT RUN. Nothing in this document has been executed.**
-No migration has been applied, no Supabase project has been created or modified, and no
-external resource exists as a result of this work.
+**Status (2026-09-24):**
+
+| What | Status |
+|---|---|
+| Executable harness `scripts/verify-persistence-db.mjs --local` — real PostgreSQL 16.13 + PostgREST 12.2.3, the committed migration, real handlers in separate OS processes | **RUN: 8/8 PASS** on the backend branch head; on `71e72b6` it found 3 failures, all fixed. Evidence: `docs/m3/evidence/` |
+| Same harness, `--target` against an approved non-production Supabase project | **NOT RUN** — needs Bekzod's approval, a project, the migration applied by a human, two test users |
+| The manual steps below | **NOT RUN** |
+
+No Supabase project, table, user or migration has been created or applied by this work.
+The `--local` cluster lives in a temp directory for the duration of the run and is deleted.
+
+## The quickest path — run the harness in `--target` mode
+
+Everything in §5 below is automated by the harness, including the parts a manual run does
+badly (genuinely parallel writers, a response dropped *after* commit, a provably different
+server process). After §0–§2 below (approval, migration applied and inspected, two users):
+
+```bash
+# In a terminal that will not be recorded. Nothing below is echoed or logged.
+read -rs FURNIAI_DB_TEST_TOKEN_A; export FURNIAI_DB_TEST_TOKEN_A
+read -rs FURNIAI_DB_TEST_TOKEN_B; export FURNIAI_DB_TEST_TOKEN_B
+read -rs FURNIAI_DB_TEST_ANON_KEY; export FURNIAI_DB_TEST_ANON_KEY
+export FURNIAI_DB_TEST_SUPABASE_URL="https://<nonprod-ref>.supabase.co"
+export FURNIAI_DB_TEST_CONFIRM_NONPRODUCTION="<nonprod-ref>.supabase.co"   # typed, deliberately
+export FURNIAI_DB_TEST_PRODUCTION_HOSTS="<prod-ref>.supabase.co"           # refused if matched
+
+node scripts/verify-persistence-db.mjs --target --rounds 20 --writers 6 --json dbverify-target.json
+unset FURNIAI_DB_TEST_TOKEN_A FURNIAI_DB_TEST_TOKEN_B FURNIAI_DB_TEST_ANON_KEY
+```
+
+It runs the API handlers locally (as separate processes) against the hosted database, so it
+verifies PostgreSQL, PostgREST, RLS **and Supabase Auth** for real. It does not verify
+Vercel's serverless instances; §5.1(c) below is still the way to do that. It prints the SQL
+to delete what it created — it cannot delete it itself, by design (no delete policy).
+
+**Two schema facts the harness established** — apply the migration as now committed, not an
+earlier copy: the design table has **no DELETE policy** (the cascade would erase revisions
+bypassing RLS — observed), and privileges are narrowed (anon: none; authenticated:
+SELECT/INSERT, UPDATE of `name, updated_at` only on designs; no UPDATE/DELETE on revisions).
 
 **Corrected 2026-09-22** after review. Five things in the first draft were wrong and are
 fixed below; each is marked **CORRECTED** where it appears.
@@ -17,8 +53,9 @@ demonstrate the application-level protocol and they cannot demonstrate:
 - that PostgREST maps those failures to the status codes the store expects;
 - that a row written by one serverless invocation is visible to the next.
 
-Until this procedure has been run, **"durable" describes an intent, not a verified
-property.** Real database isolation, concurrency and durability remain **UNVERIFIED**.
+Isolation, concurrency, lost-response retry and durability across independent processes are
+now **verified against a real PostgreSQL locally**. They remain **UNVERIFIED on Supabase**
+until `--target` (or the manual procedure) has passed there.
 
 ---
 

@@ -31,6 +31,8 @@
  * file may be cited as evidence of production durability.
  */
 
+import { randomUUID } from "node:crypto";
+
 /** Parse the tiny slice of PostgREST query syntax the store emits. */
 function parseQuery(path) {
   const [table, qs = ""] = path.split("?");
@@ -69,6 +71,8 @@ function sortRows(rows, order) {
  *   `rlsOwner` decides which owner_user_id the connected token may see. This
  *   models "the caller's own token", which is what supabaseStore.js sends.
  */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function createFakePostgrest({ rlsOwner = null } = {}) {
   const tables = {
     wardrobe_designs: [],
@@ -112,6 +116,18 @@ export function createFakePostgrest({ rlsOwner = null } = {}) {
 
     if (!tables[table]) return json(404, { message: "no such table" });
 
+    // `id` and `design_id` are uuid columns. Real PostgreSQL rejects a
+    // malformed uuid in a filter or a row with 22P02, which PostgREST returns
+    // as 400 — it does NOT return an empty result. Observed against
+    // PostgreSQL 16 + PostgREST 12 (scripts/verify-persistence-db.mjs).
+    const uuidValues = [
+      ...Object.entries(filters || {}).filter(([k]) => k === "id" || k === "design_id").map(([, v]) => v),
+      ...(body && typeof body === "object" ? ["id", "design_id"].filter((k) => k in body).map((k) => body[k]) : []),
+    ];
+    if (uuidValues.some((v) => !UUID_RE.test(String(v)))) {
+      return json(400, { code: "22P02", message: "invalid input syntax for type uuid" });
+    }
+
     if (method === "GET") {
       let rows = tables[table].filter((r) => matches(r, filters) && selectVisible(table, r));
       rows = sortRows(rows, order);
@@ -146,7 +162,7 @@ export function createFakePostgrest({ rlsOwner = null } = {}) {
       }
       const now = new Date().toISOString();
       const row = {
-        id: body.id || `row-${table}-${tables[table].length + 1}`,
+        id: body.id || randomUUID(),
         created_at: body.created_at || now,
         updated_at: now,
         ...body,

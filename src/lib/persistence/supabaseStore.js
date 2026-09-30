@@ -33,6 +33,18 @@
 import { PersistenceError, PERSISTENCE_ERROR } from "./errors.js";
 
 const DESIGNS = "wardrobe_designs";
+
+/**
+ * `id` / `design_id` are uuid columns. PostgreSQL rejects a malformed uuid
+ * with 22P02, which PostgREST returns as 400 — NOT as an empty result — and
+ * rest() below would report that as a storage outage. A malformed id names
+ * no design, so it is answered as "none" without a query, matching the
+ * in-memory store and keeping the 404 identical to a nonexistent design.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function isUuid(value) {
+  return typeof value === "string" && UUID_RE.test(value);
+}
 const REVISIONS = "wardrobe_revisions";
 
 /** Row shapes differ between Postgres (snake_case) and the service (camelCase). */
@@ -195,6 +207,7 @@ export function createSupabaseDesignStore({ url, anonKey, accessToken, fetchImpl
     },
 
     async getDesign(designId) {
+      if (!isUuid(designId)) return null;
       const rows = await rest(
         `${DESIGNS}?id=eq.${encodeURIComponent(designId)}&select=*&limit=1`
       );
@@ -209,6 +222,7 @@ export function createSupabaseDesignStore({ url, anonKey, accessToken, fetchImpl
     },
 
     async listRevisions(designId) {
+      if (!isUuid(designId)) return [];
       const rows = await rest(
         `${REVISIONS}?design_id=eq.${encodeURIComponent(designId)}&select=*&order=revision.asc`
       );
@@ -216,6 +230,7 @@ export function createSupabaseDesignStore({ url, anonKey, accessToken, fetchImpl
     },
 
     async getRevision(designId, revision) {
+      if (!isUuid(designId)) return null;
       const rows = await rest(
         `${REVISIONS}?design_id=eq.${encodeURIComponent(designId)}&revision=eq.${encodeURIComponent(revision)}&select=*&limit=1`
       );
@@ -223,6 +238,7 @@ export function createSupabaseDesignStore({ url, anonKey, accessToken, fetchImpl
     },
 
     async getLatestRevision(designId) {
+      if (!isUuid(designId)) return null;
       const rows = await rest(
         `${REVISIONS}?design_id=eq.${encodeURIComponent(designId)}&select=*&order=revision.desc&limit=1`
       );

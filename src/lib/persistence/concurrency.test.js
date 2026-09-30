@@ -344,7 +344,7 @@ describe("storage failures are reported honestly", () => {
     const store = createSupabaseDesignStore({
       url: URL_BASE, anonKey: ANON, accessToken: "t", fetchImpl: failing(500),
     });
-    const err = await store.getRevision("d", 1).catch((e) => e);
+    const err = await store.getRevision("d0d0d0d0-0000-4000-8000-00000000000d", 1).catch((e) => e);
     expect(err.message).not.toMatch(/not saved/i);
     expect(err.code).toBe(PERSISTENCE_ERROR.STORAGE_UNAVAILABLE);
   });
@@ -365,12 +365,14 @@ describe("storage failures are reported honestly", () => {
     // rest() mapped every 409 to CONFLICT_REVISION regardless of which table
     // raised it, so a colliding design id answered "That revision already
     // exists and cannot be overwritten."
+    // The SERVICE no longer accepts client-chosen ids (truthfulErrors.test.js),
+    // so the mapping is exercised at the store boundary, where a primary-key
+    // collision is still the error PostgREST would raise.
     const pg = createFakePostgrest({ rlsOwner: OWNER });
-    const service = createDesignService({
-      store: createSupabaseDesignStore({ url: URL_BASE, anonKey: ANON, accessToken: "t", fetchImpl: pg.fetchImpl }),
-    });
-    await service.createDesign({ userId: OWNER, designId: "fixed-id", name: "one" });
-    const err = await service.createDesign({ userId: OWNER, designId: "fixed-id", name: "two" }).catch((e) => e);
+    const store = createSupabaseDesignStore({ url: URL_BASE, anonKey: ANON, accessToken: "t", fetchImpl: pg.fetchImpl });
+    const FIXED = "11111111-2222-4333-8444-555555555555";
+    await store.createDesign({ ownerUserId: OWNER, designId: FIXED, name: "one" });
+    const err = await store.createDesign({ ownerUserId: OWNER, designId: FIXED, name: "two" }).catch((e) => e);
 
     expect(err.code).not.toBe(PERSISTENCE_ERROR.CONFLICT_REVISION);
     expect(err.message).not.toMatch(/revision/i);

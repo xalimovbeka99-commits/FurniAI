@@ -36,6 +36,8 @@ import { PERSISTENCE_ERROR } from "./errors.js";
 const URL_BASE = "https://project.supabase.co";
 const ANON = "anon-key-not-a-secret-in-this-test";
 const TOKEN = "caller-jwt";
+// `id` is a uuid column; the store no longer queries with a malformed one.
+const DESIGN_A_ID = "a0a0a0a0-0000-4000-8000-00000000000a";
 
 function validPayload(overrides = {}) {
   const furniSpec = {
@@ -82,7 +84,7 @@ describe("the deployed store is durable, not a per-instance Map", () => {
     try {
       getService({ accessToken: TOKEN });
     } catch (err) {
-      expect(err.code).toBe(PERSISTENCE_ERROR.BAD_REQUEST);
+      expect(err.code).toBe(PERSISTENCE_ERROR.PERSISTENCE_NOT_CONFIGURED);
       expect(err.status).toBe(503);
       expect(err.message).toMatch(/Nothing was saved/i);
     }
@@ -145,7 +147,7 @@ describe("row-level security is enforced by Postgres, not only by our code", () 
       fetchImpl: impl,
     });
 
-    await expect(store.getRevision("design-a", 1)).rejects.toMatchObject({
+    await expect(store.getRevision(DESIGN_A_ID, 1)).rejects.toMatchObject({
       code: PERSISTENCE_ERROR.MISSING_DESIGN,
       status: 404,
     });
@@ -171,7 +173,7 @@ describe("a saved revision is immutable at the database, not only by convention"
 
     await expect(
       store.appendRevision({
-        designId: "design-a",
+        designId: DESIGN_A_ID,
         revision: 1,
         fingerprint: p.fingerprint,
         furniSpec: p.furniSpec,
@@ -194,7 +196,7 @@ describe("a saved revision is immutable at the database, not only by convention"
     const p = validPayload();
 
     await store.appendRevision({
-      designId: "design-a",
+      designId: DESIGN_A_ID,
       revision: 1,
       fingerprint: p.fingerprint,
       furniSpec: p.furniSpec,
@@ -212,7 +214,7 @@ describe("identity survives a real round trip through the durable store", () => 
   it("preserves specId, revision, fingerprint, FurniSpec and PartGraph", async () => {
     const p = validPayload();
     const stored = {
-      design_id: "design-a",
+      design_id: DESIGN_A_ID,
       revision: 1,
       fingerprint: p.fingerprint,
       furnispec: p.furniSpec,
@@ -222,14 +224,14 @@ describe("identity survives a real round trip through the durable store", () => 
       created_at: "2026-09-22T00:00:00.000Z",
     };
     const { impl } = restStub([
-      ["wardrobe_designs?id=eq.", ok([{ id: "design-a", owner_user_id: "user-a", name: "W", created_at: "x", updated_at: "y" }])],
+      ["wardrobe_designs?id=eq.", ok([{ id: DESIGN_A_ID, owner_user_id: "user-a", name: "W", created_at: "x", updated_at: "y" }])],
       ["wardrobe_revisions", ok([stored])],
     ]);
     const service = createDesignService({
       store: createSupabaseDesignStore({ url: URL_BASE, anonKey: ANON, accessToken: TOKEN, fetchImpl: impl }),
     });
 
-    const reopened = await service.getRevision({ userId: "user-a", designId: "design-a", revision: 1 });
+    const reopened = await service.getRevision({ userId: "user-a", designId: DESIGN_A_ID, revision: 1 });
 
     expect(reopened.revision).toBe(1);
     expect(reopened.fingerprint).toBe(p.fingerprint);
@@ -242,14 +244,14 @@ describe("identity survives a real round trip through the durable store", () => 
 
   it("rejects a cross-user reopen before the database is even asked", async () => {
     const { impl } = restStub([
-      ["wardrobe_designs?id=eq.", ok([{ id: "design-a", owner_user_id: "user-a", name: "W", created_at: "x", updated_at: "y" }])],
+      ["wardrobe_designs?id=eq.", ok([{ id: DESIGN_A_ID, owner_user_id: "user-a", name: "W", created_at: "x", updated_at: "y" }])],
     ]);
     const service = createDesignService({
       store: createSupabaseDesignStore({ url: URL_BASE, anonKey: ANON, accessToken: TOKEN, fetchImpl: impl }),
     });
 
     await expect(
-      service.getRevision({ userId: "user-b", designId: "design-a", revision: 1 })
+      service.getRevision({ userId: "user-b", designId: DESIGN_A_ID, revision: 1 })
     ).rejects.toMatchObject({ code: PERSISTENCE_ERROR.MISSING_DESIGN });
   });
 });
