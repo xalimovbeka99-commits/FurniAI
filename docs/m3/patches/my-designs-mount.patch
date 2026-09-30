@@ -1,0 +1,64 @@
+--- a/index.html
++++ b/index.html
+@@ -52,6 +52,7 @@
+ <script src="/legacy-builder-adapter.js"></script>
+ <script src="/partgraph-runtime-bridge.js"></script>
+ <script src="/ai-designer-transport.js"></script>
++<script src="/my-designs.js"></script>
+ <style>
+ :root{
+   --paper:#FAF9F5; --paper-2:#F4F2EB; --paper-3:#EAE5D9;
+@@ -947,6 +948,7 @@
+   stopHeroLoop();
+   stopBuilderLoop();
+   loadProjects();
++  mountMyDesignsPanel();
+ }
+ 
+ function startHeroLoop(){
+@@ -3926,6 +3928,37 @@
+   });
+ }
+ 
++/* ===== My Designs (durable /api/designs) — module: src/lib/designs/myDesigns, bundle: /my-designs.js ===== */
++/* Lists the signed-in customer's server-saved designs and hands the chosen one to the Studio.
++   The designs client is Antigravity's createDesignsApiClient (src/lib/persistence/designsApiClient.js),
++   expected on window.FurniDesignsApi; the reopen is Antigravity's window.reopenDesignFromApi.
++   Without reopenDesignFromApi at mount the panel is still SHOWN, with Open disabled.
++   Without the module or client bundle there is nothing to list: the panel stays hidden
++   and the legacy grid below is unchanged. */
++let myDesignsHandle=null;
++async function myDesignsAccessToken(){
++  if(!sb)return null;
++  try{const {data}=await sb.auth.getSession();return (data&&data.session&&data.session.access_token)||null}
++  catch(e){return null}
++}
++function mountMyDesignsPanel(){
++  const root=document.getElementById('myDesignsRoot');
++  if(!root)return;
++  if(myDesignsHandle){myDesignsHandle.refresh();return}
++  const lib=window.FurniMyDesigns, api=window.FurniDesignsApi;
++  if(!lib||typeof lib.mountMyDesigns!=='function'||!api||typeof api.createDesignsApiClient!=='function'){root.hidden=true;return}
++  root.hidden=false;
++  const canReopen=typeof window.reopenDesignFromApi==='function';
++  myDesignsHandle=lib.mountMyDesigns(root,{
++    client:api.createDesignsApiClient({getAccessToken:myDesignsAccessToken}),
++    getAccessToken:myDesignsAccessToken,
++    onSignIn:openAuthModal,
++    openEnabled:canReopen,
++    // selection = {designId, revision, name}, all read from the server; record = the reopen body.
++    onOpenDesign:function(selection,record){return window.reopenDesignFromApi(selection,record)}
++  });
++}
++
+ /* ===== boot ===== */
+ function boot(){
+   heroInit();
+@@ -4028,6 +4061,7 @@
+       <div class="ai-brand">My Projects</div>
+       <button class="ai-back" onclick="go('#/')">← Back</button>
+     </div>
++    <div id="myDesignsRoot" hidden></div>
+     <div class="projects-grid" id="projectsGrid"></div>
+   </div>
+ </div>

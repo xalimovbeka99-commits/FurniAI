@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>My Designs module — local demo (fake client)</title>
+<style>
+  :root{--paper:#FAF9F5;--ink:#1C1E21;--line:#DFD9CC;--muted:#5F6368;--card:#fff;--accent:#2F6FEB}
+  body{margin:0;font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--paper);color:var(--ink)}
+  .demo-bar{position:sticky;top:0;background:#1C1E21;color:#fff;padding:10px 16px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;z-index:1}
+  .demo-bar strong{margin-right:8px}
+  .demo-bar button{font:inherit;font-size:12px;border:1px solid #555;background:#2A2D31;color:#fff;border-radius:6px;padding:4px 8px;cursor:pointer}
+  .demo-bar button[aria-pressed="true"]{background:#fff;color:#1C1E21}
+  .demo-note{padding:8px 16px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--line)}
+  main{padding:8px 16px 24px}
+  #studioLog{max-width:880px;margin:12px auto 0;font:12px/1.4 ui-monospace,Consolas,monospace;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;white-space:pre-wrap;min-height:2.8em}
+</style>
+</head>
+<body>
+<nav class="demo-bar" id="demoBar" aria-label="Demo state switcher"><strong>My Designs demo</strong></nav>
+<div class="demo-note">MOCKED — fake designs client (no network, no API, no auth). Module under test: <code>src/lib/designs/myDesigns</code>.</div>
+<main>
+  <div id="myDesignsRoot"></div>
+  <div id="studioLog" aria-label="onOpenDesign calls">onOpenDesign: (not called)</div>
+</main>
+<script src="./demo.bundle.js"></script>
+</body>
+</html>
