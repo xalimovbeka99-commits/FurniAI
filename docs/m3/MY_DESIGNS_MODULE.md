@@ -17,6 +17,7 @@ and hands the chosen one to the Studio. Read-only: no create, rename, delete or 
 | `demo/my-designs/**` | demo page, screenshot builder, mount-patch smoke |
 | `docs/m3/patches/my-designs-mount.patch` | `index.html` mount patch for Antigravity (**not applied**) |
 | `docs/m3/artifacts/my-designs/*.png` | screenshots (MOCKED data) |
+| `.gitattributes` | `docs/m3/patches/*.patch text eol=lf` (patch stays LF under `core.autocrlf=true`) |
 
 ## 1. API used (read-only)
 
@@ -202,12 +203,25 @@ Supabase `projects` grid (`#projectsGrid`, with its delete) is **kept unchanged*
    - **If `reopenDesignFromApi` is missing at mount, the panel is still shown, with Open disabled** (not hidden).
    - If `window.FurniMyDesigns` or `window.FurniDesignsApi.createDesignsApiClient` is missing, there is no client to list with. The panel stays hidden and the legacy grid is unchanged. Showing the panel in that case would need a client, and making one would be a client-interface change.
 
-Checks: `git apply --check` and `git apply --check --cached` are both clean against `c6bbe89`. The patch
-uses LF, like the committed blob. The worktree is CRLF (via `core.autocrlf=true`), and the patch applies to both.
+Checks: `git apply --check` and `git apply --check --cached` are both clean against `c6bbe89`, and
 `index.html` in the worktree is unmodified.
 
+Line endings (corrected): the patch applies to the LF blob **only if the patch file itself is LF**.
+Before `.gitattributes` existed, a fresh clone with `core.autocrlf=true` checked the patch out as CRLF
+(`i/lf w/crlf`). That copy applied to the CRLF working-copy `index.html`. But `git apply --check --cached`,
+and the smoke's apply onto `git show HEAD:index.html`, failed with `patch failed: index.html:52`.
+The earlier claim that it "applies to both" was true only for this worktree's LF copy of the patch. Two fixes:
+- `.gitattributes` pins `docs/m3/patches/*.patch text eol=lf`, so every checkout gets an LF patch.
+- `verify-mount-patch.mjs` no longer reads the checkout. It applies `git show HEAD:docs/m3/patches/my-designs-mount.patch`
+  to `git show HEAD:index.html` (both LF blobs), running `git apply --check` first. With `--working-patch` it
+  tests the uncommitted file instead, with CR stripped.
+Both fixes were verified in a fresh `core.autocrlf=true` clone under `%TEMP%`. There, the patch is `w/lf`,
+`git apply --check` and `--check --cached` are both clean, and the smoke passes.
+
 Runtime smoke (`node demo/my-designs/verify-mount-patch.mjs`, MOCKED):
-- Setup: HEAD `index.html` + the patch in a temp dir, served on 127.0.0.1. All other requests aborted. Supabase stubbed with a fake session. Stub `FurniDesignsApi` and `reopenDesignFromApi`.
+- Screenshots go to `<temp dir>/screenshots` by default, and the worktree is not written to. Pass `--update-artifacts` to
+  refresh the tracked `docs/m3/artifacts/my-designs/patched-index-*.png`.
+- Setup: HEAD `index.html` + the committed patch blob in a temp dir, served on 127.0.0.1. All other requests aborted. Supabase stubbed with a fake session. Stub `FurniDesignsApi` and `reopenDesignFromApi`.
 - Boot OK, 0 page errors.
 - Calls, in order: `listDesigns(tok) → getDesign(id, tok) → getRevision(id, 2, tok)`.
 - `reopenDesignFromApi` got `{designId:"3f7d…1c11", revision:2, name:"Bedroom wardrobe"}` + `record.fingerprint`.
@@ -273,11 +287,14 @@ with LF endings (no content change on this Windows checkout). Both files were re
 `node demo/my-designs/build-demo.mjs` builds `demo/my-designs/index.html` and a bundle into a temp dir, then
 prints the path to open. The page has a state switcher (`?state=<name>`).
 
-`--screenshots` writes `docs/m3/artifacts/my-designs/<state>.png` at 1100×720 for these states:
+`--screenshots` captures each state at 1100×720 into `<temp dir>/screenshots/` (printed). By default it does
+**not** touch the tracked PNGs, so a plain run leaves `git status` clean. To refresh the tracked
+`docs/m3/artifacts/my-designs/<state>.png`, pass `--screenshots --update-artifacts`. The same
+`--update-artifacts` flag controls `verify-mount-patch.mjs`. States:
 `loading`, `empty`, `signed-out`, `error-401`, `error-network`, `error-5xx`, `error-not-configured`, `list`,
 `opening`, `opened`, `open-404`, `open-no-revision`, `open-integrity`, `open-disabled`, `open-network`.
 There are also `list-390.png` (390 px wide), plus `patched-index-projects.png` and `patched-index-open-disabled.png`
-(both from the mount-patch smoke).
+(both from the mount-patch smoke, `--update-artifacts`).
 
 ## 10. Out of scope / not done
 

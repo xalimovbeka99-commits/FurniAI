@@ -8,7 +8,19 @@
  * answers with the contract bodies; window.reopenDesignFromApi records its
  * arguments. Every non-127.0.0.1 request is aborted (no network, no API).
  *
- *   node demo/my-designs/verify-mount-patch.mjs
+ *   node demo/my-designs/verify-mount-patch.mjs                     # screenshots -> the temp dir only
+ *   node demo/my-designs/verify-mount-patch.mjs --update-artifacts  # also refresh tracked PNGs
+ *   node demo/my-designs/verify-mount-patch.mjs --working-patch     # test the uncommitted patch file
+ *
+ * CRLF-safe: both inputs come from committed blobs, never the checkout.
+ * index.html = `git show HEAD:index.html`, and the patch =
+ * `git show HEAD:docs/m3/patches/my-designs-mount.patch`. Both are LF in the
+ * object store no matter what core.autocrlf does to the working copy.
+ * --working-patch reads the working-tree patch instead, with CR stripped.
+ * The patch goes through `git apply --check` before `git apply`.
+ *
+ * By default, screenshots go to <temp dir>/screenshots and the worktree is not
+ * written to. Only --update-artifacts writes docs/m3/artifacts/my-designs/patched-index-*.png.
  */
 import { build } from "esbuild";
 import { execFileSync } from "node:child_process";
@@ -20,11 +32,24 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../..");
+const args = new Set(process.argv.slice(2));
 const out = await mkdtemp(join(tmpdir(), "furniai-my-designs-patch-"));
+const PATCH = "docs/m3/patches/my-designs-mount.patch";
+const shotDir = args.has("--update-artifacts") ? join(repo, "docs/m3/artifacts/my-designs") : join(out, "screenshots");
+await mkdir(shotDir, { recursive: true });
 
-// 1. HEAD:index.html (LF, as committed) + the patch, applied in the temp dir.
-await writeFile(join(out, "index.html"), execFileSync("git", ["show", "HEAD:index.html"], { cwd: repo }));
-execFileSync("git", ["apply", join(repo, "docs/m3/patches/my-designs-mount.patch")], { cwd: out });
+// 1. Committed blobs (LF regardless of core.autocrlf), applied in the temp dir.
+const gitShow = (spec) => execFileSync("git", ["show", spec], { cwd: repo });
+const indexBlob = gitShow("HEAD:index.html");
+const patchBytes = args.has("--working-patch")
+  ? Buffer.from((await readFile(join(repo, PATCH), "utf8")).replace(/\r\n/g, "\n"))
+  : gitShow(`HEAD:${PATCH}`);
+if (indexBlob.includes(13) || patchBytes.includes(13)) throw new Error("unexpected CR in index.html blob or patch");
+await writeFile(join(out, "index.html"), indexBlob);
+await writeFile(join(out, "mount.patch"), patchBytes);
+execFileSync("git", ["apply", "--check", "mount.patch"], { cwd: out });
+execFileSync("git", ["apply", "mount.patch"], { cwd: out });
+console.log(`patch source: ${args.has("--working-patch") ? "working tree (CR stripped)" : `git show HEAD:${PATCH}`}; applied to git show HEAD:index.html in ${out}`);
 const patched = await readFile(join(out, "index.html"), "utf8");
 if (!patched.includes('id="myDesignsRoot"')) throw new Error("patch did not apply");
 
@@ -109,8 +134,7 @@ try {
         status: document.querySelector("#myDesignsRoot .fmd-status").textContent,
         legacyGridPresent: !!document.getElementById("projectsGrid"),
       })));
-      const shot = join(repo, "docs/m3/artifacts/my-designs/patched-index-projects.png");
-      await mkdir(dirname(shot), { recursive: true });
+      const shot = join(shotDir, "patched-index-projects.png");
       await page.screenshot({ path: shot });
       r.screenshot = shot;
     } else if (variant === "without-reopen") {
@@ -129,7 +153,7 @@ try {
         calls: window.__fmdCalls.map((c) => c[0]),
         reopenDefined: typeof window.reopenDesignFromApi === "function",
       })));
-      const shot = join(repo, "docs/m3/artifacts/my-designs/patched-index-open-disabled.png");
+      const shot = join(shotDir, "patched-index-open-disabled.png");
       await page.screenshot({ path: shot });
       r.screenshot = shot;
     } else {
@@ -149,6 +173,7 @@ try {
   server.close();
 }
 console.log(JSON.stringify(report, null, 2));
+console.log(`screenshots: ${shotDir}${args.has("--update-artifacts") ? " (tracked artifacts UPDATED)" : " (temp; tracked artifacts untouched)"}`);
 const ok =
   report["with-client"].reopened?.selection?.designId === "3f7d2c1e-9a4b-4c7e-8f10-2b6a9d0e1c11" &&
   report["with-client"].reopened?.selection?.revision === 2 &&
