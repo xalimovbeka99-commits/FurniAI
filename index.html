@@ -2275,11 +2275,25 @@ function reopenAiWardrobeDesign(savedState) {
     isSubmitting: false,
   };
   window.aiWardrobeState = aiWardrobeState;
+
+  const secInput = document.getElementById('aiWardrobeInputSection');
+  const secClarify = document.getElementById('aiWardrobeClarifySection');
+  const secReview = document.getElementById('aiWardrobeReviewSection');
+  const secApproved = document.getElementById('aiWardrobeApprovedSection');
+  if (secInput) secInput.hidden = true;
+  if (secClarify) secClarify.hidden = true;
+  if (secReview) secReview.hidden = false;
+  if (secApproved) secApproved.hidden = true;
+
   if (aiWardrobeState.partGraph && globalThis.PartGraphBridge?.loadDraftPartGraph) {
     globalThis.PartGraphBridge.loadDraftPartGraph(Builder, aiWardrobeState.partGraph);
   }
-  if (typeof updateAiWardrobeSummaryTable === 'function' && aiWardrobeState.spec) {
-    updateAiWardrobeSummaryTable(aiWardrobeState.spec);
+  if (aiWardrobeState.spec && typeof updateAiWardrobeSummaryUI === 'function') {
+    updateAiWardrobeSummaryUI({
+      spec: aiWardrobeState.spec,
+      origins: aiWardrobeState.origins || {},
+      revision: aiWardrobeState.revision || aiWardrobeState.durableRevision || 1,
+    });
   }
   return aiWardrobeState;
 }
@@ -2314,6 +2328,7 @@ function fingerprintCurrentFurniSpec(spec) {
 }
 
 async function getStudioAccessToken() {
+  if (window.__TEST_ACCESS_TOKEN__) return window.__TEST_ACCESS_TOKEN__;
   if (!sb || typeof sb.auth?.getSession !== 'function') return null;
   const { data, error } = await sb.auth.getSession();
   if (error) return null;
@@ -2469,13 +2484,17 @@ async function reopenDesignFromApi(designId, revision, tokenOverride) {
 window.reopenDesignFromApi = reopenDesignFromApi;
 
 async function promptReopenDesignFromApi() {
-  if (!currentUser) { openAuthModal(); return; }
+  const token = await getStudioAccessToken();
+  if (!token && !currentUser) {
+    if (!authConfigured()) { alert('Accounts are not set up on this deployment yet.'); return; }
+    openAuthModal(); return;
+  }
   const designId = prompt('Reopen durable design id:');
   if (!designId) return;
   const revRaw = prompt('Revision (blank = latest):', '');
   const revision = revRaw && String(revRaw).trim() ? Number(revRaw) : undefined;
   try {
-    await reopenDesignFromApi(String(designId).trim(), revision);
+    await reopenDesignFromApi(String(designId).trim(), revision, token);
   } catch (err) {
     alert((err && err.message) || 'Could not reopen design.');
   }
@@ -4162,24 +4181,29 @@ function bindAuthUI(){
   if(reopenBtn)reopenBtn.addEventListener('click',promptReopenDesignFromApi);
 }
 async function saveCurrentDesign(){
-  if(!authConfigured()){alert('Accounts are not set up on this deployment yet.');return}
-  if(!currentUser){openAuthModal();return}
+  const token=await getStudioAccessToken();
   if(isAiWardrobeParametricPath()){
     if(!aiWardrobeState||!aiWardrobeState.spec||!aiWardrobeState.partGraph){
       alert('Generate a wardrobe draft before saving.');return;
     }
-    const defaultName=aiWardrobeState.durableName||Builder.cfg.name||'AI wardrobe';
-    const name=prompt('Name this design:',defaultName);
+    if(!token && !currentUser){
+      if(!authConfigured()){alert('Accounts are not set up on this deployment yet.');return}
+      openAuthModal();return;
+    }
+    const defaultName = aiWardrobeState.durableName || (Builder.cfg && Builder.cfg.name) || 'AI wardrobe';
+    const name = prompt('Name this design:', defaultName);
     if(!name)return;
     aiWardrobeState.durableName=name;
-    const token=await getStudioAccessToken();
-    if(!token){alert('Your session expired. Sign in again to save.');openAuthModal();return}
-    const saved=await persistAcceptedRevision({name,token,quiet:false});
+    const activeToken=token || await getStudioAccessToken();
+    if(!activeToken){alert('Your session expired. Sign in again to save.');openAuthModal();return}
+    const saved=await persistAcceptedRevision({name,token:activeToken,quiet:false});
     if(saved){
       alert('Saved design '+aiWardrobeState.durableDesignId+' revision '+aiWardrobeState.durableRevision+'.');
     }
     return;
   }
+  if(!authConfigured()){alert('Accounts are not set up on this deployment yet.');return}
+  if(!currentUser){openAuthModal();return}
   const name=prompt('Name this design:',Builder.cfg.name||'My design');
   if(!name)return;
   const {data,error}=await sb.from('projects').insert({user_id:currentUser.id,name,config:Builder.cfg}).select().single();
