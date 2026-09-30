@@ -50,6 +50,29 @@ Refusals the module classifies (all pinned in the contract tests):
 | 2xx body missing promised fields / naming another design or revision | `bad-response` | "…unexpected answer. Nothing was opened." |
 | `onOpenDesign` throws/rejects | `handoff` | "…the Studio could not open it. Nothing was changed." |
 
+### The two real 503 bodies (pinned separately)
+
+Both come through the real handlers. Each is pinned as an exact body on all three reads the module
+makes (list, get, revision). They are reached only through environment settings and a stubbed global `fetch` in the
+test. No production code was edited, no network was used, and the URL and anon value are placeholders.
+
+| Code | How the test reaches it | Exact body | Module |
+|---|---|---|---|
+| `PERSISTENCE_NOT_CONFIGURED` 503 | A non-`test:` Bearer token with `SUPABASE_URL`/`SUPABASE_ANON_KEY` unset. Tested both deployed (`VERCEL_ENV=preview`, `NODE_ENV=production`) and local. `auth.js` `resolveCaller` answers before any fetch. | `{ok:false, code:"PERSISTENCE_NOT_CONFIGURED", error:"Design saving is not available on this deployment right now. Nothing was saved or opened."}` | `server`, "Saved designs are not available on this deployment." |
+| `STORAGE_UNAVAILABLE` 503 | Placeholder Supabase env. The stubbed `/auth/v1/user` returns a user, and the stubbed PostgREST `/rest/v1/*` throws. This goes through the real `supabaseStore`. | `{ok:false, code:"STORAGE_UNAVAILABLE", error:"The design store could not be reached."}` (a read says nothing about "not saved") | `server`, generic "could not be loaded" copy |
+| `STORAGE_UNAVAILABLE` 503 (PostgREST 5xx) | same, PostgREST answers 500 | `{ok:false, code:"STORAGE_UNAVAILABLE", error:"The design store rejected the request."}` | `server` |
+| control: `STORAGE_UNAVAILABLE` **502** | PostgREST answers 400 | status 502, same code | `server` |
+| control: healthy store | same stub, PostgREST answers `[]` | `200 {ok:true, designs:[]}` | the 503s come from the store, not the stub |
+
+There is a second `PERSISTENCE_NOT_CONFIGURED` message in `http.js` `getService()`: "Design saving is not configured on
+this deployment. Nothing was saved." **No handler can return it without a production code change**:
+- `getService()` only runs after `resolveCaller()` succeeds.
+- `resolveCaller()` succeeds in only two ways:
+  - The `test:` bypass. It needs `NODE_ENV !== production` and no `VERCEL_ENV`, which means not deployed, so `getService()` picks the memory store.
+  - A Supabase-checked token. That needs `SUPABASE_URL` and `SUPABASE_ANON_KEY`, so `getService()` picks the Supabase store.
+- On a deployment even a `test:` token gets `resolveCaller`'s 503 first. A test pins exactly that.
+- That branch is already unit-tested directly in `src/lib/persistence/truthfulErrors.test.js`. Both messages carry the same code, so the module shows the same copy either way.
+
 `STALE_REVISION 409` is a **save** answer, so these reads never return it. The contract tests
 pin it anyway (409, `details.latestRevision`) so it is never mistaken for a read answer. If a
 client surfaced it on a read, the module would show the generic `server` copy.
@@ -81,18 +104,28 @@ same pinned key sets as the real handlers.
 ```js
 const h = FurniMyDesigns.mountMyDesigns(rootEl, {
   client,                 // required: createDesignsApiClient(...)
-  onOpenDesign,           // required: (selection, record) => void | Promise<void>
+  onOpenDesign,           // required unless openEnabled is false: (selection, record) => void | Promise<void>
   getAccessToken,         // optional: () => token | null (sync or async). Falsy → signed-out, no request
   onSignIn,               // optional: shows a "Sign in" button in signed-out states
+  openEnabled = true,     // optional, FIXED AT MOUNT: false = list shown, every Open disabled (see below)
   document, formatDate, injectStyles = true, autoLoad = true, title = "My designs",
 });
 h.refresh(); h.openDesign(designId); h.getState(); h.destroy();
 ```
 
-State (`getState()`, frozen) = `{ list: { status, designs, error, seq }, open: { status, designId, revision, name, error, seq } }`.
+State (`getState()`, frozen) = `{ openEnabled, list: { status, designs, error, seq }, open: { status, designId, revision, name, error, seq } }`.
 
 - `list.status`: `idle` → `loading` → `empty` | `list` | `error` (`error.kind` as in §1).
 - `open.status`: `idle` → `opening` → `opened` | `error`; Dismiss returns to `idle`.
+
+**Open disabled at mount (`openEnabled: false`).** The panel is **shown, not hidden**:
+- The list loads and renders as usual (loading, empty, error and list states are unchanged), and Refresh still works.
+- Every Open button is `disabled`, and one notice sits above the list: "Opening a saved design is not available in this
+  version of the Studio yet. Your designs are safe and listed below." Each button's `aria-describedby` points to it.
+- `openDesign()` and clicks make **no request**. The reducer also ignores `OPEN_REQUEST`, and `onOpenDesign` is never called.
+- The flag is read once at mount and holds across refreshes. To enable Open, remount.
+
+This is not a client-interface change. The client is still used only through `listDesigns`/`getDesign`/`getRevision`.
 
 Guards:
 - **Stale responses:** every list or open request carries a sequence number, and the reducer drops
@@ -147,7 +180,7 @@ Also add `"my-designs.js",` to the `files` array, after `"ai-designer-transport.
 root bundles are committed, so `my-designs.js` would be committed too.
 
 Checked with the repo's esbuild 0.21.5, output to a temp dir (`node demo/my-designs/build-demo.mjs --entry-check`):
-- Size: 27,911 bytes.
+- Size: 28,965 bytes (after the `openEnabled` change; it was 27,911 before).
 - Inputs: 5, only `src/lib/designs/myDesigns/{state,render,styles,mountMyDesigns,entry}.js`. No fake client, nothing from `persistence/`.
 - No `innerHTML` in the output.
 - Loaded in real Chromium, it exposes `FurniMyDesigns.{mountMyDesigns, ERROR_KIND, LIST_STATUS, OPEN_STATUS, version}`. It mounts, escapes `<b>x</b>`, opens with `{designId:"srv-1", revision:4, name:"<b>x</b>"}`, and destroys cleanly.
@@ -164,9 +197,10 @@ Supabase `projects` grid (`#projectsGrid`, with its delete) is **kept unchanged*
    - `myDesignsAccessToken()` reads `sb.auth.getSession()` the same way `downloadProductionPack` does. The token goes to the client only and is never logged.
    - The panel mounts once, then calls `refresh()` on later visits.
    - `onSignIn: openAuthModal`.
+   - `openEnabled: typeof window.reopenDesignFromApi === 'function'`, checked once at mount.
    - `onOpenDesign: (selection, record) => window.reopenDesignFromApi(selection, record)`.
-   - If `window.FurniMyDesigns` or `window.FurniDesignsApi.createDesignsApiClient` is missing, the panel stays hidden.
-   - If `reopenDesignFromApi` is missing, opening shows the `handoff` error.
+   - **If `reopenDesignFromApi` is missing at mount, the panel is still shown, with Open disabled** (not hidden).
+   - If `window.FurniMyDesigns` or `window.FurniDesignsApi.createDesignsApiClient` is missing, there is no client to list with. The panel stays hidden and the legacy grid is unchanged. Showing the panel in that case would need a client, and making one would be a client-interface change.
 
 Checks: `git apply --check` and `git apply --check --cached` are both clean against `c6bbe89`. The patch
 uses LF, like the committed blob. The worktree is CRLF (via `core.autocrlf=true`), and the patch applies to both.
@@ -177,6 +211,11 @@ Runtime smoke (`node demo/my-designs/verify-mount-patch.mjs`, MOCKED):
 - Boot OK, 0 page errors.
 - Calls, in order: `listDesigns(tok) → getDesign(id, tok) → getRevision(id, 2, tok)`.
 - `reopenDesignFromApi` got `{designId:"3f7d…1c11", revision:2, name:"Bedroom wardrobe"}` + `record.fingerprint`.
+- **Without `reopenDesignFromApi`**:
+  - The panel is shown (`hidden=false`) and every Open button is disabled.
+  - The notice is present.
+  - Clicking makes no call beyond `listDesigns`.
+  - 0 page errors. Screenshot: `patched-index-open-disabled.png`.
 - Without the client global, the panel stays hidden with 0 children.
 - Result: **PASS (MOCKED).**
 
@@ -201,7 +240,8 @@ valid session. The new panel is not affected because it calls `getSession()` its
 4. **Confirm the error shape:** `DesignsApiError` with a numeric `status` (0 when there was no HTTP answer) and
    a string `code` (the server `code`, or `NETWORK_ERROR` for transport failures). A raw fetch `TypeError`
    is also understood.
-5. **`reopenDesignFromApi(selection, record)`:** confirm this signature, or send yours. `record`
+5. **`reopenDesignFromApi(selection, record)`:** confirm this signature, or send yours. Until it exists
+   at mount time, the patch mounts the panel with Open disabled. `record`
    already holds the reopen body, so there is no need to fetch it again. The module expects this function to also navigate to the Studio view
    (`go('#/ai')` or similar).
 6. Optional: call `mountMyDesignsPanel()` (or `myDesignsHandle.refresh()`) from
@@ -212,9 +252,9 @@ valid session. The new panel is not affected because it calls `getSession()` its
 
 | Suite | Command | Result | Evidence |
 |---|---|---|---|
-| Module unit | `npx vitest run src/lib/designs` | 2 files, **74 passed** (state 33, mount 41) | MOCKED (fake client, fake DOM) |
-| Contract | `npx vitest run --config tests/contract/designs-api/vitest.config.js` | 1 file, **21 passed** | LOCAL in-process real handlers + memory store + `test:` auth bypass |
-| Full | `npx vitest run` | **113 passed / 1 skipped files; 1437 passed, 4 skipped, 20 todo, 0 failed** (base 1363 + 74) | — |
+| Module unit | `npx vitest run src/lib/designs` | 2 files, **82 passed** (state 35, mount 47) | MOCKED (fake client, fake DOM) |
+| Contract | `npx vitest run --config tests/contract/designs-api/vitest.config.js` | 1 file, **34 passed** (21 shape/401/404/409 + 13 for the 503s) | LOCAL in-process real handlers + memory store + `test:` auth bypass; the 503s use real handlers + real `supabaseStore` with a stubbed global `fetch` |
+| Full | `npx vitest run` | **113 passed / 1 skipped files; 1445 passed, 4 skipped, 20 todo, 0 failed** (base 1363 + 82) | — |
 | Lint | `npx eslint src/lib/designs tests/contract demo/my-designs` | 0 problems | — |
 | Static build | `npm run build:legacy` | OK, 8 files in `dist/` (unchanged list) | — |
 | Next build | `npm run build` | OK | — |
@@ -222,7 +262,7 @@ valid session. The new panel is not affected because it calls `getSession()` its
 | Mount patch | `git apply --check` + `verify-mount-patch.mjs` | clean + PASS (§6) | MOCKED |
 
 The root `vitest.config.js` `include` list does not cover `tests/contract/**`, so the full run does
-**not** include the 21 contract tests. For CraZy: to fold them in, add `"tests/contract/**/*.test.js"`
+**not** include the 34 contract tests. For CraZy: to fold them in, add `"tests/contract/**/*.test.js"`
 to that `include` array (not edited here).
 
 `npm run build:legacy` rewrites the committed `ai-designer-transport.js` and `partgraph-runtime-bridge.js`
@@ -235,8 +275,9 @@ prints the path to open. The page has a state switcher (`?state=<name>`).
 
 `--screenshots` writes `docs/m3/artifacts/my-designs/<state>.png` at 1100×720 for these states:
 `loading`, `empty`, `signed-out`, `error-401`, `error-network`, `error-5xx`, `error-not-configured`, `list`,
-`opening`, `opened`, `open-404`, `open-no-revision`, `open-integrity`, `open-network`.
-There are also `list-390.png` (390 px wide) and `patched-index-projects.png` (from the mount-patch smoke).
+`opening`, `opened`, `open-404`, `open-no-revision`, `open-integrity`, `open-disabled`, `open-network`.
+There are also `list-390.png` (390 px wide), plus `patched-index-projects.png` and `patched-index-open-disabled.png`
+(both from the mount-patch smoke).
 
 ## 10. Out of scope / not done
 
