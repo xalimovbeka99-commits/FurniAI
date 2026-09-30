@@ -268,6 +268,15 @@ export function validateFurniSpec(spec) {
               addError("COMPONENT_OUTSIDE_BAY", `clearDropAboveMm (${comp.clearDropAboveMm}mm) exceeds internal carcass height (${internalCarcassHDmm / 10}mm).`, `${compPath}.clearDropAboveMm`);
             }
           }
+          if (typeof comp.type === "string" && comp.type.startsWith("HANGING_RAIL") && comp.targetClearDropMm !== undefined) {
+            // Type, sign and 0.1 mm precision here; whether the compiled carcass can
+            // actually deliver the drop is checked by the kernel against placed
+            // geometry (partgraph/hangingDropGeometry.js).
+            const targetDmm = checkPositiveDeciMm(comp.targetClearDropMm, `${compPath}.targetClearDropMm`, "targetClearDropMm");
+            if (targetDmm !== null && internalCarcassHDmm !== null && targetDmm >= internalCarcassHDmm) {
+              addError("COMPONENT_OUTSIDE_BAY", `targetClearDropMm (${comp.targetClearDropMm}mm) exceeds internal carcass height (${internalCarcassHDmm / 10}mm).`, `${compPath}.targetClearDropMm`);
+            }
+          }
           if (comp.thicknessMm !== undefined) {
             checkPositiveDeciMm(comp.thicknessMm, `${compPath}.thicknessMm`, "thicknessMm");
           }

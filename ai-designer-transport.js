@@ -325,6 +325,12 @@ var AiDesignerTransport = (() => {
                 addError("COMPONENT_OUTSIDE_BAY", `clearDropAboveMm (${comp.clearDropAboveMm}mm) exceeds internal carcass height (${internalCarcassHDmm / 10}mm).`, `${compPath}.clearDropAboveMm`);
               }
             }
+            if (typeof comp.type === "string" && comp.type.startsWith("HANGING_RAIL") && comp.targetClearDropMm !== void 0) {
+              const targetDmm = checkPositiveDeciMm(comp.targetClearDropMm, `${compPath}.targetClearDropMm`, "targetClearDropMm");
+              if (targetDmm !== null && internalCarcassHDmm !== null && targetDmm >= internalCarcassHDmm) {
+                addError("COMPONENT_OUTSIDE_BAY", `targetClearDropMm (${comp.targetClearDropMm}mm) exceeds internal carcass height (${internalCarcassHDmm / 10}mm).`, `${compPath}.targetClearDropMm`);
+              }
+            }
             if (comp.thicknessMm !== void 0) {
               checkPositiveDeciMm(comp.thicknessMm, `${compPath}.thicknessMm`, "thicknessMm");
             }
@@ -1059,6 +1065,104 @@ var AiDesignerTransport = (() => {
     return { panels, partIds };
   }
 
+  // src/lib/partgraph/hangingDropGeometry.js
+  var HANGING_DROP_ERROR = Object.freeze({
+    NOT_ACHIEVABLE: "HANGING_DROP_NOT_ACHIEVABLE",
+    RAIL_OUTSIDE_BAY: "HANGING_RAIL_OUTSIDE_BAY",
+    RAIL_INTERSECTS_PART: "HANGING_RAIL_INTERSECTS_PART",
+    INTERIOR_PART_OUTSIDE_BAY: "INTERIOR_PART_OUTSIDE_BAY"
+  });
+  var HANGING_DROP_DATUM = "rail centre to the upper face of the next structural part below it in the same bay (carcass bottom panel if none) \u2014 WARDROBE_RULEBOOK_V0.1 \xA7E";
+  var HangingDropGeometryError = class extends Error {
+    /**
+     * @param {string} code one of HANGING_DROP_ERROR
+     * @param {string} message
+     * @param {object} details
+     */
+    constructor(code, message, details) {
+      super(message);
+      this.name = "HangingDropGeometryError";
+      this.code = code;
+      this.details = details;
+    }
+  };
+  var fmt = (dmm) => `${dmm / 10}mm`;
+  function assertInteriorPartsInsideBay({ bayParts, yBotTopDmm, yTopBottomDmm }) {
+    for (const p of bayParts) {
+      if (p.minYDmm < yBotTopDmm || p.maxYDmm > yTopBottomDmm) {
+        throw new HangingDropGeometryError(
+          HANGING_DROP_ERROR.INTERIOR_PART_OUTSIDE_BAY,
+          `Part ${p.id} (Y ${fmt(p.minYDmm)} \u2013 ${fmt(p.maxYDmm)}) lies outside the bay clear height (${fmt(yBotTopDmm)} \u2013 ${fmt(yTopBottomDmm)}).`,
+          {
+            partId: p.id,
+            bayIndex: p.bayIndex,
+            partMinYMm: p.minYDmm / 10,
+            partMaxYMm: p.maxYDmm / 10,
+            bayClearFromYMm: yBotTopDmm / 10,
+            bayClearToYMm: yTopBottomDmm / 10
+          }
+        );
+      }
+    }
+  }
+  function assertHangingDropGeometry({ rails, bayParts, yBotTopDmm, yTopBottomDmm }) {
+    const measurements = [];
+    for (const rail of rails) {
+      const { comp, bayIndex, railCenterYDmm: y } = rail;
+      const base = {
+        componentId: comp.id,
+        componentType: comp.type,
+        bayIndex,
+        railCentreYMm: y / 10,
+        datum: HANGING_DROP_DATUM
+      };
+      if (!(y > yBotTopDmm && y < yTopBottomDmm)) {
+        throw new HangingDropGeometryError(
+          HANGING_DROP_ERROR.RAIL_OUTSIDE_BAY,
+          `Hanging rail "${comp.id}" centre (Y ${fmt(y)}) is not inside the bay clear height (${fmt(yBotTopDmm)} \u2013 ${fmt(yTopBottomDmm)}).`,
+          { ...base, bayClearFromYMm: yBotTopDmm / 10, bayClearToYMm: yTopBottomDmm / 10 }
+        );
+      }
+      const inBay = bayParts.filter((p) => p.bayIndex === bayIndex);
+      const pierced = inBay.find((p) => p.minYDmm < y && y < p.maxYDmm);
+      if (pierced) {
+        throw new HangingDropGeometryError(
+          HANGING_DROP_ERROR.RAIL_INTERSECTS_PART,
+          `Hanging rail "${comp.id}" centre (Y ${fmt(y)}) passes through part ${pierced.id} (${fmt(pierced.minYDmm)} \u2013 ${fmt(pierced.maxYDmm)}).`,
+          { ...base, partId: pierced.id }
+        );
+      }
+      let obstructionId = "CARCASS_BOTTOM";
+      let obstructionTopDmm = yBotTopDmm;
+      for (const p of inBay) {
+        if (p.maxYDmm <= y && p.maxYDmm > obstructionTopDmm) {
+          obstructionTopDmm = p.maxYDmm;
+          obstructionId = p.id;
+        }
+      }
+      const achievableDmm = y - obstructionTopDmm;
+      const measurement = {
+        ...base,
+        obstructionId,
+        obstructionUpperFaceYMm: obstructionTopDmm / 10,
+        achievableClearDropMm: achievableDmm / 10,
+        targetClearDropMm: comp.targetClearDropMm
+      };
+      if (comp.targetClearDropMm !== void 0) {
+        const targetDmm = toDeciMm(comp.targetClearDropMm, `${comp.id}.targetClearDropMm`);
+        if (targetDmm > achievableDmm) {
+          throw new HangingDropGeometryError(
+            HANGING_DROP_ERROR.NOT_ACHIEVABLE,
+            `Hanging rail "${comp.id}" declares a clear drop of ${fmt(targetDmm)}, but only ${fmt(achievableDmm)} is available above ${obstructionId === "CARCASS_BOTTOM" ? "the carcass bottom" : obstructionId}.`,
+            measurement
+          );
+        }
+      }
+      measurements.push(measurement);
+    }
+    return measurements;
+  }
+
   // src/lib/partgraph/buildStructuralPartGraph.js
   function resolveHangingRailTube(tubeType) {
     const raw = String(tubeType || "OVAL_TUBE_15X30").toUpperCase();
@@ -1365,6 +1469,7 @@ var AiDesignerTransport = (() => {
     const drawerPanels = [];
     const previews = [];
     const ledger = createComponentLedger();
+    const railPlacements = [];
     for (const bay of baySpans) {
       let currentBottomFaceY = yTopBottomDmm;
       let currentRailCenterY = null;
@@ -1416,6 +1521,7 @@ var AiDesignerTransport = (() => {
         } else if (comp.type.startsWith("HANGING_RAIL")) {
           const offsetBelowDmm = assertDeciMm(comp.offsetBelowShelfMm, `${comp.id}.offsetBelowShelfMm`);
           currentRailCenterY = currentBottomFaceY - offsetBelowDmm;
+          railPlacements.push({ comp, bayIndex: bay.index, railCenterYDmm: currentRailCenterY });
           const railHw = furniSpec.hardware?.hangingRails || {};
           const tube = resolveHangingRailTube(railHw.type || "OVAL_TUBE_15X30");
           const endInsetMm = 2;
@@ -1541,6 +1647,17 @@ var AiDesignerTransport = (() => {
         }
       }
     }
+    assertInteriorPartsInsideBay({
+      bayParts: [...fixedShelves, ...adjShelves, ...drawerPanels],
+      yBotTopDmm,
+      yTopBottomDmm
+    });
+    assertHangingDropGeometry({
+      rails: railPlacements,
+      bayParts: [...fixedShelves, ...adjShelves, ...drawerPanels],
+      yBotTopDmm,
+      yTopBottomDmm
+    });
     drawerPanels.sort((a, b) => a.bayIndex - b.bayIndex || a.minYDmm - b.minYDmm);
     for (const d of drawerPanels) {
       parts.push(createPanel(d));
@@ -3318,6 +3435,28 @@ var AiDesignerTransport = (() => {
     APPROVAL_REJECTED: "APPROVAL_REJECTED",
     APPROVED: "APPROVED"
   });
+  var KERNEL_GEOMETRY_REFUSALS = /* @__PURE__ */ new Set([
+    "HANGING_DROP_NOT_ACHIEVABLE",
+    "HANGING_RAIL_OUTSIDE_BAY",
+    "HANGING_RAIL_INTERSECTS_PART",
+    "INTERIOR_PART_OUTSIDE_BAY",
+    "DEGENERATE_DRAWER_GEOMETRY",
+    "UNSUPPORTED_DIMENSION_PRECISION"
+  ]);
+  function compileOrRefuse(spec) {
+    try {
+      return { partGraph: buildStructuralPartGraph(spec), refusal: null };
+    } catch (err) {
+      if (!(err instanceof HangingDropGeometryError) && !KERNEL_GEOMETRY_REFUSALS.has(err?.code)) throw err;
+      return {
+        partGraph: null,
+        refusal: {
+          valid: false,
+          errors: [{ code: err.code, message: err.message, path: err.details?.componentId ?? err.field ?? "", details: err.details }]
+        }
+      };
+    }
+  }
   function unrepresentableComponents(partGraph) {
     const outcomes = partGraph?.componentOutcomes ?? [];
     const blocked = outcomes.filter((e) => e.outcome === COMPONENT_OUTCOME.UNSUPPORTED);
@@ -3419,8 +3558,22 @@ var AiDesignerTransport = (() => {
         safety: preApprovalSafety(assembled.spec)
       };
     }
+    const compiledDraft = compileOrRefuse(assembled.spec);
+    if (compiledDraft.refusal) {
+      return {
+        stage: PIPELINE_STAGE.VALIDATION_FAILED,
+        spec: assembled.spec,
+        derivations: assembled.derivations,
+        validation: compiledDraft.refusal,
+        observations,
+        origins,
+        proposal: null,
+        partGraph: null,
+        safety: preApprovalSafety(assembled.spec)
+      };
+    }
     const proposal = createProposal(assembled.spec);
-    const partGraph = buildStructuralPartGraph(assembled.spec);
+    const partGraph = compiledDraft.partGraph;
     const partGraphValidation = validatePartGraph(partGraph);
     const unrepresentable = unrepresentableComponents(partGraph);
     if (unrepresentable) {

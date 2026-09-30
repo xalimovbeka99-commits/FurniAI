@@ -27,6 +27,7 @@
  */
 
 import { buildStructuralPartGraph } from "../partgraph/buildStructuralPartGraph.js";
+import { HangingDropGeometryError } from "../partgraph/hangingDropGeometry.js";
 import { validatePartGraph } from "../partgraph/validatePartGraph.js";
 import {
   COMPONENT_OUTCOME,
@@ -78,6 +79,38 @@ const MAX_RESOLUTION_ROUNDS = 8;
  * @param {number} [args.revision]
  * @param {object} [args.adapter] proposal adapter; defaults to the deterministic phrase adapter
  */
+/**
+ * The kernel refuses some specs only once geometry is placed (a declared
+ * hanging drop the carcass cannot deliver, a degenerate drawer). Those are
+ * properties of the spec, so the pipeline answers them as a validation
+ * failure — same stage, same "nothing changed" semantics — instead of letting
+ * the exception escape and leave the caller half-committed. Programming
+ * errors (no structured code) still throw.
+ */
+const KERNEL_GEOMETRY_REFUSALS = new Set([
+  "HANGING_DROP_NOT_ACHIEVABLE",
+  "HANGING_RAIL_OUTSIDE_BAY",
+  "HANGING_RAIL_INTERSECTS_PART",
+  "INTERIOR_PART_OUTSIDE_BAY",
+  "DEGENERATE_DRAWER_GEOMETRY",
+  "UNSUPPORTED_DIMENSION_PRECISION",
+]);
+
+function compileOrRefuse(spec) {
+  try {
+    return { partGraph: buildStructuralPartGraph(spec), refusal: null };
+  } catch (err) {
+    if (!(err instanceof HangingDropGeometryError) && !KERNEL_GEOMETRY_REFUSALS.has(err?.code)) throw err;
+    return {
+      partGraph: null,
+      refusal: {
+        valid: false,
+        errors: [{ code: err.code, message: err.message, path: err.details?.componentId ?? err.field ?? "", details: err.details }],
+      },
+    };
+  }
+}
+
 export function proposeWardrobe({ description, answers = {}, specId, revision = 1, adapter = createDeterministicPhraseAdapter() }) {
   assertProposalOnly(adapter);
   const rawDescription = description ?? "";
@@ -218,7 +251,21 @@ export function approveAndPreview({ proposal, approval }) {
     };
   }
 
-  const partGraph = buildStructuralPartGraph(approvedSpec);
+  const compiledApproved = compileOrRefuse(approvedSpec);
+  if (compiledApproved.refusal) {
+    return {
+      stage: PIPELINE_STAGE.VALIDATION_FAILED,
+      proposal,
+      approval,
+      approvalValidation,
+      spec: approvedSpec,
+      validation: compiledApproved.refusal,
+      partGraph: null,
+      partGraphValidation: null,
+      safety: preApprovalSafety(approvedSpec, APPROVAL_STATE.APPROVAL_REJECTED),
+    };
+  }
+  const partGraph = compiledApproved.partGraph;
   const partGraphValidation = validatePartGraph(partGraph);
 
   // An approval cannot make an unrepresentable component representable. If the
@@ -417,8 +464,22 @@ export function previewDraftWardrobe({
     };
   }
 
+  const compiledDraft = compileOrRefuse(assembled.spec);
+  if (compiledDraft.refusal) {
+    return {
+      stage: PIPELINE_STAGE.VALIDATION_FAILED,
+      spec: assembled.spec,
+      derivations: assembled.derivations,
+      validation: compiledDraft.refusal,
+      observations,
+      origins,
+      proposal: null,
+      partGraph: null,
+      safety: preApprovalSafety(assembled.spec),
+    };
+  }
   const proposal = createProposal(assembled.spec);
-  const partGraph = buildStructuralPartGraph(assembled.spec);
+  const partGraph = compiledDraft.partGraph;
   const partGraphValidation = validatePartGraph(partGraph);
 
   // A draft that silently omits something the customer asked for is not a

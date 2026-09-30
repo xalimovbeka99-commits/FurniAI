@@ -85,6 +85,12 @@ describe("golden wardrobe ledger completeness", () => {
 describe("a requested DRAWER_BANK is built as STRUCTURAL drawer parts", () => {
   function specWithDrawerBank() {
     const spec = clone(fixture);
+    // A 4-row bank under the long rail leaves 1078 mm below it, so the golden
+    // rail's declared 1400 mm drop no longer describes this bay. Since
+    // 2026-09-30 the kernel refuses a declared drop the geometry cannot deliver
+    // (asserted below); this fixture is about drawer emission, so its rail
+    // declares no target rather than a false one.
+    delete spec.bays[0].components.find((c) => c.id === "rail-long-l1").targetClearDropMm;
     spec.bays[0].components.push({
       id: "drawer-bank-l1",
       type: COMPONENT_TYPES.DRAWER_BANK,
@@ -151,7 +157,10 @@ describe("completeness holds for arbitrary component mixes", () => {
     const spec = clone(fixture);
     spec.bays[1].components.push(
       { id: "drawer-bank-r1", type: COMPONENT_TYPES.DRAWER_BANK, offsetFromBottomMm: 0, rows: 1 },
-      { id: "shelf-fix-r9", type: COMPONENT_TYPES.SHELF_FIXED, offsetFromBottomMm: 1500, thicknessMm: 18, depthMm: 560 }
+      // Between the 1-row drawer bank and the lowest adjustable shelf. (At
+      // 1500 mm it sat inside the short-hanging drop and is now refused by the
+      // kernel as HANGING_DROP_NOT_ACHIEVABLE — see hangingDropGeometry.test.js.)
+      { id: "shelf-fix-r9", type: COMPONENT_TYPES.SHELF_FIXED, offsetFromBottomMm: 300, thicknessMm: 18, depthMm: 560 }
     );
 
     const graph = buildStructuralPartGraph(spec);
