@@ -13,6 +13,7 @@ export default defineConfig({
       "tests/wardrobe-ai/**/*.test.js",
       "tests/part-graph/**/*.test.js",
       "tests/production/**/*.test.js",
+      "tests/contract/**/*.test.js",
     ],
   },
   resolve: {

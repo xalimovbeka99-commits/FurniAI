@@ -41,6 +41,16 @@ await build({
   outfile: resolve(root, "ai-designer-transport.js"),
 });
 
+// Build the standalone My Designs panel (window.FurniMyDesigns). No client inside:
+// Antigravity's designsApiClient is injected at mount time.
+await build({
+  entryPoints: [resolve(root, "src/lib/designs/myDesigns/entry.js")],
+  bundle: true,
+  format: "iife",
+  globalName: "FurniMyDesigns",
+  outfile: resolve(root, "my-designs.js"),
+});
+
 const files = [
   "index.html",
   "styles.css",
@@ -48,6 +58,7 @@ const files = [
   "legacy-builder-adapter.js",
   "partgraph-runtime-bridge.js",
   "ai-designer-transport.js",
+  "my-designs.js",
   "vendor-three-r128.min.js",
   "vendor-supabase.min.js",
 ];
