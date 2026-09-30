@@ -48,6 +48,7 @@ var PartGraphBridge = (() => {
     PIPELINE_STAGE: () => PIPELINE_STAGE,
     applyConversationalEdit: () => applyConversationalEdit,
     approveAndPreview: () => approveAndPreview,
+    buildConstraintReport: () => buildConstraintReport,
     buildCutListRows: () => buildCutListRows,
     buildStructuralPartGraph: () => buildStructuralPartGraph,
     commitMaterialUpdate: () => commitMaterialUpdate,
@@ -77,6 +78,7 @@ var PartGraphBridge = (() => {
     partGraphToThree: () => partGraphToThree,
     previewDraftWardrobe: () => previewDraftWardrobe,
     proposeWardrobe: () => proposeWardrobe,
+    restoreEditableDesign: () => restoreEditableDesign,
     runConversationToWardrobe: () => runConversationToWardrobe,
     updateParametricMaterial: () => updateParametricMaterial,
     validateApproval: () => validateApproval,
@@ -353,6 +355,9 @@ var PartGraphBridge = (() => {
     }
     if (typeof spec.revision !== "number" || !Number.isInteger(spec.revision) || spec.revision < 1) {
       addError("INVALID_REVISION", "revision must be a positive integer (>= 1).", "revision");
+    }
+    if (spec.customerFinishKey !== void 0 && (typeof spec.customerFinishKey !== "string" || spec.customerFinishKey.trim() === "")) {
+      addError("INVALID_CUSTOMER_FINISH", "customerFinishKey, when present, must be a non-empty string.", "customerFinishKey");
     }
     if (spec.unit !== "mm") {
       addError("INVALID_UNIT", `unit must be "mm", got "${spec.unit}".`, "unit");
@@ -910,6 +915,7 @@ var PartGraphBridge = (() => {
     REQUIRES_BEKZOD_RULING: "REQUIRES_BEKZOD_RULING",
     PROVISIONAL_PENDING_BEKZOD: "PROVISIONAL_PENDING_BEKZOD"
   });
+  var RULE_CATALOG_VERSION = "wardrobe-rules/0.1";
   function rule(id, value, provenance, note) {
     return Object.freeze({ id, value, provenance, note });
   }
@@ -2167,13 +2173,15 @@ var PartGraphBridge = (() => {
         bayIndex: entry.bayIndex
       });
     }
+    const customerFinishKey = typeof furniSpec.customerFinishKey === "string" && furniSpec.customerFinishKey.trim() !== "" ? furniSpec.customerFinishKey : null;
+    const finishedParts = customerFinishKey ? parts.map((part) => ({ ...part, customerFinishKey, finishIntent: customerFinishKey })) : parts;
     return {
       partGraphVersion: PARTGRAPH_VERSION,
       sourceSpecId: furniSpec.specId,
       sourceRevision: furniSpec.revision,
       unitScale: "deci-mm",
       qualificationStatus: furniSpec.qualificationStatus,
-      parts,
+      parts: finishedParts,
       previews,
       operations,
       warnings,
@@ -2192,7 +2200,8 @@ var PartGraphBridge = (() => {
           widthDmm: envWDmm,
           heightDmm: envHDmm,
           depthDmm: envDDmm
-        }
+        },
+        ...customerFinishKey ? { customerFinishKey } : {}
       }
     };
   }
@@ -3348,19 +3357,12 @@ var PartGraphBridge = (() => {
       nextSpec.materials = { ...nextSpec.materials, customerFinishKey: key };
     }
     const nextProposal = createProposal(nextSpec);
-    let nextPartGraph = cloneJson(partGraph);
-    if (nextPartGraph && typeof nextPartGraph === "object") {
-      nextPartGraph.summary = {
-        ...nextPartGraph.summary || {},
-        customerFinishKey: key,
-        revision: nextSpec.revision
-      };
-      if (Array.isArray(nextPartGraph.parts)) {
-        nextPartGraph.parts = nextPartGraph.parts.map((part) => ({
-          ...part,
-          customerFinishKey: key,
-          finishIntent: key
-        }));
+    let nextPartGraph = null;
+    if (partGraph && typeof partGraph === "object") {
+      try {
+        nextPartGraph = buildStructuralPartGraph(nextSpec);
+      } catch (err) {
+        return { ok: false, error: `The finish could not be applied: ${err?.message || "compile failed"}` };
       }
     }
     const nextObservations = [
@@ -4876,6 +4878,543 @@ var PartGraphBridge = (() => {
   }
   function hardwareStatusesOf(spec) {
     return Object.fromEntries(Object.entries(spec.hardware ?? {}).map(([k, v]) => [k, v?.status ?? "UNKNOWN"]));
+  }
+
+  // src/lib/conversation/reopenDesign.js
+  var VALID_ORIGINS = new Set(Object.values(OBSERVATION_ORIGIN));
+  function layoutOf(bay) {
+    const types = (bay?.components || []).map((c) => c?.type);
+    const has = (t) => types.includes(t);
+    if (has("DRAWER_BANK") && has("HANGING_RAIL_SHORT")) return BAY_LAYOUT.DRAWER_BANK_WITH_SHORT_HANGING;
+    if (has("HANGING_RAIL_SHORT") && has("SHELF_ADJUSTABLE")) return BAY_LAYOUT.SHORT_HANGING_WITH_TWO_ADJUSTABLE_SHELVES;
+    if (has("HANGING_RAIL_LONG")) return BAY_LAYOUT.LONG_HANGING;
+    return null;
+  }
+  function factsFromSpec(spec) {
+    const layouts = Array.isArray(spec?.bays) ? spec.bays.map(layoutOf) : [];
+    const facts = {
+      "envelope.widthMm": spec?.envelope?.widthMm,
+      "envelope.heightMm": spec?.envelope?.heightMm,
+      "envelope.depthMm": spec?.envelope?.depthMm,
+      "plinth.heightMm": spec?.plinth?.heightMm,
+      bayCount: Array.isArray(spec?.bays) ? spec.bays.length : void 0,
+      doorCount: spec?.doors?.count,
+      finishType: spec?.finishType,
+      bayLayouts: layouts
+    };
+    const missing = REQUIRED_INTAKE_KEYS.filter((k) => facts[k] === void 0 || facts[k] === null);
+    if (layouts.some((l) => l === null)) missing.push("bayLayouts");
+    return { facts, missing: [...new Set(missing)] };
+  }
+  var canonical = (v) => serializeCanonicalJson(v);
+  function restoreEditableDesign({ furniSpec, partGraph, origins = {}, storedRevision, designId = null } = {}) {
+    const base = {
+      designId,
+      storedRevision,
+      specId: furniSpec?.specId ?? null,
+      revision: furniSpec?.revision ?? null,
+      spec: furniSpec,
+      partGraph,
+      origins: origins || {},
+      undoStack: [],
+      editSequence: 0,
+      customerFinishKey: typeof furniSpec?.customerFinishKey === "string" ? furniSpec.customerFinishKey : null,
+      finishType: furniSpec?.finishType ?? null,
+      envelope: furniSpec?.envelope ?? null
+    };
+    const { facts, missing } = factsFromSpec(furniSpec);
+    if (missing.length > 0) {
+      return { editable: false, reason: "NOT_A_PIPELINE_DESIGN", details: { missing }, state: { ...base, observations: [] } };
+    }
+    const sourceText = `restored from saved revision ${storedRevision}`;
+    const observations = Object.entries(facts).map(([key, value]) => ({
+      key,
+      value: Array.isArray(value) ? [...value] : value,
+      origin: VALID_ORIGINS.has(origins?.[key]) ? origins[key] : OBSERVATION_ORIGIN.EXTRACTED,
+      sourceText,
+      sourceSpan: null,
+      ruleIds: []
+    }));
+    if (base.customerFinishKey) {
+      observations.push({
+        key: "customerFinishKey",
+        value: base.customerFinishKey,
+        origin: VALID_ORIGINS.has(origins?.customerFinishKey) ? origins.customerFinishKey : OBSERVATION_ORIGIN.CUSTOMER_STATED,
+        sourceText,
+        sourceSpan: null,
+        ruleIds: []
+      });
+    }
+    let rebuilt;
+    try {
+      rebuilt = preserveCustomerFinishOnDraft(
+        previewDraftWardrobe({ initialObservations: observations, specId: furniSpec.specId, revision: furniSpec.revision }),
+        observations
+      );
+    } catch (err) {
+      return { editable: false, reason: "REBUILD_FAILED", details: { message: err?.message }, state: { ...base, observations: [] } };
+    }
+    if (rebuilt?.stage !== PIPELINE_STAGE.DRAFT_PREVIEW || !rebuilt.spec || !rebuilt.partGraph) {
+      return {
+        editable: false,
+        reason: "REBUILD_REFUSED",
+        details: { stage: rebuilt?.stage, errors: rebuilt?.validation?.errors?.map((e) => e.code) },
+        state: { ...base, observations: [] }
+      };
+    }
+    const specSame = canonical(rebuilt.spec) === canonical(furniSpec);
+    const graphSame = canonical(rebuilt.partGraph) === canonical(partGraph);
+    if (!specSame || !graphSame) {
+      const differing = Object.keys({ ...rebuilt.spec, ...furniSpec }).filter((k) => canonical(rebuilt.spec[k] ?? null) !== canonical(furniSpec[k] ?? null)).sort();
+      return {
+        editable: false,
+        reason: "RESTORED_DESIGN_DIFFERS",
+        details: { specFields: differing, partGraphSame: graphSame },
+        state: { ...base, observations: [] }
+      };
+    }
+    return { editable: true, state: { ...base, observations: rebuilt.observations || observations } };
+  }
+
+  // src/lib/rules/physicalLimitRegistry.js
+  var PHYSICAL_LIMIT_PROVENANCE = Object.freeze({
+    ...RULE_PROVENANCE,
+    /** Enforced, engineer-chosen, NOT approved. Must be reviewed, not removed. */
+    PROVISIONAL_PENDING_BEKZOD_REVIEW: "PROVISIONAL_PENDING_BEKZOD_REVIEW"
+  });
+  var PHYSICAL_LIMIT_REGISTRY_VERSION = "physical-limits/0.1";
+  var PHYSICAL_LIMITS = Object.freeze({
+    maxPanelThicknessMm: Object.freeze({
+      id: "PL-001",
+      unit: "mm",
+      scope: "Upper bound on any carcass/panel thickness.",
+      enforcedBy: "src/lib/wardrobe-model/validator.js \u2014 INVALID_DIMENSION",
+      provenance: PHYSICAL_LIMIT_PROVENANCE.PROVISIONAL_PENDING_BEKZOD_REVIEW,
+      note: "Plausibility envelope chosen by an engineer. No rulebook entry and no workshop ruling."
+    }),
+    minShelfClearanceMm: Object.freeze({
+      id: "PL-002",
+      unit: "mm",
+      scope: "Minimum clear vertical gap between two shelf zones.",
+      enforcedBy: "src/lib/wardrobe-model/validator.js \u2014 shelf spacing check",
+      provenance: PHYSICAL_LIMIT_PROVENANCE.PROVISIONAL_PENDING_BEKZOD_REVIEW,
+      note: "Usability floor, not a structural one. Not approved."
+    }),
+    minHangingClearanceBelowMm: Object.freeze({
+      id: "PL-003",
+      unit: "mm",
+      scope: "Minimum clear drop below a hanging-rail rod centre.",
+      enforcedBy: "src/lib/wardrobe-model/validator.js \u2014 INSUFFICIENT_HANGING_CLEARANCE",
+      provenance: PHYSICAL_LIMIT_PROVENANCE.PROVISIONAL_PENDING_BEKZOD_REVIEW,
+      note: "Garment-length assumption. Widely used in the trade; not approved here, and the trade is not Bekzod."
+    }),
+    minHangingInteriorDepthMm: Object.freeze({
+      id: "PL-004",
+      unit: "mm",
+      scope: "Minimum interior depth for a bay carrying a hanging rod.",
+      enforcedBy: "src/lib/wardrobe-model/validator.js \u2014 INSUFFICIENT_DEPTH_FOR_HANGING",
+      provenance: PHYSICAL_LIMIT_PROVENANCE.PROVISIONAL_PENDING_BEKZOD_REVIEW,
+      note: "Shoulder-width assumption. Not approved."
+    }),
+    maxUnsupportedShelfSpanMm: Object.freeze({
+      id: "PL-005",
+      unit: "mm",
+      scope: "Maximum continuous shelf span with no vertical partition.",
+      enforcedBy: "src/lib/wardrobe-model/validator.js \u2014 unsupported span check",
+      provenance: PHYSICAL_LIMIT_PROVENANCE.PROVISIONAL_PENDING_BEKZOD_REVIEW,
+      note: "Deflection depends on material, thickness and load, none of which this limit reads. A single span number cannot be correct for every material \u2014 this is the one most likely to be wrong in both directions."
+    }),
+    minDrawerBayClearWidthMm: Object.freeze({
+      id: "PL-006",
+      unit: "mm",
+      scope: "Exclusive construction floor for DRAWER_BANK bay clear width (need W > 21+15+15). At W=floor, DRAWER_BACK width is 0.",
+      enforcedBy: "src/lib/wardrobe-model/kernel.js + validator.js \u2014 INSUFFICIENT_BAY_WIDTH_FOR_DRAWERS (widthMm <= floor); src/lib/partgraph/emitDrawerBankParts.js refuses non-positive DRAWER_* dims",
+      provenance: PHYSICAL_LIMIT_PROVENANCE.PROVISIONAL_PENDING_BEKZOD_REVIEW,
+      note: "Derived from emitDrawerBankParts construction params. Not BEKZOD_APPROVED usable-width. W=52 is arithmetic validity only."
+    })
+  });
+
+  // src/lib/knowledgeBase.js
+  var MATERIALS = {
+    oak: { label: "Oak", costPerM2: 180, tier: "premium", color: "#c8a878" },
+    walnut: { label: "Walnut", costPerM2: 240, tier: "premium", color: "#5c4033" },
+    mahogany: { label: "Mahogany", costPerM2: 260, tier: "premium", color: "#6f3329" },
+    white: { label: "White MDF", costPerM2: 95, tier: "standard", color: "#f5f5f0" },
+    black: { label: "Black MDF", costPerM2: 100, tier: "standard", color: "#1a1a1a" },
+    beige: { label: "Beige", costPerM2: 95, tier: "standard", color: "#e8dcc4" },
+    graphite: { label: "Graphite", costPerM2: 110, tier: "standard", color: "#3a3a3a" },
+    sage: { label: "Sage", costPerM2: 110, tier: "standard", color: "#9caf88" },
+    navy: { label: "Navy", costPerM2: 110, tier: "standard", color: "#2c3e50" },
+    concrete: { label: "Concrete", costPerM2: 130, tier: "standard", color: "#9e9e9e" },
+    linen: { label: "Linen", costPerM2: 140, tier: "standard", color: "#d9cab3" },
+    dark_wood: { label: "Dark Wood", costPerM2: 200, tier: "premium", color: "#3b2a1a" }
+  };
+  var HANDLE_STYLES = {
+    gold_bar: { label: "Gold Bar", unitCost: 22 },
+    silver_knob: { label: "Silver Knob", unitCost: 8 },
+    black_strip: { label: "Black Strip", unitCost: 14 },
+    hidden_push: { label: "Hidden Push", unitCost: 0 },
+    // mechanism, no visible handle
+    chrome: { label: "Chrome", unitCost: 16 }
+  };
+  var DOOR_TYPES = {
+    solid_panel: { label: "Solid Panel", surchargePerDoor: 0 },
+    glass_panel: { label: "Glass Panel", surchargePerDoor: 65 },
+    full_mirror: { label: "Full Mirror", surchargePerDoor: 90 },
+    frosted_glass: { label: "Frosted Glass", surchargePerDoor: 75 }
+  };
+  var LED_LIGHTING = {
+    off: { label: "No LED", cost: 0 },
+    warm: { label: "Warm White", cost: 120 },
+    cool: { label: "Cool White", cost: 120 },
+    rgb: { label: "RGB", cost: 180 }
+  };
+  var FURNITURE_TYPES2 = {
+    wardrobe: {
+      label: "Wardrobe",
+      defaults: { width: 2.4, height: 2.8, depth: 0.6 },
+      panelFactor: 1.6,
+      doorsFor: (w) => Math.max(2, Math.round(w / 0.6)),
+      // ~one door per 60cm
+      laborBase: 200,
+      complexity: 1.3
+    },
+    kitchen: {
+      label: "Kitchen",
+      defaults: { width: 3, height: 2.2, depth: 0.6 },
+      panelFactor: 2,
+      doorsFor: (w) => Math.max(4, Math.round(w / 0.5)),
+      laborBase: 450,
+      complexity: 1.8
+    },
+    office: {
+      label: "Office",
+      defaults: { width: 1.6, height: 0.75, depth: 0.7 },
+      panelFactor: 1.3,
+      doorsFor: () => 2,
+      laborBase: 180,
+      complexity: 1.2
+    },
+    bed: {
+      label: "Bed",
+      defaults: { width: 1.6, height: 1, depth: 2 },
+      panelFactor: 1.1,
+      doorsFor: () => 0,
+      laborBase: 160,
+      complexity: 1.1
+    },
+    cabinet: {
+      label: "Cabinet",
+      defaults: { width: 1, height: 1.8, depth: 0.45 },
+      panelFactor: 1.5,
+      doorsFor: (w) => Math.max(2, Math.round(w / 0.5)),
+      laborBase: 150,
+      complexity: 1.2
+    },
+    shelves: {
+      label: "Shelving Unit",
+      defaults: { width: 1.2, height: 2, depth: 0.35 },
+      panelFactor: 1.7,
+      doorsFor: () => 0,
+      laborBase: 120,
+      complexity: 1
+    },
+    table: {
+      label: "Table",
+      defaults: { width: 1.8, height: 0.75, depth: 0.9 },
+      panelFactor: 1,
+      doorsFor: () => 0,
+      laborBase: 140,
+      complexity: 1
+    },
+    dressing_table: {
+      label: "Dressing Table",
+      defaults: { width: 1.2, height: 1.4, depth: 0.45 },
+      panelFactor: 1.4,
+      doorsFor: () => 0,
+      laborBase: 170,
+      complexity: 1.2
+    }
+  };
+  var KNOWN = {
+    furnitureTypes: Object.keys(FURNITURE_TYPES2),
+    materials: Object.keys(MATERIALS),
+    doorTypes: Object.keys(DOOR_TYPES),
+    handleStyles: Object.keys(HANDLE_STYLES),
+    ledModes: Object.keys(LED_LIGHTING)
+  };
+
+  // src/lib/furnitureConfig.js
+  var PANEL_THICKNESS = 0.018;
+
+  // src/lib/wardrobe-model/schema.js
+  var PANEL_THICKNESS_MM = PANEL_THICKNESS * 1e3;
+  var COMPONENT_TYPES2 = Object.freeze({
+    SHELF: "SHELF",
+    DRAWER_BANK: "DRAWER_BANK",
+    HANGING_RAIL: "HANGING_RAIL",
+    DIVIDER: "DIVIDER",
+    DOOR: "DOOR"
+  });
+  var ADDABLE_COMPONENT_TYPES = Object.freeze([
+    COMPONENT_TYPES2.SHELF,
+    COMPONENT_TYPES2.DRAWER_BANK,
+    COMPONENT_TYPES2.HANGING_RAIL,
+    COMPONENT_TYPES2.DOOR
+  ]);
+  var ZONE_COMPONENT_TYPES = Object.freeze([
+    COMPONENT_TYPES2.SHELF,
+    COMPONENT_TYPES2.DRAWER_BANK,
+    COMPONENT_TYPES2.HANGING_RAIL
+  ]);
+  var DEFAULTS = Object.freeze({
+    panelThicknessMm: PANEL_THICKNESS_MM,
+    /** Realistic carcass/panel thickness envelope (validator fail-closed). */
+    maxPanelThicknessMm: 50,
+    /** Rear back panel thickness in mm (furnitureConfig BACK_THICKNESS). */
+    backThicknessMm: 5,
+    minWardrobeWidthMm: 300,
+    maxWardrobeWidthMm: 6e3,
+    minWardrobeHeightMm: 300,
+    maxWardrobeHeightMm: 3e3,
+    minWardrobeDepthMm: 200,
+    maxWardrobeDepthMm: 1200,
+    minSectionWidthMm: 250,
+    shelfZoneMm: PANEL_THICKNESS_MM,
+    // a shelf's own nominal zone height (= panel thickness)
+    railZoneMm: 40,
+    // hanging-rail bar + clearance
+    drawerRowHeightMm: 180,
+    // one drawer row's nominal height
+    minDrawerRows: 1,
+    maxDrawerRows: 8,
+    minDoorLeaves: 1,
+    maxDoorLeaves: 4,
+    /** Fail-closed: clear gap between shelf zones must be >= this. */
+    minShelfClearanceMm: 60,
+    /** Fail-closed: vertical clear drop below hanging-rail rod centre. */
+    minHangingClearanceBelowMm: 800,
+    /** Fail-closed: interior depth floor when a bay has a hanging rod. */
+    minHangingInteriorDepthMm: 300,
+    /** Fail-closed: continuous shelf span without a vertical partition. */
+    maxUnsupportedShelfSpanMm: 1200,
+    /**
+     * PL-006 construction floor for DRAWER_BANK clear width (not usable-width ruling).
+     * BACK = W - 21 - 15 - 15; at W=51 BACK=0. Kernel rejects widthMm <= this value.
+     * Provenance: PROVISIONAL_PENDING_BEKZOD_REVIEW. 52 mm is arithmetic-only.
+     */
+    // The SUM of the drawer deductions, not a usable width. A bay must EXCEED
+    // it: at exactly this value the drawer back computes to 0mm. No practical
+    // minimum is ruled, so none is invented here.
+    minDrawerBayClearWidthMm: 21 + 15 + 15
+  });
+
+  // src/lib/rules/constraintReport.js
+  var CONSTRAINT_REPORT_VERSION = "constraint-report/0.1";
+  var APPROVED = /* @__PURE__ */ new Set([
+    RULE_PROVENANCE.RULEBOOK_V0_1,
+    RULE_PROVENANCE.GOLDEN_FIXTURE_BEKZOD_APPROVED,
+    RULE_PROVENANCE.BEKZOD_RULING
+  ]);
+  var SOURCE_OF = {
+    RULEBOOK_V0_1: "docs/WARDROBE_RULEBOOK_V0.1.md",
+    GOLDEN_FIXTURE_BEKZOD_APPROVED: "src/lib/furnispec/goldenWardrobe.fixture.json",
+    BEKZOD_RULING: "src/lib/rules/wardrobeRuleCatalog.js (Bekzod ruling record)",
+    PROVISIONAL_PENDING_BEKZOD: "src/lib/rules/wardrobeRuleCatalog.js (provisional record)"
+  };
+  var SHELF_ROLES = /* @__PURE__ */ new Set(["FIXED_SHELF", "ADJUSTABLE_SHELF"]);
+  var BELOW_RAIL_ROLES = /* @__PURE__ */ new Set(["FIXED_SHELF", "ADJUSTABLE_SHELF", "BOTTOM_PANEL", "DRAWER_FRONT", "DRAWER_SIDE_L", "DRAWER_SIDE_R", "DRAWER_BACK", "DRAWER_BOTTOM"]);
+  var P = (part) => part.placement || {};
+  function catalogIndex() {
+    const byId = /* @__PURE__ */ new Map();
+    for (const [key, r] of Object.entries(WARDROBE_RULES)) {
+      if (!byId.has(r.id)) byId.set(r.id, []);
+      byId.get(r.id).push({ key, ...r });
+    }
+    return byId;
+  }
+  function refuse(source, list) {
+    return (list || []).map((e) => ({
+      source,
+      code: e.code || "UNKNOWN",
+      message: e.message || String(e),
+      ...e.path ? { path: e.path } : {},
+      ...e.details ? { details: e.details } : {}
+    }));
+  }
+  function buildConstraintReport({ spec, partGraph = null, derivations = [] } = {}) {
+    const report = {
+      reportVersion: CONSTRAINT_REPORT_VERSION,
+      ruleCatalogVersion: RULE_CATALOG_VERSION,
+      physicalLimitsVersion: PHYSICAL_LIMIT_REGISTRY_VERSION,
+      specId: spec?.specId ?? null,
+      revision: spec?.revision ?? null,
+      status: "PASS",
+      blockingViolations: [],
+      advisoryWarnings: [],
+      approvedRules: [],
+      provisionalRules: [],
+      /** Rule ids a part cites that have no catalog record: traceability gaps, not rules. */
+      untracedReferences: [],
+      notQualified: {
+        hardwareDrilling: spec?.machiningPolicy?.drilling ?? "BLOCKED_PENDING_HARDWARE_APPROVAL",
+        stepExport: "NOT_SUPPORTED",
+        cncQualification: spec?.qualificationStatus ?? "WORKSHOP_REVIEW_NOT_CNC_QUALIFIED",
+        statement: "Workshop review only. No hardware drilling, no STEP export, no CNC qualification \u2014 none is claimed by this report."
+      }
+    };
+    const v = validateFurniSpec(spec);
+    if (!v.valid) {
+      report.blockingViolations.push(...refuse("FURNISPEC_VALIDATOR", v.errors));
+    }
+    let graph = partGraph;
+    if (v.valid && !graph) {
+      try {
+        graph = buildStructuralPartGraph(spec);
+      } catch (err) {
+        report.blockingViolations.push({
+          source: "KERNEL_GEOMETRY",
+          code: err?.code || "COMPILE_FAILED",
+          message: err?.message || "compile failed",
+          ...err?.details ? { details: err.details } : {}
+        });
+      }
+    }
+    if (graph) {
+      const pv = validatePartGraph(graph);
+      if (!pv.valid) report.blockingViolations.push(...refuse("PARTGRAPH_VALIDATOR", pv.errors));
+      for (const o of graph.componentOutcomes || []) {
+        if (o.outcome === "UNSUPPORTED") {
+          report.blockingViolations.push({
+            source: "UNSUPPORTED_COMPONENT",
+            code: o.diagnosticCode || "COMPONENT_NOT_REPRESENTED",
+            message: o.reason || `Component ${o.componentId} is not represented.`,
+            details: { componentId: o.componentId, componentType: o.componentType, bayIndex: o.bayIndex }
+          });
+        }
+      }
+    }
+    if (report.blockingViolations.length > 0) {
+      report.status = "BLOCKED";
+      return report;
+    }
+    const byId = catalogIndex();
+    const used = /* @__PURE__ */ new Map();
+    for (const part of graph.parts || []) {
+      for (const id of part.sourceRuleIds || []) {
+        if (!used.has(id)) used.set(id, /* @__PURE__ */ new Set());
+        used.get(id).add(part.id);
+      }
+    }
+    for (const d of derivations || []) {
+      for (const id of d.ruleIds || []) {
+        if (!used.has(id)) used.set(id, /* @__PURE__ */ new Set());
+        used.get(id).add(`derivation:${d.path}`);
+      }
+    }
+    for (const [id, where] of [...used.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+      const records = byId.get(id);
+      const appliedTo = [...where].sort();
+      if (!records) {
+        report.untracedReferences.push({
+          id,
+          source: "cited in PartGraph sourceRuleIds; no record in wardrobeRuleCatalog.js",
+          appliedTo
+        });
+        continue;
+      }
+      for (const r of records) {
+        const entry = { id, key: r.key, value: r.value, provenance: r.provenance, source: SOURCE_OF[r.provenance] || r.provenance, note: r.note, appliedTo };
+        (APPROVED.has(r.provenance) ? report.approvedRules : report.provisionalRules).push(entry);
+      }
+    }
+    const drawerParts = (graph.parts || []).filter((p) => String(p.role).startsWith("DRAWER_"));
+    if (drawerParts.length > 0) {
+      const ids = drawerParts.map((p) => p.id).sort();
+      for (const [key, value] of Object.entries({
+        DRAWER_BOX_SIDE_THICKNESS_MM,
+        DRAWER_SIDE_DEPTH_SETBACK_MM,
+        DRAWER_BOTTOM_SIDE_INSET_TOTAL_MM,
+        DRAWER_BOTTOM_THICKNESS_MM,
+        DEFAULT_DRAWER_ROW_HEIGHT_MM
+      })) {
+        report.provisionalRules.push({
+          id: key,
+          value,
+          provenance: "PROVISIONAL_PENDING_BEKZOD_REVIEW",
+          source: "src/lib/partgraph/emitDrawerBankParts.js (docs/m2/integ/DRAWER_COMPILER_DECISION.md)",
+          appliedTo: ids
+        });
+      }
+    }
+    for (const pv of graph.previews || []) {
+      if (pv.kind !== "HANGING_RAIL") continue;
+      report.provisionalRules.push({
+        id: "RAIL-PREVIEW-ASSUMPTIONS",
+        value: { endInsetMm: pv.assumed?.endInsetMm, centerZRule: pv.assumed?.centerZRule },
+        provenance: "PREVIEW_ONLY_ASSUMPTION",
+        source: "src/lib/partgraph/buildStructuralPartGraph.js (visual preview, not a manufacturing part)",
+        appliedTo: [pv.id]
+      });
+    }
+    const advise = (limitKey, code, message, evidence) => {
+      const lim = PHYSICAL_LIMITS[limitKey];
+      report.advisoryWarnings.push({
+        code,
+        message,
+        limitId: lim?.id,
+        limitValueMm: DEFAULTS[limitKey],
+        provenance: lim?.provenance,
+        source: "src/lib/rules/physicalLimitRegistry.js",
+        evidence
+      });
+    };
+    const parts = graph.parts || [];
+    for (const rail of (graph.previews || []).filter((p) => p.kind === "HANGING_RAIL")) {
+      const overlapsX = (p) => P(p).minXDmm < rail.maxXDmm && P(p).maxXDmm > rail.minXDmm;
+      const below = parts.filter((p) => BELOW_RAIL_ROLES.has(p.role) && overlapsX(p) && P(p).maxYDmm <= rail.centerYDmm);
+      const top = below.reduce((best, p) => P(p).maxYDmm > (best ? P(best).maxYDmm : -Infinity) ? p : best, null);
+      if (!top) continue;
+      const dropMm = (rail.centerYDmm - P(top).maxYDmm) / 10;
+      const min = DEFAULTS.minHangingClearanceBelowMm;
+      if (typeof min === "number" && dropMm < min) {
+        advise(
+          "minHangingClearanceBelowMm",
+          "ADVISORY_SHORT_HANGING_DROP",
+          `Hanging rail ${rail.id} has ${dropMm} mm clear drop, below the provisional ${min} mm garment assumption.`,
+          { railId: rail.id, clearDropMm: dropMm, obstructionId: top.id }
+        );
+      }
+    }
+    const spanLimit = DEFAULTS.maxUnsupportedShelfSpanMm;
+    for (const shelf of parts.filter((p) => SHELF_ROLES.has(p.role))) {
+      const spanMm = (P(shelf).maxXDmm - P(shelf).minXDmm) / 10;
+      if (typeof spanLimit === "number" && spanMm > spanLimit) {
+        advise(
+          "maxUnsupportedShelfSpanMm",
+          "ADVISORY_LONG_SHELF_SPAN",
+          `Shelf ${shelf.id} spans ${spanMm} mm, over the provisional ${spanLimit} mm span limit (material and load are not modelled).`,
+          { partId: shelf.id, spanMm }
+        );
+      }
+    }
+    const depthLimit = DEFAULTS.minHangingInteriorDepthMm;
+    if ((graph.previews || []).some((p) => p.kind === "HANGING_RAIL") && typeof spec?.carcass?.depthMm === "number") {
+      const interior = spec.carcass.depthMm - (spec.carcass.backThicknessMm || 0);
+      if (typeof depthLimit === "number" && interior < depthLimit) {
+        advise(
+          "minHangingInteriorDepthMm",
+          "ADVISORY_SHALLOW_HANGING_BAY",
+          `Interior depth ${interior} mm is below the provisional ${depthLimit} mm for hanging.`,
+          { interiorDepthMm: interior }
+        );
+      }
+    }
+    for (const w of graph.warnings || []) {
+      report.advisoryWarnings.push({ code: w.code, message: w.message, provenance: "KERNEL_WARNING", source: "PartGraph.warnings" });
+    }
+    report.status = report.advisoryWarnings.length > 0 ? "PASS_WITH_ADVISORIES" : "PASS";
+    return report;
   }
 
   // src/lib/drawing/projectionEngine.js

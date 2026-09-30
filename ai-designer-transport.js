@@ -143,6 +143,9 @@ var AiDesignerTransport = (() => {
     if (typeof spec.revision !== "number" || !Number.isInteger(spec.revision) || spec.revision < 1) {
       addError("INVALID_REVISION", "revision must be a positive integer (>= 1).", "revision");
     }
+    if (spec.customerFinishKey !== void 0 && (typeof spec.customerFinishKey !== "string" || spec.customerFinishKey.trim() === "")) {
+      addError("INVALID_CUSTOMER_FINISH", "customerFinishKey, when present, must be a non-empty string.", "customerFinishKey");
+    }
     if (spec.unit !== "mm") {
       addError("INVALID_UNIT", `unit must be "mm", got "${spec.unit}".`, "unit");
     }
@@ -1956,13 +1959,15 @@ var AiDesignerTransport = (() => {
         bayIndex: entry.bayIndex
       });
     }
+    const customerFinishKey = typeof furniSpec.customerFinishKey === "string" && furniSpec.customerFinishKey.trim() !== "" ? furniSpec.customerFinishKey : null;
+    const finishedParts = customerFinishKey ? parts.map((part) => ({ ...part, customerFinishKey, finishIntent: customerFinishKey })) : parts;
     return {
       partGraphVersion: PARTGRAPH_VERSION,
       sourceSpecId: furniSpec.specId,
       sourceRevision: furniSpec.revision,
       unitScale: "deci-mm",
       qualificationStatus: furniSpec.qualificationStatus,
-      parts,
+      parts: finishedParts,
       previews,
       operations,
       warnings,
@@ -1981,7 +1986,8 @@ var AiDesignerTransport = (() => {
           widthDmm: envWDmm,
           heightDmm: envHDmm,
           depthDmm: envDDmm
-        }
+        },
+        ...customerFinishKey ? { customerFinishKey } : {}
       }
     };
   }
@@ -2745,19 +2751,12 @@ var AiDesignerTransport = (() => {
       nextSpec.materials = { ...nextSpec.materials, customerFinishKey: key };
     }
     const nextProposal = createProposal(nextSpec);
-    let nextPartGraph = cloneJson(partGraph);
-    if (nextPartGraph && typeof nextPartGraph === "object") {
-      nextPartGraph.summary = {
-        ...nextPartGraph.summary || {},
-        customerFinishKey: key,
-        revision: nextSpec.revision
-      };
-      if (Array.isArray(nextPartGraph.parts)) {
-        nextPartGraph.parts = nextPartGraph.parts.map((part) => ({
-          ...part,
-          customerFinishKey: key,
-          finishIntent: key
-        }));
+    let nextPartGraph = null;
+    if (partGraph && typeof partGraph === "object") {
+      try {
+        nextPartGraph = buildStructuralPartGraph(nextSpec);
+      } catch (err) {
+        return { ok: false, error: `The finish could not be applied: ${err?.message || "compile failed"}` };
       }
     }
     const nextObservations = [
