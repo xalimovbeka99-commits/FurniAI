@@ -936,13 +936,26 @@ export function buildStructuralPartGraph(furniSpec) {
     });
   }
 
+  // Customer visual finish (a swatch such as "walnut") is part of the accepted
+  // design, so it is part of the compiled graph: the manufacturing finishType
+  // stays catalog-backed. Before 2026-09-30 it was patched onto the graph after
+  // compilation, so the saved graph was never "what the compiler makes of this
+  // spec" and every design with a chosen finish was refused on save.
+  const customerFinishKey =
+    typeof furniSpec.customerFinishKey === "string" && furniSpec.customerFinishKey.trim() !== ""
+      ? furniSpec.customerFinishKey
+      : null;
+  const finishedParts = customerFinishKey
+    ? parts.map((part) => ({ ...part, customerFinishKey, finishIntent: customerFinishKey }))
+    : parts;
+
   return {
     partGraphVersion: PARTGRAPH_VERSION,
     sourceSpecId: furniSpec.specId,
     sourceRevision: furniSpec.revision,
     unitScale: "deci-mm",
     qualificationStatus: furniSpec.qualificationStatus,
-    parts,
+    parts: finishedParts,
     previews,
     operations,
     warnings,
@@ -962,6 +975,7 @@ export function buildStructuralPartGraph(furniSpec) {
         heightDmm: envHDmm,
         depthDmm: envDDmm,
       },
+      ...(customerFinishKey ? { customerFinishKey } : {}),
     },
   };
 }

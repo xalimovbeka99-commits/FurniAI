@@ -53,6 +53,10 @@ export function validateFurniSpec(spec) {
     addError("INVALID_REVISION", "revision must be a positive integer (>= 1).", "revision");
   }
 
+  if (spec.customerFinishKey !== undefined && (typeof spec.customerFinishKey !== "string" || spec.customerFinishKey.trim() === "")) {
+    addError("INVALID_CUSTOMER_FINISH", "customerFinishKey, when present, must be a non-empty string.", "customerFinishKey");
+  }
+
   if (spec.unit !== "mm") {
     addError("INVALID_UNIT", `unit must be "mm", got "${spec.unit}".`, "unit");
   }
