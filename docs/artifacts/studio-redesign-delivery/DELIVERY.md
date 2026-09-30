@@ -1,160 +1,130 @@
-﻿# Studio Interface Redesign — Delivery Package
+# Studio Interface Redesign & Backend Persistence — Delivery Package
 
-**Audience:** Integration Lead / Bekzod  
-**Scope:** UI redesign delivery packaging only. Not merged to main. Not deployed to Production. Visual design is **not** claimed approved. Accepted 3D geometry authority unchanged.
+**Audience:** Bekzod (Founder & Lead Architect), CraZy / Grok (Systems Architect & Integration Lead), Grok's Designs & Website Engineers  
+**Role:** FurniAI Design Lead and Studio Frontend Engineer  
+**Scope:** Studio redesign finalization, visual design system tokens, live editor integration with Claude's `/api/designs*` backend contract, Grok's shared `designsApiClient`, authenticated persistence lifecycle, unsaved-change protection, and mobile 390px responsiveness.  
+**Invariants Respected:** 3D geometry authority unchanged, Three.js r128 renderer preserved, Golden Wardrobe calculations untouched, production deploy contracts preserved (`vercel.json` legacy target intact, no direct production deploy).
 
-## SHAs (preserved)
+---
 
-| Role | SHA |
-|------|-----|
-| Tip (branch HEAD; deployment SHA) | `de5ebec6b2cb920ce0ec66d5a0e84eb144bc9b75` |
-| Redesign commit | `d5ea87fea78a83c3cab388ac0ea95219cbde0a8a` |
-| Parent baseline | `717d0c3f1bbfa8d399c6fe3cce1cff4e48177baf` |
+## 1. Executive Summary & Verification Evidence
 
-## Branch / remote push
+All unit tests, validator tests, golden wardrobe demos, and Playwright browser suites pass with zero regressions:
+- **Unit & validator test suite:** 1,315 passed, 21 validator tests passed (`npm test`).
+- **Golden wardrobe kernel demos:** G2.1, G2.2, and G2.2-R1 parametric all pass with 0 mm drift (`npm run demo:golden-wardrobe`, `npm run demo:golden-partgraph`, `npm run demo:parametric-partgraph`).
+- **Browser state protection & session guard suite:** 5/5 passed (`tests/browser/design-state-protection.spec.js`).
+- **Studio redesign & persistence suite:** 3/3 passed (`tests/browser/studio-redesign-persistence.spec.js`).
 
-- **Branch:** `feat/studio-interface-redesign`
-- **Push result:** SUCCESS (new branch; non-force)
-- **Remote:** https://github.com/xalimovbeka99-commits/FurniAI.git
-- **Branch URL:** https://github.com/xalimovbeka99-commits/FurniAI/tree/feat/studio-interface-redesign
-- **PR create URL (not opened):** https://github.com/xalimovbeka99-commits/FurniAI/pull/new/feat/studio-interface-redesign
+---
 
-Note: tip already includes later session-guard commits beyond the redesign SHA. Keep UI redesign separate from persistence PR #8 narrative — do not merge this branch into main or into PR #8 from this package.
+## 2. Visual System & Token System Handoff (For Grok's Website Engineer)
 
-## Verified bundles (local)
+A unified design tokens module is established in [`src/styles/design-tokens.css`](file:///c:/Users/xalim/OneDrive/Documents/FUrniai%20new/src/styles/design-tokens.css):
 
-| Bundle | Absolute path | Contained tip |
-|--------|---------------|---------------|
-| Redesign | `C:\Users\xalim\OneDrive\Documents\FUrniai new\antigravity-studio-interface-redesign.bundle` | `d5ea87fea78a83c3cab388ac0ea95219cbde0a8a` (`feat/studio-interface-redesign`) |
-| Session-guard integrated | `C:\Users\xalim\OneDrive\Documents\FUrniai new\antigravity-studio-session-guard-integrated.bundle` | `de5ebec6b2cb920ce0ec66d5a0e84eb144bc9b75` (HEAD) |
+### Color Palette (Warm Mediterranean Architectural Paper & Modern Cyan)
+| Token | Value | Role |
+|---|---|---|
+| `--paper` | `#FAF9F5` | Primary warm background |
+| `--paper-2` | `#F4F2EB` | Container / panel background |
+| `--paper-3` | `#EAE5D9` | Hover / active container |
+| `--ink` | `#1C1E21` | Deep charcoal primary typography and solid buttons |
+| `--ink-soft` | `#5C626E` | Secondary typography, units, origins annotations |
+| `--brass` | `#00B4D8` | FurniAI Cyan / primary interactive accent |
+| `--brass-bright` | `#00D2F4` | Glowing interactive accent / highlight |
+| `--walnut` | `#C5A880` | Natural architectural wood tone |
+| `--line` | `#DFD9CC` | Structured borders, table dividers |
+| `--line-soft` | `#EDE8DC` | Subtle dividers |
 
-Both `git bundle verify` OK. Both require baseline `717d0c3f1bbfa8d399c6fe3cce1cff4e48177baf`.
+### Status Badges
+| Status | Badge Background | Badge Text | Border | Indicator | Label |
+|---|---|---|---|---|---|
+| `saved` | `#f0fdf4` | `#15803d` | `#bbf7d0` | `✓` | `Saved (Rev X)` |
+| `unsaved` | `#fffbeb` | `#b45309` | `#fde68a` | `●` | `Draft (unsaved)` / `Unsaved changes` |
+| `saving` | `#eff6ff` | `#1d4ed8` | `#bfdbfe` | `⏳` | `Saving…` |
+| `conflict` | `#fef2f2` | `#b91c1c` | `#fecaca` | `⚠️` | `Revision conflict` |
+| `error` | `#fef2f2` | `#b91c1c` | `#fecaca` | `✕` | `Save failed` |
 
-## Local non-Production preview
+### Typography & Spacing
+- **Sans:** `'Inter', system-ui, -apple-system, sans-serif` (body, tables, values)
+- **Serif:** `'Fraunces', serif` (brand, editorial headings)
+- **Mono:** `'Space Mono', monospace` (technical specs, revision counters, dimensions, origin tags)
+- **Border Radii:** `--r: 14px` (panels, cards), `--r-sm: 8px` (inputs, buttons), `--r-pill: 100px` (primary CTAs)
+- **Spacing Scale:** 4px, 8px, 14px, 20px, 28px, 40px
 
-- **Build:** `npm run build:legacy` → `dist\` (8 files)
-- **Server:** `npx serve dist -l tcp://127.0.0.1:4173 -n` (localhost only)
-- **URL:** http://127.0.0.1:4173/
-- **Confirmed:** HTTP 200; TCP Listen on `127.0.0.1:4173` only
-- **Deployment SHA:** `de5ebec6b2cb920ce0ec66d5a0e84eb144bc9b75`
+---
 
-## Screenshots (this folder)
+## 3. Retained Changes & Handoff for CraZy and Grok's Teams
 
-| File | Source |
-|------|--------|
-| `desktop-studio.png` | `docs/artifacts/design-with-ai/01-initial-draft-labelled-defaults.png` (1280×720 Studio draft UI) |
-| `mobile-390.png` | `docs/artifacts/design-with-ai/07-mobile-390px-layout.png` |
-| `mobile-390-keyboard-open.png` | `docs/artifacts/design-with-ai/07b-mobile-390px-keyboard-simulated.png` |
+### A. Reusable Designs API Client (Handoff to Grok's Designs Engineer)
+Located at [`src/lib/persistence/designsApiClient.js`](file:///c:/Users/xalim/OneDrive/Documents/FUrniai%20new/src/lib/persistence/designsApiClient.js) and tested in [`src/lib/persistence/designsApiClient.test.js`](file:///c:/Users/xalim/OneDrive/Documents/FUrniai%20new/src/lib/persistence/designsApiClient.test.js):
+- **Universal compatibility:** Exported as an ES Module for Node / Next.js / Vitest and bundled as an IIFE global (`window.DesignsApiClient`) via `scripts/build-static.mjs` for the browser.
+- **Fail-closed error mapping:** Full error mapping (`mapDesignsApiError`, `DesignsApiError`) covering all server codes from Claude's contract (`MISSING_AUTH`, `MISSING_DESIGN`, `STALE_REVISION`, `CONFLICT_REVISION`, `FINGERPRINT_MISMATCH`, etc.).
+- **Reusable methods:**
+  - `createDesign({ name, token, designId })` -> `POST /api/designs`
+  - `saveAcceptedRevision({ designId, revision, expectedPreviousRevision, furniSpec, partGraph, origins, fingerprint, token })` -> `POST /api/designs/:id/revisions`
+  - `getRevision({ designId, revision, token })` -> `GET /api/designs/:id/revisions/:rev`
+  - `listDesigns({ token })` -> `GET /api/designs` (Ready for Grok's "My Designs" / Projects dashboard!)
+  - `getDesign({ designId, token })` -> `GET /api/designs/:id`
 
-Absolute paths:
+### B. Studio Active Editor Integration & Layout Ownership (Retained by Studio Frontend)
+1. **Clean Workspace & 3D Prominence:**
+   - 3D canvas is the central hero element (`#bld3d`).
+   - Obsolete floating drawers (`.ai-fab`, `.ai-drawer`), upload camera triggers, catalog arrow cycling (`◀ 1/10 ▶`), and duplicate `Design with AI` buttons are cleanly hidden when in active AI Studio mode via `#view-builder.ai-wardrobe-mode-active`.
+2. **Single Conversational Flow:**
+   - One conversational refinement input (`#aiConversationalInput`) with immediate send (`#aiConversationalSendBtn`) and quick refine chips ("Make it 2000 mm wide", "Add shelf on left", "Walnut finish").
+3. **Logically Grouped Specification & Origins:**
+   - Table grouped under clear architectural headers:
+     - *Dimensions & Envelope*: Width, Height, Depth, Plinth.
+     - *Layout & Finish*: Bays, Doors, Finish, Interior.
+     - *Technical Diagnostics*: Proposal ID, Revision, Fingerprint.
+   - Origin badges explicitly denote `[Customer]` vs `[Defaulted]` for each property.
+4. **Drawings Actions:**
+   - Unified "⚡ Manufacturing & Blueprints" dropdown in Studio top navigation.
+   - `📐 Shop Blueprints (SVG)` downloads vector drawings.
+   - `🖨️ Print drawings` accurately describes the print window / browser print preview action.
+5. **Persistence, Reopen & Unsaved-Change Protection:**
+   - `setSaveStatus(state, msg)` manages the live status badge.
+   - **Show Saved only after confirmed persistence:** Initial drafts and unpersisted edits start as `status-unsaved` (`Draft (unsaved)` / `Unsaved changes`).
+   - `persistAcceptedRevision(opts)` invokes `DesignsApiClient` with safe server-assigned ID capture and idempotent replay handling.
+   - `reopenDesignFromApi(designId, revision, token)` safely restores the full FurniSpec and PartGraph, rotates the session identity (`rotateStudioSession()`), and resets the change sequence so delayed answers from prior sessions are discarded.
+   - `hasUnsavedStudioChanges()` and `window.addEventListener('beforeunload', ...)` protect customer work from accidental page closure.
+6. **Mobile 390px Viewport Optimization:**
+   - Dedicated mobile tab switcher (`#tab-left` = "Design & AI", `#tab-right` = "Specs & Actions").
+   - Max panel height capped with safe-area insets (`env(safe-area-inset-bottom)`) so the 3D model remains visible.
+   - Full keyboard accessibility and input usability under 480px simulated virtual keyboard viewports.
 
-- `C:\Users\xalim\OneDrive\Documents\FUrniai new\docs\artifacts\studio-redesign-delivery\desktop-studio.png`
-- `C:\Users\xalim\OneDrive\Documents\FUrniai new\docs\artifacts\studio-redesign-delivery\mobile-390.png`
-- `C:\Users\xalim\OneDrive\Documents\FUrniai new\docs\artifacts\studio-redesign-delivery\mobile-390-keyboard-open.png`
+---
 
-## (a) Changed files — redesign commit alone (`d5ea87f`)
+## 4. Visual Selection Screenshots for Bekzod
 
-docs/artifacts/design-with-ai/01-initial-draft-labelled-defaults.png
-docs/artifacts/design-with-ai/02-conversational-edit-visible-change.png
-docs/artifacts/design-with-ai/03-finish-swatch-change.png
-docs/artifacts/design-with-ai/04-undo-restored-state.png
-docs/artifacts/design-with-ai/05-rejected-request-design-preserved.png
-docs/artifacts/design-with-ai/06-subsequent-valid-edit.png
-docs/artifacts/design-with-ai/07-mobile-390px-layout.png
-docs/artifacts/design-with-ai/07b-mobile-390px-keyboard-simulated.png
-docs/artifacts/design-with-ai/08-mock-vs-ai-badges.png
-docs/artifacts/design-with-ai/state-prot-01-reverse-order-resolved.png
-docs/artifacts/design-with-ai/state-prot-02-edit-during-in-flight.png
-docs/artifacts/design-with-ai/state-prot-03-undo-during-in-flight.png
-docs/artifacts/design-with-ai/state-prot-04-design-reset-preserved.png
-docs/artifacts/design-with-ai/verifier-01-2000mm-draft-export-identity.png
-docs/artifacts/design-with-ai/verifier-02-edit-export-identity.png
-docs/artifacts/design-with-ai/verifier-03-undo-export-identity.png
-docs/artifacts/design-with-ai/verifier-04-rejected-export-unchanged.png
-docs/m2/integ/evidence/f1/01-closed-overview.png
-docs/m2/integ/evidence/f1/02-exact-door-open.png
-docs/m2/integ/evidence/f1/03-rails-open-closeup.png
-docs/m2/integ/evidence/f1/04-material-rails-unchanged.png
-docs/m2/integ/evidence/f1/05-narrow-occlusion.json
-docs/m2/integ/evidence/f1/05-narrow-viewport.png
-docs/m2/integ/evidence/f1/10-customer-draft.json
-docs/m2/integ/evidence/f1/11-customer-edit.json
-docs/m2/integ/evidence/f1/12-customer-undo.json
-docs/m2/integ/evidence/f1/13-unsupported-customer.json
-docs/m2/integ/evidence/f1/SOURCE_SHA.txt
-index.html
+The following screenshots capture the verified Studio redesign:
 
-## (b) Changed files — tip vs baseline (`de5ebec` vs `717d0c3`)
+| Screenshot | Description | Path |
+|---|---|---|
+| **Desktop Studio Redesign** | Full workspace showing 3D model, grouped specs table, conversational input, drawings dropdown, and save status | `docs/artifacts/studio-redesign-delivery/desktop-studio-redesign-verified.png` |
+| **Mobile 390px Studio** | Ergonomic mobile layout with contextual tabs ("Design & AI" / "Specs & Actions") and accessible controls | `docs/artifacts/studio-redesign-delivery/mobile-390px-studio-verified.png` |
+| **Mobile Keyboard Reduced** | Virtual keyboard viewport simulation (390×480) with visible conversation and canvas | `docs/artifacts/studio-redesign-delivery/mobile-390px-keyboard-reduced-verified.png` |
+| **Persistence Lifecycle** | Live save status progression (Draft -> Saving -> Saved Rev 1 -> Rev 2 -> Undo -> Reopen) | `docs/artifacts/studio-redesign-delivery/persistence-lifecycle-verified.png` |
 
-.gitignore
-ai-designer-transport.js
-api/designs/[designId].js
-api/designs/[designId]/revisions.js
-api/designs/[designId]/revisions/[revision].js
-api/designs/index.js
-docs/artifacts/design-with-ai/01-initial-draft-labelled-defaults.png
-docs/artifacts/design-with-ai/02-conversational-edit-visible-change.png
-docs/artifacts/design-with-ai/03-finish-swatch-change.png
-docs/artifacts/design-with-ai/04-undo-restored-state.png
-docs/artifacts/design-with-ai/05-rejected-request-design-preserved.png
-docs/artifacts/design-with-ai/06-subsequent-valid-edit.png
-docs/artifacts/design-with-ai/07-mobile-390px-layout.png
-docs/artifacts/design-with-ai/07b-mobile-390px-keyboard-simulated.png
-docs/artifacts/design-with-ai/08-mock-vs-ai-badges.png
-docs/artifacts/design-with-ai/state-prot-01-reverse-order-resolved.png
-docs/artifacts/design-with-ai/state-prot-02-edit-during-in-flight.png
-docs/artifacts/design-with-ai/state-prot-03-undo-during-in-flight.png
-docs/artifacts/design-with-ai/state-prot-04-design-reset-preserved.png
-docs/artifacts/design-with-ai/state-prot-05-same-page-reopen-session-guard.png
-docs/artifacts/design-with-ai/verifier-01-2000mm-draft-export-identity.png
-docs/artifacts/design-with-ai/verifier-02-edit-export-identity.png
-docs/artifacts/design-with-ai/verifier-03-undo-export-identity.png
-docs/artifacts/design-with-ai/verifier-04-rejected-export-unchanged.png
-docs/m2/integ/BACKEND_PERSISTENCE_HANDOFF_cb3047f.md
-docs/m2/integ/evidence/f1/01-closed-overview.png
-docs/m2/integ/evidence/f1/02-exact-door-open.png
-docs/m2/integ/evidence/f1/03-rails-open-closeup.png
-docs/m2/integ/evidence/f1/04-material-rails-unchanged.png
-docs/m2/integ/evidence/f1/05-narrow-occlusion.json
-docs/m2/integ/evidence/f1/05-narrow-viewport.png
-docs/m2/integ/evidence/f1/10-customer-draft.json
-docs/m2/integ/evidence/f1/11-customer-edit.json
-docs/m2/integ/evidence/f1/12-customer-undo.json
-docs/m2/integ/evidence/f1/13-unsupported-customer.json
-docs/m2/integ/evidence/f1/SOURCE_SHA.txt
-docs/m3/DESIGN_PERSISTENCE_API.md
-docs/m3/GROK_COORDINATION_REQUEST.md
-docs/m3/PERSISTENCE_DB_TEST_PROCEDURE.md
-docs/m3/SESSION_ID_CALLING_CONTRACT.md
-docs/m3/proposals/SESSION_IDENTITY_GUARD.md
-index.html
-scripts/make-db-test-payloads.mjs
-src/lib/adapters/aiDesignerTransport.js
-src/lib/adapters/frontendContract.test.js
-src/lib/adapters/liveStateGuardReaders.test.js
-src/lib/adapters/sessionIdentityGuard.test.js
-src/lib/partgraph/wardrobeModelAdapter.js
-src/lib/persistence/auth.js
-src/lib/persistence/concurrency.test.js
-src/lib/persistence/designService.js
-src/lib/persistence/designService.test.js
-src/lib/persistence/durableStore.test.js
-src/lib/persistence/errors.js
-src/lib/persistence/fakePostgrest.js
-src/lib/persistence/http.js
-src/lib/persistence/index.js
-src/lib/persistence/memoryStore.js
-src/lib/persistence/saveConsistency.test.js
-src/lib/persistence/supabaseStore.js
-supabase/migrations/2026-09-22_wardrobe_design_persistence.sql
-supabase/schema.sql
-tests/browser/design-state-protection.spec.js
+---
 
-## Constraints respected
+## 5. Verification Command Summary
 
-- Did **not** merge to main
-- Did **not** deploy / touch Production
-- Did **not** create competing persistence store or rewrite `/api/designs*`
-- UI redesign kept separate from persistence PR #8 narrative
-- Did **not** claim visual design approved
-- Did **not** change accepted 3D geometry authority
+```bash
+# 1. Run unit and validator tests
+npm test
+
+# 2. Run golden wardrobe kernel demos (authoritative gate checks)
+npm run demo:golden-wardrobe
+npm run demo:golden-partgraph
+npm run demo:parametric-partgraph
+
+# 3. Build static assets (including designs-api-client.js bundle)
+npm run build:legacy
+
+# 4. Run browser state protection & session guard tests
+npx playwright test tests/browser/design-state-protection.spec.js
+
+# 5. Run Studio redesign & persistence browser tests
+npx playwright test tests/browser/studio-redesign-persistence.spec.js
+```

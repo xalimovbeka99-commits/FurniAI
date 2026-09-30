@@ -52,6 +52,7 @@ window.addEventListener('error', function(e){
 <script src="/legacy-builder-adapter.js"></script>
 <script src="/partgraph-runtime-bridge.js"></script>
 <script src="/ai-designer-transport.js"></script>
+<script src="/designs-api-client.js"></script>
 <style>
 :root{
   --paper:#FAF9F5; --paper-2:#F4F2EB; --paper-3:#EAE5D9;
@@ -470,14 +471,35 @@ footer ul a:hover{opacity:1;color:var(--brass)}
   .ai-chip{padding:9px 13px;font-size:11.5px;min-height:38px}
 }
 
-/* Studio Redesign: Hide obsolete floating drawer and catalog cycling in custom/parametric mode */
-.ai-fab, .ai-drawer { display: none !important; }
+/* Studio Redesign: Hide obsolete floating drawer, upload affordances and catalog cycling in custom/parametric mode */
+.ai-fab, .ai-drawer, .ai-attach, #aiImgInput, #aiDrawerImgInput { display: none !important; }
 .b-main.custom-type ~ .b-nav .b-nav-btn,
 .b-main.custom-type ~ .b-nav .b-nav-pos,
+#view-builder.ai-wardrobe-mode-active .b-top .b-nav-btn,
+#view-builder.ai-wardrobe-mode-active .b-top .b-nav-pos,
+#view-builder.ai-wardrobe-mode-active .b-top #createWithFurniAiBldBtn,
 .b-main.ai-wardrobe-mode ~ .b-top .b-nav-btn,
-.b-main.ai-wardrobe-mode ~ .b-top .b-nav-pos { display: none !important; }
+.b-main.ai-wardrobe-mode ~ .b-top .b-nav-pos,
+.b-main.ai-wardrobe-mode ~ .b-top #createWithFurniAiBldBtn { display: none !important; }
 .custom-type .b-nav-btn, .custom-type .b-nav-pos { display: none !important; }
 #view-builder .b-nav-btn.hidden-mode, #view-builder .b-nav-pos.hidden-mode { display: none !important; }
+
+/* Studio Redesign: Save & Reopen Status Badge */
+.save-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+.save-status-badge.status-saved { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+.save-status-badge.status-unsaved { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+.save-status-badge.status-saving { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.save-status-badge.status-conflict { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+.save-status-badge.status-error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
 
 /* Studio Redesign: Panel sizing & 3D Prominence */
 @media (min-width: 1001px) {
@@ -684,7 +706,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
         <div id="mfgMenuDropdown" class="mfg-menu-dropdown">
           <div class="mfg-menu-header">Blueprints &amp; Technical 2D</div>
           <button type="button" class="mfg-menu-item" id="btnExportShopDrawings" onclick="handleExportShopDrawings('SVG')">📐 Shop Blueprints (SVG)</button>
-          <button type="button" class="mfg-menu-item" id="btnExportShopDrawingsPdf" onclick="handleExportShopDrawings('PDF')" title="Open browser print preview to print drawings or save as PDF">📄 Shop Blueprints (Print / Save as PDF)</button>
+          <button type="button" class="mfg-menu-item" id="btnExportShopDrawingsPdf" onclick="handleExportShopDrawings('PDF')" title="Open browser print dialog to print shop drawings">🖨️ Print drawings</button>
           <div class="mfg-menu-divider"></div>
           <div class="mfg-menu-header">Fabrication &amp; CNC</div>
           <button type="button" class="mfg-menu-item" id="btnExportCncDxf" onclick="handleExportCncDxfZip()">📦 CNC Package (DXF ZIP)</button>
@@ -742,14 +764,17 @@ footer ul a:hover{opacity:1;color:var(--brass)}
           <div style="font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:6px;">Specification &amp; Origins</div>
           <table class="om-table" id="aiReviewSummaryTable" style="margin-bottom:10px;font-size:11px;">
             <tbody>
+              <tr class="table-group-header"><th colspan="2" style="font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft);background:rgba(0,0,0,.03);padding:4px 6px;text-align:left;font-weight:700;">Dimensions &amp; Envelope</th></tr>
               <tr><td>Width</td><td><span id="revWidth">1800 mm</span> <span id="revWidthOrigin" class="origin-tag" style="font-size:9.5px;color:var(--ink-soft);font-family:monospace;">[Defaulted]</span></td></tr>
               <tr><td>Height</td><td><span id="revHeight">2400 mm</span> <span id="revHeightOrigin" class="origin-tag" style="font-size:9.5px;color:var(--ink-soft);font-family:monospace;">[Defaulted]</span></td></tr>
               <tr><td>Depth</td><td><span id="revDepth">600 mm</span> <span id="revDepthOrigin" class="origin-tag" style="font-size:9.5px;color:var(--ink-soft);font-family:monospace;">[Defaulted]</span></td></tr>
               <tr><td>Plinth</td><td><span id="revPlinth">100 mm (frame-aligned)</span> <span id="revPlinthOrigin" class="origin-tag" style="font-size:9.5px;color:var(--ink-soft);font-family:monospace;">[Defaulted]</span></td></tr>
+              <tr class="table-group-header"><th colspan="2" style="font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft);background:rgba(0,0,0,.03);padding:4px 6px;text-align:left;font-weight:700;">Layout &amp; Finish</th></tr>
               <tr><td>Bays</td><td><span id="revBays">2 equal bays</span> <span id="revBaysOrigin" class="origin-tag" style="font-size:9.5px;color:var(--ink-soft);font-family:monospace;">[Defaulted]</span></td></tr>
               <tr><td>Doors</td><td><span id="revDoors">4 hinged doors (2 per bay)</span> <span id="revDoorsOrigin" class="origin-tag" style="font-size:9.5px;color:var(--ink-soft);font-family:monospace;">[Defaulted]</span></td></tr>
               <tr><td>Finish</td><td><span id="revFinish">Oak</span> <span id="revFinishOrigin" class="origin-tag" style="font-size:9.5px;color:var(--ink-soft);font-family:monospace;">[Defaulted]</span></td></tr>
               <tr><td>Interior</td><td id="revInterior">2 bays configured</td></tr>
+              <tr class="table-group-header"><th colspan="2" style="font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-soft);background:rgba(0,0,0,.03);padding:4px 6px;text-align:left;font-weight:700;">Technical Diagnostics</th></tr>
               <tr><td>Proposal ID</td><td id="revProposalId" class="mono" style="font-size:10px;"></td></tr>
               <tr><td>Revision</td><td id="revRevision" class="mono">1</td></tr>
               <tr><td>Fingerprint</td><td id="revFingerprint" class="mono" style="word-break:break-all;font-size:9px;line-height:1.2;"></td></tr>
@@ -857,8 +882,18 @@ footer ul a:hover{opacity:1;color:var(--brass)}
       <div class="b-row preset-only"><select id="led">
         <option value="warm">Warm white</option><option value="cool">Cool white</option><option value="off">Off</option>
       </select></div>
-      <div class="b-ptitle">Production</div>
-      <div class="b-cta-row"><button class="b-act" id="bSave">💾 Save design</button><button class="b-finish" id="bFinish">Generate production documents</button></div>
+      <div class="b-ptitle">Production &amp; Persistence</div>
+      <div class="b-cta-row" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+        <button class="b-act" id="bSave">💾 Save design</button>
+        <button class="b-btn" id="bReopenApi" title="Reopen durable design by id">Reopen</button>
+        <div id="aiSaveStatusBadge" class="save-status-badge status-unsaved" style="margin-left:auto;">
+          <span id="aiSaveStatusIcon">●</span>
+          <span id="aiSaveStatusText">Draft (unsaved)</span>
+          <button id="aiSaveRetryBtn" style="display:none;background:none;border:none;text-decoration:underline;cursor:pointer;color:inherit;font-size:10px;padding:0 2px;">Retry</button>
+        </div>
+        <span id="aiDurablePersistNote" hidden style="font-size:11px;color:var(--ink-soft);width:100%;display:block;margin-top:2px;"></span>
+        <button class="b-finish" id="bFinish" style="width:100%;margin-top:6px;">Generate production documents</button>
+      </div>
     </aside>
   </div>
   <button class="ai-fab" id="aiFab" title="Ask AI to modify this design">✦ Ask AI</button>
@@ -1955,19 +1990,23 @@ const Builder={
     }
     if(idx==='ai-wardrobe'){
       this.isParametric=true;
+      const vb = document.getElementById('view-builder');
+      if(vb) vb.classList.add('ai-wardrobe-mode-active');
       if(badge)badge.hidden=false;
       document.getElementById('bName').textContent='AI Parametric Wardrobe';
       document.getElementById('bType').textContent='conversation-to-3d';
       document.getElementById('bPos').textContent='AI';
       document.getElementById('bDimsTag').innerHTML='1800 × 2400 × 600 <b>mm</b>';
+      const tL=document.getElementById('tab-left');
+      const tR=document.getElementById('tab-right');
+      if(tL) tL.textContent = 'Design & AI';
+      if(tR) tR.innerHTML = '<span class="b-tab-full">Specs & Actions</span><span class="b-tab-short">Specs</span>';
       if(bm){
         bm.classList.add('custom-type');
         bm.classList.add('ai-wardrobe-mode');
         if(window.matchMedia && window.matchMedia('(max-width:680px)').matches){
           bm.classList.remove('show-right');
           bm.classList.add('show-left');
-          const tL=document.getElementById('tab-left');
-          const tR=document.getElementById('tab-right');
           if(tL)tL.classList.add('active');
           if(tR)tR.classList.remove('active');
         }
@@ -1983,6 +2022,12 @@ const Builder={
       }
       return;
     }
+    const vb = document.getElementById('view-builder');
+    if(vb) vb.classList.remove('ai-wardrobe-mode-active');
+    const tabL=document.getElementById('tab-left');
+    const tabR=document.getElementById('tab-right');
+    if(tabL) tabL.textContent = 'Structure';
+    if(tabR) tabR.innerHTML = '<span class="b-tab-full">Dimensions & Material</span><span class="b-tab-short">Dimensions</span>';
     this.isParametric=false;
     if(badge)badge.hidden=true;
       const bPrev = document.getElementById('bPrev');
@@ -2156,8 +2201,69 @@ let aiWardrobeState = {
   origins: {},
   undoStack: [],
   isSubmitting: false,
+  durableDesignId: null,
+  durableRevision: null,
+  durableFingerprint: null,
+  durableName: null,
 };
 window.aiWardrobeState = aiWardrobeState;
+
+function setSaveStatus(state, msg) {
+  const badge = document.getElementById('aiSaveStatusBadge');
+  const icon = document.getElementById('aiSaveStatusIcon');
+  const text = document.getElementById('aiSaveStatusText');
+  const retryBtn = document.getElementById('aiSaveRetryBtn');
+  const saveBtn = document.getElementById('bSave');
+  if (!badge || !icon || !text) return;
+  badge.className = 'save-status-badge status-' + state;
+  if (retryBtn) retryBtn.style.display = 'none';
+
+  if (state === 'saving') {
+    icon.textContent = '⏳';
+    text.textContent = msg || 'Saving…';
+    badge.style.background = '#eff6ff';
+    badge.style.color = '#1d4ed8';
+    badge.style.border = '1px solid #bfdbfe';
+    if (saveBtn) saveBtn.disabled = true;
+  } else if (state === 'saved') {
+    icon.textContent = '✓';
+    text.textContent = msg || (aiWardrobeState.durableRevision ? ('Saved (Rev ' + aiWardrobeState.durableRevision + ')') : 'Saved');
+    badge.style.background = '#f0fdf4';
+    badge.style.color = '#15803d';
+    badge.style.border = '1px solid #bbf7d0';
+    if (saveBtn) saveBtn.disabled = false;
+  } else if (state === 'unsaved') {
+    icon.textContent = '●';
+    text.textContent = msg || 'Unsaved changes';
+    badge.style.background = '#fffbeb';
+    badge.style.color = '#b45309';
+    badge.style.border = '1px solid #fde68a';
+    if (saveBtn) saveBtn.disabled = false;
+  } else if (state === 'conflict') {
+    icon.textContent = '⚠️';
+    text.textContent = msg || 'Revision conflict';
+    badge.style.background = '#fef2f2';
+    badge.style.color = '#b91c1c';
+    badge.style.border = '1px solid #fecaca';
+    if (saveBtn) saveBtn.disabled = false;
+    if (retryBtn) {
+      retryBtn.style.display = 'inline';
+      retryBtn.onclick = () => saveCurrentDesign();
+    }
+  } else if (state === 'error') {
+    icon.textContent = '✕';
+    text.textContent = msg || 'Save failed';
+    badge.style.background = '#fef2f2';
+    badge.style.color = '#b91c1c';
+    badge.style.border = '1px solid #fecaca';
+    if (saveBtn) saveBtn.disabled = false;
+    if (retryBtn) {
+      retryBtn.style.display = 'inline';
+      retryBtn.onclick = () => saveCurrentDesign();
+    }
+  }
+}
+window.setSaveStatus = setSaveStatus;
 
 function reopenAiWardrobeDesign(savedState) {
   rotateStudioSession();
@@ -2178,6 +2284,203 @@ function reopenAiWardrobeDesign(savedState) {
   return aiWardrobeState;
 }
 window.reopenAiWardrobeDesign = reopenAiWardrobeDesign;
+
+function noteDurablePersistence(message, level) {
+  const text = String(message || 'Design persistence note');
+  if (level === 'error') console.warn('[designs-api]', text);
+  else console.info('[designs-api]', text);
+  try {
+    if (typeof appendAiStreamMsg === 'function') {
+      appendAiStreamMsg('assistant', text, { source: 'DETERMINISTIC', provider: 'rules', quiet: true });
+    }
+  } catch (_e) { /* UI note is best-effort */ }
+  const el = document.getElementById('aiDurablePersistNote');
+  if (el) {
+    el.hidden = false;
+    el.textContent = text;
+  }
+}
+
+function fingerprintCurrentFurniSpec(spec) {
+  const target = spec || (aiWardrobeState && aiWardrobeState.spec);
+  if (!target) throw new Error('No FurniSpec available to fingerprint.');
+  if (globalThis.PartGraphBridge && typeof globalThis.PartGraphBridge.fingerprintFurniSpec === 'function') {
+    return globalThis.PartGraphBridge.fingerprintFurniSpec(target);
+  }
+  if (globalThis.AiDesignerTransport && typeof globalThis.AiDesignerTransport.fingerprintFurniSpec === 'function') {
+    return globalThis.AiDesignerTransport.fingerprintFurniSpec(target);
+  }
+  throw new Error('fingerprintFurniSpec is not exposed on PartGraphBridge.');
+}
+
+async function getStudioAccessToken() {
+  if (!sb || typeof sb.auth?.getSession !== 'function') return null;
+  const { data, error } = await sb.auth.getSession();
+  if (error) return null;
+  return (data && data.session && data.session.access_token) || null;
+}
+
+function isAiWardrobeParametricPath() {
+  const h = location.hash || '';
+  if (h === '#/build/ai-wardrobe' || h === '#/design-with-ai' || h.startsWith('#/ai')) return true;
+  if (Builder && Builder.isParametric && aiWardrobeState && aiWardrobeState.spec && aiWardrobeState.partGraph) return true;
+  return !!(aiWardrobeState && aiWardrobeState.spec && aiWardrobeState.partGraph);
+}
+
+/**
+ * Best-effort POST of the current in-memory accepted design as a new immutable revision.
+ * Failures surface a quiet note and NEVER roll back the accepted in-memory design.
+ */
+async function persistAcceptedRevision(opts) {
+  const options = opts || {};
+  const quiet = options.quiet !== false;
+  try {
+    if (!globalThis.DesignsApiClient) {
+      if (!quiet) noteDurablePersistence('Designs API client is not loaded.', 'error');
+      return null;
+    }
+    if (!aiWardrobeState || !aiWardrobeState.spec || !aiWardrobeState.partGraph) {
+      return null;
+    }
+    const token = options.token || await getStudioAccessToken();
+    if (!token) {
+      if (!quiet) noteDurablePersistence('Sign in to save this design durably.', 'error');
+      if (typeof setSaveStatus === 'function') setSaveStatus('unsaved', 'Unsaved changes');
+      return null;
+    }
+    if (typeof setSaveStatus === 'function') setSaveStatus('saving');
+    const client = globalThis.DesignsApiClient;
+    let designId = aiWardrobeState.durableDesignId;
+    if (!designId) {
+      const name =
+        options.name ||
+        aiWardrobeState.durableName ||
+        (aiWardrobeState.spec && aiWardrobeState.spec.description) ||
+        'AI wardrobe';
+      const created = await client.createDesign({ name, token });
+      designId = created.designId;
+      aiWardrobeState.durableDesignId = designId;
+      aiWardrobeState.durableName = created.name || name;
+      window.aiWardrobeState = aiWardrobeState;
+    }
+    const prior = aiWardrobeState.durableRevision == null ? null : aiWardrobeState.durableRevision;
+    const nextRevision = prior == null ? 1 : prior + 1;
+    const fingerprint = options.fingerprint || fingerprintCurrentFurniSpec(aiWardrobeState.spec);
+    const saved = await client.saveAcceptedRevision({
+      designId,
+      revision: nextRevision,
+      expectedPreviousRevision: prior,
+      fingerprint,
+      furniSpec: aiWardrobeState.spec,
+      partGraph: aiWardrobeState.partGraph,
+      origins: aiWardrobeState.origins || {},
+      token,
+      validationStatus: 'ACCEPTED',
+    });
+    aiWardrobeState.durableRevision = saved.revision != null ? saved.revision : nextRevision;
+    aiWardrobeState.durableFingerprint = saved.fingerprint || fingerprint;
+    window.aiWardrobeState = aiWardrobeState;
+    if (typeof setSaveStatus === 'function') setSaveStatus('saved', 'Saved (Rev ' + aiWardrobeState.durableRevision + (saved.idempotentReplay ? ' replay' : '') + ')');
+    if (!quiet) {
+      noteDurablePersistence(
+        'Saved design ' + designId + ' revision ' + aiWardrobeState.durableRevision +
+          (saved.idempotentReplay ? ' (replay)' : '') + '.',
+        'info'
+      );
+    }
+    return saved;
+  } catch (err) {
+    const msg = (err && err.message) || 'Durable save failed.';
+    console.warn('[designs-api] persistAcceptedRevision failed:', err);
+    const isConflict = (err && (err.status === 409 || err.code === 'STALE_REVISION' || err.code === 'CONFLICT_REVISION' || /conflict/i.test(msg)));
+    if (typeof setSaveStatus === 'function') setSaveStatus(isConflict ? 'conflict' : 'error', isConflict ? 'Revision conflict' : 'Save failed');
+    noteDurablePersistence('Could not save durably: ' + msg + ' (your current design is unchanged in this session.)', 'error');
+    return null;
+  }
+}
+window.persistAcceptedRevision = persistAcceptedRevision;
+
+function hasUnsavedStudioChanges() {
+  if (!isAiWardrobeParametricPath()) return false;
+  if (!aiWardrobeState || !aiWardrobeState.spec) return false;
+  if (!aiWardrobeState.durableRevision) return true;
+  try {
+    const curFp = fingerprintCurrentFurniSpec(aiWardrobeState.spec);
+    return curFp !== aiWardrobeState.durableFingerprint;
+  } catch (_e) {
+    return false;
+  }
+}
+window.hasUnsavedStudioChanges = hasUnsavedStudioChanges;
+
+window.addEventListener('beforeunload', function (e) {
+  if (hasUnsavedStudioChanges()) {
+    e.preventDefault();
+    e.returnValue = 'You have unsaved changes to your wardrobe design.';
+    return e.returnValue;
+  }
+});
+
+/**
+ * Reopen a durable design from /api/designs*. Rotates session id, replaces in-memory state.
+ */
+async function reopenDesignFromApi(designId, revision, tokenOverride) {
+  if (!designId) throw new Error('designId is required');
+  if (!globalThis.DesignsApiClient) throw new Error('Designs API client is not loaded.');
+  const token = tokenOverride || await getStudioAccessToken();
+  if (!token) {
+    openAuthModal();
+    throw new Error('Sign in required to reopen a saved design.');
+  }
+  const client = globalThis.DesignsApiClient;
+  let rev = revision;
+  let summary = null;
+  if (rev == null) {
+    summary = await client.getDesign({ designId, token });
+    rev = summary && summary.latestRevision && summary.latestRevision.revision;
+    if (rev == null) throw new Error('That design has no saved revision yet.');
+  }
+  const payload = await client.getRevision({ designId, revision: rev, token });
+  const savedState = {
+    text: '',
+    answers: {},
+    specId: payload.furniSpec && payload.furniSpec.specId,
+    revision: payload.furniSpec && payload.furniSpec.revision,
+    currentStage: 'DRAFT_PREVIEW',
+    proposal: null,
+    approval: null,
+    spec: payload.furniSpec,
+    partGraph: payload.partGraph,
+    observations: [],
+    origins: payload.origins || {},
+    durableDesignId: payload.designId || designId,
+    durableRevision: payload.revision,
+    durableFingerprint: payload.fingerprint,
+    durableName: (summary && summary.design && summary.design.name) || null,
+  };
+  reopenAiWardrobeDesign(savedState);
+  if (location.hash !== '#/build/ai-wardrobe') {
+    try { go('#/build/ai-wardrobe'); } catch (_e) { location.hash = '#/build/ai-wardrobe'; }
+  }
+  if (typeof setSaveStatus === 'function') setSaveStatus('saved', 'Saved (Rev ' + rev + ')');
+  noteDurablePersistence('Reopened design ' + designId + ' revision ' + rev + '.', 'info');
+  return aiWardrobeState;
+}
+window.reopenDesignFromApi = reopenDesignFromApi;
+
+async function promptReopenDesignFromApi() {
+  if (!currentUser) { openAuthModal(); return; }
+  const designId = prompt('Reopen durable design id:');
+  if (!designId) return;
+  const revRaw = prompt('Revision (blank = latest):', '');
+  const revision = revRaw && String(revRaw).trim() ? Number(revRaw) : undefined;
+  try {
+    await reopenDesignFromApi(String(designId).trim(), revision);
+  } catch (err) {
+    alert((err && err.message) || 'Could not reopen design.');
+  }
+}
+window.promptReopenDesignFromApi = promptReopenDesignFromApi;
 
 function generateAiWardrobeSpecId() {
   const rand = Math.floor(1000 + Math.random() * 9000);
@@ -2228,6 +2531,10 @@ function initAiWardrobePanel(forceReset = false) {
     undoStack: [],
     editSequence: 0,
     isSubmitting: false,
+    durableDesignId: null,
+    durableRevision: null,
+    durableFingerprint: null,
+    durableName: null,
   };
   window.aiWardrobeState = aiWardrobeState;
   const inp = document.getElementById('aiWardrobeInput');
@@ -2254,6 +2561,7 @@ function initAiWardrobePanel(forceReset = false) {
   if (secClarify) secClarify.hidden = true;
   if (secReview) secReview.hidden = true;
   if (secApproved) secApproved.hidden = true;
+  if (typeof setSaveStatus === 'function') setSaveStatus('unsaved', 'Draft (unsaved)');
 }
 
 function resetInspectionPanel() {
@@ -2360,6 +2668,8 @@ function parseAndValidateClarifyInput(gapKey, rawVal, currentBayCount) {
       (res && res.assistantReply) || ("Changed finish to " + materialKey + ". (Revision " + aiWardrobeState.revision + ")"),
       res || {}
     );
+    // Best-effort durable revision — never roll back the in-memory accept.
+    persistAcceptedRevision({ quiet: true });
     return true;
   }
 
@@ -2529,7 +2839,8 @@ function runAiWardrobeDraftPreview() {
     }
 
     // Connect the initial-description experience to Claude's agreed AI interpretation flow
-    if (globalThis.AiDesignerTransport && typeof globalThis.AiDesignerTransport.proposeDesignChange === 'function' && !globalThis.__F1_TEST_SETUP_DISABLED_TRANSPORT__) {
+    const isGenericPrompt = /^(?:✦\s*)?make me a wardrobe[.?!]?$/i.test(String(text || '').trim());
+    if (!isGenericPrompt && globalThis.AiDesignerTransport && typeof globalThis.AiDesignerTransport.proposeDesignChange === 'function' && !globalThis.__F1_TEST_SETUP_DISABLED_TRANSPORT__) {
       runInitialAiInterpretation(text, aiWardrobeState.editSequence, aiWardrobeState.specId);
     }
   }
@@ -2625,6 +2936,7 @@ async function runInitialAiInterpretation(text, requestSeq, requestSpecId) {
       }
       updateAiWardrobeSummaryUI(res);
       appendAiStreamMsg('assistant', res.assistantReply || `Refined design based on your description (Revision ${res.spec.revision}).`, res);
+      persistAcceptedRevision({ quiet: true });
     } else if (res.kind === 'MATERIAL_UPDATED' || (res.ok && res.materialKey && !res.partGraph)) {
       const currentFinish = (aiWardrobeState.spec?.customerFinishKey || aiWardrobeState.spec?.finishType || 'oak').toLowerCase();
       const newFinish = (res.materialKey || '').toLowerCase();
@@ -2796,6 +3108,7 @@ async function runAiWardrobeConversationalEdit(cmdText) {
       revision: aiWardrobeState.revision || res.spec?.revision,
     });
     appendAiStreamMsg('assistant', res.assistantReply || `Updated wardrobe to Revision ${res.spec.revision}.`, res);
+    persistAcceptedRevision({ quiet: true });
   } else if (kind === 'MATERIAL_UPDATED' || (res.ok && res.materialKey && !res.partGraph)) {
     aiWardrobeState.undoStack.push(prevSnapshot);
     commitAiMaterialUpdate(res.materialKey, res);
@@ -2845,6 +3158,7 @@ function undoLastAiWardrobeEdit() {
     globalThis.PartGraphBridge.updateParametricMaterial(Builder, prev.spec.finishType);
   }
   updateAiWardrobeSummaryUI({ spec: prev.spec, proposal: prev.proposal, origins: prev.origins, revision: prev.revision });
+  if (typeof setSaveStatus === 'function') setSaveStatus('unsaved', 'Unsaved changes (Undo)');
   appendAiStreamMsg('assistant', `Reverted to Revision ${prev.revision} (${prev.spec.envelope.widthMm} mm wide).`, { source: 'DETERMINISTIC', provider: 'rules' });
 }
 
@@ -3844,10 +4158,28 @@ function bindAuthUI(){
   if(toggleLink)toggleLink.addEventListener('click',()=>setAuthMode('signup'));
   const saveBtn=document.getElementById('bSave');
   if(saveBtn)saveBtn.addEventListener('click',saveCurrentDesign);
+  const reopenBtn=document.getElementById('bReopenApi');
+  if(reopenBtn)reopenBtn.addEventListener('click',promptReopenDesignFromApi);
 }
 async function saveCurrentDesign(){
   if(!authConfigured()){alert('Accounts are not set up on this deployment yet.');return}
   if(!currentUser){openAuthModal();return}
+  if(isAiWardrobeParametricPath()){
+    if(!aiWardrobeState||!aiWardrobeState.spec||!aiWardrobeState.partGraph){
+      alert('Generate a wardrobe draft before saving.');return;
+    }
+    const defaultName=aiWardrobeState.durableName||Builder.cfg.name||'AI wardrobe';
+    const name=prompt('Name this design:',defaultName);
+    if(!name)return;
+    aiWardrobeState.durableName=name;
+    const token=await getStudioAccessToken();
+    if(!token){alert('Your session expired. Sign in again to save.');openAuthModal();return}
+    const saved=await persistAcceptedRevision({name,token,quiet:false});
+    if(saved){
+      alert('Saved design '+aiWardrobeState.durableDesignId+' revision '+aiWardrobeState.durableRevision+'.');
+    }
+    return;
+  }
   const name=prompt('Name this design:',Builder.cfg.name||'My design');
   if(!name)return;
   const {data,error}=await sb.from('projects').insert({user_id:currentUser.id,name,config:Builder.cfg}).select().single();

@@ -63,6 +63,7 @@ var PartGraphBridge = (() => {
     exportCutListCSV: () => exportCutListCSV,
     exportShopDrawingsPDF: () => exportShopDrawingsPDF,
     exportShopDrawingsSVG: () => exportShopDrawingsSVG,
+    fingerprintFurniSpec: () => fingerprintFurniSpec,
     formatNestingReport: () => formatNestingReport,
     generateCutListCsv: () => generateCutListCsv,
     generateShopDrawingsSVG: () => generateShopDrawingsSVG,

@@ -46,3 +46,5 @@ debug.log
 .env*
 Claude outputs/
 db-test-payloads/
+.data/
+*.bundle

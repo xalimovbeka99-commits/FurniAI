@@ -25,7 +25,7 @@ import {
 } from "../conversation/pipeline.js";
 import { OBSERVATION_ORIGIN, BEKZOD_APPROVED_DEFAULTS } from "../conversation/intakeModel.js";
 import { createDeterministicPhraseAdapter } from "../conversation/proposalAdapter.js";
-import { createProposal, validateApproval } from "../conversation/approval.js";
+import { createProposal, validateApproval, fingerprintFurniSpec } from "../conversation/approval.js";
 import { commitMaterialUpdate, applyCustomerFinishAnnotation, preserveCustomerFinishOnDraft } from "../conversation/commitMaterialUpdate.js";
 import {
   parseAndValidateClarifyInput,
@@ -75,6 +75,7 @@ export {
   createDeterministicPhraseAdapter,
   createProposal,
   validateApproval,
+  fingerprintFurniSpec,
   parseAndValidateClarifyInput,
   parseDimension,
   ACCEPTED_DIMENSION_UNITS,
