@@ -12,7 +12,7 @@
  *
  * Pattern follows src/lib/persistence/truthfulErrors.test.js.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import designsIndex from "../../../api/designs/index.js";
 import designById from "../../../api/designs/[designId].js";
 import designRevisions from "../../../api/designs/[designId]/revisions.js";
@@ -36,6 +36,7 @@ import {
   parseDesignForOpen,
   parseRevisionForOpen,
   classifyError,
+  messageFor,
   ERROR_KIND,
 } from "../../../src/lib/designs/myDesigns/state.js";
 
@@ -51,6 +52,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   process.env = { ...ENV };
+  vi.unstubAllGlobals();
 });
 
 function req({ method = "GET", auth, query = {}, body } = {}) {
@@ -330,5 +332,151 @@ describe("design ids are server-assigned (the module never supplies one)", () =>
   it("POST /api/designs with a client designId is 400 BAD_REQUEST", async () => {
     const r = await call(designsIndex, { method: "POST", auth: as(OWNER), body: { name: "x", designId: UNKNOWN_ID } });
     expectErrorBody(r, 400, "BAD_REQUEST");
+  });
+});
+
+/* ------------------------------------------------------------------------ *
+ * 503s — both real bodies, pinned separately (D4).
+ * Reached through the real handlers by environment + a stubbed global fetch
+ * only: no production code edited, no network (every URL outside the fake
+ * base throws), no real credentials (placeholder URL/anon value).
+ * ------------------------------------------------------------------------ */
+
+const FAKE_BASE = "https://contract-test.supabase.invalid";
+const FAKE_ANON = "anon-placeholder-not-a-secret";
+const OWNER_UUID = "7a1c0c38-3a2b-4a64-9f55-1f1d7f0b0a01";
+const DESIGN_UUID = "3f7d2c1e-9a4b-4c7e-8f10-2b6a9d0e1c11";
+const SESSION = "Bearer contract-session-token-placeholder";
+
+/** The three reads My Designs performs, as handler calls. */
+const READS = [
+  ["GET /api/designs", designsIndex, {}],
+  ["GET /api/designs/:id", designById, { designId: DESIGN_UUID }],
+  ["GET /api/designs/:id/revisions/:rev", designRevision, { designId: DESIGN_UUID, revision: "1" }],
+];
+
+function failingFetch() {
+  const f = vi.fn(async (url) => {
+    throw new Error(`unexpected network call in contract test: ${url}`);
+  });
+  vi.stubGlobal("fetch", f);
+  return f;
+}
+
+describe("503 PERSISTENCE_NOT_CONFIGURED — real body", () => {
+  const NOT_CONFIGURED_BODY = {
+    ok: false,
+    code: "PERSISTENCE_NOT_CONFIGURED",
+    error: "Design saving is not available on this deployment right now. Nothing was saved or opened.",
+  };
+
+  for (const [label, env] of [
+    ["deployed (VERCEL_ENV=preview, NODE_ENV=production), no SUPABASE_URL/ANON", { VERCEL_ENV: "preview", NODE_ENV: "production" }],
+    ["local, test-auth flag off, no SUPABASE_URL/ANON", { NODE_ENV: "test" }],
+  ]) {
+    for (const [route, handler, query] of READS) {
+      it(`${route} — ${label}: 503 with exactly this body, no fetch made`, async () => {
+        process.env = { ...ENV, SUPABASE_URL: "", SUPABASE_ANON_KEY: "", ...env };
+        delete process.env.FURNIAI_PERSISTENCE_TEST_AUTH;
+        if (!env.VERCEL_ENV) delete process.env.VERCEL_ENV;
+        const f = failingFetch();
+        const r = await call(handler, { auth: SESSION, query });
+        expect(r.statusCode).toBe(503);
+        expect(r.json).toEqual(NOT_CONFIGURED_BODY);
+        expect(keys(r.json)).toEqual(ERROR_BODY_KEYS);
+        expect(r.body).not.toMatch(/sign in|SUPABASE|ANON|placeholder/i);
+        expect(f).not.toHaveBeenCalled();
+        // module mapping: server-class, specific copy, NOT the sign-in path
+        const ui = classifyError({ status: r.statusCode, code: r.json.code }, route.includes("revisions") ? "open" : "list");
+        expect(ui).toEqual({ kind: ERROR_KIND.SERVER, status: 503, code: "PERSISTENCE_NOT_CONFIGURED" });
+        expect(messageFor(ui, "list")).toBe("Saved designs are not available on this deployment.");
+      });
+    }
+  }
+
+  it("the OTHER not-configured body (http.js getService: 'Design saving is not configured on this deployment. Nothing was saved.') is not reachable through a handler", async () => {
+    // getService() only runs after resolveCaller() succeeds, and resolveCaller
+    // succeeds only via (a) the test:<id> bypass, which requires NODE_ENV !==
+    // production AND no VERCEL_ENV — i.e. NOT deployed, so getService picks the
+    // memory store — or (b) a Supabase-verified token, which requires
+    // SUPABASE_URL+ANON — so getService picks the Supabase store. Either way
+    // its own 503 branch is skipped. Even a test:<id> token on a deployment is
+    // answered by resolveCaller's 503 first. (getService's branch is unit-
+    // tested directly in src/lib/persistence/truthfulErrors.test.js.)
+    process.env = { ...ENV, VERCEL_ENV: "preview", NODE_ENV: "production", FURNIAI_PERSISTENCE_TEST_AUTH: "yes", SUPABASE_URL: "", SUPABASE_ANON_KEY: "" };
+    failingFetch();
+    const r = await call(designsIndex, { auth: as(OWNER) });
+    expect(r.statusCode).toBe(503);
+    expect(r.json).toEqual(NOT_CONFIGURED_BODY);
+    expect(r.json.error).not.toBe("Design saving is not configured on this deployment. Nothing was saved.");
+  });
+});
+
+describe("503 STORAGE_UNAVAILABLE — real body (Supabase store, PostgREST unreachable or 5xx)", () => {
+  /** @param {"unreachable"|"pg500"|"pg400"} mode */
+  function supabaseEnvWithStore(mode) {
+    process.env = { ...ENV, SUPABASE_URL: FAKE_BASE, SUPABASE_ANON_KEY: FAKE_ANON, NODE_ENV: "test" };
+    delete process.env.VERCEL_ENV;
+    delete process.env.FURNIAI_PERSISTENCE_TEST_AUTH;
+    const calls = [];
+    const f = vi.fn(async (url) => {
+      calls.push(String(url));
+      if (url === `${FAKE_BASE}/auth/v1/user`) {
+        return { ok: true, status: 200, json: async () => ({ id: OWNER_UUID }) };
+      }
+      if (String(url).startsWith(`${FAKE_BASE}/rest/v1/`)) {
+        if (mode === "unreachable") throw new TypeError("fetch failed");
+        const status = mode === "pg500" ? 500 : 400;
+        return { ok: false, status, json: async () => ({ message: "row contents must not leak" }) };
+      }
+      throw new Error(`unexpected network call in contract test: ${url}`);
+    });
+    vi.stubGlobal("fetch", f);
+    return calls;
+  }
+
+  for (const [route, handler, query] of READS) {
+    it(`${route} — PostgREST unreachable: 503 { code: STORAGE_UNAVAILABLE, error: "The design store could not be reached." }`, async () => {
+      const calls = supabaseEnvWithStore("unreachable");
+      const r = await call(handler, { auth: SESSION, query });
+      expect(r.statusCode).toBe(503);
+      expect(r.json).toEqual({ ok: false, code: "STORAGE_UNAVAILABLE", error: "The design store could not be reached." });
+      expect(keys(r.json)).toEqual(ERROR_BODY_KEYS);
+      // a READ makes no claim about saving, leaks nothing, and really went via auth then the store
+      expect(r.body).not.toMatch(/not saved|placeholder|contract-test|sign in/i);
+      expect(calls[0]).toBe(`${FAKE_BASE}/auth/v1/user`);
+      expect(calls.some((u) => u.startsWith(`${FAKE_BASE}/rest/v1/wardrobe_designs`))).toBe(true);
+      const ui = classifyError({ status: r.statusCode, code: r.json.code }, route.includes("revisions") ? "open" : "list");
+      expect(ui).toEqual({ kind: ERROR_KIND.SERVER, status: 503, code: "STORAGE_UNAVAILABLE" });
+      expect(messageFor(ui, "list")).toBe("Your designs could not be loaded right now. Please try again.");
+    });
+  }
+
+  it("GET /api/designs — PostgREST 5xx: 503 { code: STORAGE_UNAVAILABLE, error: \"The design store rejected the request.\" }", async () => {
+    supabaseEnvWithStore("pg500");
+    const r = await call(designsIndex, { auth: SESSION });
+    expect(r.statusCode).toBe(503);
+    expect(r.json).toEqual({ ok: false, code: "STORAGE_UNAVAILABLE", error: "The design store rejected the request." });
+    expect(r.body).not.toContain("row contents");
+  });
+
+  it("CONTROL — PostgREST non-auth 4xx is STORAGE_UNAVAILABLE on 502 (module: server, same copy)", async () => {
+    supabaseEnvWithStore("pg400");
+    const r = await call(designsIndex, { auth: SESSION });
+    expect(r.statusCode).toBe(502);
+    expect(r.json.code).toBe("STORAGE_UNAVAILABLE");
+    expect(classifyError({ status: 502, code: r.json.code }, "list").kind).toBe(ERROR_KIND.SERVER);
+  });
+
+  it("CONTROL — the same stub with a healthy store answers 200 (the 503s above are the store, not the harness)", async () => {
+    supabaseEnvWithStore("unreachable");
+    vi.stubGlobal("fetch", vi.fn(async (url) => {
+      if (url === `${FAKE_BASE}/auth/v1/user`) return { ok: true, status: 200, json: async () => ({ id: OWNER_UUID }) };
+      if (String(url).startsWith(`${FAKE_BASE}/rest/v1/wardrobe_designs`)) return { ok: true, status: 200, json: async () => [] };
+      throw new Error(`unexpected network call in contract test: ${url}`);
+    }));
+    const r = await call(designsIndex, { auth: SESSION });
+    expect(r.statusCode).toBe(200);
+    expect(r.json).toEqual({ ok: true, designs: [] });
   });
 });
