@@ -3,7 +3,9 @@
  * repo root) and optionally capture one screenshot per state.
  *
  *   node demo/my-designs/build-demo.mjs                 # build, print the path to open
- *   node demo/my-designs/build-demo.mjs --screenshots   # + PNGs into docs/m3/artifacts/my-designs/
+ *   node demo/my-designs/build-demo.mjs --screenshots   # + PNGs into <temp dir>/screenshots (worktree untouched)
+ *   node demo/my-designs/build-demo.mjs --screenshots --update-artifacts
+ *                                                       # PNGs into tracked docs/m3/artifacts/my-designs/
  *   node demo/my-designs/build-demo.mjs --entry-check   # also bundle entry.js (IIFE, FurniMyDesigns) and smoke-load it
  *
  * Uses only the repo's existing esbuild and @playwright/test. MOCKED data only.
@@ -88,7 +90,7 @@ if (args.has("--screenshots") || entryBundle) {
       await page.close();
     }
     if (args.has("--screenshots")) {
-      const dir = join(repo, "docs/m3/artifacts/my-designs");
+      const dir = args.has("--update-artifacts") ? join(repo, "docs/m3/artifacts/my-designs") : join(out, "screenshots");
       await mkdir(dir, { recursive: true });
       const page = await browser.newPage({ viewport: { width: 1100, height: 720 } });
       await page.goto(pageUrl);
@@ -118,6 +120,7 @@ if (args.has("--screenshots") || entryBundle) {
       const mobile = join(dir, "list-390.png");
       await page.screenshot({ path: mobile, fullPage: true });
       console.log(`screenshot list-390: ${mobile}`);
+      console.log(`screenshots: ${dir}${args.has("--update-artifacts") ? " (tracked artifacts UPDATED)" : " (temp; tracked artifacts untouched)"}`);
     }
   } finally {
     await browser.close();
