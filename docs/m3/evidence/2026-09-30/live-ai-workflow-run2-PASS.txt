@@ -1,0 +1,31 @@
+with-local-stack: PostgreSQL 16.13 (Ubuntu 16.13-0ubuntu0.24.04.1), PostgREST 12.2.3, API 127.0.0.1:33963 (tokens withheld)
+============================================================================================
+FurniAI — LIVE AI TURN IN THE CUSTOMER WORKFLOW (bounded)
+============================================================================================
+date (UTC)                        : 2026-09-30T19:04:35.041Z
+model requested                   : claude-sonnet-5 (client default)
+provider order                    : anthropic,openai (default)
+transport to provider             : local relay → api.anthropic.com (requests counted)
+request ceiling                   : 3
+draft                             : DRAFT_PREVIEW, valid=true, width 1800 mm
+{"event":"ai_provider_call","operation":"design_propose","provider_requested":"anthropic","provider_used":"anthropic","fallback_occurred":false,"fallback_reason_code":null,"latency_ms":2448,"attempts":[{"provider":"anthropic","outcome":"success","errorCode":null,"latencyMs":2448}],"at":"2026-09-30T19:04:37.557Z"}
+live turn latency                 : 2482 ms
+outbound provider requests        : 1 (statuses 200)
+result ok / kind / source         : true / DESIGN_UPDATED / MODEL
+model reply (customer text)       : "Done — widening the wardrobe to 2000mm across."
+no secret in result               : true
+edited envelope                   : 2000 × 2400 × 600 mm
+PartGraph = compiler(spec)        : true
+PartGraph valid                   : true
+constraint report                 : PASS; blocking 0, advisory 0, approved 13, provisional 2
+not qualified                     : drilling BLOCKED_PENDING_HARDWARE_APPROVAL; STEP NOT_SUPPORTED; WORKSHOP_REVIEW_NOT_CNC_QUALIFIED
+save                              : 201
+persistence used                  : real PostgreSQL via /api/designs (local stack, JWT shim)
+reopened editable                 : true
+saved = reopened = exports        : {"fingerprint":true,"spec":true,"partGraph":true,"cutList":true,"drawings":true}
+outbound provider requests (final): 1
+
+============================================================================================
+LIVE WORKFLOW: PASS — a real model edit became a saved, reopened design with identical exports
+============================================================================================
+with-local-stack: cluster, PostgREST and data directory deleted.
