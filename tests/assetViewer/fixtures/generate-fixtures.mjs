@@ -11,6 +11,9 @@
  *   table-untextured.glb table made of 5 boxes, two baseColorFactor materials
  *   corrupt.glb          valid GLB magic/header, truncated garbage chunk
  *   empty-scene.gltf     valid glTF JSON whose scene has no nodes
+ *   simulated-download-only.fbx
+ *                        NOT an FBX: a labelled text placeholder used to exercise the
+ *                        /api/creative "download-only" path (the viewer never parses it)
  *
  * Geometry is in arbitrary model units on purpose: generated models carry
  * no verified metric scale, and the viewer must not pretend they do.
@@ -272,12 +275,21 @@ export function emptySceneGltf() {
   );
 }
 
+export function simulatedDownloadOnlyFbx() {
+  return Buffer.from(
+    "; SIMULATED FIXTURE - not a real FBX file and not a Scenario output.\n" +
+      "; FurniAI asset-viewer test placeholder for the download-only path (formats other than glb/gltf).\n",
+    "utf8",
+  );
+}
+
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const outputs = {
     "chair-textured.glb": chairTexturedGlb(),
     "table-untextured.glb": tableUntexturedGlb(),
     "corrupt.glb": corruptGlb(),
     "empty-scene.gltf": emptySceneGltf(),
+    "simulated-download-only.fbx": simulatedDownloadOnlyFbx(),
   };
   for (const [name, bytes] of Object.entries(outputs)) {
     writeFileSync(join(OUT, name), bytes);

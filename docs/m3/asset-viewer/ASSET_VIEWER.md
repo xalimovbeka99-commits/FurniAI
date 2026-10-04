@@ -1,20 +1,34 @@
 # Generated-model asset viewer (M3): module contract
 
-**Status:** isolated module, local commits only, on top of `a29f47b`
-(`integ/pilot-oct18-candidate`). It is not mounted anywhere yet. All files are new:
-`src/lib/assetViewer/**`, `tests/assetViewer/**`, `docs/m3/asset-viewer/**`.
-No existing file was changed, including `index.html`, Studio code, the
-parametric builder, `api/**`, `package.json` and `vitest.config.js`.
+**Status:** isolated module, local commits only. Round 1 sits on top of `a29f47b`
+(`integ/pilot-oct18-candidate`) and was merged by Integration as `ed2178c`. Round 2
+(this revision) builds on `f8dd8be` and implements the viewer against the
+**PROPOSED** `/api/creative` contract (`docs/creative/SCENARIO_3D_API_CONTRACT.md` in
+the Claude backend bundle, §12 below).
 
-**Owner of this module:** Grok Asset Engineer. The Scenario backend belongs to
-Claude Code. The Studio shell and site UI belong to Antigravity, who will
-mount this module. Integration owns the output contract, which is still
-open (see [OPEN QUESTIONS](#open-questions-for-integration)).
+**The viewer is NOT attached to any page.** Mounting waits for Antigravity to
+confirm the runtime. Their redesign tip `8744d07` is not available here, so mount point and
+runtime compatibility are unverified.
 
-**Working assumptions, all provisional:** generated models arrive as glTF 2.0
-(GLB). The viewer receives a *neutral* asset descriptor and does not use any
-Scenario field names. The loader for each format sits behind an adapter
-registry.
+All files are new or are this module's own: `src/lib/assetViewer/**`,
+`tests/assetViewer/**`, `docs/m3/asset-viewer/**`. No other file was changed:
+not `index.html`, Studio code, the parametric builder, `api/**`, `package.json` or
+`vitest.config.js`. No backend code was merged or cherry-picked. The viewer
+consumes the HTTP contract only.
+
+**Owners:**
+
+- This module: Grok Asset Engineer.
+- Scenario backend (`api/creative.js`, `src/lib/creative/*`): Claude Code.
+- Studio shell and site UI: Antigravity, who will mount this module.
+- Agreement of the contract: open item U8, Antigravity + Grok + CraZy.
+
+**Working assumptions:**
+
+- **Settled by the contract:** only `glb`/`gltf` are displayed. Every other format is
+  download-only. Concepts have no verified scale.
+- **Still provisional:** whether the provider's CDN allows a cross-origin fetch at all (U7).
+- The local `{ url | arrayBuffer | blob }` descriptor path is unchanged. It is used for fixtures and for any future FurniAI-hosted copy.
 
 ---
 
@@ -33,11 +47,19 @@ registry.
 
 ### Scenario references
 
-`grep -ri scenario src docs api` finds **no Scenario provider code, docs or
-config**. Every hit is the ordinary word "scenario": test fixtures such as
-`golden-scenarios.json`, `adversarial-scenarios.json` and `demoScenarios.js`.
-Nothing in the repo describes a Scenario output format, a result shape, URLs
-or blobs, thumbnails, metadata or scale. The only related material is:
+**Scenario backend code received locally (Claude bundle, tip `7f42f95` on `15a571f`), awaiting integration.**
+It is a different lineage from `a29f47b`; the merge-base is `3ed620c`. The bundle was read
+read-only from `/workspace/scenario-review/review.git`
+(`refs/review/claude-scenario-3d/feat/scenario-3d-generation`):
+
+- `api/creative.js`
+- `src/lib/creative/{creativeService,errors,http,scenarioClient,memoryStore}.js`
+- `docs/creative/SCENARIO_3D_API_CONTRACT.md`
+
+None of it is in this branch. The integration branch `a29f47b` itself still has no
+Scenario code: a `grep -ri scenario` there only hits the ordinary word
+(`golden-scenarios.json`, `demoScenarios.js`…). Background material that was
+used before the contract existed:
 
 - `docs/knowledge-base/image-to-custom-design-landscape.md`: image-to-3D tools
   (Tripo, Meshy, Hunyuan3D) output "USD/FBX/OBJ/STL/GLB/3MF". The file notes that
@@ -47,7 +69,9 @@ or blobs, thumbnails, metadata or scale. The only related material is:
 - `docs/audit/BASELINE.md` and `PHASE1_PLAN.md`: proposed `.gitattributes` with
   `*.glb binary` / `*.gltf binary`. These were never committed, and the repo has no `.gitattributes`.
 
-**So every format and shape choice below is an assumption for Integration to confirm.**
+Round 1 treated every format and shape choice as an assumption. Round 2 replaces
+those assumptions with the contract wherever the contract answers them (§12, and
+[OPEN QUESTIONS](#open-questions-for-integration)).
 
 ---
 
@@ -65,6 +89,14 @@ const viewer = mountAssetViewer(el, {
 
 await viewer.load(asset);   // -> { ok:true, state } | { ok:false, error, state } | { ok:false, superseded:true, state }
 viewer.dispose();           // releases everything; idempotent
+
+// /api/creative (AI visual concept, §12):
+const creativeSource = createCreativeAssetSource({ fetchImpl: fetch, getAuthToken: () => session.access_token });
+const v = mountAssetViewer(el, { three, deps, creativeSource });
+await v.load({ jobId, index: 0, format: "glb" });   // resolve -> glb/gltf: load | other: download-only
+await v.load({ job });                              // a job object from GET ?resource=jobs&jobId=
+await v.watchJob(jobId);                            // polls every 3-5 s until terminal, then shows it
+await v.download({ save: true });                   // re-resolves a FRESH url first
 ```
 
 The **contract** is `load`, `dispose` and `onError`. These extras are also available:
@@ -75,7 +107,9 @@ The **contract** is `load`, `dispose` and `onError`. These extras are also avail
 | `fitToView()` | re-frames the model and keeps the current orbit direction. Returns the fit numbers, or `null` when no model is loaded |
 | `getState()` | JSON-safe snapshot (§4) |
 | `on(event, cb)` | `statechange`, `progress`, `ready`, `error`, `dispose`. Returns an unsubscribe function. Unknown event names throw |
-| `download({ save? })` | original bytes plus filename and mime (§7). Returns `null` unless `ready` |
+| `download({ save? })` | local item: original bytes plus filename and mime, synchronously (§7). Concept: a **Promise**. It re-resolves a fresh url and returns `{ ok, url, filename, … }`. Returns `null` when nothing can be downloaded |
+| `showJob(job, { index? })` | renders a job object (§12.4). Same as `load({ job, index })` |
+| `watchJob(jobId, { index?, intervalMs=4000 })` | polls `getJob`. The interval is clamped to 3–5 s. Polling is superseded by any later load, clear or dispose |
 
 `load()` **never rejects**. A programmer error (no element) throws a
 `TypeError` from `mountAssetViewer`. Everything else becomes an error state.
@@ -99,6 +133,8 @@ The **contract** is `load`, `dispose` and `onError`. These extras are also avail
 | `environment` | auto | `"none"` disables PMREM |
 | `fov` | 40 | |
 | `ui` | `true` | built-in status overlay and scale badge. `false` lets the host render its own UI from events |
+| `creativeSource` | none | `createCreativeAssetSource(...)` (§12). Required for `{ jobId }` references and jobs. Without it you get `MISSING_DEPENDENCY` |
+| `setTimeout` / `clearTimeout` | globals | polling timers, injectable for tests |
 | `createRenderer`, `requestAnimationFrame`, `cancelAnimationFrame` | browser defaults | injection points for tests |
 
 ### Neutral asset descriptor (PROVISIONAL)
@@ -128,6 +164,10 @@ idle ──load()──▶ loading{phase: fetching ─▶ parsing} ──▶ rea
   ▲                    │                                   │
   └──── clear() ───────┴──────────▶ error ◀────────────────┘ (next load can recover)
 any ── dispose() ──▶ disposed (terminal; load() → VIEWER_DISPOSED)
+
+concept: loading{job-checking | job-submitting | job-processing}      (no %)
+         ─▶ loading{resolving ─▶ fetching ─▶ parsing [─▶ retrying ─▶ fetching ─▶ parsing]}
+         ─▶ ready | download-only | error
 ```
 
 - **Progress:** while fetching, `progress = { loaded, total|null, ratio|null }` is
@@ -153,6 +193,15 @@ any ── dispose() ──▶ disposed (terminal; load() → VIEWER_DISPOSED)
 | `WEBGL_UNAVAILABLE` | renderer creation failed | 3D preview isn't available in this browser (WebGL is disabled or unsupported). |
 | `MISSING_DEPENDENCY` | `three` or a required loader class was not injected | The 3D viewer isn't fully set up on this page. |
 | `VIEWER_DISPOSED` | `load()` after `dispose()` | The 3D viewer has been closed. |
+
+The concept codes (§12.3) are `SIGN_IN_REQUIRED`, `SIGN_IN_UNAVAILABLE`,
+`CONCEPTS_NOT_CONFIGURED`, `SERVICE_UNAVAILABLE`, `PROVIDER_UNAVAILABLE`,
+`CONCEPT_NOT_FOUND`, `ASSET_NOT_READY`, `ASSET_UNAVAILABLE`,
+`RECORD_INTEGRITY_FAILED`, `RESOLVE_FAILED`, `ASSET_DISPLAY_FAILED`,
+`GENERATION_FAILED`, `SUBMISSION_UNKNOWN` and `JOB_STATUS_UNKNOWN`.
+
+An error record can carry these extra fields: `status`, `serverCode` (the backend's `code`),
+`jobStatus`, `downloadAvailable`, `chargeMayHaveOccurred`, `autoRetry:false` and `attempts`.
 
 `detail` is for developers and logs, for example `"Invalid typed array length: 2048"`. It is never rendered.
 
@@ -206,6 +255,10 @@ are rendered on demand. Damping keeps requesting frames until it settles.
   that names the source and do not call it "measured". The tests in
   `tests/assetViewer/scale.test.js` assert that no unit tokens appear anywhere in the state JSON
   or the overlay text, even when the caller passes `{ units: "mm", width: 460 … }`.
+- **Concepts:** the contract says `concept.dimensionsVerified:false` and that no
+  metric scale exists. The viewer stays relative even if a response ever claims
+  `dimensionsVerified:true`. It reports the flag in `state.concept` and does not act on it
+  (`creativeViewer.test.js`).
 
 ## 6. Format adapter interface
 
@@ -242,6 +295,13 @@ These are the **original bytes**. Nothing is re-exported or converted.
   `<a download>` object URL, which is revoked straight away.
 - A JSON `.gltf` with *external* `.bin` or texture files downloads only the JSON. GLB
   avoids this, which is one more reason to prefer it.
+
+- **Concepts** never keep bytes or the url. `download()` calls `?resource=asset`
+  again and gets a fresh address. With `save:true` it clicks a temporary
+  `<a href download target=_blank rel="noopener noreferrer">`. A navigation is not
+  subject to CORS, so this can work even when display failed (U7).
+  Cross-origin addresses ignore the `download` filename, so the provider may choose
+  the name. The filename the viewer proposes is `furniai-concept-<jobId>-<index>.<format|bin>`.
 
 ## 8. Disposal guarantees
 
@@ -328,16 +388,20 @@ await build({
 <script src="/asset-viewer.js"></script>                     <!-- window.FurniAssetViewer -->
 <div id="generated-model" style="height:420px"></div>
 <script>
-  // `result` = whatever Claude Code's Scenario route returns, mapped by Integration
-  // onto the neutral descriptor (no Scenario field names inside the viewer).
+  // NOT APPLIED. Mount point/runtime await Antigravity (redesign tip 8744d07 not seen here).
+  const source = FurniAssetViewer.createCreativeAssetSource({
+    fetchImpl: window.fetch.bind(window),
+    getAuthToken: async () => (await supabase.auth.getSession()).data.session?.access_token, // asked on EVERY call
+  });
   const viewer = FurniAssetViewer.mountAssetViewer(document.getElementById("generated-model"), {
     three: window.THREE,
     deps: { GLTFLoader: THREE.GLTFLoader, OrbitControls: THREE.OrbitControls },
-    asset: { url: result.modelUrl, filename: result.filename },   // placeholder names
-    onError: (e) => studioToast(e.message),                        // e.code for analytics
+    creativeSource: source,
+    onError: (e) => studioToast(e.message),                        // e.code / e.serverCode for analytics
   });
-  // replace:  viewer.load({ url: next.modelUrl });
-  // download: const d = viewer.download({ save: true });
+  viewer.watchJob(jobIdFromPostJobs);       // or viewer.load({ jobId, index: 0, format })
+  // download button (host-owned): await viewer.download({ save: true });   // fresh url each time
+  // NEVER: open in builder, show dimensions, export/production (state.actions says false)
   // leaving the panel:  viewer.dispose();
 </script>
 ```
@@ -348,8 +412,9 @@ that calls `mountAssetViewer(ref.current, { three: THREE, deps })` and returns
 
 ## 11. Tests, demo, evidence
 
-- `npx vitest run --config tests/assetViewer/vitest.config.js` runs **65 tests in 10 files**.
-  The suites cover state, errors, supersede, dispose, fit, scale, download, registry, r128 and no-bundled-three.
+- `npx vitest run --config tests/assetViewer/vitest.config.js` runs **152 tests in 13 files**.
+  Round 1 has 65 tests in 10 files: state, errors, supersede, dispose, fit, scale, download, registry, r128 and no-bundled-three.
+  Round 2 adds `creativeSource`, `creativeViewer` and `creativeJob`, which run against the SIMULATED stand-in (§12.6).
   They use real three 0.166 scene classes and the real GLTFLoader. Only the GPU (a fake
   renderer with faithful `info.memory`) and the pointer-driven OrbitControls are faked.
   Node has no `createImageBitmap`, so a small shim stands in for PNG decoding. Real pixels are checked in the browser.
@@ -358,53 +423,221 @@ that calls `mountAssetViewer(ref.current, { three: THREE, deps })` and returns
   `tests/assetViewer/**` is ever added to the root include list.
 - Fixtures: `node tests/assetViewer/fixtures/generate-fixtures.mjs` writes
   `chair-textured.glb` (6 boxes, embedded 64×64 PNG), `table-untextured.glb`,
-  `corrupt.glb` and `empty-scene.gltf`. They are procedural: no downloads, no exporter.
+  `corrupt.glb`, `empty-scene.gltf` and `simulated-download-only.fbx`. The last one is a labelled
+  text placeholder, *not* an FBX. All of them are procedural: no downloads, no exporter.
 - Demo: `node docs/m3/asset-viewer/demo/serve.mjs`, then open
   `http://127.0.0.1:4318/docs/m3/asset-viewer/demo/?three=r166` (or `?three=r128`).
 - Evidence: `node docs/m3/asset-viewer/demo/capture.mjs` writes the files in `docs/m3/asset-viewer/evidence/`. See its README.
+- SIMULATED concept demo: the same server, then open
+  `http://127.0.0.1:4318/docs/m3/asset-viewer/demo/creative.html`. It uses fixtures only and is not Scenario.
+  `node docs/m3/asset-viewer/demo/capture-creative.mjs` writes `evidence/creative/`.
+
+---
+
+## 12. `/api/creative` contract mapping (PROPOSED contract, backend bundle `7f42f95`)
+
+Implemented in `src/lib/assetViewer/creativeAsset.js`, which imports no backend code.
+The field names and error codes were checked against `api/creative.js` and
+`src/lib/creative/*` at `7f42f95`.
+
+### 12.1 Requests
+
+| call | request | notes |
+|---|---|---|
+| `source.resolve(jobId, index=0)` | `GET {baseUrl}?resource=asset&jobId=<id>&index=<n>` | `Authorization: Bearer <getAuthToken()>`. The token is asked for on **every** call. `cache:"no-store"`, `credentials:"same-origin"`. With no token, nothing is sent and the result is `SIGN_IN_REQUIRED` |
+| `source.getJob(jobId)` | `GET {baseUrl}?resource=jobs&jobId=<id>` | same auth. Returns `{ job, refresh }` |
+| mesh bytes | `GET asset.url` | the viewer's `fetch`, `credentials:"omit"` |
+
+`baseUrl` defaults to `/api/creative`. Nothing is cached, memoised or stored. The
+viewer source contains no `localStorage`, `sessionStorage`, `indexedDB` or `caches`,
+and a test enforces that.
+
+### 12.2 `asset` response → descriptor
+
+| backend `asset.*` | descriptor | notes |
+|---|---|---|
+| `url` (`https://…`) | `url` | must be http(s). It is used once and dropped right away. It is **never** in `getState()`, events, `current`, error detail (redacted to `[url]`) or storage |
+| `format` (`glb gltf fbx obj usdz stl ply zip` or `null`) | `format` | lower-cased. Unknown values become `null`. **The resolve-time format is authoritative.** The backend computes `detectFormat(asset) ?? out.format`, so it can differ from `job.outputs[i].format` |
+| `mimeType` (may be `null`) | `mimeType` | |
+| | `filename` | `furniai-concept-<jobId>-<index>.<format \| bin>`, never taken from the provider address |
+| `concept` | `concept` | normalised: the notice is kept (trimmed, at most 600 chars) and the flags are booleans (default `false`). Without a notice, a strict default is used and `noticeSource:"viewer-default"` |
+| `resolvedAt`, `expiresAt:null`, `expiryKnown:false`, `durableCopy:false` | same | informational only |
+| `jobId` / `index` | checked | a mismatch gives `RESOLVE_FAILED` |
+
+### 12.3 Error mapping (switch on `code`; HTTP status only when `code` is absent)
+
+| backend `code` (HTTP) | viewer `code` | customer message (abridged) |
+|---|---|---|
+| `MISSING_AUTH` (401), `UNAUTHORIZED` (403) | `SIGN_IN_REQUIRED` | Please sign in to view this 3D concept. |
+| `AUTH_UNAVAILABLE` (503) | `SIGN_IN_UNAVAILABLE` | Sign-in is temporarily unavailable… |
+| `PERSISTENCE_NOT_CONFIGURED`, `CREATIVE_NOT_CONFIGURED`, `CREATIVE_STORE_NOT_CONFIGURED`, `CREATIVE_GENERATION_DISABLED` (503) | `CONCEPTS_NOT_CONFIGURED` | 3D concepts aren't available on this site yet. |
+| `STORAGE_UNAVAILABLE` (503); a 5xx without a code | `SERVICE_UNAVAILABLE` | temporarily unavailable |
+| `PROVIDER_*` (502/429/402) | `PROVIDER_UNAVAILABLE` | The 3D generation service couldn't be reached… |
+| `MISSING_JOB` (404) | `CONCEPT_NOT_FOUND` | couldn't be found… |
+| `ASSET_NOT_READY` (409) | `ASSET_NOT_READY` | isn't ready yet. `jobStatus` kept |
+| `ASSET_UNAVAILABLE` (410) | `ASSET_UNAVAILABLE` | no longer available… no copy was kept |
+| `RECORD_INTEGRITY_FAILED` (409) | `RECORD_INTEGRITY_FAILED` | failed a safety check |
+| `BAD_REQUEST` (400) | `INVALID_ASSET` | |
+| `INTERNAL` (500), unknown codes, network errors, malformed `ok:true` bodies | `RESOLVE_FAILED` | couldn't be opened. Please try again. |
+
+The backend's message text is never used: the auth messages mention "design", and
+409 is shared by two codes. Viewer messages never contain the code or any technical words
+(tested).
+
+### 12.4 Flows
+
+- **Reference** `load({ jobId, index, format? })`:
+  1. If `format` is given and is not `glb`/`gltf` (including `null`), the state goes straight to
+     **`download-only`**, with no resolve and no mesh request.
+  2. Otherwise, resolve. A non-viewable resolved format → `download-only`.
+  3. Otherwise fetch and parse the mesh.
+  4. If that fails with `FETCH_FAILED`, `PARSE_FAILED` or `UNSUPPORTED_FORMAT` (an expired address,
+     CORS, a truncated body), **re-resolve once and retry once**. A second failure gives
+     `ASSET_DISPLAY_FAILED`: "This 3D concept couldn't be displayed here. Downloading it may still work."
+     The error carries `downloadAvailable:true` and `attempts:{resolve:2, display:2}`, and download stays offered.
+  5. If the re-resolve itself fails, its mapped error is reported (for example a 410).
+  6. `EMPTY_SCENE` and `FILE_TOO_LARGE` are not retried.
+- **Job** `load({ job })` / `showJob(job)` / `watchJob(jobId)`:
+
+  | `job.status` | viewer |
+  |---|---|
+  | `submitting` | `loading:job-submitting`: "Sending your image to the 3D generation service…" |
+  | `processing` | `loading:job-processing`: "Generating 3D concept… This can take a few minutes." `watchJob` keeps polling every 3–5 s (default 4 s) |
+  | `succeeded` + `outputs.length ≥ 1` | picks `outputs[0]` (or `index`) → reference flow |
+  | `succeeded` with no matching output | `ASSET_NOT_READY` |
+  | `failed` | `GENERATION_FAILED` with `job.error.message`, sanitised: one line, at most 300 chars, never an address, rendered with textContent. Otherwise a default. `serverCode` is kept |
+  | `submission_unknown` | `SUBMISSION_UNKNOWN`: "…It may have been charged. It will not be retried automatically." `chargeMayHaveOccurred:true`, `autoRetry:false`, polling stops |
+  | anything else | `JOB_STATUS_UNKNOWN` |
+
+  `providerProgress` and `providerStatus` are never read (a static test enforces this), so
+  no percentage exists for job phases. `refresh.ok:false` is ignored, as the contract says.
+  `progress` is `null` in job phases. A percentage appears only for the **byte download**
+  of the mesh, which is measured locally.
+- **Download** always re-resolves (§7).
+
+### 12.5 Concept honesty in state and overlay
+
+- `state.concept` = `{ kind, editable, dimensionsVerified, partsSeparable, manufacturable, notice, noticeSource }`.
+- `state.actions` = `{ view, download, openInBuilder:false, export:false, production:false }`.
+- `state.job` = `{ jobId, index, status, outputCount }`.
+- `state.attempts` = `{ resolve, display }`.
+- `state.source` is `"creative"` or `"local"`.
+- The overlay shows `concept.notice` in a separate banner (`[data-av-concept]`) in **every** state
+  that carries a concept: loading, ready, download-only and error.
+- The overlay's Download button (`[data-av-download]`) appears for download-only, and for
+  display errors that still allow download.
+- The scale badge stays "Relative scale, not measured · W:H:D …".
+- No dimensions appear anywhere (tested).
+
+### 12.6 Tests and SIMULATED stand-in
+
+`tests/assetViewer/helpers/creativeStandIn.js` is a **SIMULATED** `/api/creative`. It uses
+fixtures only and is not Scenario. It returns the backend's response shapes, its
+verbatim `CONCEPT_NOTICE` and its error messages. Its signed addresses are **single use**: a second GET
+returns 403, so any url reuse fails the tests. A mutation that cached the url failed 6 tests.
+
+The 87 new tests cover:
+
+- a fresh resolve and Bearer token on every load and every download (call counts, distinct urls)
+- no url in state, events, errors or storage
+- one re-resolve and retry, then `ASSET_DISPLAY_FAILED`
+- the no-CORS case, simulated
+- every code mapping, including 409 vs 409
+- download-only for `fbx obj usdz stl ply zip null` and unknown formats
+- notice always present, with the default when it is missing
+- no dimensions or mm
+- every job status, including `submission_unknown` with no further calls
+- no `%` from `providerProgress`
+- poll cadence clamped to 3–5 s
+- supersession of polling
+- the legacy descriptor path
+
+### 12.7 Contract doc vs backend code: mismatches and ambiguities found
+
+1. **§2.5 lists only `409 ASSET_NOT_READY`, `410 ASSET_UNAVAILABLE` and
+   `409 RECORD_INTEGRITY_FAILED`.** The asset route can also answer:
+   - `404 MISSING_JOB` (unknown job or another user's)
+   - `400 BAD_REQUEST` (missing jobId; index not a non-negative integer)
+   - `503 CREATIVE_NOT_CONFIGURED` (`requireCredentials()` runs before the provider call)
+   - pass-through provider errors (`PROVIDER_*` 502/429/402)
+   - the auth/persistence 401/503s
+   - `500 INTERNAL`
+
+   The viewer maps all of them.
+2. **`ASSET_NOT_READY` is overloaded.** It means both "not succeeded" and "index out of range"
+   (`job.outputs?.[index]` missing). Both carry `details.jobStatus`, so a client can
+   only tell them apart by `jobStatus === "succeeded"`.
+3. **Two codes share HTTP 409**, so clients must switch on `code`. The viewer does.
+4. **The format can change between the job and the asset.** `outputs[i].format` is computed
+   at completion, and the asset route returns `detectFormat(asset) ?? out.format` from a fresh
+   provider lookup. The doc does not say which wins. The viewer trusts the resolve-time value.
+5. **`detectFormat` on the asset route sees only `{ url, mimeType }`** from the
+   provider client. A signed address without a file extension and a generic
+   mime therefore falls back to the stored `out.format`, or `null` (download-only).
+6. **Index validation:** the doc shows `index=0` but does not say that it defaults to 0 or that
+   invalid values give 400.
+7. **The auth message text mentions "design"** for a creative concept. The doc acknowledges
+   this, and the viewer ignores the text.
+8. **A failed job's `error.message`** for `PROVIDER_GENERATION_FAILED` is the provider's
+   own text (up to 300 chars), not FurniAI copy. The doc says "show the message". The viewer
+   sanitises it but cannot vouch for its wording (open question 10).
+9. The `errors.js` comment on `RECORD_INTEGRITY_FAILED` ("…Never used.") means that *the
+   record* is never used. It does not mean the code is unused. The code is thrown by `assertIntact` on
+   the asset and job routes.
+10. **`submitting` older than 120 s becomes `submission_unknown`** with
+    `error.code PROVIDER_UNAVAILABLE`. A client that switched on `error.code` would
+    misread this as a transient provider outage. The viewer switches on `status`.
 
 ---
 
 ## OPEN QUESTIONS for Integration
 
-1. **Scenario output format(s).** Is it GLB only? Will we also get FBX, OBJ or USDZ? Is
-   there more than one per job? Are meshes Draco- or meshopt-compressed? If so,
-   `DRACOLoader` / `MeshoptDecoder` must also be injected, and the decoder WASM must be hosted locally.
-   Do textures use KTX2 or Basis?
-2. **Result shape.** Is the model a URL (public or signed) or bytes or a blob through
-   our backend? Are textures embedded, or separate files that need a `resourcePath` or a URL map?
-   Is there a thumbnail or preview image? What metadata comes with it (job id,
-   prompt, seed, poly count)? The viewer currently takes `{ url | arrayBuffer | blob, format?, mime?, filename? }`.
-   Who maps the provider result onto it: Claude Code's route or Antigravity's Studio?
-3. **Mount style.** The static `index.html` would use a vanilla mount through
-   `window.FurniAssetViewer`, as proposed here. Is an R3F component for the Next app wanted
-   at all? There is none by design.
-4. **r128 loaders.** Who supplies the r128-compatible `GLTFLoader` and
-   `OrbitControls` for the static page? The options are
-   `three@0.128.0/examples/js` (recommended), a shimmed three-stdlib build (what the demo does), or upgrading
-   the page's three. Can a vendor file be added to the page and to `build-static.mjs`?
-5. **Downloads.** Which formats may customers download: the original GLB only,
-   or also provider-converted formats? Should download be offered at all for
-   generated (non-manufacturable) models? Is a filename convention needed, for example one that includes the design or job id?
-6. **Scale metadata.** Does Scenario or our pipeline provide any *verified*
-   metric scale? If so, what is its source, its units and how was it verified? Until then the
-   viewer shows only "Relative scale, not measured" with W:H:D ratios.
-7. **CORS and signed URLs.** Will the model host send `Access-Control-Allow-Origin`
-   for the Studio origin? What is the URL expiry? A 403 currently surfaces as `FETCH_FAILED`
-   with `status: 403`. Should the viewer ask the host to refresh the URL and retry
-   once? Should credentials be `omit` (the current default) or `include`?
-8. **Max file size and timeouts.** `maxBytes` is a placeholder of 100 MiB and the parse timeout
-   is 120 s. What are the real limits, and are they the same on mobile?
-9. **Orientation and units.** Is the generated model Y-up glTF, centred, and
-   facing +Z? The viewer frames whatever bounds it gets, but a consistent "front"
-   view would need that convention or provider metadata.
-10. **Analytics and logging.** Should `error.code` and `detail` go to a logging endpoint?
-    Is it acceptable to keep `console.error` from loaders?
+### Answered by the PROPOSED contract (round 2)
+
+| # (round 1) | answer now implemented |
+|---|---|
+| 1 Formats | the backend reports `glb gltf fbx obj usdz stl ply zip` or `null`. **Only `glb`/`gltf` are displayed. Everything else is download-only** (§12.4). It can return several outputs per job (`outputs[]`, picked by `index`). Draco/meshopt/KTX2 remain unknown (U2): no model or output format is verified yet |
+| 2 Result shape | `GET ?resource=asset` → `{ url, format, mimeType, resolvedAt, expiresAt:null, expiryKnown:false, durableCopy:false, concept }`; `GET ?resource=jobs` → the job view (§12.2). The viewer itself maps this; no host mapping is needed. No thumbnail exists in the contract |
+| 5 Downloads | the original provider file, via a **fresh** address at click time. The filename is `furniai-concept-<jobId>-<index>.<ext>`. No conversion |
+| 6 Scale metadata | none: `concept.dimensionsVerified:false`. Relative ratios only, whatever a response claims |
+| 7 (part) Fresh url / caching / credentials | resolve on every display and download, never cache or persist, re-resolve once on a load failure. The API call is same-origin with `Authorization: Bearer <Supabase access token>`. The CDN fetch uses `credentials:"omit"` |
+
+### Still open
+
+1. **CORS on provider addresses (U7).** It is unverified whether Scenario's CDN sends
+   `Access-Control-Allow-Origin`. If it does not, display is impossible from the browser.
+   The viewer reports `ASSET_DISPLAY_FAILED` honestly and still offers download. This was
+   simulated, not verified. The fix would be a FurniAI copy or proxy, which depends on U6.
+   URL expiry is also unverified.
+2. **Durable asset storage (U6).** `durableCopy` is always `false`. Once the provider drops an
+   asset, users get `ASSET_UNAVAILABLE`. A Supabase Storage copy-on-success would let
+   the viewer use a stable FurniAI address. The descriptor path already supports one.
+3. **r128 loaders.** Who supplies an r128-compatible `GLTFLoader`/`OrbitControls` for the
+   static page (§9)? This is unchanged from round 1.
+4. **Mount point and runtime compatibility with Antigravity's redesign (tip `8744d07`, not
+   available here).** Which page or panel hosts the viewer? Is the runtime still static
+   `index.html` with `window.THREE` r128? Who owns the Supabase session getter? **The
+   viewer stays unattached until Antigravity confirms.**
+5. **Size and time limits.** `maxBytes` is a 100 MiB placeholder and the parse timeout is 120 s.
+   The contract sets no limit for generated assets, and none is set for mobile.
+6. **Orientation.** The contract does not specify Y-up, centring or a front direction.
+   The viewer frames any bounds.
+7. **Contract agreement (U8).** The status is PROPOSED. The mismatches in §12.7 should be folded
+   into the doc, especially the extra asset-route error codes and which format wins.
+8. **Polling ownership.** `watchJob` polls `GET ?resource=jobs` itself, every 3–5 s. Should
+   the Studio poll instead and hand job objects to `showJob`? Both work. Is there a maximum
+   polling duration before telling the user to come back later?
+9. **Download UX for cross-origin addresses.** The provider decides the saved file name, and
+   whether the browser opens or saves the file. A FurniAI proxy or copy (U6) would fix this.
+10. **Provider error text.** `job.error.message` for `PROVIDER_GENERATION_FAILED` is
+    verbatim provider text. Should the backend replace it with FurniAI copy?
+11. **Analytics and logging** (round 1 question 10): should `code`, `serverCode` and `detail` (urls
+    redacted) be logged?
 
 ## Known limitations
 
 - Animations are counted but not played.
-- Only glTF is implemented.
+- Only glTF is displayed. Concept formats other than glb/gltf are download-only by contract.
 - No KTX2, Draco or meshopt support (would be added by injection once confirmed).
 - The built-in overlay is minimal. A host can pass `ui:false` and render its own from events.
 - r128 residual PMREM geometry (§8).

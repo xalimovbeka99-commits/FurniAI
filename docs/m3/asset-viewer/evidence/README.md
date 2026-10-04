@@ -50,3 +50,47 @@ empty scene and after `pmrem.dispose()`, r128 keeps one geometry counted.
 three 0.166 does not, and with `environment: "none"` r128 also returns to 0.
 The viewer calls `forceContextLoss()` on dispose, so the browser frees the GL
 objects with the context anyway. See ASSET_VIEWER.md §Disposal.
+
+## Round 2: `/api/creative` contract, SIMULATED (`creative/`)
+
+> **SIMULATED. Fixtures only. This is NOT a Scenario demonstration.** No Scenario
+> request was made, no credentials exist on this box, no credits were spent. Every
+> model on screen is a procedural fixture from `tests/assetViewer/fixtures/`. The
+> "API" is the stand-in in `tests/assetViewer/helpers/creativeStandIn.js`, served by
+> `demo/serve.mjs`. It copies the response *shapes* of the PROPOSED contract and of the
+> Claude backend bundle (tip 7f42f95); it is not that backend. Every screenshot carries a red
+> "SIMULATED /api/creative stand-in · fixtures only · not a Scenario result" banner and
+> a "SIMULATED · fixture model · not Scenario" watermark.
+
+Captured on 2026-10-04 at 11:54 Dubai time (UTC+4) by
+`node docs/m3/asset-viewer/demo/capture-creative.mjs`. Same headless Chromium
+151.0.7922.34 and SwiftShader WebGL 2.0 as above, three 0.166 (`creative.html?three=r166`).
+The page passes `getAuthToken: () => "sim-token"`. The stand-in rejects any call
+without that Bearer token (401 `MISSING_AUTH`). Its signed addresses are **single use**:
+a second GET of the same address gets a 403, so reusing a url would show up as a failure.
+
+| file | shows |
+|---|---|
+| `creative/01-processing.png` | `watchJob("sim-processing")`: `loading:job-processing`, "Generating 3D concept… This can take a few minutes." The stand-in sends `providerProgress: 0.37`; it is not shown and no % appears anywhere (`noPercentage: true`, `progress: null`) |
+| `creative/02-processing-then-succeeded.png` | 3 polls at a 3 s cadence (one with `refresh.ok:false`, ignored), then `succeeded` → resolve → GLB shown |
+| `creative/03-succeeded-glb-concept-notice.png` | succeeded GLB with the server's `concept.notice` banner, "Relative scale, not measured" ratios, and `actions.openInBuilder/export/production: false` |
+| `creative/04a-orbit.png`, `04b-zoom.png`, `04c-fit.png` | real pointer drag, wheel zoom (distance 2.02 → 0.75), and `fitToView()` back to 2.02 |
+| `creative/05-download-fresh-url.png` | Download makes a NEW resolve (asset resolves 2 → 3). The mesh was shown from address `t0002` and the download used the fresh `t0003`. Chromium saved `furniai-concept-sim-glb-chair-0.glb` |
+| `creative/06-expired-url-reresolve.png` | first address `t0004` → 403 (expired), one fresh resolve → `t0005` → 200 → shown. Exactly 2 resolves |
+| `creative/07-asset-unavailable-410.png` | 410 `ASSET_UNAVAILABLE` → "This 3D concept is no longer available…", no retry, no download |
+| `creative/08-download-only-fbx.png` | fbx output → `download-only` with **0** mesh fetches. The built-in "Download file" button re-resolved and saved `furniai-concept-sim-fbx-0.fbx` (a labelled text placeholder, not a real FBX) |
+| `creative/09-submission-unknown.png` | `submission_unknown` → "…It may have been charged. It will not be retried automatically." One status call, no further polling |
+| `creative/10-no-cors-address-display-failed.png` | U7 simulation: the address points at a second origin with no `Access-Control-Allow-Origin`. The browser refuses the fetch, the viewer re-resolves once, is refused again, and shows `ASSET_DISPLAY_FAILED` "couldn't be displayed here. Downloading it may still work." with a Download button |
+| `creative/11-unrecognised-format-download-only.png` | `format: null` → download-only ("this file type") |
+| `creative/12-job-failed.png` | `failed` → the job's own `error.message` (sanitised) |
+| `creative/13-record-integrity-failed.png` | 409 `RECORD_INTEGRITY_FAILED`, told apart from 409 `ASSET_NOT_READY` by `code` |
+| `creative/14-submitting.png` | `submitting` → "Sending your image to the 3D generation service…" |
+| `creative/creative-simulated-r166.webm` | 21.9 s recording of the whole run above |
+| `creative/creative-results.json` | for each step: `getState()`, overlay texts, the stand-in's server-side call log, camera and pixel numbers, plus console errors. The expected ones are the 403/410/409 responses and the two CORS refusals |
+
+Summary from `creative-results.json`:
+
+- 23 API calls, **0 without Bearer**.
+- 10 asset resolves and 8 signed-address GETs, one of which was the deliberate expired-url 403.
+- `urlInAnyCapturedState: false`.
+- `conceptNoticeInEveryConceptStep: true`.
