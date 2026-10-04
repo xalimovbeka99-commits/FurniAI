@@ -28,7 +28,7 @@ export function setup(handlers = {}, options = {}) {
 }
 
 export const cards = (root) => byClass(root, "fcg-card");
-export const card = (root, jobId) => byAttr(root, "data-job-id", jobId)[0] || null;
+export const card = (root, jobId) => byAttr(root, "data-job-id", jobId).find((n) => n.classList.contains("fcg-card")) || null; // not the viewer panel
 export const button = (scope, action) => byAttr(scope, "data-action", action)[0] || null;
 export const panel = (root) => byClass(root, "fcg-panel")[0] || null;
 export const live = (root) => byClass(root, "fcg-live")[0];

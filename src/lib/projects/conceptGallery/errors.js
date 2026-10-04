@@ -119,7 +119,13 @@ export const ASSET_MESSAGES = Object.freeze({
   [ERROR_KIND.REQUEST]: "FurniAI couldn't get this file.",
 });
 
-/** Job-level failures seen while polling one job. */
+/**
+ * Open only: the viewer got the file but couldn't show it (ASSET_DISPLAY_FAILED and other
+ * viewer-side codes). Download is a real alternative here, unlike a server or network failure.
+ */
+export const DISPLAY_FAILED_MESSAGE = "The 3D view couldn't show this file. Downloading it may still work.";
+
+/** Job-level failures seen while polling one job, or returned by Open/Download for the record. */
 export const JOB_MESSAGES = Object.freeze({
   [ERROR_KIND.INTEGRITY]: "This concept's record failed an integrity check. It is not used and is no longer updated.",
   [ERROR_KIND.NOT_FOUND]: "This concept no longer exists.",

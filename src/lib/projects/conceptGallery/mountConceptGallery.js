@@ -50,7 +50,7 @@
  * @returns {{ refresh: () => Promise<void>, destroy: () => void, getState: () => object }}
  */
 import { CODE, FALLBACK_CONCEPT_NOTICE, MAX_BACKOFF_MS, MAX_POLL_MS, MIN_POLL_MS, isViewableFormat } from "./contract.js";
-import { ASSET_MESSAGES, ConceptAssetError, ERROR_KIND, classifyError, isAbortError, isRetryableAssetError } from "./errors.js";
+import { ASSET_MESSAGES, ConceptAssetError, DISPLAY_FAILED_MESSAGE, ERROR_KIND, classifyError, isAbortError, isRetryableAssetError } from "./errors.js";
 import { defaultFormatDate, el, pollingText, renderBody } from "./render.js";
 import { LIST_STATUS, assetKey, hasPollableJobs, initialState, reduce, snapshot } from "./state.js";
 import { CONCEPT_GALLERY_CSS, CONCEPT_GALLERY_STYLE_ID } from "./styles.js";
@@ -361,7 +361,7 @@ export function mountConceptGallery(root, options = {}) {
       const e = err instanceof ConceptAssetError ? err : new ConceptAssetError(classifyError(err), err);
       dispatch({ type: "ASSET_ERR", key, action, error: { kind: e.kind, code: e.code } });
       announce(ASSET_MESSAGES[e.kind] || ASSET_MESSAGES[ERROR_KIND.REQUEST]);
-      if (e.kind === ERROR_KIND.ASSET_NOT_READY && !destroyed) refreshOneJob(jobId);
+      afterAssetFailure(jobId, { kind: e.kind, code: e.code, status: e.status });
       throw e;
     }
   }
@@ -473,12 +473,34 @@ export function mountConceptGallery(root, options = {}) {
       return;
     }
     const c = classifyError({ name: "AssetViewerError", ...result.error });
-    const known = [ERROR_KIND.ASSET_NOT_READY, ERROR_KIND.ASSET_UNAVAILABLE, ERROR_KIND.INTEGRITY, ERROR_KIND.NOT_FOUND, ERROR_KIND.SIGNED_OUT].includes(c.kind);
-    const text = known ? ASSET_MESSAGES[c.kind] : "The 3D view couldn't show this file. Downloading it may still work.";
+    // Only a failure to *show* the file (the viewer's own REQUEST-kind codes such as
+    // ASSET_DISPLAY_FAILED) suggests Download. A server, network, sign-in or configuration
+    // failure would hit Download too, so it gets its own honest message (QE G2).
+    const known = c.kind !== ERROR_KIND.REQUEST;
+    const text = known ? ASSET_MESSAGES[c.kind] : DISPLAY_FAILED_MESSAGE;
     dispatch({ type: "ASSET_ERR", key, action: "open", error: known ? c : { kind: ERROR_KIND.REQUEST, code: result.error?.code || c.code } });
     setStatus(text, c.code);
     announce(text);
-    if (c.kind === ERROR_KIND.ASSET_NOT_READY && !destroyed) refreshOneJob(request.jobId);
+    afterAssetFailure(request.jobId, c);
+  }
+
+  /**
+   * What an Open/Download failure means for the card (QE G1). It matches the polling path:
+   * - 409 RECORD_INTEGRITY_FAILED and 404 MISSING_JOB are about the job record, not this one
+   *   file. The card becomes job-errored ("Integrity check failed" / "Not found"): no Open or
+   *   Download, never polled. The next list refresh drops the row if the server still refuses it.
+   * - 409 ASSET_NOT_READY re-checks the job once.
+   * - 410 ASSET_UNAVAILABLE stays per-file. The record is intact and the server status is still
+   *   succeeded (contract §2.5: "Scenario no longer has it"), so the card keeps its status and
+   *   just shows the message on that file. Nothing is retried automatically.
+   */
+  function afterAssetFailure(jobId, c) {
+    if (destroyed) return;
+    if (c.kind === ERROR_KIND.INTEGRITY || c.kind === ERROR_KIND.NOT_FOUND) {
+      dispatch({ type: "JOB_ERR", jobId, error: { kind: c.kind, code: c.code, status: c.status ?? null } });
+    } else if (c.kind === ERROR_KIND.ASSET_NOT_READY) {
+      refreshOneJob(jobId);
+    }
   }
 
   async function download(jobId, index) {

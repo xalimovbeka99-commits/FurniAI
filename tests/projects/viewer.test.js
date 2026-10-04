@@ -1,6 +1,6 @@
 /**
  * Open goes through an INJECTED mountAssetViewer (Asset Engineer's v2,
- * src/lib/assetViewer/mountAssetViewer.js at 42c3fa6). The fake below follows
+ * src/lib/assetViewer/mountAssetViewer.js at 42c3fa6). The fake in fixtures/fakeViewer.js follows
  * that handle's contract for creative refs: load({ jobId, index, format })
  * calls options.creativeSource.resolve() itself and resolves
  * { ok, error?, superseded?, downloadOnly? }; dispose(). The real viewer
@@ -10,46 +10,7 @@ import { describe, expect, it } from "vitest";
 import { byAttr, deferred, flush } from "./fakeDom.js";
 import { setup, button } from "./helpers.js";
 import { assetBody, errorFor, jobBody, listBody, succeededJob, CONCEPT } from "./fixtures/contractFixtures.js";
-
-function fakeViewerFactory(behaviour = async () => ({ ok: true })) {
-  const made = [];
-  const factory = (el, opts) => {
-    const v = {
-      el,
-      opts,
-      loads: [],
-      urls: [],
-      disposed: false,
-      async load(ref) {
-        v.loads.push(ref);
-        return behaviour(v, ref, opts.creativeSource);
-      },
-      dispose() {
-        v.disposed = true;
-      },
-    };
-    made.push(v);
-    return v;
-  };
-  factory.made = made;
-  return factory;
-}
-
-/** Mimics v2 creativeFlow: resolve -> display; on a display failure re-resolve once and retry once. */
-const v2Like = (displayResults) => async (v, ref, source) => {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    let d;
-    try {
-      d = await source.resolve(ref.jobId, ref.index);
-    } catch (e) {
-      return { ok: false, error: { code: e.code, serverCode: e.serverCode, status: e.status } };
-    }
-    v.urls.push(d.url);
-    const r = displayResults.length ? displayResults.shift() : "ok";
-    if (r === "ok") return { ok: true };
-  }
-  return { ok: false, error: { code: "ASSET_DISPLAY_FAILED" } };
-};
+import { fakeViewerFactory, v2Like } from "./fixtures/fakeViewer.js";
 
 function viewerSetup(behaviour, handlers = {}, extra = {}) {
   const job = succeededJob();

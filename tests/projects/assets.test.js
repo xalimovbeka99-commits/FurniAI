@@ -100,7 +100,9 @@ describe("concept gallery: asset URLs", () => {
     await expect(opened[0].resolveUrl()).rejects.toMatchObject({ name: "ConceptAssetError", code: "RECORD_INTEGRITY_FAILED", kind: "integrity" });
     await flush();
     expect(client.count("getAssetUrl")).toBe(1);
-    expect(byAttr(root, "data-asset-error", "RECORD_INTEGRITY_FAILED")[0].textContent).toMatch(/integrity check/);
+    // The record is refused, so the card becomes job-errored (no Open/Download); see assetFailures.test.js.
+    expect(byAttr(root, "data-job-error", "RECORD_INTEGRITY_FAILED")[0].textContent).toMatch(/integrity check/);
+    expect(button(root, "open")).toBeNull();
   });
 
   it("409 ASSET_NOT_READY: message, no retry, and the job's status is re-checked once", async () => {
