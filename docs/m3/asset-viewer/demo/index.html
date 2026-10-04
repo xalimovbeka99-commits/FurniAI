@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FurniAI · generated-model viewer demo (DEMO ONLY)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Import map is used only by the ?three=r166 mode (three 0.166 from node_modules).
+     The ?three=r128 mode loads the repo's vendor-three-r128.min.js as window.THREE instead. -->
+<script type="importmap">
+{ "imports": {
+  "three": "/node_modules/three/build/three.module.js",
+  "three/addons/": "/node_modules/three/examples/jsm/"
+} }
+</script>
+<style>
+  body { margin: 0; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: #e9e6e1; color: #222; }
+  header { padding: 10px 16px; background: #222; color: #fff; display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+  header b { font-size: 15px; }
+  header .tag { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #b8462e; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px; padding: 12px; }
+  #viewer { height: 460px; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+  .controls { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid #999; background: #fff; cursor: pointer; }
+  button:hover { background: #f3efe9; }
+  aside { background: #fff; border-radius: 10px; padding: 10px 12px; box-shadow: 0 1px 4px rgba(0,0,0,.15); font-size: 12px; }
+  aside h3 { margin: 4px 0 6px; font-size: 13px; }
+  pre { white-space: pre-wrap; word-break: break-word; margin: 0; font: 11px/1.35 ui-monospace, Menlo, monospace; }
+</style>
+</head>
+<body>
+<header>
+  <b>Generated-model viewer</b><span class="tag">DEMO ONLY · local fixtures · not the Studio</span>
+  <span id="mode"></span>
+</header>
+<main>
+  <section>
+    <div id="viewer"></div>
+    <div class="controls">
+      <button data-act="chair">Textured chair</button>
+      <button data-act="chair-slow">Textured chair (slow)</button>
+      <button data-act="table">Untextured table</button>
+      <button data-act="replace">Replace</button>
+      <button data-act="race">Supersede race</button>
+      <button data-act="corrupt">Corrupt file</button>
+      <button data-act="empty">Empty scene</button>
+      <button data-act="unsupported">Unsupported (.obj)</button>
+      <button data-act="fit">Fit to view</button>
+      <button data-act="clear">Clear</button>
+      <button data-act="download">Download original</button>
+      <button data-act="remount">Dispose + remount</button>
+    </div>
+  </section>
+  <aside>
+    <h3>getState()</h3>
+    <pre id="state"></pre>
+    <h3>renderer.info.memory</h3>
+    <pre id="memory"></pre>
+    <h3>events</h3>
+    <pre id="log"></pre>
+  </aside>
+</main>
+<script type="module" src="./demo.js"></script>
+</body>
+</html>
