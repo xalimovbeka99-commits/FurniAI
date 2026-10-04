@@ -108,7 +108,7 @@ async function runMode(mode) {
   r.steps.orbited = { screenshot: await shot("03-orbited"), camera: await cam(page) };
 
   // 4. zoom (wheel) — clamped by minDistance
-  await zoom(page, -250, 12);
+  await zoom(page, -120, 5);
   await settle(page, 900);
   r.steps.zoomed = { screenshot: await shot("04-zoomed"), camera: await cam(page) };
 

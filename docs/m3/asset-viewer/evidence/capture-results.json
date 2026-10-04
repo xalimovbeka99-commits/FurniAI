@@ -1,0 +1,814 @@
+{
+  "capturedAt": "2026-10-04T07:05:31.480Z",
+  "chromium": "151.0.7922.34",
+  "launchArgs": [
+    "--use-angle=swiftshader",
+    "--enable-unsafe-swiftshader",
+    "--ignore-gpu-blocklist"
+  ],
+  "modes": {
+    "r166": {
+      "steps": {
+        "loading": {
+          "screenshot": "r166-01-loading.png",
+          "state": {
+            "status": "loading",
+            "phase": "fetching",
+            "progress": {
+              "loaded": 1876,
+              "total": 5628,
+              "ratio": 0.3333333333333333
+            },
+            "error": null,
+            "asset": null,
+            "model": null
+          }
+        },
+        "texturedReady": {
+          "screenshot": "r166-02-textured-ready.png",
+          "state": {
+            "status": "ready",
+            "phase": null,
+            "progress": {
+              "loaded": 5628,
+              "total": 5628,
+              "ratio": 1
+            },
+            "error": null,
+            "asset": {
+              "source": "url",
+              "format": "glb",
+              "mime": "model/gltf-binary",
+              "filename": "chair-textured.glb",
+              "byteLength": 5628
+            },
+            "model": {
+              "meshCount": 6,
+              "triangleCount": 72,
+              "materialCount": 1,
+              "textureCount": 1,
+              "colorTextures": 1,
+              "colorTexturesSRGB": 1,
+              "animations": 0,
+              "warnings": [],
+              "proportions": {
+                "w": 0.46,
+                "h": 1,
+                "d": 0.46,
+                "normalizedTo": "largest-extent",
+                "ratioLabel": "W:H:D 0.46 : 1.00 : 0.46"
+              },
+              "scale": {
+                "kind": "inferred-relative",
+                "units": null,
+                "label": "Relative scale, not measured",
+                "note": "Generated model — dimensions not measured",
+                "declaredScaleIgnored": false
+              }
+            }
+          },
+          "memory": {
+            "geometries": 1,
+            "textures": 2
+          },
+          "pixels": {
+            "width": 764,
+            "height": 460,
+            "background": [
+              243,
+              241,
+              237
+            ],
+            "modelPixelRatio": 0.1098,
+            "modelAvgRGB": [
+              220,
+              170,
+              112
+            ]
+          },
+          "color": {
+            "map": {
+              "colorSpace": "srgb",
+              "imageType": "ImageBitmap"
+            },
+            "rendererOutput": {
+              "outputColorSpace": "srgb"
+            }
+          },
+          "camera": {
+            "position": [
+              1.1114,
+              1.1842,
+              1.5436
+            ],
+            "target": [
+              0,
+              0.505,
+              0
+            ],
+            "distance": 2.0197,
+            "near": 0.00601,
+            "far": 9.28
+          }
+        },
+        "orbited": {
+          "screenshot": "r166-03-orbited.png",
+          "camera": {
+            "position": [
+              -0.2811,
+              2.072,
+              -1.2429
+            ],
+            "target": [
+              0,
+              0.505,
+              0
+            ],
+            "distance": 2.0197,
+            "near": 0.00601,
+            "far": 9.28
+          }
+        },
+        "zoomed": {
+          "screenshot": "r166-04-zoomed.png",
+          "camera": {
+            "position": [
+              -0.2022,
+              1.6576,
+              -0.9138
+            ],
+            "target": [
+              0,
+              0.505,
+              0
+            ],
+            "distance": 1.4847,
+            "near": 0.00601,
+            "far": 9.28
+          }
+        },
+        "fit": {
+          "screenshot": "r166-05-fit.png",
+          "camera": {
+            "position": [
+              -0.2744,
+              2.073,
+              -1.2431
+            ],
+            "target": [
+              0,
+              0.505,
+              0
+            ],
+            "distance": 2.0197,
+            "near": 0.00601,
+            "far": 9.28
+          }
+        },
+        "replaced": {
+          "screenshot": "r166-06-replaced-untextured.png",
+          "state": {
+            "status": "ready",
+            "phase": null,
+            "progress": {
+              "loaded": 2588,
+              "total": 2588,
+              "ratio": 1
+            },
+            "error": null,
+            "asset": {
+              "source": "url",
+              "format": "glb",
+              "mime": "model/gltf-binary",
+              "filename": "table-untextured.glb",
+              "byteLength": 2588
+            },
+            "model": {
+              "meshCount": 5,
+              "triangleCount": 60,
+              "materialCount": 2,
+              "textureCount": 0,
+              "colorTextures": 0,
+              "colorTexturesSRGB": 0,
+              "animations": 0,
+              "warnings": [],
+              "proportions": {
+                "w": 1,
+                "h": 0.58,
+                "d": 0.55,
+                "normalizedTo": "largest-extent",
+                "ratioLabel": "W:H:D 1.00 : 0.58 : 0.55"
+              },
+              "scale": {
+                "kind": "inferred-relative",
+                "units": null,
+                "label": "Relative scale, not measured",
+                "note": "Generated model — dimensions not measured",
+                "declaredScaleIgnored": false
+              }
+            }
+          },
+          "memory": {
+            "geometries": 1,
+            "textures": 1
+          },
+          "pixels": {
+            "width": 764,
+            "height": 460,
+            "background": [
+              243,
+              241,
+              237
+            ],
+            "modelPixelRatio": 0.0347,
+            "modelAvgRGB": [
+              113,
+              113,
+              116
+            ]
+          }
+        },
+        "errorCorrupt": {
+          "screenshot": "r166-07-error-corrupt.png",
+          "state": {
+            "status": "error",
+            "phase": null,
+            "progress": null,
+            "error": {
+              "code": "PARSE_FAILED",
+              "message": "The model file appears to be damaged or incomplete and couldn't be opened.",
+              "detail": "Invalid typed array length: 2048"
+            },
+            "asset": {
+              "source": "url",
+              "format": "glb",
+              "mime": "model/gltf-binary",
+              "filename": "corrupt.glb",
+              "byteLength": 72
+            },
+            "model": null
+          },
+          "memory": {
+            "geometries": 0,
+            "textures": 1
+          }
+        },
+        "errorUnsupported": {
+          "state": {
+            "status": "error",
+            "phase": null,
+            "progress": null,
+            "error": {
+              "code": "UNSUPPORTED_FORMAT",
+              "message": "This model's file type isn't supported by the viewer yet.",
+              "detail": "\".obj\" files are not supported yet"
+            },
+            "asset": {
+              "source": "url",
+              "format": "glb",
+              "mime": "model/gltf-binary",
+              "filename": "corrupt.glb",
+              "byteLength": 72
+            },
+            "model": null
+          }
+        },
+        "errorEmpty": {
+          "state": {
+            "status": "error",
+            "phase": null,
+            "progress": null,
+            "error": {
+              "code": "EMPTY_SCENE",
+              "message": "The model file opened, but it doesn't contain anything to show.",
+              "detail": "scene contains no renderable geometry"
+            },
+            "asset": {
+              "source": "url",
+              "format": "gltf",
+              "mime": "model/gltf+json",
+              "filename": "empty-scene.gltf",
+              "byteLength": 220
+            },
+            "model": null
+          }
+        },
+        "race": {
+          "state": {
+            "status": "ready",
+            "phase": null,
+            "progress": {
+              "loaded": 2588,
+              "total": 2588,
+              "ratio": 1
+            },
+            "error": null,
+            "asset": {
+              "source": "url",
+              "format": "glb",
+              "mime": "model/gltf-binary",
+              "filename": "table-untextured.glb",
+              "byteLength": 2588
+            },
+            "model": {
+              "meshCount": 5,
+              "triangleCount": 60,
+              "materialCount": 2,
+              "textureCount": 0,
+              "colorTextures": 0,
+              "colorTexturesSRGB": 0,
+              "animations": 0,
+              "warnings": [],
+              "proportions": {
+                "w": 1,
+                "h": 0.58,
+                "d": 0.55,
+                "normalizedTo": "largest-extent",
+                "ratioLabel": "W:H:D 1.00 : 0.58 : 0.55"
+              },
+              "scale": {
+                "kind": "inferred-relative",
+                "units": null,
+                "label": "Relative scale, not measured",
+                "note": "Generated model — dimensions not measured",
+                "declaredScaleIgnored": false
+              }
+            }
+          },
+          "memory": {
+            "geometries": 1,
+            "textures": 1
+          }
+        },
+        "download": {
+          "filename": "table-untextured.glb",
+          "mime": "model/gltf-binary",
+          "byteLength": 2588,
+          "identicalToFixture": true
+        },
+        "clear": {
+          "memory": {
+            "geometries": 0,
+            "textures": 1
+          },
+          "state": {
+            "status": "idle",
+            "phase": null,
+            "progress": null,
+            "error": null,
+            "asset": null,
+            "model": null
+          }
+        },
+        "dispose": {
+          "before": {
+            "geometries": 1,
+            "textures": 2
+          },
+          "after": {
+            "geometries": 0,
+            "textures": 0
+          },
+          "contextLost": true,
+          "canvasDetached": true,
+          "oldStatus": "disposed",
+          "remountedStatus": "idle"
+        },
+        "afterRemount": {
+          "pixels": {
+            "width": 764,
+            "height": 460,
+            "background": [
+              243,
+              241,
+              237
+            ],
+            "modelPixelRatio": 0.1098,
+            "modelAvgRGB": [
+              220,
+              170,
+              112
+            ]
+          }
+        }
+      },
+      "consoleErrors": [],
+      "webgl": {
+        "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+        "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+      },
+      "capabilities": {
+        "threeRevision": 166,
+        "colorManagement": "colorSpace",
+        "controls": true,
+        "environment": "room-pmrem",
+        "formats": [
+          "glb",
+          "gltf"
+        ]
+      }
+    },
+    "r128": {
+      "steps": {
+        "loading": {
+          "screenshot": "r128-01-loading.png",
+          "state": {
+            "status": "loading",
+            "phase": "fetching",
+            "progress": {
+              "loaded": 3752,
+              "total": 5628,
+              "ratio": 0.6666666666666666
+            },
+            "error": null,
+            "asset": null,
+            "model": null
+          }
+        },
+        "texturedReady": {
+          "screenshot": "r128-02-textured-ready.png",
+          "state": {
+            "status": "ready",
+            "phase": null,
+            "progress": {
+              "loaded": 5628,
+              "total": 5628,
+              "ratio": 1
+            },
+            "error": null,
+            "asset": {
+              "source": "url",
+              "format": "glb",
+              "mime": "model/gltf-binary",
+              "filename": "chair-textured.glb",
+              "byteLength": 5628
+            },
+            "model": {
+              "meshCount": 6,
+              "triangleCount": 72,
+              "materialCount": 1,
+              "textureCount": 1,
+              "colorTextures": 1,
+              "colorTexturesSRGB": 1,
+              "animations": 0,
+              "warnings": [],
+              "proportions": {
+                "w": 0.46,
+                "h": 1,
+                "d": 0.46,
+                "normalizedTo": "largest-extent",
+                "ratioLabel": "W:H:D 0.46 : 1.00 : 0.46"
+              },
+              "scale": {
+                "kind": "inferred-relative",
+                "units": null,
+                "label": "Relative scale, not measured",
+                "note": "Generated model — dimensions not measured",
+                "declaredScaleIgnored": false
+              }
+            }
+          },
+          "memory": {
+            "geometries": 2,
+            "textures": 2
+          },
+          "pixels": {
+            "width": 764,
+            "height": 460,
+            "background": [
+              243,
+              241,
+              237
+            ],
+            "modelPixelRatio": 0.1098,
+            "modelAvgRGB": [
+              221,
+              172,
+              115
+            ]
+          },
+          "color": {
+            "map": {
+              "encoding": 3001,
+              "imageType": "ImageBitmap"
+            },
+            "rendererOutput": {
+              "outputEncoding": 3001
+            }
+          },
+          "camera": {
+            "position": [
+              1.1114,
+              1.1842,
+              1.5436
+            ],
+            "target": [
+              0,
+              0.505,
+              0
+            ],
+            "distance": 2.0197,
+            "near": 0.00601,
+            "far": 9.28
+          }
+        },
+        "orbited": {
+          "screenshot": "r128-03-orbited.png",
+          "camera": {
+            "position": [
+              -0.2811,
+              2.072,
+              -1.2429
+            ],
+            "target": [
+              0,
+              0.505,
+              0
+            ],
+            "distance": 2.0197,
+            "near": 0.00601,
+            "far": 9.28
+          }
+        },
+        "zoomed": {
+          "screenshot": "r128-04-zoomed.png",
+          "camera": {
+            "position": [
+              -0.2129,
+              1.7182,
+              -0.9619
+            ],
+            "target": [
+              0,
+              0.505,
+              0
+            ],
+            "distance": 1.5628,
+            "near": 0.00601,
+            "far": 9.28
+          }
+        },
+        "fit": {
+          "screenshot": "r128-05-fit.png",
+          "camera": {
+            "position": [
+              -0.2744,
+              2.073,
+              -1.2431
+            ],
+            "target": [
+              0,
+              0.505,
+              0
+            ],
+            "distance": 2.0197,
+            "near": 0.00601,
+            "far": 9.28
+          }
+        },
+        "replaced": {
+          "screenshot": "r128-06-replaced-untextured.png",
+          "state": {
+            "status": "ready",
+            "phase": null,
+            "progress": {
+              "loaded": 2588,
+              "total": 2588,
+              "ratio": 1
+            },
+            "error": null,
+            "asset": {
+              "source": "url",
+              "format": "glb",
+              "mime": "model/gltf-binary",
+              "filename": "table-untextured.glb",
+              "byteLength": 2588
+            },
+            "model": {
+              "meshCount": 5,
+              "triangleCount": 60,
+              "materialCount": 2,
+              "textureCount": 0,
+              "colorTextures": 0,
+              "colorTexturesSRGB": 0,
+              "animations": 0,
+              "warnings": [],
+              "proportions": {
+                "w": 1,
+                "h": 0.58,
+                "d": 0.55,
+                "normalizedTo": "largest-extent",
+                "ratioLabel": "W:H:D 1.00 : 0.58 : 0.55"
+              },
+              "scale": {
+                "kind": "inferred-relative",
+                "units": null,
+                "label": "Relative scale, not measured",
+                "note": "Generated model — dimensions not measured",
+                "declaredScaleIgnored": false
+              }
+            }
+          },
+          "memory": {
+            "geometries": 2,
+            "textures": 1
+          },
+          "pixels": {
+            "width": 764,
+            "height": 460,
+            "background": [
+              243,
+              241,
+              237
+            ],
+            "modelPixelRatio": 0.0347,
+            "modelAvgRGB": [
+              117,
+              117,
+              120
+            ]
+          }
+        },
+        "errorCorrupt": {
+          "screenshot": "r128-07-error-corrupt.png",
+          "state": {
+            "status": "error",
+            "phase": null,
+            "progress": null,
+            "error": {
+              "code": "PARSE_FAILED",
+              "message": "The model file appears to be damaged or incomplete and couldn't be opened.",
+              "detail": "Invalid typed array length: 2048"
+            },
+            "asset": {
+              "source": "url",
+              "format": "glb",
+              "mime": "model/gltf-binary",
+              "filename": "corrupt.glb",
+              "byteLength": 72
+            },
+            "model": null
+          },
+          "memory": {
+            "geometries": 1,
+            "textures": 1
+          }
+        },
+        "errorUnsupported": {
+          "state": {
+            "status": "error",
+            "phase": null,
+            "progress": null,
+            "error": {
+              "code": "UNSUPPORTED_FORMAT",
+              "message": "This model's file type isn't supported by the viewer yet.",
+              "detail": "\".obj\" files are not supported yet"
+            },
+            "asset": {
+              "source": "url",
+              "format": "glb",
+              "mime": "model/gltf-binary",
+              "filename": "corrupt.glb",
+              "byteLength": 72
+            },
+            "model": null
+          }
+        },
+        "errorEmpty": {
+          "state": {
+            "status": "error",
+            "phase": null,
+            "progress": null,
+            "error": {
+              "code": "EMPTY_SCENE",
+              "message": "The model file opened, but it doesn't contain anything to show.",
+              "detail": "scene contains no renderable geometry"
+            },
+            "asset": {
+              "source": "url",
+              "format": "gltf",
+              "mime": "model/gltf+json",
+              "filename": "empty-scene.gltf",
+              "byteLength": 220
+            },
+            "model": null
+          }
+        },
+        "race": {
+          "state": {
+            "status": "ready",
+            "phase": null,
+            "progress": {
+              "loaded": 2588,
+              "total": 2588,
+              "ratio": 1
+            },
+            "error": null,
+            "asset": {
+              "source": "url",
+              "format": "glb",
+              "mime": "model/gltf-binary",
+              "filename": "table-untextured.glb",
+              "byteLength": 2588
+            },
+            "model": {
+              "meshCount": 5,
+              "triangleCount": 60,
+              "materialCount": 2,
+              "textureCount": 0,
+              "colorTextures": 0,
+              "colorTexturesSRGB": 0,
+              "animations": 0,
+              "warnings": [],
+              "proportions": {
+                "w": 1,
+                "h": 0.58,
+                "d": 0.55,
+                "normalizedTo": "largest-extent",
+                "ratioLabel": "W:H:D 1.00 : 0.58 : 0.55"
+              },
+              "scale": {
+                "kind": "inferred-relative",
+                "units": null,
+                "label": "Relative scale, not measured",
+                "note": "Generated model — dimensions not measured",
+                "declaredScaleIgnored": false
+              }
+            }
+          },
+          "memory": {
+            "geometries": 2,
+            "textures": 1
+          }
+        },
+        "download": {
+          "filename": "table-untextured.glb",
+          "mime": "model/gltf-binary",
+          "byteLength": 2588,
+          "identicalToFixture": true
+        },
+        "clear": {
+          "memory": {
+            "geometries": 1,
+            "textures": 1
+          },
+          "state": {
+            "status": "idle",
+            "phase": null,
+            "progress": null,
+            "error": null,
+            "asset": null,
+            "model": null
+          }
+        },
+        "dispose": {
+          "before": {
+            "geometries": 2,
+            "textures": 2
+          },
+          "after": {
+            "geometries": 1,
+            "textures": 0
+          },
+          "contextLost": true,
+          "canvasDetached": true,
+          "oldStatus": "disposed",
+          "remountedStatus": "idle"
+        },
+        "afterRemount": {
+          "pixels": {
+            "width": 764,
+            "height": 460,
+            "background": [
+              243,
+              241,
+              237
+            ],
+            "modelPixelRatio": 0.1098,
+            "modelAvgRGB": [
+              221,
+              172,
+              115
+            ]
+          }
+        }
+      },
+      "consoleErrors": [],
+      "webgl": {
+        "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+        "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+      },
+      "capabilities": {
+        "threeRevision": 128,
+        "colorManagement": "encoding",
+        "controls": true,
+        "environment": "room-pmrem",
+        "formats": [
+          "glb",
+          "gltf"
+        ]
+      }
+    }
+  },
+  "video": "asset-viewer-r166.webm"
+}
