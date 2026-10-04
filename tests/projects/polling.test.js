@@ -11,7 +11,7 @@ const tick = async (ms) => {
 };
 
 describe("concept gallery: polling", () => {
-  // Scoped here (not file level) so the src/ collector doesn't fake timers for other suites.
+  // Scoped here (not file level) so fake timers never leak into other suites in a shared run.
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
   it("polls getJob for each non-terminal job every interval, and stops when all are terminal", async () => {

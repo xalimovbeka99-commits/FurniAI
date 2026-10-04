@@ -169,7 +169,7 @@ The bundle imports no client, no viewer and no fixtures. Mounting needs the asse
 ## 9. Tests and evidence
 
 - `npx vitest run --config tests/projects/vitest.config.js` runs 8 files and 90 tests. The root
-  `npx vitest run` collects them through `conceptGallery.collect.test.js` (see "Running the tests"
+  `npx vitest run` picks them up once Integration adds the root include (see "Running the tests"
   below). All hooks are scoped inside `describe()`, so fake timers and stubs don't leak.
 - `assetFailures.test.js` covers QE G1 and G2: integrity or missing-job from Download, from Open
   through the viewer, and from `onOpenConcept`'s `resolveUrl()`. It also covers the lock across
@@ -198,18 +198,22 @@ The bundle imports no client, no viewer and no fixtures. Mounting needs the asse
 
 ### Running the tests
 
-The root `vitest.config.js` include list (Integration-owned) does not cover `tests/projects/**`.
-Until it does, the collector **`src/lib/projects/conceptGallery/conceptGallery.collect.test.js`**
-imports every suite, so they run from the root. Proposed line for CraZy, added to `test.include`
-in the root `vitest.config.js` after `"tests/contract/**/*.test.js",`:
+```
+npx vitest run --config tests/projects/vitest.config.js   # the concept-gallery suites
+npx vitest run                                            # root suite
+```
+
+The collector `src/lib/projects/conceptGallery/conceptGallery.collect.test.js` has been
+**deleted** on this branch. Integration handles the root include: CraZy adds this line to
+`test.include` in the root `vitest.config.js` (after `"tests/contract/**/*.test.js",`) in an
+integration commit, and merges it together with this branch:
 
 ```js
       "tests/projects/**/*.test.js",
 ```
 
-**Delete the collector in the same integration commit that adds this line.** Otherwise every
-concept-gallery suite runs twice from the root (no failure, just duplicates). Until then, keep the
-collector and don't add the line on its own.
+Until that include lands, the root `npx vitest run` **skips `tests/projects/**`**. That is
+expected. Use the `--config tests/projects/vitest.config.js` command above for these suites.
 
 ### QE review fixes (after 34f80a7)
 
