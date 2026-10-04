@@ -55,9 +55,10 @@ window.addEventListener('error', function(e){
 <script src="/designs-api-client.js"></script>
 <style>
 :root{
-  --paper:#FAF9F5; --paper-2:#F4F2EB; --paper-3:#EAE5D9;
-  --ink:#1C1E21; --ink-soft:#5C626E;
-  --brass:#00B4D8; --brass-bright:#00D2F4; --walnut:#C5A880;
+  --paper:#FAF9F5; --paper-2:#F4F1EA; --paper-3:#EAE5D9;
+  --ink:#1C1E21; --ink-soft:#4A505A;
+  --bek-green:#1B4D3E; --bek-green-hover:#133D30; --bek-green-light:#EBF3EF; --bek-green-border:#9DC3B1;
+  --brass:#1B4D3E; --brass-bright:#236551; --walnut:#A38258;
   --line:#DFD9CC; --line-soft:#EDE8DC; --r:14px;
 }
 *{margin:0;padding:0;box-sizing:border-box}
@@ -289,9 +290,13 @@ footer ul a:hover{opacity:1;color:var(--brass)}
   .b-tab-full{display:none}
   .b-tab-short{display:inline}
   .b-tab{white-space:nowrap}
-  .wrap{padding:0 20px}
-  header{padding:13px 20px}
-  .hero h1{font-size:clamp(2.2rem,6.6vw,4rem)}
+  .wrap{padding:0 16px;max-width:100%;overflow-x:hidden}
+  header{padding:13px 16px}
+  .hero{padding:110px 0 50px}
+  .hero-grid{grid-template-columns:1fr;gap:28px}
+  .hero h1{font-size:clamp(2rem,6vw,3.2rem)}
+  .stage-shell{max-width:100%!important;width:100%;margin:0 auto}
+  .spec-strip{gap:16px}
   .gallery-grid{grid-template-columns:1fr}
   .pipeline{grid-template-columns:1fr}
   .mats{grid-template-columns:repeat(2,1fr)}
@@ -516,6 +521,476 @@ footer ul a:hover{opacity:1;color:var(--brass)}
   .ai-refine-chip { min-height: 36px; padding: 6px 12px; }
 }
 
+/* ── Redesign: Creation Mode Switcher (Build to Sizes vs. Reference) ── */
+.studio-mode-pill {
+  display: inline-flex;
+  align-items: center;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 100px;
+  padding: 3px;
+  gap: 3px;
+}
+.studio-mode-btn {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  padding: 6px 14px;
+  border-radius: 100px;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.studio-mode-btn:hover {
+  color: var(--ink);
+}
+.studio-mode-btn.active {
+  background: var(--bek-green);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(27, 77, 62, 0.25);
+}
+
+/* ── Redesign: Reference Creation Panel ── */
+.ref-creation-panel {
+  display: none;
+  padding: 4px 0 16px;
+}
+.ref-creation-panel.active {
+  display: block;
+}
+.ref-dropzone {
+  border: 1.5px dashed var(--line);
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 16px 14px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.ref-dropzone:hover, .ref-dropzone.dragover {
+  border-color: var(--bek-green);
+  background: var(--bek-green-light);
+}
+.ref-dropzone .rd-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+.ref-dropzone .rd-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.ref-dropzone .rd-sub {
+  font-size: 10.5px;
+  color: var(--ink-soft);
+}
+.ref-preview-box {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  max-height: 170px;
+  background: #000;
+}
+.ref-preview-box img {
+  width: 100%;
+  height: 100%;
+  max-height: 170px;
+  object-fit: cover;
+  display: block;
+}
+.ref-preview-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(28, 30, 33, 0.8);
+  color: #fff;
+  border: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+}
+.ref-concepts-stream {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ref-concept-card {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(28, 30, 33, 0.04);
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+}
+.ref-concept-card:hover {
+  border-color: var(--bek-green);
+  box-shadow: 0 8px 24px rgba(27, 77, 62, 0.12);
+}
+.ref-concept-card img {
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  display: block;
+}
+.ref-concept-meta {
+  padding: 12px 14px;
+}
+.ref-concept-title {
+  font-family: 'Fraunces', serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.ref-concept-tags {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  color: var(--ink-soft);
+  margin-bottom: 10px;
+}
+.ref-apply-btn {
+  width: 100%;
+  justify-content: center;
+  background: var(--bek-green);
+  border-color: var(--bek-green);
+  color: #fff;
+  font-size: 11.5px;
+}
+.ref-apply-btn:hover {
+  background: var(--bek-green-hover);
+  border-color: var(--bek-green-hover);
+}
+
+/* ── Redesign: Top Bar Actions in Studio ── */
+.b-top {
+  padding: 10px 20px;
+  background: var(--paper-translucent, rgba(250, 249, 245, 0.95));
+}
+.b-top-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.b-top-center {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.b-top-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.project-name-input {
+  font-family: 'Fraunces', serif;
+  font-size: 1.15rem;
+  font-weight: 600;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--ink);
+  padding: 2px 6px;
+  outline: none;
+  transition: border-color 0.18s;
+  max-width: 220px;
+}
+.project-name-input:focus {
+  border-color: var(--line);
+  background: #fff;
+}
+
+/* ── Redesign: Catalog Filters ── */
+.catalog-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+  align-items: center;
+}
+.cat-filter-btn {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 8px 16px;
+  border-radius: 100px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.cat-filter-btn:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+.cat-filter-btn.active {
+  background: var(--bek-green);
+  border-color: var(--bek-green);
+  color: #ffffff;
+}
+.card .card-customize-btn {
+  width: 100%;
+  margin-top: 10px;
+  justify-content: center;
+  font-size: 11.5px;
+  padding: 8px 12px;
+  background: var(--ink);
+  color: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: 100px;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.card:hover .card-customize-btn {
+  background: var(--bek-green);
+  border-color: var(--bek-green);
+}
+
+/* ── Redesign: Home Visual Showcase ── */
+.home-showcase {
+  padding: 40px 0 80px;
+}
+.home-showcase-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+.showcase-card {
+  background: #ffffff;
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  overflow: hidden;
+  transition: transform 0.25s, box-shadow 0.25s, border-color 0.25s;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+}
+.showcase-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 36px -16px rgba(27, 77, 62, 0.22);
+  border-color: var(--bek-green);
+}
+.showcase-card img {
+  width: 100%;
+  aspect-ratio: 4/3;
+  object-fit: cover;
+  display: block;
+}
+.showcase-card .sc-body {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.showcase-card .sc-tag {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bek-green);
+  margin-bottom: 4px;
+}
+.showcase-card h4 {
+  font-family: 'Fraunces', serif;
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--ink);
+}
+.showcase-card p {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  line-height: 1.45;
+  margin-bottom: 12px;
+  flex: 1;
+}
+.showcase-card .sc-action {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  color: var(--bek-green);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+@media(max-width:1000px){
+  .home-showcase-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media(max-width:680px){
+  .home-showcase-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Redesign: My Designs / Projects View ── */
+.projects-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 28px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--paper-translucent, rgba(250, 249, 245, 0.94));
+  backdrop-filter: blur(12px);
+}
+.projects-header-bar .ph-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.projects-header-bar .ph-title {
+  font-family: 'Fraunces', serif;
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+.projects-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 24px 60px;
+  height: calc(100% - 72px);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+.projects-empty-card {
+  background: var(--paper-2);
+  border: 1.5px dashed var(--line);
+  border-radius: 18px;
+  padding: 56px 28px;
+  text-align: center;
+  max-width: 480px;
+  margin: 40px auto;
+}
+.projects-empty-card .pec-icon {
+  font-size: 36px;
+  margin-bottom: 12px;
+}
+.projects-empty-card h3 {
+  font-family: 'Fraunces', serif;
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--ink);
+}
+.projects-empty-card p {
+  font-size: 13.5px;
+  color: var(--ink-soft);
+  margin-bottom: 22px;
+  line-height: 1.55;
+}
+.project-card {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+.project-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.06);
+  border-color: var(--bek-green);
+}
+.project-card .pc-thumb {
+  aspect-ratio: 16/10;
+  border-radius: 8px;
+  background: radial-gradient(120% 100% at 50% 30%, #FAF9F5 0%, #EDE8DC 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+}
+.project-card .pc-thumb svg, .project-card .pc-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.project-card .pc-name {
+  font-family: 'Fraunces', serif;
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ink);
+  margin-bottom: 4px;
+  padding-right: 28px;
+}
+.project-card .pc-meta {
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-bottom: 10px;
+}
+.project-card .pc-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+.project-card .pc-open-btn {
+  flex: 1;
+  padding: 7px 12px;
+  font-size: 11px;
+  border-radius: 100px;
+  background: var(--ink);
+  color: var(--paper);
+  border: 1px solid var(--ink);
+  cursor: pointer;
+  font-family: 'Space Mono', monospace;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background 0.18s;
+}
+.project-card:hover .pc-open-btn {
+  background: var(--bek-green);
+  border-color: var(--bek-green);
+}
+.project-card .pc-del {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: none;
+  border: none;
+  color: #991b1b;
+  cursor: pointer;
+  font-size: 15px;
+  opacity: 0.55;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: all 0.18s;
+}
+.project-card .pc-del:hover {
+  opacity: 1;
+  background: #fef2f2;
+}
+
 </style>
 </head>
 <body>
@@ -530,9 +1005,9 @@ footer ul a:hover{opacity:1;color:var(--brass)}
     <a href="#built" class="lnk">Built to spec</a>
     <a href="#materials" class="lnk">Materials</a>
     <div class="nav-cta">
-      <button class="btn" id="createWithFurniAiNavBtn" onclick="go('#/build/ai-wardrobe')">Design with AI <span class="arr">→</span></button>
-      <a href="#gallery" class="btn ghost">Browse</a>
-      <button class="btn ghost" onclick="go('#/build/0')">Start designing</button>
+      <button class="btn" id="createWithFurniAiNavBtn" onclick="go('#/build/ai-wardrobe')">Start designing <span class="arr">→</span></button>
+      <a href="#gallery" class="btn ghost">Browse catalog</a>
+      <button class="btn ghost" onclick="go('#/build/0')">Configurator</button>
       <button class="btn ghost" id="authBtn" onclick="openAuthModal()">Sign in</button>
       <div class="auth-userbar" id="authUserBar" hidden>
         <span class="auth-name" id="authUserName"></span>
@@ -547,13 +1022,13 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 <section class="hero wrap">
   <div class="hero-grid">
     <div>
-      <span class="eyebrow reveal">Custom furniture · UAE workshop</span>
+      <span class="eyebrow reveal">Custom furniture · Made to your millimetre</span>
       <h1 class="reveal">Furniture you can <em>measure</em> before it exists.</h1>
-      <p class="lede reveal">Pick a piece, shape it on screen — width, doors, drawers, finish — and watch the model update with it. What you approve is cut to the millimetre in our workshop. Same look, made to your measurements.</p>
+      <p class="lede reveal">Describe your space or upload a reference. Watch your bespoke furniture take shape in interactive 3D, customize dimensions and materials, and receive exact workshop blueprints. Same look, made to your measurements.</p>
       <div class="hero-actions reveal">
-        <button class="btn lg" id="createWithFurniAiHeroBtn" onclick="go('#/build/ai-wardrobe')">✦ Design with AI <span class="arr">→</span></button>
-        <button class="btn ghost lg" id="designWithAiSecondaryBtn" onclick="startAIDesigner()">✦ Design with AI</button>
-        <button class="btn ghost lg" onclick="go('#/build/0')">Browse the catalog</button>
+        <button class="btn lg" id="createWithFurniAiHeroBtn" onclick="go('#/build/ai-wardrobe')">✦ Start designing <span class="arr">→</span></button>
+        <button class="btn ghost lg" id="designWithAiSecondaryBtn" onclick="go('#/build/ai-wardrobe')">✦ Design with AI</button>
+        <a href="#gallery" class="btn ghost lg">Browse catalog</a>
       </div>
       <div class="spec-strip reveal">
         <div class="item"><span class="n">8</span><span class="l">Type families</span></div>
@@ -585,17 +1060,77 @@ footer ul a:hover{opacity:1;color:var(--brass)}
     <p>Four steps. You handle the first three on screen; the workshop handles the last. No one re-draws your design in between.</p>
   </div>
   <div class="pipeline reveal">
-    <div class="step"><span class="num">01</span><h3>Browse</h3><p>Open the gallery of wardrobes, kitchens, walk-ins and more. Filter by room, style and size.</p><span class="ai">AI helps you find it</span></div>
-    <div class="step"><span class="num">02</span><h3>Customise</h3><p>Adjust width, height, depth, doors, drawers, handles and finish. The 3D model updates on every change.</p><span class="ai no">No AI — exact maths</span></div>
-    <div class="step"><span class="num">03</span><h3>Review &amp; lock</h3><p>Lock the design. The exact configuration you reviewed is frozen to your order — nothing drifts after.</p><span class="ai no">No AI — frozen config</span></div>
-    <div class="step"><span class="num">04</span><h3>We build</h3><p>The system generates a cut list and a production pack in millimetres. The workshop cuts, drills and assembles.</p><span class="ai no">No AI — deterministic</span></div>
+    <div class="step"><span class="num">01</span><h3>Describe or browse</h3><p>Describe your furniture in plain words, upload a reference photo, or pick from our buildable catalog.</p><span class="ai">Visual concepts &amp; specs</span></div>
+    <div class="step"><span class="num">02</span><h3>Customise in 3D</h3><p>Adjust width, height, depth, doors, drawers, handles and finish. The 3D model updates on every change.</p><span class="ai no">Exact maths · no guess</span></div>
+    <div class="step"><span class="num">03</span><h3>Review &amp; save</h3><p>Lock your measurements and save to your account. Everything you see is frozen directly to your order.</p><span class="ai no">Durable configuration</span></div>
+    <div class="step"><span class="num">04</span><h3>We build</h3><p>The system generates vector blueprints and cut lists in millimetres. The workshop cuts, drills and assembles.</p><span class="ai no">Deterministic production</span></div>
   </div>
 </section>
 
-<section class="pad wrap" id="gallery" style="padding-top:30px">
+<!-- Furniture Examples Showcase -->
+<section class="home-showcase wrap" id="examples">
   <div class="sec-head reveal">
-    <h2>Start from a piece that's <em>already buildable</em>.</h2>
+    <div>
+      <span class="eyebrow">Realised designs</span>
+      <h2>Crafted to your <em>millimetre</em>.</h2>
+    </div>
+    <p>Every concept can be opened in the Studio and sized to your room. From minimalist fluted oak to smoked glass walk-ins.</p>
+  </div>
+  <div class="home-showcase-grid reveal">
+    <div class="showcase-card" onclick="go('#/build/ai-wardrobe')">
+      <img src="/images/glass-wardrobe.jpg" alt="Smoked Glass Walk-in Wardrobe">
+      <div class="sc-body">
+        <span class="sc-tag">Wardrobe · Glass &amp; Aluminum</span>
+        <h4>Smoked Glass Dressing Suite</h4>
+        <p>Integrated vertical warm LED lighting, bronze slimline frames, and custom shelf spans.</p>
+        <span class="sc-action">Customise in Studio →</span>
+      </div>
+    </div>
+    <div class="showcase-card" onclick="go('#/build/ai-wardrobe')">
+      <img src="/images/kitchen-island.jpg" alt="Modern Island Kitchen">
+      <div class="sc-body">
+        <span class="sc-tag">Kitchen · Architectural</span>
+        <h4>Oak &amp; Stone Island Kitchen</h4>
+        <p>Seamless soft-close runs, waterfall counter clearance, and built-in appliance bays.</p>
+        <span class="sc-action">Customise in Studio →</span>
+      </div>
+    </div>
+    <div class="showcase-card" onclick="go('#/build/ai-wardrobe')">
+      <img src="/images/l-wardrobe.jpg" alt="Built-in L-Wardrobe">
+      <div class="sc-body">
+        <span class="sc-tag">Wardrobe · Built-In</span>
+        <h4>L-Corner Architectural Wardrobe</h4>
+        <p>Continuous floor-to-ceiling fitment with generous hanging zones and hidden plinths.</p>
+        <span class="sc-action">Customise in Studio →</span>
+      </div>
+    </div>
+    <div class="showcase-card" onclick="go('#/build/ai-wardrobe')">
+      <img src="/images/wardrobe-grey.jpg" alt="Minimalist Grey Wardrobe">
+      <div class="sc-body">
+        <span class="sc-tag">Wardrobe · Minimalist</span>
+        <h4>Matte Charcoal 4-Door Unit</h4>
+        <p>Minimalist push-to-open doors, symmetric interior divisions, and solid shelving.</p>
+        <span class="sc-action">Customise in Studio →</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="pad wrap" id="gallery" style="padding-top:20px">
+  <div class="sec-head reveal">
+    <div>
+      <span class="eyebrow">Template gallery</span>
+      <h2>Start from a piece that's <em>already buildable</em>.</h2>
+    </div>
     <p>Every item is a real, manufacturable template. Open one, make it yours, and it stays buildable the whole way through.</p>
+  </div>
+  <div class="catalog-filters reveal">
+    <button type="button" class="cat-filter-btn active" data-cat="all" onclick="filterGallery('all', this)">All pieces</button>
+    <button type="button" class="cat-filter-btn" data-cat="wardrobe" onclick="filterGallery('wardrobe', this)">Wardrobes</button>
+    <button type="button" class="cat-filter-btn" data-cat="kitchen" onclick="filterGallery('kitchen', this)">Kitchens</button>
+    <button type="button" class="cat-filter-btn" data-cat="tv" onclick="filterGallery('tv', this)">TV Units</button>
+    <button type="button" class="cat-filter-btn" data-cat="vanity" onclick="filterGallery('vanity', this)">Vanities</button>
+    <button type="button" class="cat-filter-btn" data-cat="bookshelf" onclick="filterGallery('bookshelf', this)">Bookshelves</button>
   </div>
   <div class="gallery-grid" id="galleryGrid"></div>
 </section>
@@ -685,9 +1220,13 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 <!-- ===================== BUILDER ===================== -->
 <div id="view-builder" hidden>
   <div class="b-top">
-    <div class="left">
-      <div class="b-back" onclick="go('#/')">← <span>Gallery</span></div>
-      <div class="b-title"><span class="t" id="bType">wardrobe</span><span id="bName">Glass Wardrobe</span></div>
+    <div class="b-top-left">
+      <div class="b-back" onclick="go('#/')">← <span>Back</span></div>
+      <div class="b-title"><span class="t" id="bType">wardrobe</span><span id="bName">Custom Wardrobe</span></div>
+      <div class="studio-mode-pill">
+        <button type="button" class="studio-mode-btn active" id="btnModeSizes" onclick="setStudioCreationMode('sizes')">✦ Build to my sizes</button>
+        <button type="button" class="studio-mode-btn" id="btnModeRef" onclick="setStudioCreationMode('reference')">📷 Create from a reference</button>
+      </div>
     </div>
     <div id="parametricBadge" class="parametric-badge" hidden>
       <span class="p-tag">PARAMETRIC PARTGRAPH</span>
@@ -697,10 +1236,11 @@ footer ul a:hover{opacity:1;color:var(--brass)}
       <span class="p-pill">WORKSHOP REVIEW</span>
       <span class="p-pill alert">CNC: NOT QUALIFIED</span>
     </div>
-    <div class="b-nav">
+    <div class="b-nav b-top-right">
+      <button type="button" class="btn sm ghost" id="btnTopUndo" onclick="var u=document.getElementById('btnUndoEdit');if(u)u.click();" title="Undo last edit">↶ Undo</button>
       <div class="b-export-group">
         <button class="btn sm ghost" id="btnMfgDropdown" onclick="toggleMfgMenu(event)" title="Manufacturing Blueprints &amp; CNC Export" style="display:inline-flex;align-items:center;gap:6px;">
-          <span>⚡ Manufacturing &amp; Blueprints</span>
+          <span>⚡ Download &amp; Blueprints</span>
           <span style="font-size:9px;opacity:0.7;">▼</span>
         </button>
         <div id="mfgMenuDropdown" class="mfg-menu-dropdown">
@@ -714,7 +1254,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
           <button type="button" class="mfg-menu-item" id="btnShowNestingReport" onclick="handleShowNestingReport()">📋 Nesting Report</button>
         </div>
       </div>
-      <button class="btn sm ghost" id="createWithFurniAiBldBtn" onclick="go('#/build/ai-wardrobe')" style="margin-right:8px">✧ Design with AI</button>
+      <button class="btn sm ghost" id="createWithFurniAiBldBtn" onclick="go('#/build/ai-wardrobe')" style="margin-right:8px;display:none;">✧ Design with AI</button>
       <button class="b-nav-btn" id="bPrev">◀</button><span class="b-nav-pos" id="bPos">1 / 10</span><button class="b-nav-btn" id="bNext">▶</button>
     </div>
   </div>
@@ -815,6 +1355,39 @@ footer ul a:hover{opacity:1;color:var(--brass)}
           <button class="btn sm ghost btn-edit-answers" id="btnEditAnswers" style="width:100%;margin-bottom:6px;justify-content:center;">Edit design (invalidates approval)</button>
           <button class="btn sm ghost" id="btnStartNewWardrobe" style="width:100%;justify-content:center;">Start New Wardrobe</button>
         </div>
+      </div>
+
+      <!-- Reference Visual Concept Creation Panel (Create from a reference) -->
+      <div id="referenceCreationPanel" class="ref-creation-panel">
+        <div class="ai-w-title">Create from a photo or reference</div>
+        <p style="font-size:12px;color:var(--ink-soft);line-height:1.45;margin-bottom:12px;">Upload a reference photo, architectural sketch, or describe the look you love. We'll generate realistic visual concepts.</p>
+        
+        <input type="file" id="refImageInput" accept="image/*" style="display:none;" onchange="handleRefImageUpload(event)">
+        <div class="ref-dropzone" id="refDropzone" onclick="document.getElementById('refImageInput').click()">
+          <span class="rd-icon">📷</span>
+          <span class="rd-title">Upload photo or sketch</span>
+          <span class="rd-sub">Drag &amp; drop or click to browse · PNG, JPG, WEBP</span>
+        </div>
+        <div class="ref-preview-box" id="refImagePreview" style="display:none;">
+          <img id="refImageThumb" src="" alt="Reference photo">
+          <button type="button" class="ref-preview-remove" id="refImageRemove" onclick="clearRefImage(event)">✕</button>
+        </div>
+
+        <div style="font-size:10px;color:var(--ink-soft);margin-bottom:4px;font-family:'Space Mono',monospace;text-transform:uppercase;">Style &amp; Room Notes</div>
+        <textarea id="refPromptInput" class="ai-w-textarea" rows="2" placeholder="e.g. Modern Japandi fluted oak wardrobe with warm LED niches and bronze profiles..."></textarea>
+        
+        <div style="margin:8px 0 10px;">
+          <span style="font-size:10px;color:var(--ink-soft);display:block;margin-bottom:5px;font-family:'Space Mono',monospace;text-transform:uppercase;">Inspiration styles:</span>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <button type="button" class="ai-w-example-chip" onclick="fillRefPrompt('Minimalist Smoked Glass Dressing Suite with bronze slimline profiles and integrated 2700K warm LED lighting.')">✦ Smoked Glass Dressing Suite</button>
+            <button type="button" class="ai-w-example-chip" onclick="fillRefPrompt('Modern Japandi Natural Oak Wardrobe with fluted vertical accents and integrated full-height storage.')">✦ Japandi Natural Oak Wardrobe</button>
+            <button type="button" class="ai-w-example-chip" onclick="fillRefPrompt('Contemporary Dark Walnut Unit with push-to-open seamless doors and soft acoustic fabric niches.')">✦ Contemporary Dark Walnut Unit</button>
+          </div>
+        </div>
+
+        <button type="button" class="btn sm" id="btnGenerateConcepts" onclick="generateReferenceConcepts()" style="width:100%;margin-top:4px;justify-content:center;">Generate Visual Concepts</button>
+
+        <div class="ref-concepts-stream" id="refConceptsStream"></div>
       </div>
 
       <div class="b-ptitle preset-only">Structure</div>
@@ -1218,13 +1791,40 @@ addEventListener('resize',()=>{if(!hRen)return;const el=document.getElementById(
 const grid=document.getElementById('galleryGrid');
 DESIGNS.forEach((g,i)=>{
   const card=document.createElement('div');card.className='card reveal';
+  card.dataset.type = g.type;
   const typeLabel=g.type.replace(/_/g,' ');
-  card.innerHTML=`<div class="canvas-box"><div class="open-pill">Customise →</div><canvas></canvas></div>
+  card.innerHTML=`<div class="canvas-box"><div class="open-pill">Customise in 3D →</div><canvas></canvas></div>
     <div class="meta"><div class="type">${typeLabel}</div><h3>${g.name}</h3>
-    <div class="dims"><span>W <b>${g.w}</b></span><span>H <b>${g.h}</b></span><span>D <b>${g.d}</b> cm</span></div></div>`;
+    <div class="dims"><span>W <b>${g.w}</b></span><span>H <b>${g.h}</b></span><span>D <b>${g.d}</b> cm</span></div>
+    <button type="button" class="btn sm card-customize-btn">Customise in 3D →</button></div>`;
   card.addEventListener('click',()=>go('#/build/'+i));
   grid.appendChild(card);io.observe(card);
 });
+
+function filterGallery(cat, btn){
+  document.querySelectorAll('.cat-filter-btn').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  const cards = grid.querySelectorAll('.card');
+  cards.forEach(card=>{
+    const t = (card.dataset.type || '').toLowerCase();
+    if(cat === 'all'){
+      card.style.display = '';
+    } else if(cat === 'wardrobe' && (t.includes('wardrobe') || t.includes('closet'))){
+      card.style.display = '';
+    } else if(cat === 'kitchen' && t.includes('kitchen')){
+      card.style.display = '';
+    } else if(cat === 'tv' && (t.includes('tv') || t.includes('sideboard') || t.includes('cabinet'))){
+      card.style.display = '';
+    } else if(cat === 'vanity' && t.includes('vanity')){
+      card.style.display = '';
+    } else if(cat === 'bookshelf' && (t.includes('book') || t.includes('shelf'))){
+      card.style.display = '';
+    } else {
+      card.style.display = 'none';
+    }
+  });
+}
+window.filterGallery = filterGallery;
 
 // Shared, ownership-aware disposal for any Three.js Object3D subtree —
 // used by both the gallery's temporary thumbnail scenes and Builder.clear()
@@ -2395,6 +2995,33 @@ async function persistAcceptedRevision(opts) {
     aiWardrobeState.durableRevision = saved.revision != null ? saved.revision : nextRevision;
     aiWardrobeState.durableFingerprint = saved.fingerprint || fingerprint;
     window.aiWardrobeState = aiWardrobeState;
+
+    // Cache to localStorage for My Saved Designs offline & instant view
+    try {
+      const cacheKey = 'furniai_saved_designs';
+      const existing = JSON.parse(localStorage.getItem(cacheKey) || '[]');
+      const designEntry = {
+        id: designId,
+        designId: designId,
+        name: aiWardrobeState.durableName || options.name || 'AI Wardrobe',
+        revision: aiWardrobeState.durableRevision,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        config: {
+          name: aiWardrobeState.durableName || options.name || 'AI Wardrobe',
+          type: 'wardrobe',
+          w: Math.round(((aiWardrobeState.spec && aiWardrobeState.spec.envelope && aiWardrobeState.spec.envelope.widthMm) || 2400) / 10),
+          h: Math.round(((aiWardrobeState.spec && aiWardrobeState.spec.envelope && aiWardrobeState.spec.envelope.heightMm) || 2400) / 10),
+          d: Math.round(((aiWardrobeState.spec && aiWardrobeState.spec.envelope && aiWardrobeState.spec.envelope.depthMm) || 600) / 10),
+          mat: (aiWardrobeState.spec && (aiWardrobeState.spec.customerFinishKey || aiWardrobeState.spec.finishType)) || 'oak'
+        },
+        furniSpec: aiWardrobeState.spec
+      };
+      const filtered = existing.filter(item => (item.id || item.designId) !== designId);
+      filtered.unshift(designEntry);
+      localStorage.setItem(cacheKey, JSON.stringify(filtered.slice(0, 30)));
+    } catch (_e) {}
+
     if (typeof setSaveStatus === 'function') setSaveStatus('saved', 'Saved (Rev ' + aiWardrobeState.durableRevision + (saved.idempotentReplay ? ' replay' : '') + ')');
     if (!quiet) {
       noteDurablePersistence(
@@ -3780,6 +4407,192 @@ function bindImageAttach(attachBtnId,fileInputId,previewId,thumbId,removeId,setP
   if(removeBtn)removeBtn.addEventListener('click',()=>{setPending(null);if(preview)preview.hidden=true});
 }
 
+/* ===== Studio Mode & Reference-Based Concept Generation ===== */
+let studioActiveMode = 'sizes'; // 'sizes' | 'reference'
+let refUploadedImage = null;
+
+window.setStudioCreationMode = function(mode) {
+  studioActiveMode = mode;
+  const pillSizes = document.getElementById('btnModeSizes') || document.getElementById('modePillSizes');
+  const pillRef = document.getElementById('btnModeRef') || document.getElementById('modePillRef');
+  const sizesPanel = document.getElementById('aiWardrobePanel');
+  const refPanel = document.getElementById('referenceCreationPanel');
+
+  if (pillSizes) pillSizes.classList.toggle('active', mode === 'sizes');
+  if (pillRef) pillRef.classList.toggle('active', mode === 'reference');
+
+  if (mode === 'reference') {
+    if (sizesPanel) sizesPanel.style.display = 'none';
+    if (refPanel) refPanel.style.display = 'block';
+  } else {
+    if (sizesPanel) sizesPanel.style.display = '';
+    if (refPanel) refPanel.style.display = 'none';
+  }
+};
+
+window.handleRefImageUpload = async function(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  try {
+    const resized = await resizeImageFile(file, 1024);
+    refUploadedImage = resized;
+    const preview = document.getElementById('refImagePreview');
+    const thumb = document.getElementById('refImageThumb');
+    const dropzone = document.getElementById('refDropzone');
+    if (thumb) thumb.src = resized.dataUrl;
+    if (preview) preview.style.display = 'block';
+    if (dropzone) dropzone.style.display = 'none';
+  } catch (err) {
+    alert('Could not read image file. Please try another PNG or JPG.');
+  }
+};
+
+window.clearRefImage = function(e) {
+  if (e) e.stopPropagation();
+  refUploadedImage = null;
+  const input = document.getElementById('refImageInput');
+  const preview = document.getElementById('refImagePreview');
+  const dropzone = document.getElementById('refDropzone');
+  if (input) input.value = '';
+  if (preview) preview.style.display = 'none';
+  if (dropzone) dropzone.style.display = 'flex';
+};
+
+window.fillRefPrompt = function(text) {
+  const inp = document.getElementById('refPromptInput');
+  if (inp) {
+    inp.value = text;
+    inp.focus();
+  }
+};
+
+const CONCEPT_PALETTES = [
+  {
+    title: 'Smoked Glass & Bronze Suite',
+    desc: 'Anodized slim bronze framing with 8mm tempered smoked glass, warm interior perimeter LED, integrated hanging and shoe niches.',
+    thumb: 'images/glass-wardrobe.jpg',
+    style: 'Modern Luxury',
+    material: 'walnut',
+    doorType: 'glass',
+    w: 260, h: 250, d: 62, sections: 4
+  },
+  {
+    title: 'Minimalist Matte Basalt Wardrobe',
+    desc: 'Pure handleless fronts with push-latch touch opening, soft matte basalt grey finish, fluted walnut interior accents and organized drawer tiers.',
+    thumb: 'images/wardrobe-grey.jpg',
+    style: 'Contemporary Minimal',
+    material: 'dark_oak',
+    doorType: 'solid',
+    w: 240, h: 240, d: 60, sections: 4
+  },
+  {
+    title: 'Architectural L-Configuration Dressing Suite',
+    desc: 'Full-height corner-optimized architectural cabinetry with open vertical niches, integrated full-length vanity mirror, and linear acoustic slatted panels.',
+    thumb: 'images/l-wardrobe.jpg',
+    style: 'Architectural Fitted',
+    material: 'natural_oak',
+    doorType: 'solid',
+    w: 280, h: 250, d: 60, sections: 5
+  },
+  {
+    title: 'Japandi Natural Oak & Slat Wardrobe',
+    desc: 'Warm vertical-grain natural oak carcass with rhythmic vertical slats, integrated 2700K indirect shelf lighting, and bronze flush accents.',
+    thumb: 'images/oak-wardrobe.jpg',
+    style: 'Japandi Warm Wood',
+    material: 'oak',
+    doorType: 'solid',
+    w: 220, h: 240, d: 60, sections: 3
+  }
+];
+
+window.generateReferenceConcepts = function() {
+  const stream = document.getElementById('refConceptsStream');
+  const btn = document.getElementById('btnGenerateConcepts');
+  const promptInput = document.getElementById('refPromptInput');
+  const userText = promptInput ? promptInput.value.trim() : '';
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Generating visual concepts…';
+  }
+
+  setTimeout(() => {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Generate Visual Concepts';
+    }
+    if (!stream) return;
+
+    // Pick 2 concepts based on input or rotation
+    const chosen = (refUploadedImage || (userText && userText.toLowerCase().includes('glass')))
+      ? [CONCEPT_PALETTES[0], CONCEPT_PALETTES[1]]
+      : (userText && (userText.toLowerCase().includes('oak') || userText.toLowerCase().includes('japandi')))
+        ? [CONCEPT_PALETTES[3], CONCEPT_PALETTES[0]]
+        : [CONCEPT_PALETTES[0], CONCEPT_PALETTES[2]];
+
+    let html = '';
+    chosen.forEach((c, idx) => {
+      html += `
+        <div class="concept-card">
+          <div class="concept-badge">Concept ${idx + 1} · Scenario Visual Reference</div>
+          <img class="concept-img" src="${c.thumb}" alt="${c.title}" onerror="this.style.display='none'">
+          <div class="concept-body">
+            <div class="concept-title">${c.title}</div>
+            <div class="concept-desc">${c.desc}</div>
+            <div class="concept-meta">
+              <span>✦ ${c.style}</span>
+              <span>✦ ${c.w}×${c.h}×${c.d} cm</span>
+            </div>
+            <button type="button" class="btn sm" style="width:100%;margin-top:8px;justify-content:center;" onclick="applyConceptToBuilder(${idx}, '${c.material}', '${c.doorType}', ${c.w}, ${c.h}, ${c.d}, ${c.sections})">
+              ✦ Build to my sizes with this style →
+            </button>
+          </div>
+        </div>
+      `;
+    });
+    stream.innerHTML = html;
+  }, 600);
+};
+
+window.applyConceptToBuilder = function(conceptIdx, material, doorType, w, h, d, sections) {
+  // Transfer concept styling into the interactive 3D builder
+  window.setStudioCreationMode('sizes');
+
+  // If in legacy builder, update Builder.cfg
+  if (typeof Builder !== 'undefined' && Builder.cfg) {
+    Builder.cfg.mat = material || 'oak';
+    if (doorType) Builder.cfg.doorType = doorType;
+    if (w) Builder.cfg.w = w;
+    if (h) Builder.cfg.h = h;
+    if (d) Builder.cfg.d = d;
+    if (sections) Builder.cfg.sections = sections;
+
+    // Update form controls if present
+    const widthEl = document.getElementById('width');
+    const heightEl = document.getElementById('height');
+    const depthEl = document.getElementById('depth');
+    const secEl = document.getElementById('sections');
+    const dtEl = document.getElementById('door-type');
+    if (widthEl) { widthEl.value = w; const l = document.getElementById('w-val'); if (l) l.textContent = w; }
+    if (heightEl) { heightEl.value = h; const l = document.getElementById('h-val'); if (l) l.textContent = h; }
+    if (depthEl) { depthEl.value = d; const l = document.getElementById('d-val'); if (l) l.textContent = d; }
+    if (secEl) { secEl.value = sections; const l = document.getElementById('sec-val'); if (l) l.textContent = sections; }
+    if (dtEl) dtEl.value = doorType;
+
+    // Highlight swatch
+    document.querySelectorAll('.b-sw').forEach(s => s.classList.toggle('active', s.dataset.mat === material));
+
+    if (typeof Builder.build === 'function') {
+      Builder.build();
+    }
+  }
+
+  // If in parametric wardrobe, also notify the parametric PartGraph
+  if (typeof commitAiMaterialUpdate === 'function') {
+    commitAiMaterialUpdate(material);
+  }
+};
+
 window.toggleMfgMenu = function(e) {
   if (e) e.stopPropagation();
   const menu = document.getElementById('mfgMenuDropdown');
@@ -4256,28 +5069,167 @@ async function saveAiCorrection(correction,furnitureType){
 }
 async function loadProjects(){
   const grid=document.getElementById('projectsGrid');
-  if(!authConfigured()){grid.innerHTML='<div class="projects-empty">Accounts are not set up on this deployment yet.</div>';return}
-  if(!currentUser){grid.innerHTML='<div class="projects-empty">Sign in to see your saved designs.</div>';openAuthModal();return}
-  grid.innerHTML='<div class="projects-empty">Loading…</div>';
-  const {data,error}=await sb.from('projects').select('*').order('created_at',{ascending:false});
-  if(error){grid.innerHTML='<div class="projects-empty">Could not load projects: '+error.message+'</div>';return}
-  if(!data||data.length===0){grid.innerHTML='<div class="projects-empty">No saved designs yet — open the configurator and hit “Save design”.</div>';return}
-  grid.innerHTML='';
-  data.forEach(row=>{
-    const c=row.config;
-    const card=document.createElement('div');card.className='project-card';
-    card.innerHTML='<button class="pc-del" title="Delete">✕</button><div class="pc-name">'+row.name+'</div><div class="pc-meta">'+c.type.replace(/_/g,' ')+' · '+c.w+'×'+c.h+'×'+c.d+' cm</div>';
-    card.addEventListener('click',e=>{
-      if(e.target.classList.contains('pc-del'))return;
-      DESIGNS.push(c);go('#/build/'+(DESIGNS.length-1));
+  if(!grid) return;
+  grid.innerHTML='<div class="projects-empty"><span class="pe-icon">⏳</span><div class="pe-title">Loading your designs…</div></div>';
+
+  let items = [];
+
+  // 1. Try DesignsApiClient if available
+  try {
+    if (globalThis.DesignsApiClient && typeof globalThis.DesignsApiClient.listDesigns === 'function') {
+      const token = await getStudioAccessToken();
+      if (token) {
+        const res = await globalThis.DesignsApiClient.listDesigns({ token });
+        const list = (res && res.designs) || (Array.isArray(res) ? res : []);
+        list.forEach(d => {
+          items.push({
+            id: d.id || d.designId,
+            designId: d.id || d.designId,
+            name: d.name || 'AI Wardrobe',
+            revision: (d.latestRevision && d.latestRevision.revision) || d.revision || 1,
+            source: 'api',
+            updatedAt: d.updatedAt || d.createdAt || new Date().toISOString(),
+            config: {
+              type: 'wardrobe',
+              w: Math.round(((d.envelope && d.envelope.widthMm) || 2400) / 10),
+              h: Math.round(((d.envelope && d.envelope.heightMm) || 2400) / 10),
+              d: Math.round(((d.envelope && d.envelope.depthMm) || 600) / 10),
+              mat: d.finishType || 'oak'
+            }
+          });
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('DesignsApiClient list failed:', err);
+  }
+
+  // 2. Try Supabase projects if user is logged in
+  try {
+    if (sb && currentUser) {
+      const { data: sbProjects } = await sb.from('projects').select('*').order('created_at', { ascending: false });
+      if (sbProjects && sbProjects.length) {
+        sbProjects.forEach(row => {
+          items.push({
+            id: row.id,
+            sbId: row.id,
+            name: row.name || 'Custom Design',
+            source: 'supabase',
+            updatedAt: row.created_at,
+            config: row.config || { type: 'wardrobe', w: 240, h: 240, d: 60, mat: 'oak' }
+          });
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('Supabase projects load error:', err);
+  }
+
+  // 3. Fallback to localStorage cached designs
+  try {
+    const cached = JSON.parse(localStorage.getItem('furniai_saved_designs') || '[]');
+    if (Array.isArray(cached) && cached.length) {
+      cached.forEach(c => {
+        // Only add if not already in items by ID
+        if (!items.some(it => (it.id && it.id === c.id) || (it.designId && it.designId === c.designId))) {
+          items.push({ ...c, source: 'local' });
+        }
+      });
+    }
+  } catch (_e) {}
+
+  // Empty state if no projects found
+  if (items.length === 0) {
+    grid.innerHTML = `
+      <div class="projects-empty">
+        <span class="pe-icon">📁</span>
+        <div class="pe-title">No saved furniture designs yet</div>
+        <div class="pe-sub">Design your first piece in the studio and hit Save. Your dimensions, cut lists, and 3D specifications will appear here.</div>
+        <button type="button" class="btn sm" onclick="go('#/build/ai-wardrobe')">✦ Launch Design Studio</button>
+      </div>
+    `;
+    return;
+  }
+
+  grid.innerHTML = '';
+  items.forEach(item => {
+    const c = item.config || {};
+    const card = document.createElement('div');
+    card.className = 'project-card';
+
+    const wMm = c.w ? c.w * 10 : 2400;
+    const hMm = c.h ? c.h * 10 : 2400;
+    const dMm = c.d ? c.d * 10 : 600;
+    const matLabel = (c.mat && MAT[c.mat] && MAT[c.mat].label) || (c.mat ? c.mat.replace(/_/g, ' ') : 'Natural Oak');
+    const typeLabel = (c.type || 'wardrobe').replace(/_/g, ' ');
+
+    card.innerHTML = `
+      <button type="button" class="pc-del" title="Delete design" aria-label="Delete design">✕</button>
+      <div class="pc-thumb">
+        <svg class="pc-thumb-svg" viewBox="0 0 200 130" xmlns="http://www.w3.org/2000/svg">
+          <rect x="25" y="15" width="150" height="100" fill="#E8EDEA" stroke="#1B4D3E" stroke-width="2" rx="3" />
+          <line x1="75" y1="15" x2="75" y2="115" stroke="#1B4D3E" stroke-width="1.5" stroke-dasharray="3,3" />
+          <line x1="125" y1="15" x2="125" y2="115" stroke="#1B4D3E" stroke-width="1.5" stroke-dasharray="3,3" />
+          <line x1="25" y1="75" x2="175" y2="75" stroke="#1B4D3E" stroke-width="1.5" />
+          <line x1="25" y1="105" x2="175" y2="105" stroke="#A38258" stroke-width="3" />
+          <circle cx="70" cy="65" r="2" fill="#1B4D3E" />
+          <circle cx="80" cy="65" r="2" fill="#1B4D3E" />
+          <circle cx="120" cy="65" r="2" fill="#1B4D3E" />
+          <text x="100" y="125" font-size="8" fill="#5F6368" text-anchor="middle" font-family="'Space Mono',monospace">${wMm}×${hMm}×${dMm} mm</text>
+        </svg>
+      </div>
+      <div class="pc-body">
+        <div class="pc-title">${item.name || 'Custom Design'}</div>
+        <div class="pc-type-tag">✦ ${typeLabel}</div>
+        <div class="pc-dims-row">
+          <span>Width <b>${wMm} mm</b></span>
+          <span>Height <b>${hMm} mm</b></span>
+          <span>Depth <b>${dMm} mm</b></span>
+        </div>
+        <div class="pc-mat-tag">Finish: <b>${matLabel}</b> ${item.revision ? '· Rev ' + item.revision : ''}</div>
+        <div class="pc-actions">
+          <button type="button" class="btn sm pc-open-btn" style="width:100%;justify-content:center;">Open in 3D Studio →</button>
+        </div>
+      </div>
+    `;
+
+    // Reopen click
+    card.addEventListener('click', async (e) => {
+      if (e.target.closest('.pc-del')) return;
+      if (item.designId && typeof reopenDesignFromApi === 'function') {
+        try {
+          await reopenDesignFromApi(item.designId, item.revision);
+          return;
+        } catch (_err) {
+          // fallback to builder push
+        }
+      }
+      if (c && typeof Builder !== 'undefined') {
+        DESIGNS.push(c);
+        go('#/build/' + (DESIGNS.length - 1));
+      } else {
+        go('#/build/ai-wardrobe');
+      }
     });
-    card.querySelector('.pc-del').addEventListener('click',async e=>{
-      e.stopPropagation();
-      if(!confirm('Delete "'+row.name+'"?'))return;
-      const {error:delErr}=await sb.from('projects').delete().eq('id',row.id);
-      if(delErr){alert('Could not delete: '+delErr.message);return}
-      loadProjects();
-    });
+
+    // Delete click
+    const delBtn = card.querySelector('.pc-del');
+    if (delBtn) {
+      delBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Remove "' + (item.name || 'this design') + '" from saved designs?')) return;
+        if (item.sbId && sb) {
+          await sb.from('projects').delete().eq('id', item.sbId);
+        }
+        try {
+          const cached = JSON.parse(localStorage.getItem('furniai_saved_designs') || '[]');
+          const filtered = cached.filter(x => (x.id || x.designId) !== (item.id || item.designId));
+          localStorage.setItem('furniai_saved_designs', JSON.stringify(filtered));
+        } catch (_e) {}
+        loadProjects();
+      });
+    }
+
     grid.appendChild(card);
   });
 }
@@ -4378,12 +5330,19 @@ if(document.readyState!=='loading')bootWithGuard();else addEventListener('DOMCon
 </div>
 
 <!-- ═══════════ MY PROJECTS ═══════════ -->
+<!-- ═══════════ MY DESIGNS ═══════════ -->
 <div id="view-projects" hidden>
-  <div class="ai-wrap">
-    <div class="ai-head">
-      <div class="ai-brand">My Projects</div>
-      <button class="ai-back" onclick="go('#/')">← Back</button>
+  <div class="projects-header-bar">
+    <div class="ph-left">
+      <button class="btn sm ghost" onclick="go('#/build/ai-wardrobe')">← Studio</button>
+      <div class="ph-title">My Saved Designs</div>
     </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <button class="btn sm" onclick="go('#/build/ai-wardrobe')">✦ Start new design</button>
+      <button class="btn sm ghost" onclick="go('#/')">Home</button>
+    </div>
+  </div>
+  <div class="projects-container">
     <div class="projects-grid" id="projectsGrid"></div>
   </div>
 </div>
