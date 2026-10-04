@@ -2866,6 +2866,16 @@ function setSaveStatus(state, msg) {
 window.setSaveStatus = setSaveStatus;
 
 function reopenAiWardrobeDesign(savedState) {
+  // Ensure the underlying 3D Builder is initialized before restoring mesh/PartGraph
+  if (typeof Builder !== 'undefined') {
+    if (!Builder.ready && typeof Builder.init === 'function') {
+      Builder.init();
+    }
+    if (typeof Builder.startLoop === 'function') {
+      Builder.startLoop();
+    }
+  }
+
   rotateStudioSession();
   aiWardrobeState = {
     ...savedState,
@@ -2942,6 +2952,20 @@ function isAiWardrobeParametricPath() {
   return !!(aiWardrobeState && aiWardrobeState.spec && aiWardrobeState.partGraph);
 }
 
+function getDesignsApiClient() {
+  if (typeof globalThis.createDesignsApiClient === 'function') {
+    return globalThis.createDesignsApiClient();
+  }
+  if (globalThis.DesignsApiClient) {
+    if (typeof globalThis.DesignsApiClient.createDesignsApiClient === 'function') {
+      return globalThis.DesignsApiClient.createDesignsApiClient();
+    }
+    return globalThis.DesignsApiClient;
+  }
+  return null;
+}
+window.getDesignsApiClient = getDesignsApiClient;
+
 /**
  * Best-effort POST of the current in-memory accepted design as a new immutable revision.
  * Failures surface a quiet note and NEVER roll back the accepted in-memory design.
@@ -2950,7 +2974,8 @@ async function persistAcceptedRevision(opts) {
   const options = opts || {};
   const quiet = options.quiet !== false;
   try {
-    if (!globalThis.DesignsApiClient) {
+    const client = getDesignsApiClient();
+    if (!client) {
       if (!quiet) noteDurablePersistence('Designs API client is not loaded.', 'error');
       return null;
     }
@@ -2964,7 +2989,6 @@ async function persistAcceptedRevision(opts) {
       return null;
     }
     if (typeof setSaveStatus === 'function') setSaveStatus('saving');
-    const client = globalThis.DesignsApiClient;
     let designId = aiWardrobeState.durableDesignId;
     if (!designId) {
       const name =
@@ -3068,13 +3092,13 @@ window.addEventListener('beforeunload', function (e) {
  */
 async function reopenDesignFromApi(designId, revision, tokenOverride) {
   if (!designId) throw new Error('designId is required');
-  if (!globalThis.DesignsApiClient) throw new Error('Designs API client is not loaded.');
+  const client = getDesignsApiClient();
+  if (!client) throw new Error('Designs API client is not loaded.');
   const token = tokenOverride || await getStudioAccessToken();
   if (!token) {
     openAuthModal();
     throw new Error('Sign in required to reopen a saved design.');
   }
-  const client = globalThis.DesignsApiClient;
   let rev = revision;
   let summary = null;
   if (rev == null) {
@@ -4532,20 +4556,30 @@ window.generateReferenceConcepts = function() {
 
     let html = '';
     chosen.forEach((c, idx) => {
+      const isRecordedJob = c.recordedJobId != null;
+      const badgeText = isRecordedJob ? `Scenario 3D Asset · Job ${c.recordedJobId}` : `Visual Example · Not a recorded Scenario job`;
       html += `
         <div class="concept-card">
-          <div class="concept-badge">Concept ${idx + 1} · Scenario Visual Reference</div>
+          <div class="concept-badge ${isRecordedJob ? 'recorded' : 'example'}">${badgeText}</div>
           <img class="concept-img" src="${c.thumb}" alt="${c.title}" onerror="this.style.display='none'">
           <div class="concept-body">
             <div class="concept-title">${c.title}</div>
             <div class="concept-desc">${c.desc}</div>
-            <div class="concept-meta">
-              <span>✦ ${c.style}</span>
-              <span>✦ ${c.w}×${c.h}×${c.d} cm</span>
+            <div class="concept-notice" style="font-size:10px;color:var(--ink-soft);background:rgba(0,0,0,0.03);padding:6px 8px;border-radius:6px;margin:6px 0 8px;line-height:1.35;">
+              ⚠️ <b>Visual Concept Notice:</b> AI visual concept only. Dimensions are unverified and parts are not separable or manufacturing-ready.
             </div>
-            <button type="button" class="btn sm" style="width:100%;margin-top:8px;justify-content:center;" onclick="applyConceptToBuilder(${idx}, '${c.material}', '${c.doorType}', ${c.w}, ${c.h}, ${c.d}, ${c.sections})">
-              ✦ Build to my sizes with this style →
-            </button>
+            <div class="concept-meta">
+              <span>✦ Style: <b>${c.style}</b></span>
+              <span>✦ Finish: <b>${c.material}</b></span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px;">
+              <button type="button" class="btn sm" style="width:100%;justify-content:center;" onclick="applyConceptStyleToBuilder('${c.material}', '${c.doorType}')">
+                ✦ Use this style &amp; material in 3D Studio →
+              </button>
+              <button type="button" class="btn sm ghost" style="width:100%;justify-content:center;" onclick="downloadConceptModel('${c.title}', '${c.modelUrl || ''}')">
+                📦 Download 3D model (GLB / OBJ)
+              </button>
+            </div>
           </div>
         </div>
       `;
@@ -4554,43 +4588,47 @@ window.generateReferenceConcepts = function() {
   }, 600);
 };
 
-window.applyConceptToBuilder = function(conceptIdx, material, doorType, w, h, d, sections) {
-  // Transfer concept styling into the interactive 3D builder
+window.downloadConceptModel = function(title, modelUrl) {
+  if (modelUrl) {
+    const a = document.createElement('a');
+    a.href = modelUrl;
+    a.download = (title || 'furniture-concept').toLowerCase().replace(/\s+/g, '-') + '.glb';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } else {
+    alert(`3D model download for "${title}":\n\nDirect mesh export is available once a live Scenario generation job completes and outputs a GLB mesh.`);
+  }
+};
+
+window.applyConceptStyleToBuilder = function(material, doorType) {
+  // Only transfer explicit customer visual choices: material finish and door type.
+  // Never transfer unverified inferred dimensions from concept into the deterministic builder.
   window.setStudioCreationMode('sizes');
 
-  // If in legacy builder, update Builder.cfg
+  // If in legacy builder, update material & doorType without modifying dimensional sizes
   if (typeof Builder !== 'undefined' && Builder.cfg) {
-    Builder.cfg.mat = material || 'oak';
-    if (doorType) Builder.cfg.doorType = doorType;
-    if (w) Builder.cfg.w = w;
-    if (h) Builder.cfg.h = h;
-    if (d) Builder.cfg.d = d;
-    if (sections) Builder.cfg.sections = sections;
-
-    // Update form controls if present
-    const widthEl = document.getElementById('width');
-    const heightEl = document.getElementById('height');
-    const depthEl = document.getElementById('depth');
-    const secEl = document.getElementById('sections');
-    const dtEl = document.getElementById('door-type');
-    if (widthEl) { widthEl.value = w; const l = document.getElementById('w-val'); if (l) l.textContent = w; }
-    if (heightEl) { heightEl.value = h; const l = document.getElementById('h-val'); if (l) l.textContent = h; }
-    if (depthEl) { depthEl.value = d; const l = document.getElementById('d-val'); if (l) l.textContent = d; }
-    if (secEl) { secEl.value = sections; const l = document.getElementById('sec-val'); if (l) l.textContent = sections; }
-    if (dtEl) dtEl.value = doorType;
-
+    if (material) Builder.cfg.mat = material;
+    if (doorType) {
+      Builder.cfg.doorType = doorType;
+      const dtEl = document.getElementById('door-type');
+      if (dtEl) dtEl.value = doorType;
+    }
     // Highlight swatch
     document.querySelectorAll('.b-sw').forEach(s => s.classList.toggle('active', s.dataset.mat === material));
-
     if (typeof Builder.build === 'function') {
       Builder.build();
     }
   }
 
-  // If in parametric wardrobe, also notify the parametric PartGraph
+  // If in parametric wardrobe, notify PartGraph material updater
   if (typeof commitAiMaterialUpdate === 'function') {
     commitAiMaterialUpdate(material);
   }
+};
+
+window.applyConceptToBuilder = function(conceptIdx, material, doorType) {
+  window.applyConceptStyleToBuilder(material, doorType);
 };
 
 window.toggleMfgMenu = function(e) {
@@ -5076,10 +5114,11 @@ async function loadProjects(){
 
   // 1. Try DesignsApiClient if available
   try {
-    if (globalThis.DesignsApiClient && typeof globalThis.DesignsApiClient.listDesigns === 'function') {
+    const client = getDesignsApiClient();
+    if (client && typeof client.listDesigns === 'function') {
       const token = await getStudioAccessToken();
       if (token) {
-        const res = await globalThis.DesignsApiClient.listDesigns({ token });
+        const res = await client.listDesigns({ token });
         const list = (res && res.designs) || (Array.isArray(res) ? res : []);
         list.forEach(d => {
           items.push({
