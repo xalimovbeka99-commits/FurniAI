@@ -14,6 +14,8 @@ export default defineConfig({
       "tests/part-graph/**/*.test.js",
       "tests/production/**/*.test.js",
       "tests/contract/**/*.test.js",
+      "tests/projects/**/*.test.js",
+      "tests/assetViewer/**/*.test.js",
       // Scenario 3D acceptance (Grok QA): SIMULATED/MOCKED/LOCAL, real /api/creative handlers.
       "tests/acceptance/scenario/**/*.test.js",
     ],
