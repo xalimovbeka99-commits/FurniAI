@@ -233,7 +233,7 @@ test.fixme("Antigravity's real upload + Generate UI wired to /api/creative — B
   // instead of the harness (same fixture server, same counts).
 });
 
-test.fixme("viewer v2 attached to a product page — BLOCKED: 7eaa414 is not attached to any page at 42c3fa6", async () => {
+test.fixme("viewer v2 / Projects gallery attached to a product page — BLOCKED: viewer v2 (7eaa414) and the concept gallery (34f80a7) are not attached to any page at 485f8a6", async () => {
   // Expected once attached: the product page mounts mountAssetViewer with
   // createCreativeAssetSource and passes the same view-leg tests above.
 });
