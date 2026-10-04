@@ -1,0 +1,187 @@
+/**
+ * Scenario 3D — browser layer against a TEST HARNESS (not the product UI).
+ * SIMULATED / LOCAL: the page drives the REAL /api/creative handlers (served
+ * by harness/server.mjs) with a local provider stand-in; the asset CDN is
+ * MOCKED (https://cdn.fixture.invalid → local, via page.route). Every other
+ * outbound request is aborted and the test fails if one is attempted.
+ * Runs at desktop (1280) and 390 px (see playwright.scenario.config.js).
+ */
+import { readFileSync } from "node:fs";
+import { test, expect } from "@playwright/test";
+import { inspectGlb } from "../support/glbInspector.js";
+
+const REFERENCE_PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64, 7)]);
+
+async function fixture(request, path, body) {
+  const r = body === undefined ? await request.get(path) : await request.post(path, { data: body });
+  expect(r.ok()).toBeTruthy();
+  return r.json();
+}
+const state = (request) => fixture(request, "/__fixture/state");
+
+let blocked;
+test.beforeEach(async ({ page, baseURL }) => {
+  blocked = [];
+  const local = new URL(baseURL).host;
+  await page.route("**/*", async (route) => {
+    const u = new URL(route.request().url());
+    if (u.host === local) return route.continue();
+    if (u.origin === "https://cdn.fixture.invalid") {
+      const response = await route.fetch({ url: `${baseURL}/__cdn${u.pathname}${u.search}` });
+      return route.fulfill({ response });
+    }
+    blocked.push(u.href);
+    return route.abort();
+  });
+});
+test.afterEach(async ({ page }, info) => {
+  expect(blocked, "no request may leave the machine").toEqual([]);
+  if (info.project.name === "mobile-390") {
+    const overflow = await page.evaluate(() => document.scrollingElement.scrollWidth - window.innerWidth);
+    expect(overflow, "no horizontal overflow at 390 px").toBeLessThanOrEqual(0);
+  }
+});
+
+async function start(page, request, overrides = {}, query = "") {
+  await fixture(request, "/__fixture/reset", overrides);
+  await page.goto(`/?poll=300${query}`);
+  await expect(page.getByTestId("harness-banner")).toContainText("TEST HARNESS");
+  await page.setInputFiles("#reference", { name: "wardrobe.png", mimeType: "image/png", buffer: REFERENCE_PNG });
+  await page.click("#upload");
+  await expect(page.locator("body")).toHaveAttribute("data-reference", "ready");
+}
+const body = (page) => page.locator("body");
+
+test("happy path: upload → generate → poll → view (GLTFLoader) → download → inspect the FILE → reopen with a fresh address", async ({ page, request }) => {
+  await start(page, request);
+  await page.click("#generate");
+  await expect(body(page)).toHaveAttribute("data-status", "succeeded");
+  await expect(page.getByTestId("concept-notice")).toContainText("AI-generated visual concept");
+  await expect(body(page)).toHaveAttribute("data-view", "ok");
+  await expect(body(page)).toHaveAttribute("data-meshes", "1");
+  await expect(body(page)).toHaveAttribute("data-textures", "1");
+  await expect(body(page)).toHaveAttribute("data-bbox", "1.000,1.000,1.000");
+
+  const [download] = await Promise.all([page.waitForEvent("download"), page.click("#download")]);
+  expect(download.suggestedFilename()).toMatch(/^furniai-concept-[0-9a-f]{8}\.glb$/);
+  await expect(body(page)).toHaveAttribute("data-download-content-type", "model/gltf-binary");
+  const bytes = readFileSync(await download.path());
+  const ins = inspectGlb(bytes);
+  expect(ins.errors).toEqual([]);
+  expect(ins.info).toMatchObject({ meshCount: 1, positionCount: 24, bbox: { min: [-0.5, -0.5, -0.5], max: [0.5, 0.5, 0.5] } });
+
+  const s1 = await state(request);
+  expect(s1.provider.calls.generate).toBe(1);
+  expect(s1.api.asset).toBe(2); // view + download, each resolved fresh
+  // every provider lookup issued a distinct URL (+1 lookup during the status refresh, for the format)
+  expect(s1.provider.calls.asset).toBe(s1.api.asset + 1);
+  expect(new Set(s1.provider.issuedUrls).size).toBe(s1.provider.calls.asset);
+
+  // reopen: a reload knows nothing but the job list; the address is resolved again
+  await page.goto("/?poll=300&reopen=1");
+  await expect(body(page)).toHaveAttribute("data-view", "ok");
+  const s2 = await state(request);
+  expect(s2.api.asset).toBe(3);
+  expect(s2.provider.calls.generate).toBe(1);
+  expect(new Set(s2.provider.issuedUrls).size).toBe(s2.provider.calls.asset);
+  expect(s2.provider.calls.asset).toBe(4);
+});
+
+test("duplicate rapid clicks (dblclick + triple click) → exactly ONE provider job", async ({ page, request }) => {
+  await start(page, request, { pollsUntilDone: 3 });
+  await page.dblclick("#generate");
+  await page.click("#generate", { clickCount: 3 });
+  await expect(page.getByTestId("info")).toContainText("already being generated");
+  await expect(body(page)).toHaveAttribute("data-status", "succeeded", { timeout: 15000 });
+  const s = await state(request);
+  expect(await page.evaluate(() => window.__harness.generateClicks)).toBeGreaterThanOrEqual(4);
+  expect(s.api.jobsPost).toBeGreaterThanOrEqual(4);
+  expect(s.provider.calls.generate).toBe(1);
+  expect(s.jobs).toHaveLength(1);
+});
+
+test("failed generation: the provider's failure is shown, polling stops, nothing is retried", async ({ page, request }) => {
+  await start(page, request, { outcome: "failure" });
+  await page.click("#generate");
+  await expect(body(page)).toHaveAttribute("data-status", "failed");
+  await expect(page.getByTestId("error")).toContainText("simulated generation failure");
+  const before = await state(request);
+  await page.waitForTimeout(2000);
+  const after = await state(request);
+  expect(after.provider.calls.generate).toBe(1);
+  expect(after.api.jobsGet).toBe(before.api.jobsGet);
+  expect(after.provider.calls.job).toBe(before.provider.calls.job);
+  await expect(page.locator("#download")).toBeDisabled();
+});
+
+test("submission_unknown: warning says it may have been charged; no auto-retry, no polling", async ({ page, request }) => {
+  await start(page, request, { generateMode: "http500" });
+  await page.click("#generate");
+  await expect(body(page)).toHaveAttribute("data-status", "submission_unknown");
+  await expect(page.getByTestId("warning")).toContainText("may have been charged");
+  await expect(page.getByTestId("warning")).toContainText("NOT retried");
+  await page.waitForTimeout(2000);
+  const s = await state(request);
+  expect(s.provider.calls.generate).toBe(1);
+  expect(s.api.jobsPost).toBe(1);
+  expect(s.api.jobsGet).toBe(0);
+  expect(s.jobs.map((j) => j.status)).toEqual(["submission_unknown"]);
+});
+
+test("expired/removed asset: 410 ASSET_UNAVAILABLE is shown and NOT re-called", async ({ page, request }) => {
+  await start(page, request);
+  await page.click("#generate");
+  await expect(body(page)).toHaveAttribute("data-view", "ok");
+  const before = await state(request);
+  await fixture(request, "/__fixture/set", { assetMode: "gone404" });
+  await page.click("#view");
+  await expect(body(page)).toHaveAttribute("data-view", "refused-410");
+  await expect(page.getByTestId("asset-error")).toContainText("no longer available");
+  await page.click("#download");
+  await expect(body(page)).toHaveAttribute("data-download", "failed-ASSET_UNAVAILABLE");
+  const after = await state(request);
+  expect(after.api.asset - before.api.asset).toBe(2); // one per action, no re-call
+});
+
+test("an expired signed URL is re-resolved exactly once and then loads", async ({ page, request }) => {
+  await start(page, request, { cdnFailNext: 1 });
+  await page.click("#generate");
+  await expect(body(page)).toHaveAttribute("data-view", "ok");
+  await expect(body(page)).toHaveAttribute("data-view-attempts", "2");
+  expect((await state(request)).api.asset).toBe(2);
+});
+
+test("a CDN that keeps refusing the address: view fails after exactly ONE re-call, with a message (no retry storm)", async ({ page, request }) => {
+  // NOTE: a missing-CORS host (contract U7) cannot be simulated through
+  // page.route — Playwright adds Access-Control-Allow-Origin to fulfilled
+  // responses. U7 stays unverified; this covers the client's failure path.
+  await start(page, request, { cdnFailNext: 1000 });
+  await page.click("#generate");
+  await expect(body(page)).toHaveAttribute("data-view", "failed");
+  await expect(page.getByTestId("asset-error")).toContainText("could not be loaded");
+  await page.waitForTimeout(1000);
+  expect((await state(request)).api.asset).toBe(2);
+  expect(await page.evaluate(() => window.__harness.loaderErrors)).toBe(2);
+});
+
+test("HTML served as .glb: the click 'works', the viewer refuses it and the downloaded FILE fails inspection", async ({ page, request }) => {
+  await start(page, request, { cdnVariant: "html" });
+  await page.click("#generate");
+  await expect(body(page)).toHaveAttribute("data-view", "failed");
+  const [download] = await Promise.all([page.waitForEvent("download"), page.click("#download")]);
+  expect(download.suggestedFilename()).toMatch(/\.glb$/); // format "glb" comes from the URL only
+  const ins = inspectGlb(readFileSync(await download.path()));
+  expect(ins.ok).toBe(false);
+  expect(ins.errors).toContain("LOOKS_LIKE_HTML");
+});
+
+test.fixme("Asset Engineer viewer (src/lib/assetViewer/** on grok/asset-viewer) through its asset-resolver hook — BLOCKED: hook not delivered, branch not landed", async () => {
+  // Expected once delivered: mount the real viewer with a resolver that calls
+  // GET /api/creative?resource=asset on every load, re-resolves once on
+  // FETCH_FAILED, shows concept.notice, and loads only glb/gltf.
+});
+
+test.fixme("Antigravity's real upload + Generate UI — BLOCKED: no upload UI exists yet", async () => {
+  // Expected once delivered: re-run every test above against the product page
+  // instead of the harness (same fixture server, same counts).
+});
