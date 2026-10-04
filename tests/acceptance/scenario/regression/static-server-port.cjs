@@ -9,6 +9,9 @@ const origListen = http.Server.prototype.listen;
 http.Server.prototype.listen = function patchedListen(...args) {
   if (args[0] === 4173) args[0] = port;
   else if (args[0] && typeof args[0] === "object" && args[0].port === 4173) args[0] = { ...args[0], port };
-  return origListen.apply(this, args);
+  const redirected = args[0] === port || (args[0] && args[0].port === port);
+  const srv = origListen.apply(this, args);
+  if (redirected) srv.once("listening", () => console.log(`[static-server-port] scripts/static-server.js is ACTUALLY bound to 127.0.0.1:${srv.address().port} (its own log line says 4173; that is the hard-coded constant)`));
+  return srv;
 };
 require(path.resolve(process.cwd(), "scripts/static-server.js"));
