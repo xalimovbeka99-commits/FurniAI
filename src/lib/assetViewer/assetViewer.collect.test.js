@@ -19,3 +19,6 @@ import "../../../tests/assetViewer/download.test.js";
 import "../../../tests/assetViewer/registry.test.js";
 import "../../../tests/assetViewer/r128.test.js";
 import "../../../tests/assetViewer/noBundledThree.test.js";
+import "../../../tests/assetViewer/creativeSource.test.js";
+import "../../../tests/assetViewer/creativeViewer.test.js";
+import "../../../tests/assetViewer/creativeJob.test.js";
