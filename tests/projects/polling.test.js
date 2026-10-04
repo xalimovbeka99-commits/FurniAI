@@ -177,6 +177,27 @@ describe("concept gallery: polling", () => {
     expect(polled.filter((id) => id === ok.jobId)).toHaveLength(2);
   });
 
+  it("v2.1: 403 on one job's getJob marks that card Not allowed and stops polling only it; nobody is signed out", async () => {
+    const bad = jobView();
+    const ok = jobView();
+    const { root, client, gallery } = setup({
+      listJobs: () => listBody([bad, ok]),
+      getJob: ({ jobId }) => {
+        if (jobId === bad.jobId) throw { status: 403, code: "UNAUTHORIZED", message: "no" };
+        return jobBody(ok);
+      },
+    });
+    await flush();
+    await tick(4000);
+    expect(byClass(card(root, bad.jobId), "fcg-badge-text")[0].textContent).toBe("Not allowed");
+    expect(byAttr(card(root, bad.jobId), "data-job-error", "UNAUTHORIZED")).toHaveLength(1);
+    expect(gallery.getState().list).toBe("ready");
+    await tick(4000);
+    const polled = client.calls.filter((c) => c.method === "getJob").map((c) => c.args.jobId);
+    expect(polled.filter((id) => id === bad.jobId)).toHaveLength(1);
+    expect(polled.filter((id) => id === ok.jobId)).toHaveLength(2);
+  });
+
   it("a poll round answered after a refresh is discarded (stale guard)", async () => {
     const p = jobView();
     let release;

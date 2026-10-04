@@ -4,7 +4,7 @@ import { setup, cards, card, button, panel } from "./helpers.js";
 import {
   CONCEPT, errorFor, failedJob, glbOutput, jobView, listBody, networkError, succeededJob, unknownJob,
 } from "./fixtures/contractFixtures.js";
-import { SUBMISSION_UNKNOWN_WARNING } from "../../src/lib/projects/conceptGallery/contract.js";
+import { FALLBACK_CONCEPT_NOTICE, SUBMISSION_UNKNOWN_WARNING } from "../../src/lib/projects/conceptGallery/contract.js";
 
 const listOf = (...jobs) => ({ listJobs: () => listBody(jobs), getJob: () => new Promise(() => {}) });
 
@@ -104,6 +104,33 @@ describe("concept gallery: list states", () => {
     await flush();
     expect(panel(root).getAttribute("data-panel")).toBe("signed_out");
     expect(gallery.getState().error).toMatchObject({ kind: "signed_out", code: "MISSING_AUTH" });
+  });
+
+  it("v2.1: a 403 list answer is not signed out: a permission message, no sign-in prompt, no Try again", async () => {
+    for (const err of [{ status: 403, code: "UNAUTHORIZED" }, { status: 403 }]) {
+      const { root, gallery } = setup({
+        listJobs: () => {
+          throw err;
+        },
+      });
+      await flush();
+      expect(panel(root).getAttribute("data-panel")).toBe("forbidden");
+      expect(gallery.getState().error.kind).toBe("forbidden");
+      expect(root.textContent).toContain("This account doesn't have permission to see these 3D concepts.");
+      expect(root.textContent).not.toContain("Sign in to see");
+      expect(button(root, "retry")).toBeNull();
+      expect(button(root, "refresh")).not.toBeNull(); // the header Refresh stays
+    }
+  });
+
+  it("v2.1: the server's notice is shown verbatim on the card; a blank one falls back to the contract text", async () => {
+    const verbatim = "  Server notice,\n  exactly as sent.  ";
+    const a = succeededJob({ concept: { ...CONCEPT, notice: verbatim } });
+    const b = succeededJob({ concept: { ...CONCEPT, notice: "   " } });
+    const { root } = setup(listOf(a, b));
+    await flush();
+    expect(byAttr(card(root, a.jobId), "data-concept-notice")[0].textContent).toBe(verbatim);
+    expect(byAttr(card(root, b.jobId), "data-concept-notice")[0].textContent).toBe(FALLBACK_CONCEPT_NOTICE);
   });
 
   it("network failure, then Try again recovers", async () => {

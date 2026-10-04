@@ -1,14 +1,16 @@
 /**
- * Open goes through an INJECTED mountAssetViewer (Asset Engineer's v2,
- * src/lib/assetViewer/mountAssetViewer.js at 42c3fa6). The fake in fixtures/fakeViewer.js follows
+ * Open goes through an INJECTED mountAssetViewer (Asset Engineer's v2.1,
+ * src/lib/assetViewer/mountAssetViewer.js at b34e259). The fake in fixtures/fakeViewer.js follows
  * that handle's contract for creative refs: load({ jobId, index, format })
  * calls options.creativeSource.resolve() itself and resolves
- * { ok, error?, superseded?, downloadOnly? }; dispose(). The real viewer
+ * { ok, error?, superseded?, downloadOnly? }; getState(); dispose(). The real viewer
  * needs THREE + WebGL, so it is not mounted here; its own suites cover it.
  */
 import { describe, expect, it } from "vitest";
-import { byAttr, deferred, flush } from "./fakeDom.js";
-import { setup, button } from "./helpers.js";
+import { byAttr, byClass, deferred, flush } from "./fakeDom.js";
+import { setup, button, card } from "./helpers.js";
+import { ASSET_MESSAGES, ERROR_KIND } from "../../src/lib/projects/conceptGallery/errors.js";
+import { FALLBACK_CONCEPT_NOTICE } from "../../src/lib/projects/conceptGallery/contract.js";
 import { assetBody, errorFor, jobBody, listBody, succeededJob, CONCEPT } from "./fixtures/contractFixtures.js";
 import { fakeViewerFactory, v2Like } from "./fixtures/fakeViewer.js";
 
@@ -146,5 +148,93 @@ describe("concept gallery: injected asset viewer (v2)", () => {
     expect(client.count("getAssetUrl")).toBe(1);
     expect(downloads).toHaveLength(1);
     expect(mountAssetViewer.made).toHaveLength(0);
+  });
+
+  // ---- v2.1 (b34e259) -------------------------------------------------------
+  it("v2.1: always mounts the viewer with renderConceptNotice:false, even if viewerOptions says otherwise", async () => {
+    const { root, mountAssetViewer } = viewerSetup(v2Like([]), {}, { viewerOptions: { three: "THREE-from-host", renderConceptNotice: true } });
+    await flush();
+    button(root, "open").click();
+    await flush();
+    expect(mountAssetViewer.made[0].opts).toMatchObject({ renderConceptNotice: false, three: "THREE-from-host" });
+  });
+
+  it("v2.1: the panel always shows the notice, then the server's text from this resolve, verbatim", async () => {
+    const serverNotice = "  AI-generated visual concept.\n  Line two, kept as sent.  ";
+    const { root, job } = viewerSetup(v2Like([]), {
+      getAssetUrl: ({ index }) => assetBody(job, index, { concept: { ...CONCEPT, notice: serverNotice } }),
+    });
+    await flush();
+    button(root, "open").click();
+    const notice = () => byAttr(byAttr(root, "data-viewer-panel")[0], "data-concept-notice")[0].textContent;
+    expect(notice()).toBe(job.concept.notice); // before any answer: the job's notice
+    await flush();
+    expect(notice()).toBe(serverNotice); // not trimmed or collapsed
+  });
+
+  it("v2.1: the notice stays in the panel when Open fails before any server answer", async () => {
+    const job = succeededJob({ concept: null });
+    const { root } = setup(
+      { listJobs: () => listBody([job]), getJob: () => jobBody(job), getAssetUrl: () => Promise.reject(errorFor("ASSET_UNAVAILABLE")) },
+      { mountAssetViewer: fakeViewerFactory(v2Like([])) },
+    );
+    await flush();
+    button(root, "open").click();
+    await flush();
+    const panelEl = byAttr(root, "data-viewer-panel")[0];
+    expect(byAttr(panelEl, "data-viewer-status")[0].getAttribute("data-code")).toBe("ASSET_UNAVAILABLE");
+    expect(byAttr(panelEl, "data-concept-notice")[0].textContent).toBe(FALLBACK_CONCEPT_NOTICE);
+  });
+
+  it("v2.1 (V1): Open survives one transient resolve failure; two give the honest server message, 2 resolves, no Download hint", async () => {
+    let n = 0;
+    const once = viewerSetup(v2Like([]), {
+      getAssetUrl: ({ index }) => {
+        if (n++ === 0) throw errorFor("PROVIDER_UNAVAILABLE");
+        return assetBody(once.job, index);
+      },
+    });
+    await flush();
+    button(once.root, "open").click();
+    await flush();
+    expect(once.client.count("getAssetUrl")).toBe(2);
+    expect(byAttr(once.root, "data-viewer-status")[0].textContent).toBe("");
+
+    const twice = viewerSetup(v2Like([]), { getAssetUrl: () => Promise.reject(errorFor("PROVIDER_UNAVAILABLE")) });
+    await flush();
+    button(twice.root, "open").click();
+    await flush();
+    expect(twice.client.count("getAssetUrl")).toBe(2);
+    const status = byAttr(twice.root, "data-viewer-status")[0];
+    expect(status.textContent).toBe(ASSET_MESSAGES[ERROR_KIND.SERVER]);
+    expect(status.textContent).not.toMatch(/download/i);
+  });
+
+  it("v2.1 (V2): a malformed resolve answer on Open is never retried and never suggests Download", async () => {
+    const { root, client, job } = viewerSetup(v2Like([]), { getAssetUrl: () => ({ ok: true, asset: { jobId: "someone-else", index: 0 } }) });
+    await flush();
+    button(root, "open").click();
+    await flush();
+    expect(client.count("getAssetUrl")).toBe(1);
+    const status = byAttr(root, "data-viewer-status")[0];
+    expect(status.getAttribute("data-code")).toBe("RESOLVE_MALFORMED");
+    expect(status.textContent).toBe(ASSET_MESSAGES[ERROR_KIND.MALFORMED]);
+    expect(button(card(root, job.jobId), "open")).not.toBeNull(); // not a record problem: no lock
+  });
+
+  it("v2.1 (V4): a 403 on Open is FORBIDDEN, not signed out: the card says Not allowed, no sign-in prompt", async () => {
+    const { root, client, job, gallery } = viewerSetup(v2Like([]), {
+      getAssetUrl: () => Promise.reject({ status: 403, code: "UNAUTHORIZED", message: "Not allowed." }),
+    });
+    await flush();
+    button(root, "open").click();
+    await flush();
+    expect(client.count("getAssetUrl")).toBe(1);
+    expect(byAttr(root, "data-viewer-status")[0].textContent).toBe(ASSET_MESSAGES[ERROR_KIND.FORBIDDEN]);
+    const c = card(root, job.jobId);
+    expect(byClass(c, "fcg-badge-text")[0].textContent).toBe("Not allowed");
+    expect(button(c, "open")).toBeNull();
+    expect(button(c, "download")).toBeNull();
+    expect(gallery.getState().list).toBe("ready"); // the list is not switched to signed-out
   });
 });
