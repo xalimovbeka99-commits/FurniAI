@@ -2,12 +2,11 @@
  * Scoped styles for the concept gallery. Static text only (no user data).
  *
  * Every value comes from Antigravity's design tokens
- * (src/styles/design-tokens.css, blob 68bf15f at refs/review/ag-e06377b,
- * also at 365c0523 and refs/review/ag-9d44e10), read as CSS custom properties.
- * Each var() carries that file's own value as its fallback, so the gallery
- * looks the same on a page that hasn't loaded the tokens (root index.html at
- * a29f47b defines only --paper, --paper-2/3, --ink, --ink-soft, --brass,
- * --line, --line-soft and --r).
+ * (src/styles/design-tokens.css, blob 17fc5a7 at the base 6d3f204, from AG's
+ * 8744d07 redesign), read as CSS custom properties. Each var() carries that
+ * file's own value as its fallback, so the gallery looks the same on a page
+ * that hasn't loaded the tokens (root styles.css defines only --paper*,
+ * --ink, --ink-soft, --brass*, --walnut, --line*, --r).
  *
  * Status badge colours map onto AG's save-status tokens:
  *   succeeded -> --status-saved-*      processing/submitting -> --status-saving-*
@@ -36,14 +35,18 @@ export const CONCEPT_GALLERY_CSS = `
 .fcg-btn{font-family:var(--font-mono,'Space Mono',monospace);font-size:12px;letter-spacing:.04em;cursor:pointer;border-radius:var(--r-sm,8px);border:1px solid var(--ink,#1C1E21);background:transparent;color:var(--ink,#1C1E21);padding:7px 13px;min-height:36px}
 .fcg-btn:hover:not(:disabled){background:var(--ink,#1C1E21);color:var(--paper,#FAF9F5)}
 .fcg-btn-primary{background:var(--ink,#1C1E21);color:var(--paper,#FAF9F5)}
-.fcg-btn-primary:hover:not(:disabled){background:var(--brass,#00B4D8);border-color:var(--brass,#00B4D8)}
+.fcg-btn-primary:hover:not(:disabled){background:var(--brass,#1B4D3E);border-color:var(--brass,#1B4D3E)}
 .fcg-btn:disabled{cursor:progress;opacity:.65}
-.fcg-btn:focus-visible{outline:2px solid var(--brass,#00B4D8);outline-offset:2px}
+.fcg-btn:focus-visible{outline:2px solid var(--brass,#1B4D3E);outline-offset:2px}
 .fcg-panel{border:1px dashed var(--line,#DFD9CC);border-radius:var(--r,14px);padding:var(--space-xl,28px) var(--space-lg,20px);text-align:center;font-size:14px;background:var(--paper,#FAF9F5)}
 .fcg-panel p{margin:0 0 var(--space-md,14px)}
 .fcg-panel[data-panel="empty"] p{margin:0}
 .fcg-panel[role="alert"]{border-style:solid;border-color:var(--status-error-border,#fecaca);background:var(--status-error-bg,#fef2f2);color:var(--status-error-text,#b91c1c)}
 .fcg-panel[data-panel="signed_out"],.fcg-panel[data-panel="not_configured"]{border-color:var(--line,#DFD9CC);background:var(--paper-2,#F4F2EB);color:var(--ink,#1C1E21)}
+.fcg-viewer{margin:0 0 var(--space-md,14px);padding:var(--space-md,14px);border:1px solid var(--line,#DFD9CC);border-radius:var(--r,14px);background:#fff;display:flex;flex-direction:column;gap:var(--space-sm,8px)}
+.fcg-viewer-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-md,14px)}
+.fcg-viewer-title{margin:0;font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.fcg-viewer-host{position:relative;height:min(60vh,420px);border-radius:var(--r-sm,8px);background:var(--paper-2,#F4F2EB);overflow:hidden}
 .fcg-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--space-md,14px)}
 .fcg-card{display:flex;flex-direction:column;height:100%;background:#fff;border:1px solid var(--line,#DFD9CC);border-radius:var(--r,14px);overflow:hidden}
 .fcg-card[data-status="failed"]{border-color:var(--status-error-border,#fecaca)}

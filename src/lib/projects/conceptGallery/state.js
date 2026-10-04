@@ -65,7 +65,13 @@ export function normalizeJob(raw) {
     completedAt: str(raw.completedAt),
     updatedAt: str(raw.updatedAt),
     notice: str(raw.concept?.notice),
+    concept: raw.concept && typeof raw.concept === "object" ? conceptCopy(raw.concept) : null,
   };
+}
+
+const CONCEPT_FIELDS = ["kind", "editable", "dimensionsVerified", "partsSeparable", "manufacturable", "notice"];
+function conceptCopy(c) {
+  return Object.fromEntries(CONCEPT_FIELDS.filter((k) => k in c).map((k) => [k, c[k]]));
 }
 
 function time(iso) {

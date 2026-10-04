@@ -5,6 +5,9 @@
  */
 import { mountConceptGallery } from "../../../../src/lib/projects/conceptGallery/index.js";
 import { createFakeCreativeJobsClient } from "../../../../tests/projects/fixtures/fakeCreativeJobsClient.js";
+import { createFixtureFetch } from "../../../../tests/projects/fixtures/fixtureFetch.js";
+// Asset Engineer's real source, used by the DEMO over a fixture fetch (the gallery module never imports it).
+import { createCreativeAssetSource } from "../../../../src/lib/assetViewer/creativeAsset.js";
 import * as F from "../../../../tests/projects/fixtures/contractFixtures.js";
 
 const never = () => new Promise(() => {});
@@ -65,13 +68,18 @@ function mount(id) {
   if (gallery) gallery.destroy();
   log.textContent = "";
   const s = SCENARIOS[id] || SCENARIOS.list;
-  const client = createFakeCreativeJobsClient(s);
+  const client = createFakeCreativeJobsClient({ listJobs: s.listJobs });
+  const creativeSource = createCreativeAssetSource({
+    fetchImpl: createFixtureFetch({ getJob: s.getJob || never, getAssetUrl: s.getAssetUrl || never }, client.calls),
+    getAuthToken: () => "fixture-token",
+  });
   gallery = mountConceptGallery(document.getElementById("gallery"), {
     client,
     getAccessToken: () => "fixture-token",
+    creativeSource,
     pollIntervalMs: s.pollIntervalMs || 4000,
     onOpenConcept: async (req) => {
-      // What a viewer host does: call the resolver for every load, never keep the URL.
+      // FIXTURE: no mountAssetViewer is injected here (it needs THREE + WebGL); the hook still gets a resolver, never a URL.
       try {
         await req.resolveUrl();
         log.textContent = `onOpenConcept({ jobId: ${req.jobId}, index: ${req.index}, format: ${req.format} }) → resolveUrl() called (getAssetUrl calls so far: ${client.count("getAssetUrl")}). FIXTURE: no viewer is mounted in this demo.`;

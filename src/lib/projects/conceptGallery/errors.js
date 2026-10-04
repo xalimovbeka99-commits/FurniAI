@@ -2,7 +2,9 @@
  * Error classification. Everything switches on `code` (and on HTTP status
  * only when there is no code), never on message text.
  *
- * A client is expected to reject with an object like
+ * Errors from Asset Engineer's creative source / viewer (AssetViewerError,
+ * with `serverCode` / `status` extras) are classified through the server
+ * code they carry. A list client is expected to reject with an object like
  *   { status: 409, code: "ASSET_NOT_READY", message?, details? }
  * which is the `{ ok:false, code, error, details? }` body plus the HTTP
  * status. A rejection with no `status` (fetch TypeError, abort excluded) is
@@ -37,8 +39,38 @@ export function isAbortError(err) {
  * @param {unknown} err
  * @returns {{ kind: string, code: string, status: number|null }}
  */
+/**
+ * Codes thrown by Asset Engineer's createCreativeAssetSource / mountAssetViewer
+ * (src/lib/assetViewer/errors.js at 42c3fa6). When the error carries the
+ * server's `serverCode`, that wins; these cover the cases without one.
+ */
+const VIEWER_CODE_KIND = Object.freeze({
+  SIGN_IN_REQUIRED: "signed_out",
+  SIGN_IN_UNAVAILABLE: "server",
+  CONCEPTS_NOT_CONFIGURED: "not_configured",
+  SERVICE_UNAVAILABLE: "server",
+  PROVIDER_UNAVAILABLE: "server",
+  CONCEPT_NOT_FOUND: "not_found",
+  ASSET_NOT_READY: "asset_not_ready",
+  ASSET_UNAVAILABLE: "asset_unavailable",
+  RECORD_INTEGRITY_FAILED: "integrity",
+});
+
+function classifyViewerError(e) {
+  const status = Number.isInteger(e.status) ? e.status : null;
+  if (typeof e.serverCode === "string" && e.serverCode) return classifyError({ status, code: e.serverCode });
+  const kind = VIEWER_CODE_KIND[e.code];
+  if (kind) return { kind, code: e.code, status };
+  if (e.code === "RESOLVE_FAILED") {
+    if (status === null) return { kind: ERROR_KIND.NETWORK, code: CODE.NETWORK, status };
+    if (status >= 500) return { kind: ERROR_KIND.SERVER, code: e.code, status };
+  }
+  return { kind: ERROR_KIND.REQUEST, code: e.code || "VIEWER_ERROR", status };
+}
+
 export function classifyError(err) {
   const e = err && typeof err === "object" ? err : {};
+  if (e.name === "AssetViewerError") return classifyViewerError(e);
   const status = Number.isInteger(e.status) ? e.status : null;
   const code = typeof e.code === "string" && e.code ? e.code : null;
 

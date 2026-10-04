@@ -4,8 +4,6 @@ import { setup, card, live } from "./helpers.js";
 import { byClass, byAttr } from "./fakeDom.js";
 import { errorFor, jobBody, jobView, listBody, networkError, succeededJob, failedJob, unknownJob } from "./fixtures/contractFixtures.js";
 
-beforeEach(() => vi.useFakeTimers());
-afterEach(() => vi.useRealTimers());
 
 const tick = async (ms) => {
   await vi.advanceTimersByTimeAsync(ms);
@@ -13,6 +11,9 @@ const tick = async (ms) => {
 };
 
 describe("concept gallery: polling", () => {
+  // Scoped here (not file level) so the src/ collector doesn't fake timers for other suites.
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
   it("polls getJob for each non-terminal job every interval, and stops when all are terminal", async () => {
     const p = jobView({ status: "processing" });
     const s = jobView({ status: "submitting" });
@@ -190,5 +191,15 @@ describe("concept gallery: polling", () => {
     release();
     await flush();
     expect(byClass(card(root, p.jobId), "fcg-badge-text")[0].textContent).toBe("Generating");
+  });
+
+  it("without a creative source, polling uses client.getJob with the gallery's token", async () => {
+    const p = jobView();
+    const { client } = setup({ listJobs: () => listBody([p]), getJob: () => jobBody(p) }, { noSource: true });
+    await flush();
+    await tick(4000);
+    const c = client.calls.filter((x) => x.method === "getJob");
+    expect(c).toHaveLength(1);
+    expect(c[0].args).toMatchObject({ jobId: p.jobId, accessToken: "test-token" });
   });
 });

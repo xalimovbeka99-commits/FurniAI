@@ -40,6 +40,19 @@ export function el(doc, tag, attrs, ...children) {
   return node;
 }
 
+/**
+ * A failed job's server message as one safe line: control characters and
+ * runs of whitespace collapsed, capped at 300 chars, and dropped entirely if
+ * it contains an address. Same rule as safeJobMessage() in Asset Engineer's
+ * creativeAsset.js (not imported: the gallery does not depend on that module).
+ */
+export function jobErrorText(message) {
+  if (typeof message !== "string") return null;
+  const m = message.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!m || /https?:\/\//i.test(m)) return null;
+  return m.length > 300 ? `${m.slice(0, 299)}…` : m;
+}
+
 export function defaultFormatDate(iso) {
   const t = iso ? Date.parse(iso) : NaN;
   if (!Number.isFinite(t)) return "—";
@@ -100,6 +113,11 @@ function outputActions(doc, job, output, state, ctx, multiple) {
     open.disabled = Boolean(busy);
     open.addEventListener("click", () => ctx.onOpen(job.jobId, output.index));
     buttons.appendChild(open);
+  }
+  if (!ctx.canDownload) {
+    wrap.appendChild(buttons);
+    wrap.appendChild(el(doc, "p", { class: "fcg-hint", "data-no-source": "", text: "Files can't be opened or downloaded on this page yet." }));
+    return wrap;
   }
   const dl = el(doc, "button", {
     type: "button",
@@ -186,7 +204,7 @@ export function renderCard(doc, job, state, ctx, n) {
         "p",
         { class: "fcg-msg fcg-msg-error", "data-failed": job.error?.code || "" },
         el(doc, "strong", { text: "Generation failed. " }),
-        job.error?.message || "The generation service reported a failure.",
+        jobErrorText(job.error?.message) || "The generation service reported a failure.",
       ),
     );
   } else if (job.status === JOB_STATUS.SUBMISSION_UNKNOWN) {

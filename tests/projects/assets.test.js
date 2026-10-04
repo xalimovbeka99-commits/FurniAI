@@ -44,7 +44,7 @@ describe("concept gallery: asset URLs", () => {
     expect(client.count("getAssetUrl")).toBe(2);
     expect(downloads).toHaveLength(2);
     expect(downloads[0].url).not.toBe(downloads[1].url);
-    expect(downloads[0].filename).toBe(`concept-${job.jobId}-0.glb`);
+    expect(downloads[0].filename).toBe(`furniai-concept-${job.jobId}-0.glb`); // the source's own name
     const state = JSON.stringify(gallery.getState());
     expect(state).not.toMatch(/https?:|cdn\.fixture/);
     const attrs = byAttr(root, "href");
@@ -139,16 +139,19 @@ describe("concept gallery: asset URLs", () => {
     expect(button(root, "download").disabled).toBe(false);
   });
 
-  it("an assetResolver option replaces client.getAssetUrl and is still called every time", async () => {
+  it("assetResolver is an alias for the injected creative source; its resolve() is called every time", async () => {
     const job = succeededJob();
     let calls = 0;
     const downloads = [];
-    const { root, client } = setup(
-      { listJobs: () => listBody([job]), getAssetUrl: () => assetBody(job, 0) },
+    const { root } = setup(
+      { listJobs: () => listBody([job]), getJob: () => jobBody(job) },
       {
-        assetResolver: ({ jobId, index }) => {
-          calls++;
-          return { url: `blob:fixture/${jobId}/${index}/${calls}`, format: "glb" };
+        noSource: true,
+        assetResolver: {
+          resolve: async (jobId, index) => {
+            calls++;
+            return { jobId, index, url: `https://cdn.fixture.invalid/${jobId}/${index}/${calls}.glb`, format: "glb", filename: `furniai-concept-${jobId}-${index}.glb` };
+          },
         },
         startDownload: (d) => downloads.push(d.url),
       },
@@ -159,16 +162,28 @@ describe("concept gallery: asset URLs", () => {
     button(root, "download").click();
     await flush();
     expect(calls).toBe(2);
-    expect(client.count("getAssetUrl")).toBe(0);
     expect(new Set(downloads).size).toBe(2);
   });
 
-  it("an asset body without a url is an error, not a download", async () => {
-    const { root, downloads } = succeededSetup((j) => () => ({ ok: true, asset: { jobId: j.jobId, index: 0 } }));
+  it("without a creative source there is no Open or Download (no second URL resolver is built)", async () => {
+    const job = succeededJob();
+    const { root, client } = setup({ listJobs: () => listBody([job]), getJob: () => jobBody(job) }, { noSource: true, onOpenConcept: () => {} });
+    await flush();
+    expect(button(root, "open")).toBeNull();
+    expect(button(root, "download")).toBeNull();
+    expect(byAttr(root, "data-no-source")).toHaveLength(1);
+    expect(client.count("getAssetUrl")).toBe(0);
+  });
+
+  it("an asset body without a url is never downloaded (source answers RESOLVE_FAILED; see open question)", async () => {
+    const { root, client, downloads } = succeededSetup((j) => () => ({ ok: true, asset: { jobId: j.jobId, index: 0 } }));
     await flush();
     button(root, "download").click();
     await flush();
     expect(downloads).toHaveLength(0);
-    expect(byAttr(root, "data-asset-error", "INVALID_RESPONSE")).toHaveLength(1);
+    // createCreativeAssetSource reports a malformed body and a network error with the same
+    // status-less RESOLVE_FAILED, so the gallery's single transient retry also fires here.
+    expect(client.count("getAssetUrl")).toBe(2);
+    expect(byAttr(root, "data-asset-error")).toHaveLength(1);
   });
 });
