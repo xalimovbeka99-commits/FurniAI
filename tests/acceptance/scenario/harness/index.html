@@ -16,7 +16,8 @@
   .warn { background: #fff3cd; border: 1px solid #c79100; padding: 8px; border-radius: 6px; }
   .err { background: #fde8e8; border: 1px solid #b00020; padding: 8px; border-radius: 6px; }
   .notice { background: #eef; padding: 8px; border-radius: 6px; }
-  canvas { width: 100%; max-width: 100%; height: 220px; display: block; background: #222; }
+  canvas { max-width: 100%; display: block; }
+  #canvas { width: 100%; height: 220px; background: #222; }
   [hidden] { display: none !important; }
   code { word-break: break-all; }
 </style>
@@ -41,11 +42,13 @@
   </section>
 
   <section>
-    <h2>3. View (placeholder for the Asset Engineer's viewer)</h2>
+    <h2>3. View — real asset viewer v2 (src/lib/assetViewer, 7eaa414) with its /api/creative resolver</h2>
     <div id="notice" class="notice" data-testid="concept-notice" hidden></div>
     <button id="view" type="button" disabled>View</button>
-    <button id="download" type="button" disabled>Download</button>
-    <canvas id="canvas" width="640" height="220"></canvas>
+    <button id="download" type="button" disabled>Download (contract client)</button>
+    <button id="download-viewer" type="button" disabled>Download (viewer)</button>
+    <div id="viewer" data-testid="viewer" style="width:100%;height:260px;position:relative;"></div>
+    <canvas id="canvas" width="640" height="220" hidden></canvas>
     <div id="view-info" data-testid="view-info"></div>
     <div id="asset-error" class="err" data-testid="asset-error" hidden></div>
   </section>

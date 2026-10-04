@@ -3,14 +3,42 @@
 // address, re-call once) → download (fresh address) → reopen from the job list.
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createConceptClient, TERMINAL } from "/support/conceptClient.js";
 
 const qs = new URLSearchParams(location.search);
 const USER = qs.get("user") || "user-a";
 const POLL_MS = Number(qs.get("poll") || 4000); // contract: 3–5 s; tests shorten it
+// View leg: the Asset Engineer's REAL viewer by default; ?viewer=harness falls
+// back to a bare GLTFLoader (used when the viewer module is unavailable).
+const VIEWER_MODE = qs.get("viewer") || "asset-viewer";
 const $ = (id) => document.getElementById(id);
 const client = createConceptClient({ apiUrl: "/api/creative", authHeader: `Bearer test:${USER}` });
-const H = (window.__harness = { stats: client.stats, viewUrls: [], events: [], polls: 0, generateClicks: 0, loaderErrors: 0 });
+const H = (window.__harness = { stats: client.stats, viewUrls: [], events: [], polls: 0, generateClicks: 0, loaderErrors: 0, viewerErrors: [], viewerMode: VIEWER_MODE });
+document.body.dataset.viewer = VIEWER_MODE;
+
+let assetViewer = null;
+// Asset viewer v2 (7eaa414) on the /api/creative contract: its OWN resolver
+// (createCreativeAssetSource) calls GET ?resource=asset on every load and
+// every download; the harness only hands it a jobId.
+async function getAssetViewer() {
+  if (assetViewer) return assetViewer;
+  const av = await import("/src/lib/assetViewer/index.js");
+  const creativeSource = av.createCreativeAssetSource({
+    fetchImpl: (...args) => fetch(...args),
+    getAuthToken: async () => `test:${USER}`, // local test-auth bypass only
+  });
+  assetViewer = av.mountAssetViewer($("viewer"), {
+    three: THREE,
+    deps: { GLTFLoader, OrbitControls },
+    environment: "none",
+    creativeSource,
+    onError: (err) => H.viewerErrors.push({ code: err.code, status: err.status ?? null }),
+  });
+  window.__assetViewer = assetViewer;
+  return assetViewer;
+}
+
 const log = (e) => H.events.push({ t: Math.round(performance.now()), ...e });
 
 let referenceId = null;
@@ -79,6 +107,13 @@ function render(job) {
   setStatus(job.status);
   show($("warning"), "");
   show($("error"), "");
+  if (VIEWER_MODE === "asset-viewer" && (job.status === "submission_unknown" || job.status === "failed")) {
+    // the viewer's own terminal-state handling (load({ job })) — no resolve, no polling
+    getAssetViewer().then((v) => v.load({ job })).then(() => {
+      const vs = assetViewer.getState();
+      Object.assign(document.body.dataset, { viewerStatus: vs.status, viewerError: vs.error?.code || "" });
+    });
+  }
   if (job.status === "submission_unknown") {
     show($("warning"), "We sent this generation but never got an answer. It may have been charged. It was NOT retried automatically — check before generating again.");
   } else if (job.status === "failed") {
@@ -87,6 +122,7 @@ function render(job) {
     show($("notice"), job.concept?.notice || "");
     $("view").disabled = false;
     $("download").disabled = false;
+    $("download-viewer").disabled = false;
     viewConcept();
   }
 }
@@ -96,6 +132,40 @@ async function viewConcept() {
   show($("asset-error"), "");
   $("view-info").textContent = "loading…";
   document.body.dataset.view = "loading";
+  return VIEWER_MODE === "asset-viewer" ? viewWithAssetViewer() : viewWithBareLoader();
+}
+
+/** View through the real viewer v2: load({ jobId, index }) → its resolver → mesh. */
+async function viewWithAssetViewer() {
+  const viewer = await getAssetViewer();
+  const res = await viewer.load({ jobId: currentJob.jobId, index: 0 });
+  if (res.superseded) return;
+  const st = viewer.getState();
+  H.lastViewerState = JSON.parse(JSON.stringify(st));
+  Object.assign(document.body.dataset, {
+    viewerStatus: st.status,
+    viewResolves: String(st.attempts?.resolve ?? ""),
+    viewDisplays: String(st.attempts?.display ?? ""),
+    viewerConcept: st.concept?.noticeSource || "",
+    viewerOpenInBuilder: String(st.actions?.openInBuilder),
+  });
+  if (res.ok) {
+    const m = st.model || {};
+    $("view-info").textContent = `Loaded in the asset viewer: ${m.meshCount} mesh(es), ${m.textureCount} texture(s). ${m.scale?.label || ""}`;
+    Object.assign(document.body.dataset, { view: "ok", meshes: String(m.meshCount), textures: String(m.textureCount), proportions: m.proportions?.ratioLabel || "", scaleLabel: m.scale?.label || "", viewerFormat: st.asset?.format || "" });
+    return;
+  }
+  if (st.status === "download-only") { document.body.dataset.view = "download-only"; return; }
+  const code = res.error?.code || "UNKNOWN";
+  document.body.dataset.viewerError = code;
+  H.loaderErrors++;
+  $("view-info").textContent = "";
+  if (code === "ASSET_UNAVAILABLE") return assetRefused({ status: 410, body: { code: "ASSET_UNAVAILABLE" } });
+  document.body.dataset.view = "failed";
+  show($("asset-error"), code === "ASSET_DISPLAY_FAILED" ? "The 3D concept could not be loaded (the viewer re-resolved a fresh address once)." : `The 3D concept could not be shown (${code}).`);
+}
+
+async function viewWithBareLoader() {
   for (let attempt = 1; attempt <= 2; attempt++) {
     const r = await client.resolve(currentJob.jobId, 0); // fresh address every time
     if (r.status !== 200) return assetRefused(r);
@@ -110,6 +180,7 @@ async function viewConcept() {
       const size = box.getSize(new THREE.Vector3());
       $("view-info").textContent = `Loaded: ${meshes} mesh(es), ${textures} textured.`;
       Object.assign(document.body.dataset, { view: "ok", meshes: String(meshes), textures: String(textures), bbox: [size.x, size.y, size.z].map((v) => v.toFixed(3)).join(","), viewAttempts: String(attempt) });
+      $("canvas").hidden = false;
       tryRender(gltf.scene, box);
       return;
     } catch (e) {
@@ -127,6 +198,7 @@ async function viewConcept() {
 
 function assetRefused(r) {
   document.body.dataset.view = `refused-${r.status}`;
+  assetViewer?.clear?.(); // never leave a stale model on screen under an error
   $("view-info").textContent = "";
   const msg = r.body?.code === "ASSET_UNAVAILABLE" ? "This concept is no longer available from the generation service, and FurniAI kept no copy."
     : r.body?.code === "ASSET_NOT_READY" ? "This concept is not ready yet." : `${r.body?.code}: ${r.body?.error}`;
@@ -170,6 +242,13 @@ $("download").addEventListener("click", async () => {
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   document.body.dataset.download = "ok";
   document.body.dataset.downloadContentType = r.contentType || "";
+});
+
+// The viewer's own download (v2): re-resolves a fresh address and navigates to it.
+$("download-viewer").addEventListener("click", async () => {
+  const viewer = await getAssetViewer();
+  const r = await viewer.download({ save: true });
+  document.body.dataset.viewerDownload = r ? (r.ok ? "ok" : `failed-${r.error?.code}`) : "null";
 });
 
 // ------------------------------------------------------- reopen (job list)

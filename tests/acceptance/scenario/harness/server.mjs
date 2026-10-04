@@ -6,6 +6,7 @@
  *   /                     the test-only harness page (harness/index.html)
  *   /support/*            the test-side contract client + GLB inspector
  *   /vendor/three/*       three's ES build + addons straight from node_modules
+ *   /src/lib/assetViewer/* the REAL asset viewer (Asset Engineer), unmodified
  *   /__cdn/*              proxy to the MOCKED CDN (Playwright maps
  *                         https://cdn.fixture.invalid/** here with page.route)
  *   /__fixture/*          test control: reset / set provider knobs / read counts
@@ -36,6 +37,8 @@ const STATIC = [
   ["/vendor/three/addons/", join(ROOT, "node_modules/three/examples/jsm/")],
   ["/vendor/three/", join(ROOT, "node_modules/three/build/")],
   ["/fixtures/", join(ROOT, "tests/fixtures/scenario/")],
+  // the Asset Engineer's real viewer module (src/lib/assetViewer/**), served as-is
+  ["/src/lib/assetViewer/", join(ROOT, "src/lib/assetViewer/")],
   ["/", join(HERE, "/")],
 ];
 
