@@ -1,0 +1,30 @@
+{
+  "_fixture": {
+    "simulated": true,
+    "generatedByScenario": false,
+    "request": {
+      "method": "GET",
+      "url": "/api/creative?resource=config"
+    },
+    "httpStatus": 200
+  },
+  "response": {
+    "ok": true,
+    "provider": "scenario",
+    "configured": false,
+    "missing": [
+      "SCENARIO_3D_MODEL_ID"
+    ],
+    "modelId": null,
+    "liveGenerationEnabled": false,
+    "maxCostPerJob": null,
+    "reference": {
+      "acceptedTypes": [
+        "image/png",
+        "image/jpeg",
+        "image/webp"
+      ],
+      "maxBytes": 3145728
+    }
+  }
+}

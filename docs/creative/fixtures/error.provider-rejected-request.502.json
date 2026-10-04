@@ -1,0 +1,28 @@
+{
+  "_fixture": {
+    "simulated": true,
+    "generatedByScenario": false,
+    "request": {
+      "method": "POST",
+      "url": "/api/creative?resource=jobs",
+      "body": {
+        "referenceId": "00000000-0000-4000-8000-000000000004",
+        "idempotencyKey": "click-0006"
+      }
+    },
+    "httpStatus": 502
+  },
+  "response": {
+    "ok": false,
+    "code": "PROVIDER_REJECTED_REQUEST",
+    "error": "The 3D generation service refused the request. Whether the provider charged for the refused request is not confirmed.",
+    "details": {
+      "providerHttpStatus": 400,
+      "providerMessage": "simulated: input not accepted",
+      "jobId": "00000000-0000-4000-8000-000000000008",
+      "jobStatus": "failed",
+      "outcomeUnknown": false,
+      "billingOutcome": "unconfirmed"
+    }
+  }
+}

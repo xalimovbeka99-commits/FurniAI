@@ -1,0 +1,28 @@
+{
+  "_fixture": {
+    "simulated": true,
+    "generatedByScenario": false,
+    "request": {
+      "method": "POST",
+      "url": "/api/creative?resource=jobs",
+      "body": {
+        "referenceId": "00000000-0000-4000-8000-000000000004",
+        "idempotencyKey": "click-0004"
+      }
+    },
+    "httpStatus": 402
+  },
+  "response": {
+    "ok": false,
+    "code": "PROVIDER_INSUFFICIENT_CREDITS",
+    "error": "The 3D generation service reported insufficient credits. Whether the provider charged for the refused request is not confirmed.",
+    "details": {
+      "providerHttpStatus": 402,
+      "providerMessage": "Payment required",
+      "jobId": "00000000-0000-4000-8000-000000000006",
+      "jobStatus": "failed",
+      "outcomeUnknown": false,
+      "billingOutcome": "unconfirmed"
+    }
+  }
+}

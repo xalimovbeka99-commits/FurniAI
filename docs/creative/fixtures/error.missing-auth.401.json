@@ -1,0 +1,16 @@
+{
+  "_fixture": {
+    "simulated": true,
+    "generatedByScenario": false,
+    "request": {
+      "method": "GET",
+      "url": "/api/creative?resource=jobs"
+    },
+    "httpStatus": 401
+  },
+  "response": {
+    "ok": false,
+    "code": "MISSING_AUTH",
+    "error": "Sign in is required to save or open a design."
+  }
+}
