@@ -36,7 +36,7 @@ describe("computeFit (pure math)", () => {
       expect(f.far).toBeGreaterThanOrEqual(f.maxDistance + radius);
       expect(f.minDistance).toBeLessThan(f.distance);
       expect(f.maxDistance).toBeGreaterThan(f.distance);
-      expect(f.minDistance / radius).toBeCloseTo(0.9, 10);
+      expect(f.minDistance / radius).toBeCloseTo(1.2, 10); // camera can never enter the bounding sphere
       expect(f.far / f.near).toBeLessThan(1e5); // keeps depth precision sane
     }
   });

@@ -22,7 +22,8 @@ export function computeFit({ center, radius, fovDeg, aspect, direction = DEFAULT
   dx /= len;
   dy /= len;
   dz /= len;
-  const minDistance = radius * 0.9;
+  // Stay outside the bounding sphere: zooming can never put the camera inside the model.
+  const minDistance = radius * 1.2;
   const maxDistance = Math.max(distance * 4, radius * 10);
   return {
     distance,
