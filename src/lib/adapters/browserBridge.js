@@ -24,6 +24,8 @@ import {
   APPROVAL_STATE,
 } from "../conversation/pipeline.js";
 import { OBSERVATION_ORIGIN, BEKZOD_APPROVED_DEFAULTS } from "../conversation/intakeModel.js";
+import { restoreEditableDesign } from "../conversation/reopenDesign.js";
+import { buildConstraintReport } from "../rules/constraintReport.js";
 import { createDeterministicPhraseAdapter } from "../conversation/proposalAdapter.js";
 import { createProposal, validateApproval, fingerprintFurniSpec } from "../conversation/approval.js";
 import { commitMaterialUpdate, applyCustomerFinishAnnotation, preserveCustomerFinishOnDraft } from "../conversation/commitMaterialUpdate.js";
@@ -75,7 +77,15 @@ export {
   createDeterministicPhraseAdapter,
   createProposal,
   validateApproval,
+  // The Studio's durable save sends this with every revision (the server
+  // recomputes and compares). Antigravity's candidate hand-added it to the
+  // built bundle; exporting it here makes that reproducible from source.
   fingerprintFurniSpec,
+  // Reopen: rebuild editable facts from a stored revision and prove they
+  // reproduce it (conversation/reopenDesign.js).
+  restoreEditableDesign,
+  // Approved / provisional / advisory / blocking, traced (rules/constraintReport.js).
+  buildConstraintReport,
   parseAndValidateClarifyInput,
   parseDimension,
   ACCEPTED_DIMENSION_UNITS,

@@ -9,6 +9,7 @@ import { sha256Hex } from "../conversation/fingerprint.js";
 import { serializeCanonicalJson } from "../furnispec/normalize.js";
 import { validateFurniSpec } from "../furnispec/validate.js";
 import { validatePartGraph } from "../partgraph/validatePartGraph.js";
+import { buildStructuralPartGraph } from "../partgraph/buildStructuralPartGraph.js";
 import { PersistenceError, PERSISTENCE_ERROR } from "./errors.js";
 import { getSharedMemoryStore } from "./memoryStore.js";
 
@@ -21,10 +22,21 @@ export function createDesignService(deps = {}) {
   return {
     async createDesign({ userId, name, designId } = {}) {
       requireUser(userId);
+      // Design ids are assigned by the server. The primary key is GLOBAL, so
+      // a client-chosen id that collides with another customer's design
+      // answered 409 CONFLICT_DESIGN — telling the caller that id belongs to
+      // a real customer, and bypassing the "hidden = nonexistent = 404" rule.
+      // Refused whatever its value, so the refusal itself reveals nothing.
+      if (designId !== undefined && designId !== null) {
+        throw new PersistenceError(
+          PERSISTENCE_ERROR.BAD_REQUEST,
+          "designId is assigned by the server and must not be sent when creating a design.",
+          { status: 400 }
+        );
+      }
       const row = await store.createDesign({
         ownerUserId: userId,
         name: typeof name === "string" && name.trim() ? name.trim() : "Untitled wardrobe",
-        designId,
       });
       return {
         ok: true,
@@ -79,6 +91,16 @@ export function createDesignService(deps = {}) {
           { status: 404 }
         );
       }
+      // Reopen serves AUTHORITATIVE geometry, so the row must still verify.
+      //
+      // Every save through this service is checked, but the service is not the
+      // only writer: the store queries as the caller, and RLS lets an owner
+      // INSERT into their own design. A customer holding their own session
+      // token can therefore write a revision straight to PostgREST. RLS still
+      // confines the damage to their own design; this confines it to a
+      // refusal instead of a reopened wardrobe and an exported cutting list
+      // that describe different furniture.
+      assertStoredRevisionVerifies(row);
       return {
         ok: true,
         designId,
@@ -92,7 +114,22 @@ export function createDesignService(deps = {}) {
       };
     },
 
-    async saveRevision({
+    async saveRevision(args = {}) {
+      try {
+        return await saveRevisionUnchecked(args);
+      } catch (err) {
+        // A save that fails because the store cannot be reached must SAY the
+        // design was not saved — even when the failing call was one of the
+        // reads the save makes first, whose own message is read-shaped.
+        if (err instanceof PersistenceError && err.code === PERSISTENCE_ERROR.STORAGE_UNAVAILABLE && !/not saved/i.test(err.message)) {
+          throw new PersistenceError(err.code, `${err.message} Your design was not saved.`, { status: err.status, details: err.details });
+        }
+        throw err;
+      }
+    },
+  };
+
+  async function saveRevisionUnchecked({
       userId,
       designId,
       revision,
@@ -116,6 +153,7 @@ export function createDesignService(deps = {}) {
       assertFurniSpec(furniSpec);
       assertPartGraph(partGraph);
       assertSpecGraphConsistency(furniSpec, partGraph);
+      assertGraphIsCompiledFromSpec(furniSpec, partGraph);
 
       let expectedFp;
       try {
@@ -229,12 +267,25 @@ export function createDesignService(deps = {}) {
             }
           );
         }
-      } else if (revNum !== 1) {
-        throw new PersistenceError(
-          PERSISTENCE_ERROR.STALE_REVISION,
-          "The first saved revision must be revision 1.",
-          { status: 409 }
-        );
+      } else {
+        // No history yet. A caller claiming to build on revision N believes
+        // this design has history it does not have — a wrong design id, or a
+        // stale view. Ignoring the claim would let that save land.
+        if (expectedPreviousRevision !== undefined) {
+          const prev = requirePositiveInt(expectedPreviousRevision, "expectedPreviousRevision");
+          throw new PersistenceError(
+            PERSISTENCE_ERROR.STALE_REVISION,
+            "This design has no saved revision to build on. Reload the design and try again.",
+            { status: 409, details: { latestRevision: null, expectedPreviousRevision: prev } }
+          );
+        }
+        if (revNum !== 1) {
+          throw new PersistenceError(
+            PERSISTENCE_ERROR.STALE_REVISION,
+            "The first saved revision must be revision 1.",
+            { status: 409, details: { latestRevision: null, requestedRevision: revNum } }
+          );
+        }
       }
 
       // ---- The write, and the only real serialization point ---------------
@@ -298,8 +349,7 @@ export function createDesignService(deps = {}) {
         createdAt: saved.createdAt,
         validationStatus: saved.validationStatus,
       };
-    },
-  };
+  }
 }
 
 /**
@@ -461,6 +511,117 @@ function assertSpecGraphConsistency(spec, partGraph) {
         }
       );
     }
+  }
+}
+
+/**
+ * The PartGraph must be EXACTLY what the authoritative compiler makes of this
+ * FurniSpec.
+ *
+ * `assertSpecGraphConsistency` compares identity and envelope, and only when
+ * those fields are present. It never looks at a part, so a graph with the
+ * right labels and a shelf 10 mm short — or another design's graph relabelled
+ * — was stored as this spec's geometry. `buildStructuralPartGraph` is pure and
+ * deterministic (no I/O, dates or randomness), so recompiling is the direct
+ * test: same spec in, same graph out, compared canonically so key order is
+ * irrelevant.
+ *
+ * The recompiled graph is used ONLY as the reference. It is never stored in
+ * place of the caller's: the caller's bytes are stored, or the save is
+ * refused. A refusal happens before any write, so history is unchanged.
+ */
+export function assertGraphIsCompiledFromSpec(spec, partGraph) {
+  let compiled;
+  try {
+    compiled = buildStructuralPartGraph(spec);
+  } catch (err) {
+    throw new PersistenceError(
+      PERSISTENCE_ERROR.INVALID_FURNISPEC,
+      "This design's geometry cannot be built by the FurniAI compiler and cannot be saved.",
+      {
+        status: 400,
+        details: {
+          compileError: typeof err?.code === "string" ? err.code : "COMPILE_FAILED",
+          errors: Array.isArray(err?.validationErrors) ? err.validationErrors.slice(0, 20) : undefined,
+          // Structured geometry refusals (e.g. HANGING_DROP_NOT_ACHIEVABLE) carry
+          // the component id and the measured numbers — no credentials, no content.
+          geometry: err?.name === "HangingDropGeometryError" ? err.details : undefined,
+        },
+      }
+    );
+  }
+
+  // A spec the validator accepts can still compile into geometry the
+  // PartGraph validator rejects (for example a groove deeper than the panel
+  // it is cut into). That is a property of the SPEC, whatever graph the
+  // caller sent alongside it.
+  const compiledValidation = validatePartGraph(compiled);
+  if (!compiledValidation.valid) {
+    throw new PersistenceError(
+      PERSISTENCE_ERROR.INVALID_FURNISPEC,
+      "This design compiles to invalid geometry and cannot be saved.",
+      {
+        status: 400,
+        details: { compiledGraphInvalid: true, errors: (compiledValidation.errors || []).slice(0, 20) },
+      }
+    );
+  }
+
+  if (serializeCanonicalJson(compiled) === serializeCanonicalJson(partGraph)) return;
+
+  throw new PersistenceError(
+    PERSISTENCE_ERROR.INVALID_PARTGRAPH,
+    "The PartGraph is not the geometry of this FurniSpec and cannot be saved.",
+    { status: 400, details: { compiledMismatch: describeGraphDifference(compiled, partGraph) } }
+  );
+}
+
+/** Names WHAT differs — top-level fields and part ids — never the values. */
+function describeGraphDifference(expected, actual) {
+  const fields = [];
+  const keys = new Set([...Object.keys(expected || {}), ...Object.keys(actual || {})]);
+  for (const k of keys) {
+    if (serializeCanonicalJson(expected?.[k] ?? null) !== serializeCanonicalJson(actual?.[k] ?? null)) {
+      fields.push(k);
+    }
+  }
+  const byId = (list) => new Map((Array.isArray(list) ? list : []).map((p) => [p?.id, p]));
+  const e = byId(expected?.parts);
+  const a = byId(actual?.parts);
+  const parts = [];
+  for (const id of new Set([...e.keys(), ...a.keys()])) {
+    if (serializeCanonicalJson(e.get(id) ?? null) !== serializeCanonicalJson(a.get(id) ?? null)) {
+      parts.push(id);
+    }
+  }
+  return { fields: fields.sort(), parts: parts.slice(0, 50), partsDiffering: parts.length };
+}
+
+/**
+ * A stored row must pass everything a save must pass, or reopen refuses it.
+ * The refusal carries the reason code only — never the row's contents.
+ */
+function assertStoredRevisionVerifies(row) {
+  let reason = null;
+  try {
+    const fp = fingerprintFurniSpec(row.furniSpec);
+    if (fp !== row.fingerprint) {
+      reason = "FINGERPRINT_MISMATCH";
+    } else {
+      assertFurniSpec(row.furniSpec);
+      assertPartGraph(row.partGraph);
+      assertSpecGraphConsistency(row.furniSpec, row.partGraph);
+      assertGraphIsCompiledFromSpec(row.furniSpec, row.partGraph);
+    }
+  } catch (err) {
+    reason = err instanceof PersistenceError ? err.code : "UNVERIFIABLE";
+  }
+  if (reason) {
+    throw new PersistenceError(
+      PERSISTENCE_ERROR.REVISION_INTEGRITY_FAILED,
+      "This saved revision failed its integrity check and was not opened. Nothing was changed.",
+      { status: 409, details: { revision: row.revision, reason } }
+    );
   }
 }
 

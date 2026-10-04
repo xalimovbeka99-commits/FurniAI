@@ -1,11 +1,18 @@
 # Session ID — calling contract for the client
 
 **Audience:** Antigravity (client lifecycle wiring).
-**Status of the backend half:** IMPLEMENTED in `src/lib/adapters/aiDesignerTransport.js`,
-covered by `src/lib/adapters/sessionIdentityGuard.test.js` (14 tests), bundled into the
-committed `ai-designer-transport.js`.
-**Status of the feature:** **NOT COMPLETE.** The guard is inert until the browser caller
-passes these arguments. Nothing in the product uses them yet.
+**Status of the backend half:** IMPLEMENTED in `src/lib/adapters/aiDesignerTransport.js`
+(`06cbdcf`; start-of-request capture and pre-flight refusal added in `5cda494`), covered by
+`sessionIdentityGuard.test.js` and `sessionReopenJourney.test.js`, bundled into the committed
+`ai-designer-transport.js`.
+**Status of the client half:** wired by Antigravity in `de5ebec` (`rotateStudioSession`,
+`reopenAiWardrobeDesign`, both request paths pass the pair).
+**Status of the journey:** `tests/browser/design-state-protection.spec.js` test 5 **passes in
+real Chromium** on `de5ebec` merged with `5cda494` (run 2026-09-24). A mutation check —
+the same test with the session arguments removed — **fails** (the delayed answer applies,
+tokens 1 = 1), so the test genuinely depends on the session guard.
+**Still not covered:** reopen *from the durable store*. `reopenAiWardrobeDesign()` restores a
+client-side snapshot; the UI does not call `/api/designs` yet.
 
 ---
 
@@ -26,15 +33,19 @@ can detect one.
 
 ---
 
-## 2. The two arguments
-
-Both go to `proposeDesignChange`. They are a **pair**: supplying one without the other is a
-named misconfiguration, not a silent refusal.
+## 2. The arguments
 
 | Argument | Type | Meaning |
 |---|---|---|
-| `sessionId` | `string` | The session this request is being issued **from**. Captured at call time. |
-| `currentSessionId` | `() => string` | A **getter** read when the answer lands, returning the session that is live **then**. |
+| `currentSessionId` | `() => string` | A **getter** for the live session. The transport reads it **when the request starts** (that is the session the request belongs to) and **again when the answer lands**. |
+| `sessionId` | `string`, optional | The session the caller believes it is issuing from. If supplied it must equal `currentSessionId()` at start; otherwise the request is refused before the provider is called. |
+
+**Changed 2026-09-24 (`5cda494`):** `sessionId` is no longer required alongside the getter.
+Before, a getter without `sessionId` was a named misconfiguration — refused on every request,
+so a getter-only caller could never apply anything. Now the transport captures the session
+itself at request start, which also means a caller that captured its copy too late (after an
+`await`) or from the wrong store cannot silently defeat the guard. The de5ebec wiring passes
+both, and behaves exactly as before.
 
 `currentSessionId` must be a getter for the same reason the other live-state readers are: a
 value captured before `await` is a copy of the session you are trying to detect leaving.
@@ -51,9 +62,9 @@ const result = await AiDesignerTransport.proposeDesignChange({
   currentDesignId: () => store.activeDesignId,
   currentChangeToken: () => store.changeToken,
 
-  // NEW — the pair
-  sessionId: store.sessionId,              // captured now, by value
-  currentSessionId: () => store.sessionId, // read later, by reference
+  // session: the getter is enough; sessionId is an optional cross-check
+  sessionId: store.sessionId,              // optional; must match the live session now
+  currentSessionId: () => store.sessionId, // read at start AND when the answer lands
 });
 ```
 
@@ -93,20 +104,23 @@ function beginSession() {
 
 | Situation | Result |
 |---|---|
-| `currentSessionId()` ≠ `sessionId` | `ok:false`, `kind: STALE_REVISION`, **no `spec`, no `partGraph`** |
-| `currentSessionId()` throws | `ok:false`, `STALE_REVISION`, `guardThrew: true`, `guardParameter: "currentSessionId"`. The thrown error's message is deliberately **not** propagated — only its constructor name. |
-| `currentSessionId()` returns `null` / `undefined` / `""` | `ok:false`, `STALE_REVISION` — unreadable fails closed rather than guessing |
-| `currentSessionId` passed as a plain value | `ok:false`, `STALE_REVISION`, `guardParameter: "currentSessionId"`, `guardParameterType` naming the type you passed |
-| `currentSessionId` supplied, `sessionId` missing | `ok:false`, `guardMisconfigured: true`, `guardParameter: "sessionId"` — the error names the missing half |
-| Neither supplied | Behaves exactly as today. **Additive.** |
-| Session matches | Proceeds to the design-id and change-token checks as before |
+| At start: `sessionId` supplied and ≠ `currentSessionId()` | `STALE_REVISION`, `guardPhase: "request-start"`, `sessionNotLiveAtRequest: true`. **Provider not called.** |
+| At start: `currentSessionId()` throws | `STALE_REVISION`, `guardPhase: "request-start"`, `guardThrew: true`, `guardErrorName` only. **Provider not called.** |
+| At start: `currentSessionId()` returns `null` / `undefined` / `""` | `STALE_REVISION`, `guardPhase: "request-start"`. **Provider not called.** |
+| `currentSessionId` passed as a plain value | `STALE_REVISION`, `guardParameter: "currentSessionId"`, `guardParameterType`. **Provider not called.** |
+| Any other half-configured guard (e.g. `currentChangeToken` without `changeToken`) | `guardMisconfigured: true`, names the missing half. **Provider not called** (it used to be called, and its answer discarded). |
+| On landing: live session ≠ session at request | `STALE_REVISION`, **no `spec`, no `partGraph`**; `sessionIdAtRequest`, `currentSessionId` |
+| On landing: getter throws / unreadable | `STALE_REVISION`, `guardThrew` / fail closed |
+| No session arguments at all | Behaves exactly as before. **Additive.** |
+| Session matches on landing | Proceeds to the design-id and change-token checks as before |
 
 The session comparison runs **first**, before design id and change token, because it is the
 only one that can catch a reopen.
 
 A refusal carries the evidence it was decided on: `sessionIdAtRequest` and
-`currentSessionId`. Each live getter is read **exactly once**, so the reported evidence and
-the decision come from the same read.
+`currentSessionId`. On a healthy request the session getter is read exactly **twice** — once
+at start, once on landing — and each other live getter exactly once on landing; the reported
+evidence and the decision come from the same landing read.
 
 `STALE_REVISION` is an already-published kind your UI handles — no new branch is required,
 though you may want to word the message differently when `sessionIdAtRequest` is present.
@@ -130,9 +144,13 @@ session, still applies normally.
 
 ---
 
-## 6. Until that journey passes
+## 6. Status of that journey
 
-The transport refuses these answers; the product does not yet produce the arguments. Please
-do not describe session protection as done — and I will not either — until the same-page
-journey above passes against the real builder. The backend half is testable today via
-`npx vitest run src/lib/adapters/sessionIdentityGuard.test.js`.
+It passes: `design-state-protection.spec.js` test 5, real Chromium, 2026-09-24, on `de5ebec`
+merged with the backend branch (clean merge; `build:legacy` reproduces the committed bundle
+byte-identically in the merged tree). With the session arguments removed the same test
+fails, so it proves the guard rather than passing on the change token.
+
+What it does not prove: reopen from the durable store, because the UI does not yet call
+`/api/designs`. When it does, the reopen path must call `rotateStudioSession()` before it
+replaces the design, exactly as `reopenAiWardrobeDesign()` does today.

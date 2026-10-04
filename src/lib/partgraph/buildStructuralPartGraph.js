@@ -17,6 +17,7 @@ import { assertDeciMm, toDeciMm } from "../furnispec/units.js";
 import { PARTGRAPH_VERSION, PART_ROLES, GEOMETRY_TYPES, GRAIN_DIRECTIONS, ORIENTATIONS } from "./schema.js";
 import { createComponentLedger } from "./componentOutcomes.js";
 import { emitDrawerBankParts } from "./emitDrawerBankParts.js";
+import { assertHangingDropGeometry, assertInteriorPartsInsideBay } from "./hangingDropGeometry.js";
 
 /**
  * Builds the canonical structural PartGraph from a FurniSpec v0.1 object.
@@ -382,6 +383,8 @@ export function buildStructuralPartGraph(furniSpec) {
   // draws, `ledger` is what the customer asked for and what became of it.
   // A PREVIEW outcome carries the id of its preview so the two can be joined.
   const ledger = createComponentLedger();
+  /** Rails and their computed centre, checked against the bay once every part is placed. */
+  const railPlacements = [];
 
   for (const bay of baySpans) {
     let currentBottomFaceY = yTopBottomDmm;
@@ -439,6 +442,7 @@ export function buildStructuralPartGraph(furniSpec) {
       } else if (comp.type.startsWith("HANGING_RAIL")) {
         const offsetBelowDmm = assertDeciMm(comp.offsetBelowShelfMm, `${comp.id}.offsetBelowShelfMm`);
         currentRailCenterY = currentBottomFaceY - offsetBelowDmm;
+        railPlacements.push({ comp, bayIndex: bay.index, railCenterYDmm: currentRailCenterY });
 
         // EXP-01: emit visual PREVIEW_ONLY rail (not a structural panel).
         const railHw = furniSpec.hardware?.hangingRails || {};
@@ -584,6 +588,21 @@ export function buildStructuralPartGraph(furniSpec) {
       }
     }
   }
+
+  // A declared hanging drop must be one the compiled carcass can deliver, and a
+  // rail must sit inside its bay. Refused before any part is emitted, so the
+  // caller receives either a complete, consistent graph or nothing.
+  assertInteriorPartsInsideBay({
+    bayParts: [...fixedShelves, ...adjShelves, ...drawerPanels],
+    yBotTopDmm,
+    yTopBottomDmm,
+  });
+  assertHangingDropGeometry({
+    rails: railPlacements,
+    bayParts: [...fixedShelves, ...adjShelves, ...drawerPanels],
+    yBotTopDmm,
+    yTopBottomDmm,
+  });
 
   // Push drawer panels (ordered by bayIndex, then by Y ascending)
   drawerPanels.sort((a, b) => a.bayIndex - b.bayIndex || a.minYDmm - b.minYDmm);
@@ -917,13 +936,26 @@ export function buildStructuralPartGraph(furniSpec) {
     });
   }
 
+  // Customer visual finish (a swatch such as "walnut") is part of the accepted
+  // design, so it is part of the compiled graph: the manufacturing finishType
+  // stays catalog-backed. Before 2026-09-30 it was patched onto the graph after
+  // compilation, so the saved graph was never "what the compiler makes of this
+  // spec" and every design with a chosen finish was refused on save.
+  const customerFinishKey =
+    typeof furniSpec.customerFinishKey === "string" && furniSpec.customerFinishKey.trim() !== ""
+      ? furniSpec.customerFinishKey
+      : null;
+  const finishedParts = customerFinishKey
+    ? parts.map((part) => ({ ...part, customerFinishKey, finishIntent: customerFinishKey }))
+    : parts;
+
   return {
     partGraphVersion: PARTGRAPH_VERSION,
     sourceSpecId: furniSpec.specId,
     sourceRevision: furniSpec.revision,
     unitScale: "deci-mm",
     qualificationStatus: furniSpec.qualificationStatus,
-    parts,
+    parts: finishedParts,
     previews,
     operations,
     warnings,
@@ -943,6 +975,7 @@ export function buildStructuralPartGraph(furniSpec) {
         heightDmm: envHDmm,
         depthDmm: envDDmm,
       },
+      ...(customerFinishKey ? { customerFinishKey } : {}),
     },
   };
 }

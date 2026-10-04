@@ -90,4 +90,40 @@ describe("adaptWardrobeModelToFurniSpec", () => {
     expect(() => adaptWardrobeModelToFurniSpec(null)).toThrow(TypeError);
     expect(() => adaptWardrobeModelToFurniSpec({})).toThrow("wardrobeModel.widthMm must be a positive number.");
   });
+
+  it("FAILED BEFORE — places the rail at the model's rod centre and declares the model's real drop", () => {
+    // Model: shelf 400 mm above the section floor, rail zone at 1400 mm (rod
+    // centre 1420 mm). On 55998dd the rail was compiled 100 mm under the
+    // shelf — 264 mm above the floor, BELOW the shelf — while declaring a
+    // 1400 mm drop, and the shelf was measured from the carcass top.
+    const spec = adaptWardrobeModelToFurniSpec({
+      id: "w-rail", revision: 1, widthMm: 909, heightMm: 2400, depthMm: 600, panelThicknessMm: 18,
+      sections: [{ id: "sec-01", widthMm: 873, components: [
+        { id: "sh-01", type: "SHELF", positionMm: 400 },
+        { id: "rail-01", type: "HANGING_RAIL", positionMm: 1400 },
+      ] }],
+    });
+    const rail = spec.bays[0].components.find((c) => c.id === "rail-01");
+    expect(rail.targetClearDropMm).toBe(1002); // 1420 − (400 + 18)
+    expect(rail.type).toBe("HANGING_RAIL_LONG");
+
+    const graph = buildStructuralPartGraph(spec);
+    const yFloor = 1000 + 180; // plinth 100.0 + bottom panel 18.0, in dmm
+    const preview = graph.previews.find((p) => p.sourceComponentId === "rail-01");
+    expect(preview.centerYDmm - yFloor).toBe(14200);
+    const shelf = graph.parts.find((p) => p.id === "SH_01");
+    expect(shelf.placement.minYDmm - yFloor).toBe(4000);
+    expect(preview.centerYDmm).toBeGreaterThan(shelf.placement.maxYDmm);
+  });
+
+  it("refuses a model whose rail is not below the component above it, rather than relocating it", () => {
+    expect(() =>
+      adaptWardrobeModelToFurniSpec({
+        id: "w-rail2", revision: 1, widthMm: 909, heightMm: 2400, depthMm: 600, panelThicknessMm: 18,
+        sections: [{ id: "sec-01", widthMm: 873, components: [
+          { id: "rail-01", type: "HANGING_RAIL", positionMm: 2250 },
+        ] }],
+      })
+    ).toThrow(/Refuse rather than relocate/);
+  });
 });
