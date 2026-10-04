@@ -18,10 +18,14 @@
   --ink-soft: #5C626E;       /* Secondary labels, units, annotations */
   --ink-faint: #9EA3AE;      /* Placeholders, disabled states */
 
-  /* Accents & Brand Materials */
-  --brass: #00B4D8;          /* FurniAI Cyan / primary interactive accent */
-  --brass-bright: #00D2F4;   /* Hover / glowing accent */
-  --walnut: #C5A880;         /* Natural architectural wood tone */
+  /* Accents & Brand Materials (Deep Green BEK Accents) */
+  --bek-green: #1B4D3E;      /* Deep green BEK signature accent */
+  --bek-green-hover: #133D30;/* Rich dark green */
+  --bek-green-light: #EBF3EF;/* Soft green container tint */
+  --bek-green-border: #9DC3B1;/* Elegant pale green border */
+  --brass: #1B4D3E;          /* Mapped to deep green BEK accent */
+  --brass-bright: #236551;   /* Hover / glowing green */
+  --walnut: #A38258;         /* Natural architectural wood tone */
 
   /* Architectural Divider & Line Weights */
   --line: #DFD9CC;           /* Structured borders, table dividers */
