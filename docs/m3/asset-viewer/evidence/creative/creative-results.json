@@ -1,0 +1,1280 @@
+{
+  "simulated": true,
+  "label": "SIMULATED /api/creative stand-in · fixtures only · not a Scenario result",
+  "capturedAt": "2026-10-04T07:54:59.437Z",
+  "chromium": "151.0.7922.34",
+  "launchArgs": [
+    "--use-angle=swiftshader",
+    "--enable-unsafe-swiftshader",
+    "--ignore-gpu-blocklist"
+  ],
+  "page": "http://127.0.0.1:4321/docs/m3/asset-viewer/demo/creative.html?three=r166",
+  "steps": {
+    "01-processing": {
+      "screenshot": "01-processing.png",
+      "state": {
+        "status": "loading",
+        "phase": "job-processing",
+        "source": "creative",
+        "job": {
+          "jobId": "sim-processing",
+          "index": null,
+          "status": "processing",
+          "outputCount": 0
+        },
+        "asset": null,
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+          "noticeSource": "server"
+        },
+        "actions": {
+          "view": false,
+          "download": false,
+          "openInBuilder": false,
+          "export": false,
+          "production": false
+        },
+        "attempts": null,
+        "error": null,
+        "model": null
+      },
+      "overlay": {
+        "concept": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+        "status": "Generating 3D concept… This can take a few minutes.",
+        "scale": null,
+        "downloadButton": false,
+        "simulatedBanner": "SIMULATED /api/creative stand-in · fixtures only · not a Scenario result",
+        "watermark": "SIMULATED · fixture model · not Scenario"
+      },
+      "serverCalls": [
+        {
+          "kind": "api",
+          "resource": "jobs",
+          "jobId": "sim-processing",
+          "index": null,
+          "auth": true,
+          "status": 200
+        }
+      ],
+      "noPercentage": true,
+      "statePhase": "job-processing",
+      "progress": null
+    },
+    "02-processing-then-succeeded": {
+      "screenshot": "02-processing-then-succeeded.png",
+      "state": {
+        "status": "ready",
+        "phase": null,
+        "source": "creative",
+        "job": {
+          "jobId": "sim-processing",
+          "index": 0,
+          "status": "succeeded",
+          "outputCount": 1
+        },
+        "asset": {
+          "source": "creative",
+          "format": "glb",
+          "mime": "model/gltf-binary",
+          "filename": "furniai-concept-sim-processing-0.glb",
+          "byteLength": 5628
+        },
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+          "noticeSource": "server"
+        },
+        "actions": {
+          "view": true,
+          "download": true,
+          "openInBuilder": false,
+          "export": false,
+          "production": false
+        },
+        "attempts": {
+          "resolve": 1,
+          "display": 1
+        },
+        "error": null,
+        "model": {
+          "meshCount": 6,
+          "proportions": {
+            "w": 0.46,
+            "h": 1,
+            "d": 0.46,
+            "normalizedTo": "largest-extent",
+            "ratioLabel": "W:H:D 0.46 : 1.00 : 0.46"
+          },
+          "scale": {
+            "kind": "inferred-relative",
+            "units": null,
+            "label": "Relative scale, not measured",
+            "note": "Generated model — dimensions not measured",
+            "declaredScaleIgnored": false
+          }
+        }
+      },
+      "overlay": {
+        "concept": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+        "status": null,
+        "scale": "Relative scale, not measured · W:H:D 0.46 : 1.00 : 0.46",
+        "downloadButton": false,
+        "simulatedBanner": "SIMULATED /api/creative stand-in · fixtures only · not a Scenario result",
+        "watermark": "SIMULATED · fixture model · not Scenario"
+      },
+      "serverCalls": [
+        {
+          "kind": "api",
+          "resource": "jobs",
+          "jobId": "sim-processing",
+          "index": null,
+          "auth": true,
+          "status": 200
+        },
+        {
+          "kind": "api",
+          "resource": "jobs",
+          "jobId": "sim-processing",
+          "index": null,
+          "auth": true,
+          "status": 200
+        },
+        {
+          "kind": "api",
+          "resource": "asset",
+          "jobId": "sim-processing",
+          "index": "0",
+          "auth": true,
+          "status": 200
+        },
+        {
+          "kind": "cdn",
+          "token": "t0001",
+          "status": 200
+        }
+      ],
+      "jobPolls": 3,
+      "pixels": {
+        "width": 814,
+        "height": 440,
+        "modelPixelRatio": 0.0986
+      }
+    },
+    "03-succeeded-glb-concept-notice": {
+      "screenshot": "03-succeeded-glb-concept-notice.png",
+      "state": {
+        "status": "ready",
+        "phase": null,
+        "source": "creative",
+        "job": {
+          "jobId": "sim-glb-chair",
+          "index": 0,
+          "status": "succeeded",
+          "outputCount": 1
+        },
+        "asset": {
+          "source": "creative",
+          "format": "glb",
+          "mime": "model/gltf-binary",
+          "filename": "furniai-concept-sim-glb-chair-0.glb",
+          "byteLength": 5628
+        },
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+          "noticeSource": "server"
+        },
+        "actions": {
+          "view": true,
+          "download": true,
+          "openInBuilder": false,
+          "export": false,
+          "production": false
+        },
+        "attempts": {
+          "resolve": 1,
+          "display": 1
+        },
+        "error": null,
+        "model": {
+          "meshCount": 6,
+          "proportions": {
+            "w": 0.46,
+            "h": 1,
+            "d": 0.46,
+            "normalizedTo": "largest-extent",
+            "ratioLabel": "W:H:D 0.46 : 1.00 : 0.46"
+          },
+          "scale": {
+            "kind": "inferred-relative",
+            "units": null,
+            "label": "Relative scale, not measured",
+            "note": "Generated model — dimensions not measured",
+            "declaredScaleIgnored": false
+          }
+        }
+      },
+      "overlay": {
+        "concept": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+        "status": null,
+        "scale": "Relative scale, not measured · W:H:D 0.46 : 1.00 : 0.46",
+        "downloadButton": false,
+        "simulatedBanner": "SIMULATED /api/creative stand-in · fixtures only · not a Scenario result",
+        "watermark": "SIMULATED · fixture model · not Scenario"
+      },
+      "serverCalls": [
+        {
+          "kind": "api",
+          "resource": "jobs",
+          "jobId": "sim-glb-chair",
+          "index": null,
+          "auth": true,
+          "status": 200
+        },
+        {
+          "kind": "api",
+          "resource": "asset",
+          "jobId": "sim-glb-chair",
+          "index": "0",
+          "auth": true,
+          "status": 200
+        },
+        {
+          "kind": "cdn",
+          "token": "t0002",
+          "status": 200
+        }
+      ],
+      "pixels": {
+        "width": 814,
+        "height": 440,
+        "modelPixelRatio": 0.0986
+      },
+      "camera": {
+        "distance": 2.0197,
+        "position": [
+          1.111,
+          1.184,
+          1.544
+        ]
+      }
+    },
+    "04a-orbit": {
+      "screenshot": "04a-orbit.png",
+      "state": {
+        "status": "ready",
+        "phase": null,
+        "source": "creative",
+        "job": {
+          "jobId": "sim-glb-chair",
+          "index": 0,
+          "status": "succeeded",
+          "outputCount": 1
+        },
+        "asset": {
+          "source": "creative",
+          "format": "glb",
+          "mime": "model/gltf-binary",
+          "filename": "furniai-concept-sim-glb-chair-0.glb",
+          "byteLength": 5628
+        },
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+          "noticeSource": "server"
+        },
+        "actions": {
+          "view": true,
+          "download": true,
+          "openInBuilder": false,
+          "export": false,
+          "production": false
+        },
+        "attempts": {
+          "resolve": 1,
+          "display": 1
+        },
+        "error": null,
+        "model": {
+          "meshCount": 6,
+          "proportions": {
+            "w": 0.46,
+            "h": 1,
+            "d": 0.46,
+            "normalizedTo": "largest-extent",
+            "ratioLabel": "W:H:D 0.46 : 1.00 : 0.46"
+          },
+          "scale": {
+            "kind": "inferred-relative",
+            "units": null,
+            "label": "Relative scale, not measured",
+            "note": "Generated model — dimensions not measured",
+            "declaredScaleIgnored": false
+          }
+        }
+      },
+      "overlay": {
+        "concept": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+        "status": null,
+        "scale": "Relative scale, not measured · W:H:D 0.46 : 1.00 : 0.46",
+        "downloadButton": false,
+        "simulatedBanner": "SIMULATED /api/creative stand-in · fixtures only · not a Scenario result",
+        "watermark": "SIMULATED · fixture model · not Scenario"
+      },
+      "serverCalls": [],
+      "camera": {
+        "distance": 2.0197,
+        "position": [
+          -1.873,
+          -0.122,
+          -0.421
+        ]
+      }
+    },
+    "04b-zoom": {
+      "screenshot": "04b-zoom.png",
+      "state": {
+        "status": "ready",
+        "phase": null,
+        "source": "creative",
+        "job": {
+          "jobId": "sim-glb-chair",
+          "index": 0,
+          "status": "succeeded",
+          "outputCount": 1
+        },
+        "asset": {
+          "source": "creative",
+          "format": "glb",
+          "mime": "model/gltf-binary",
+          "filename": "furniai-concept-sim-glb-chair-0.glb",
+          "byteLength": 5628
+        },
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+          "noticeSource": "server"
+        },
+        "actions": {
+          "view": true,
+          "download": true,
+          "openInBuilder": false,
+          "export": false,
+          "production": false
+        },
+        "attempts": {
+          "resolve": 1,
+          "display": 1
+        },
+        "error": null,
+        "model": {
+          "meshCount": 6,
+          "proportions": {
+            "w": 0.46,
+            "h": 1,
+            "d": 0.46,
+            "normalizedTo": "largest-extent",
+            "ratioLabel": "W:H:D 0.46 : 1.00 : 0.46"
+          },
+          "scale": {
+            "kind": "inferred-relative",
+            "units": null,
+            "label": "Relative scale, not measured",
+            "note": "Generated model — dimensions not measured",
+            "declaredScaleIgnored": false
+          }
+        }
+      },
+      "overlay": {
+        "concept": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+        "status": null,
+        "scale": "Relative scale, not measured · W:H:D 0.46 : 1.00 : 0.46",
+        "downloadButton": false,
+        "simulatedBanner": "SIMULATED /api/creative stand-in · fixtures only · not a Scenario result",
+        "watermark": "SIMULATED · fixture model · not Scenario"
+      },
+      "serverCalls": [],
+      "camera": {
+        "distance": 0.7544,
+        "position": [
+          -0.385,
+          0.134,
+          -0.533
+        ]
+      }
+    },
+    "04c-fit": {
+      "screenshot": "04c-fit.png",
+      "state": {
+        "status": "ready",
+        "phase": null,
+        "source": "creative",
+        "job": {
+          "jobId": "sim-glb-chair",
+          "index": 0,
+          "status": "succeeded",
+          "outputCount": 1
+        },
+        "asset": {
+          "source": "creative",
+          "format": "glb",
+          "mime": "model/gltf-binary",
+          "filename": "furniai-concept-sim-glb-chair-0.glb",
+          "byteLength": 5628
+        },
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+          "noticeSource": "server"
+        },
+        "actions": {
+          "view": true,
+          "download": true,
+          "openInBuilder": false,
+          "export": false,
+          "production": false
+        },
+        "attempts": {
+          "resolve": 1,
+          "display": 1
+        },
+        "error": null,
+        "model": {
+          "meshCount": 6,
+          "proportions": {
+            "w": 0.46,
+            "h": 1,
+            "d": 0.46,
+            "normalizedTo": "largest-extent",
+            "ratioLabel": "W:H:D 0.46 : 1.00 : 0.46"
+          },
+          "scale": {
+            "kind": "inferred-relative",
+            "units": null,
+            "label": "Relative scale, not measured",
+            "note": "Generated model — dimensions not measured",
+            "declaredScaleIgnored": false
+          }
+        }
+      },
+      "overlay": {
+        "concept": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+        "status": null,
+        "scale": "Relative scale, not measured · W:H:D 0.46 : 1.00 : 0.46",
+        "downloadButton": false,
+        "simulatedBanner": "SIMULATED /api/creative stand-in · fixtures only · not a Scenario result",
+        "watermark": "SIMULATED · fixture model · not Scenario"
+      },
+      "serverCalls": [],
+      "camera": {
+        "distance": 2.0197,
+        "position": [
+          -1.03,
+          -0.487,
+          -1.426
+        ]
+      }
+    },
+    "05-download-fresh-url": {
+      "screenshot": "05-download-fresh-url.png",
+      "state": {
+        "status": "ready",
+        "phase": null,
+        "source": "creative",
+        "job": {
+          "jobId": "sim-glb-chair",
+          "index": 0,
+          "status": "succeeded",
+          "outputCount": 1
+        },
+        "asset": {
+          "source": "creative",
+          "format": "glb",
+          "mime": "model/gltf-binary",
+          "filename": "furniai-concept-sim-glb-chair-0.glb",
+          "byteLength": 5628
+        },
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+          "noticeSource": "server"
+        },
+        "actions": {
+          "view": true,
+          "download": true,
+          "openInBuilder": false,
+          "export": false,
+          "production": false
+        },
+        "attempts": {
+          "resolve": 1,
+          "display": 1
+        },
+        "error": null,
+        "model": {
+          "meshCount": 6,
+          "proportions": {
+            "w": 0.46,
+            "h": 1,
+            "d": 0.46,
+            "normalizedTo": "largest-extent",
+            "ratioLabel": "W:H:D 0.46 : 1.00 : 0.46"
+          },
+          "scale": {
+            "kind": "inferred-relative",
+            "units": null,
+            "label": "Relative scale, not measured",
+            "note": "Generated model — dimensions not measured",
+            "declaredScaleIgnored": false
+          }
+        }
+      },
+      "overlay": {
+        "concept": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+        "status": null,
+        "scale": "Relative scale, not measured · W:H:D 0.46 : 1.00 : 0.46",
+        "downloadButton": false,
+        "simulatedBanner": "SIMULATED /api/creative stand-in · fixtures only · not a Scenario result",
+        "watermark": "SIMULATED · fixture model · not Scenario"
+      },
+      "serverCalls": [
+        {
+          "kind": "api",
+          "resource": "asset",
+          "jobId": "sim-glb-chair",
+          "index": "0",
+          "auth": true,
+          "status": 200
+        },
+        {
+          "kind": "cdn",
+          "token": "t0003",
+          "status": 200
+        }
+      ],
+      "download": {
+        "ok": true,
+        "filename": "furniai-concept-sim-glb-chair-0.glb",
+        "token": "t0003",
+        "freshlyResolved": true
+      },
+      "suggestedFilename": "furniai-concept-sim-glb-chair-0.glb",
+      "assetResolvesBefore": 2,
+      "assetResolvesAfter": 3,
+      "displayToken": "t0002",
+      "downloadToken": "t0003"
+    },
+    "06-expired-url-reresolve": {
+      "screenshot": "06-expired-url-reresolve.png",
+      "state": {
+        "status": "ready",
+        "phase": null,
+        "source": "creative",
+        "job": {
+          "jobId": "sim-expired-url",
+          "index": 0,
+          "status": "succeeded",
+          "outputCount": 1
+        },
+        "asset": {
+          "source": "creative",
+          "format": "glb",
+          "mime": "model/gltf-binary",
+          "filename": "furniai-concept-sim-expired-url-0.glb",
+          "byteLength": 2588
+        },
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+          "noticeSource": "server"
+        },
+        "actions": {
+          "view": true,
+          "download": true,
+          "openInBuilder": false,
+          "export": false,
+          "production": false
+        },
+        "attempts": {
+          "resolve": 2,
+          "display": 2
+        },
+        "error": null,
+        "model": {
+          "meshCount": 5,
+          "proportions": {
+            "w": 1,
+            "h": 0.58,
+            "d": 0.55,
+            "normalizedTo": "largest-extent",
+            "ratioLabel": "W:H:D 1.00 : 0.58 : 0.55"
+          },
+          "scale": {
+            "kind": "inferred-relative",
+            "units": null,
+            "label": "Relative scale, not measured",
+            "note": "Generated model — dimensions not measured",
+            "declaredScaleIgnored": false
+          }
+        }
+      },
+      "overlay": {
+        "concept": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+        "status": null,
+        "scale": "Relative scale, not measured · W:H:D 1.00 : 0.58 : 0.55",
+        "downloadButton": false,
+        "simulatedBanner": "SIMULATED /api/creative stand-in · fixtures only · not a Scenario result",
+        "watermark": "SIMULATED · fixture model · not Scenario"
+      },
+      "serverCalls": [
+        {
+          "kind": "api",
+          "resource": "jobs",
+          "jobId": "sim-expired-url",
+          "index": null,
+          "auth": true,
+          "status": 200
+        },
+        {
+          "kind": "api",
+          "resource": "asset",
+          "jobId": "sim-expired-url",
+          "index": "0",
+          "auth": true,
+          "status": 200
+        },
+        {
+          "kind": "cdn",
+          "token": "t0004",
+          "status": 403
+        },
+        {
+          "kind": "api",
+          "resource": "asset",
+          "jobId": "sim-expired-url",
+          "index": "0",
+          "auth": true,
+          "status": 200
+        },
+        {
+          "kind": "cdn",
+          "token": "t0005",
+          "status": 200
+        }
+      ],
+      "assetResolves": 2,
+      "cdn": [
+        {
+          "kind": "cdn",
+          "token": "t0004",
+          "status": 403
+        },
+        {
+          "kind": "cdn",
+          "token": "t0005",
+          "status": 200
+        }
+      ],
+      "pixels": {
+        "width": 814,
+        "height": 440,
+        "modelPixelRatio": 0.0311
+      }
+    },
+    "07-asset-unavailable-410": {
+      "screenshot": "07-asset-unavailable-410.png",
+      "state": {
+        "status": "error",
+        "phase": null,
+        "source": "creative",
+        "job": {
+          "jobId": "sim-gone",
+          "index": 0,
+          "status": "succeeded",
+          "outputCount": 1
+        },
+        "asset": null,
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+          "noticeSource": "server"
+        },
+        "actions": {
+          "view": false,
+          "download": false,
+          "openInBuilder": false,
+          "export": false,
+          "production": false
+        },
+        "attempts": {
+          "resolve": 1,
+          "display": 0
+        },
+        "error": {
+          "code": "ASSET_UNAVAILABLE",
+          "message": "This 3D concept is no longer available. The generation service no longer has the file and no copy was kept.",
+          "detail": "/api/creative HTTP 410 ASSET_UNAVAILABLE",
+          "status": 410,
+          "serverCode": "ASSET_UNAVAILABLE"
+        },
+        "model": null
+      },
+      "overlay": {
+        "concept": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+        "status": "This 3D concept is no longer available. The generation service no longer has the file and no copy was kept.",
+        "scale": null,
+        "downloadButton": false,
+        "simulatedBanner": "SIMULATED /api/creative stand-in · fixtures only · not a Scenario result",
+        "watermark": "SIMULATED · fixture model · not Scenario"
+      },
+      "serverCalls": [
+        {
+          "kind": "api",
+          "resource": "jobs",
+          "jobId": "sim-gone",
+          "index": null,
+          "auth": true,
+          "status": 200
+        },
+        {
+          "kind": "api",
+          "resource": "asset",
+          "jobId": "sim-gone",
+          "index": "0",
+          "auth": true,
+          "status": 410,
+          "code": "ASSET_UNAVAILABLE"
+        }
+      ]
+    },
+    "08-download-only-fbx": {
+      "screenshot": "08-download-only-fbx.png",
+      "state": {
+        "status": "download-only",
+        "phase": null,
+        "source": "creative",
+        "job": {
+          "jobId": "sim-fbx",
+          "index": 0,
+          "status": "succeeded",
+          "outputCount": 1
+        },
+        "asset": {
+          "source": "creative",
+          "format": "fbx",
+          "mime": "application/octet-stream",
+          "filename": "furniai-concept-sim-fbx-0.fbx",
+          "byteLength": null
+        },
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+          "noticeSource": "server"
+        },
+        "actions": {
+          "view": false,
+          "download": true,
+          "openInBuilder": false,
+          "export": false,
+          "production": false
+        },
+        "attempts": {
+          "resolve": 0,
+          "display": 0
+        },
+        "error": null,
+        "model": null
+      },
+      "overlay": {
+        "concept": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+        "status": "Preview isn't available for FBX files. You can still download the file.",
+        "scale": null,
+        "downloadButton": true,
+        "simulatedBanner": "SIMULATED /api/creative stand-in · fixtures only · not a Scenario result",
+        "watermark": "SIMULATED · fixture model · not Scenario"
+      },
+      "serverCalls": [
+        {
+          "kind": "api",
+          "resource": "jobs",
+          "jobId": "sim-fbx",
+          "index": null,
+          "auth": true,
+          "status": 200
+        },
+        {
+          "kind": "api",
+          "resource": "asset",
+          "jobId": "sim-fbx",
+          "index": "0",
+          "auth": true,
+          "status": 200
+        },
+        {
+          "kind": "cdn",
+          "token": "t0006",
+          "status": 200
+        }
+      ],
+      "meshFetchesBeforeDownload": 0,
+      "builtInButtonDownload": "furniai-concept-sim-fbx-0.fbx"
+    },
+    "09-submission-unknown": {
+      "screenshot": "09-submission-unknown.png",
+      "state": {
+        "status": "error",
+        "phase": null,
+        "source": "creative",
+        "job": {
+          "jobId": "sim-submission-unknown",
+          "index": null,
+          "status": "submission_unknown",
+          "outputCount": 0
+        },
+        "asset": null,
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+          "noticeSource": "server"
+        },
+        "actions": {
+          "view": false,
+          "download": false,
+          "openInBuilder": false,
+          "export": false,
+          "production": false
+        },
+        "attempts": null,
+        "error": {
+          "code": "SUBMISSION_UNKNOWN",
+          "message": "The request was sent but no answer came back, so it isn't known whether a 3D concept was started. It may have been charged. It will not be retried automatically.",
+          "detail": "job submission_unknown: PROVIDER_UNAVAILABLE",
+          "serverCode": "PROVIDER_UNAVAILABLE",
+          "jobStatus": "submission_unknown",
+          "chargeMayHaveOccurred": true,
+          "autoRetry": false
+        },
+        "model": null
+      },
+      "overlay": {
+        "concept": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+        "status": "The request was sent but no answer came back, so it isn't known whether a 3D concept was started. It may have been charged. It will not be retried automatically.",
+        "scale": null,
+        "downloadButton": false,
+        "simulatedBanner": "SIMULATED /api/creative stand-in · fixtures only · not a Scenario result",
+        "watermark": "SIMULATED · fixture model · not Scenario"
+      },
+      "serverCalls": [
+        {
+          "kind": "api",
+          "resource": "jobs",
+          "jobId": "sim-submission-unknown",
+          "index": null,
+          "auth": true,
+          "status": 200
+        }
+      ]
+    },
+    "10-no-cors-address-display-failed": {
+      "screenshot": "10-no-cors-address-display-failed.png",
+      "state": {
+        "status": "error",
+        "phase": null,
+        "source": "creative",
+        "job": {
+          "jobId": "sim-cors",
+          "index": 0,
+          "status": "succeeded",
+          "outputCount": 1
+        },
+        "asset": null,
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+          "noticeSource": "server"
+        },
+        "actions": {
+          "view": false,
+          "download": true,
+          "openInBuilder": false,
+          "export": false,
+          "production": false
+        },
+        "attempts": {
+          "resolve": 2,
+          "display": 2
+        },
+        "error": {
+          "code": "ASSET_DISPLAY_FAILED",
+          "message": "This 3D concept couldn't be displayed here. Downloading it may still work.",
+          "detail": "first attempt FETCH_FAILED: network error: Failed to fetch; retry after fresh resolve FETCH_FAILED: network error: Failed to fetch",
+          "downloadAvailable": true,
+          "attempts": {
+            "resolve": 2,
+            "display": 2
+          }
+        },
+        "model": null
+      },
+      "overlay": {
+        "concept": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+        "status": "This 3D concept couldn't be displayed here. Downloading it may still work.",
+        "scale": null,
+        "downloadButton": true,
+        "simulatedBanner": "SIMULATED /api/creative stand-in · fixtures only · not a Scenario result",
+        "watermark": "SIMULATED · fixture model · not Scenario"
+      },
+      "serverCalls": [
+        {
+          "kind": "api",
+          "resource": "jobs",
+          "jobId": "sim-cors",
+          "index": null,
+          "auth": true,
+          "status": 200
+        },
+        {
+          "kind": "api",
+          "resource": "asset",
+          "jobId": "sim-cors",
+          "index": "0",
+          "auth": true,
+          "status": 200
+        },
+        {
+          "kind": "cdn",
+          "token": "t0007",
+          "status": 200
+        },
+        {
+          "kind": "api",
+          "resource": "asset",
+          "jobId": "sim-cors",
+          "index": "0",
+          "auth": true,
+          "status": 200
+        },
+        {
+          "kind": "cdn",
+          "token": "t0008",
+          "status": 200
+        }
+      ],
+      "assetResolves": 2,
+      "note": "second origin without Access-Control-Allow-Origin; the browser refuses the fetch (U7 simulation)"
+    },
+    "11-unrecognised-format-download-only": {
+      "screenshot": "11-unrecognised-format-download-only.png",
+      "state": {
+        "status": "download-only",
+        "phase": null,
+        "source": "creative",
+        "job": {
+          "jobId": "sim-null-format",
+          "index": 0,
+          "status": "succeeded",
+          "outputCount": 1
+        },
+        "asset": {
+          "source": "creative",
+          "format": null,
+          "mime": "application/octet-stream",
+          "filename": "furniai-concept-sim-null-format-0.bin",
+          "byteLength": null
+        },
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+          "noticeSource": "server"
+        },
+        "actions": {
+          "view": false,
+          "download": true,
+          "openInBuilder": false,
+          "export": false,
+          "production": false
+        },
+        "attempts": {
+          "resolve": 0,
+          "display": 0
+        },
+        "error": null,
+        "model": null
+      },
+      "overlay": {
+        "concept": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+        "status": "Preview isn't available for this file type. You can still download the file.",
+        "scale": null,
+        "downloadButton": true,
+        "simulatedBanner": "SIMULATED /api/creative stand-in · fixtures only · not a Scenario result",
+        "watermark": "SIMULATED · fixture model · not Scenario"
+      },
+      "serverCalls": [
+        {
+          "kind": "api",
+          "resource": "jobs",
+          "jobId": "sim-null-format",
+          "index": null,
+          "auth": true,
+          "status": 200
+        }
+      ]
+    },
+    "12-job-failed": {
+      "screenshot": "12-job-failed.png",
+      "state": {
+        "status": "error",
+        "phase": null,
+        "source": "creative",
+        "job": {
+          "jobId": "sim-failed",
+          "index": null,
+          "status": "failed",
+          "outputCount": 0
+        },
+        "asset": null,
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+          "noticeSource": "server"
+        },
+        "actions": {
+          "view": false,
+          "download": false,
+          "openInBuilder": false,
+          "export": false,
+          "production": false
+        },
+        "attempts": null,
+        "error": {
+          "code": "GENERATION_FAILED",
+          "message": "The 3D generation service reported that this generation failed.",
+          "detail": "job failed: PROVIDER_GENERATION_FAILED",
+          "serverCode": "PROVIDER_GENERATION_FAILED",
+          "jobStatus": "failed"
+        },
+        "model": null
+      },
+      "overlay": {
+        "concept": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+        "status": "The 3D generation service reported that this generation failed.",
+        "scale": null,
+        "downloadButton": false,
+        "simulatedBanner": "SIMULATED /api/creative stand-in · fixtures only · not a Scenario result",
+        "watermark": "SIMULATED · fixture model · not Scenario"
+      },
+      "serverCalls": [
+        {
+          "kind": "api",
+          "resource": "jobs",
+          "jobId": "sim-failed",
+          "index": null,
+          "auth": true,
+          "status": 200
+        }
+      ]
+    },
+    "13-record-integrity-failed": {
+      "screenshot": "13-record-integrity-failed.png",
+      "state": {
+        "status": "error",
+        "phase": null,
+        "source": "creative",
+        "job": {
+          "jobId": "sim-integrity",
+          "index": 0,
+          "status": "succeeded",
+          "outputCount": 1
+        },
+        "asset": null,
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+          "noticeSource": "server"
+        },
+        "actions": {
+          "view": false,
+          "download": false,
+          "openInBuilder": false,
+          "export": false,
+          "production": false
+        },
+        "attempts": {
+          "resolve": 1,
+          "display": 0
+        },
+        "error": {
+          "code": "RECORD_INTEGRITY_FAILED",
+          "message": "This 3D concept can't be opened because its record failed a safety check.",
+          "detail": "/api/creative HTTP 409 RECORD_INTEGRITY_FAILED",
+          "status": 409,
+          "serverCode": "RECORD_INTEGRITY_FAILED"
+        },
+        "model": null
+      },
+      "overlay": {
+        "concept": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+        "status": "This 3D concept can't be opened because its record failed a safety check.",
+        "scale": null,
+        "downloadButton": false,
+        "simulatedBanner": "SIMULATED /api/creative stand-in · fixtures only · not a Scenario result",
+        "watermark": "SIMULATED · fixture model · not Scenario"
+      },
+      "serverCalls": [
+        {
+          "kind": "api",
+          "resource": "jobs",
+          "jobId": "sim-integrity",
+          "index": null,
+          "auth": true,
+          "status": 200
+        },
+        {
+          "kind": "api",
+          "resource": "asset",
+          "jobId": "sim-integrity",
+          "index": "0",
+          "auth": true,
+          "status": 409,
+          "code": "RECORD_INTEGRITY_FAILED"
+        }
+      ]
+    },
+    "14-submitting": {
+      "screenshot": "14-submitting.png",
+      "state": {
+        "status": "loading",
+        "phase": "job-submitting",
+        "source": "creative",
+        "job": {
+          "jobId": "sim-submitting",
+          "index": null,
+          "status": "submitting",
+          "outputCount": 0
+        },
+        "asset": null,
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+          "noticeSource": "server"
+        },
+        "actions": {
+          "view": false,
+          "download": false,
+          "openInBuilder": false,
+          "export": false,
+          "production": false
+        },
+        "attempts": null,
+        "error": null,
+        "model": null
+      },
+      "overlay": {
+        "concept": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+        "status": "Sending your image to the 3D generation service…",
+        "scale": null,
+        "downloadButton": false,
+        "simulatedBanner": "SIMULATED /api/creative stand-in · fixtures only · not a Scenario result",
+        "watermark": "SIMULATED · fixture model · not Scenario"
+      },
+      "serverCalls": [
+        {
+          "kind": "api",
+          "resource": "jobs",
+          "jobId": "sim-submitting",
+          "index": null,
+          "auth": true,
+          "status": 200
+        }
+      ]
+    }
+  },
+  "webgl": {
+    "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+    "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+  },
+  "summary": {
+    "apiCalls": 23,
+    "apiCallsWithoutAuth": 0,
+    "assetResolves": 10,
+    "signedAddressRequests": 8,
+    "signedAddress403": 1,
+    "urlInAnyCapturedState": false,
+    "conceptNoticeInEveryConceptStep": true
+  },
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+    "Failed to load resource: the server responded with a status of 410 (Gone)",
+    "Access to fetch at 'http://127.0.0.1:4322/__simcdn/t0007/chair-textured.glb?X-Sim-Signature=sig7&X-Sim-Single-Use=1' from origin 'http://127.0.0.1:4321' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED",
+    "Access to fetch at 'http://127.0.0.1:4322/__simcdn/t0008/chair-textured.glb?X-Sim-Signature=sig8&X-Sim-Single-Use=1' from origin 'http://127.0.0.1:4321' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED",
+    "Failed to load resource: the server responded with a status of 409 (Conflict)"
+  ],
+  "video": "creative-simulated-r166.webm"
+}
