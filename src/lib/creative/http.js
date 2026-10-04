@@ -22,10 +22,14 @@ export function getCreativeService(caller, env = process.env) {
     if (signingKey.length < 32) {
       throw new CreativeError(CREATIVE_ERROR.CREATIVE_NOT_CONFIGURED, "3D concept generation is not configured on this deployment.", { details: { missing: ["CREATIVE_RECORD_SIGNING_KEY"] } });
     }
-    return createCreativeService({ config, client, signingKey, store: createSupabaseCreativeStore({ url: env.SUPABASE_URL, anonKey: env.SUPABASE_ANON_KEY, accessToken: caller.accessToken }) });
+    const serviceRoleKey = (env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
+    if (!serviceRoleKey) {
+      throw new CreativeError(CREATIVE_ERROR.CREATIVE_STORE_NOT_CONFIGURED, "3D concept generation has nowhere durable to record jobs on this deployment. No generation request was sent.", { details: { missing: ["SUPABASE_SERVICE_ROLE_KEY"] } });
+    }
+    return createCreativeService({ config, client, signingKey, store: createSupabaseCreativeStore({ url: env.SUPABASE_URL, anonKey: env.SUPABASE_ANON_KEY, accessToken: caller.accessToken, serviceRoleKey }) });
   }
   if (isDeployed(env)) {
-    throw new CreativeError(CREATIVE_ERROR.CREATIVE_STORE_NOT_CONFIGURED, "3D concept generation has nowhere durable to record jobs on this deployment. Nothing was submitted.");
+    throw new CreativeError(CREATIVE_ERROR.CREATIVE_STORE_NOT_CONFIGURED, "3D concept generation has nowhere durable to record jobs on this deployment. No generation request was sent.");
   }
   return createCreativeService({ config, client, signingKey: signingKey || undefined, store: getSharedMemoryCreativeStore() });
 }

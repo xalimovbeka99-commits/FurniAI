@@ -13,7 +13,22 @@
  *   4. the provider's cost preview (dry run) must be readable and within the cap;
  *   5. the job is reserved in the store BEFORE the paid call;
  *   6. the paid call is made once and never retried — a lost answer becomes
- *      `submission_unknown`, which is never resubmitted automatically.
+ *      `submission_unknown`, which is never resubmitted automatically, and a
+ *      later generation for that reference needs an explicit acknowledgement.
+ *
+ * RECORD INTEGRITY. In a deployed environment only the server can write these
+ * rows (see supabaseStore.js and the migration): THAT is what prevents a
+ * caller from editing, deleting or rolling back a job. The signature below is
+ * a second layer — it covers EVERY stored field, so any edited row is refused
+ * — but a signature alone cannot detect a row being rolled back to an older
+ * valid state or removed; only write authority and the row-version guard in
+ * the database can. Every billing decision is therefore taken on rows whose
+ * signature verified, and an unverifiable row for a reference blocks new
+ * generations for it (fail closed).
+ *
+ * BILLING OUTCOME. This service never claims a provider request cost nothing:
+ * it reports `not_submitted` (the paid request was never sent), `unconfirmed`
+ * (it was sent; no cost reported by the provider) or `reported`.
  */
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { CreativeError, CREATIVE_ERROR } from "./errors.js";
@@ -36,6 +51,7 @@ export const CONCEPT_NOTICE = Object.freeze({
   notice: "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
 });
 
+const ACTIVE = new Set([JOB_STATUS.SUBMITTING, JOB_STATUS.PROCESSING]);
 const KEY_RE = /^[A-Za-z0-9_-]{8,128}$/;
 const MIN_POLL_INTERVAL_MS = 2_000;
 const STALE_SUBMITTING_MS = 120_000;
@@ -50,19 +66,27 @@ export function createCreativeService({ store, client, config, now = () => new D
   const key = signingKey || (processKey ??= randomBytes(32).toString("hex"));
   const iso = () => now().toISOString();
 
-  const mac = (parts) => createHmac("sha256", key).update(JSON.stringify(parts)).digest("hex");
-  const refSig = (r) => mac(["ref", r.referenceId, r.userId, r.sha256, r.provider, r.providerAssetId]);
-  const jobSig = (j) => mac(["job", j.jobId, j.userId, j.referenceId, j.modelId, j.providerJobId ?? null, (j.outputs ?? []).map((o) => o.assetId)]);
+  const mac = (tag, record) => createHmac("sha256", key).update(tag + "\n" + canonical(record)).digest("hex");
+  const refSig = (r) => mac("ref", pick(r, REF_FIELDS));
+  const jobSig = (j) => mac("job", pick(j, JOB_FIELDS));
   const sigOk = (expected, actual) => typeof actual === "string" && actual.length === expected.length && timingSafeEqual(Buffer.from(expected), Buffer.from(actual));
+  const jobIntact = (j) => sigOk(jobSig(j), j.sig);
   function assertIntact(ok) {
-    if (!ok) throw new CreativeError(CREATIVE_ERROR.RECORD_INTEGRITY_FAILED, "This record was not written by FurniAI and will not be used.");
+    if (!ok) throw new CreativeError(CREATIVE_ERROR.RECORD_INTEGRITY_FAILED, "A stored generation record for this request does not verify and will not be used. No generation request was sent.");
   }
 
+  /**
+   * Compare-and-swap on the row version. A lost race returns the row as it
+   * now is (verified) and never overwrites it.
+   */
   async function update(job, patch) {
-    const next = { ...job, ...patch, updatedAt: iso() };
+    const next = { ...job, ...patch, version: job.version + 1, updatedAt: iso() };
     next.sig = jobSig(next);
-    const saved = await store.updateJob(job.userId, job.jobId, { ...patch, updatedAt: next.updatedAt, sig: next.sig });
-    return saved ?? next;
+    const saved = await store.updateJob(job.userId, job.jobId, job.version, { ...patch, version: next.version, updatedAt: next.updatedAt, sig: next.sig });
+    if (saved) return saved;
+    const current = await store.getJob(job.userId, job.jobId);
+    assertIntact(current && jobIntact(current));
+    return current;
   }
 
   function requireCredentials() {
@@ -86,10 +110,13 @@ export function createCreativeService({ store, client, config, now = () => new D
     async createReference({ userId, body }) {
       const file = validateReferenceUpload(body);
       const existing = await store.findReferenceBySha(userId, file.sha256);
-      if (existing && sigOk(refSig(existing), existing.sig)) return { reference: toReferenceView(existing), reused: true };
+      if (existing) {
+        assertIntact(sigOk(refSig(existing), existing.sig));
+        return { reference: toReferenceView(existing), reused: true };
+      }
       requireCredentials();
       const { assetId } = await client.uploadAsset(file);
-      const ref = { referenceId: randomUUID(), userId, name: file.name, contentType: file.contentType, bytes: file.bytes, sha256: file.sha256, provider: "scenario", providerAssetId: assetId, createdAt: iso() };
+      const ref = { referenceId: randomUUID(), userId, name: file.name, contentType: file.contentType, bytes: file.bytes, sha256: file.sha256, width: file.width, height: file.height, validation: file.validation, provider: "scenario", providerAssetId: assetId, createdAt: iso() };
       ref.sig = refSig(ref);
       await store.insertReference(ref);
       return { reference: toReferenceView(ref), reused: false };
@@ -109,37 +136,53 @@ export function createCreativeService({ store, client, config, now = () => new D
 
       // 3. Configuration gates.
       if (!config.configured) throw new CreativeError(CREATIVE_ERROR.CREATIVE_NOT_CONFIGURED, "3D concept generation is not configured on this deployment.", { details: { missing: config.missing } });
-      if (!config.liveEnabled) throw new CreativeError(CREATIVE_ERROR.CREATIVE_GENERATION_DISABLED, "3D concept generation is switched off on this deployment. Nothing was generated.");
-      if (config.maxCostPerJob == null) throw new CreativeError(CREATIVE_ERROR.CREATIVE_NOT_CONFIGURED, "3D concept generation has no spend cap configured. Nothing was generated.", { details: { missing: ["SCENARIO_MAX_COST_PER_JOB"] } });
+      if (!config.liveEnabled) throw new CreativeError(CREATIVE_ERROR.CREATIVE_GENERATION_DISABLED, "3D concept generation is switched off on this deployment. No generation request was sent.");
+      if (config.maxCostPerJob == null) throw new CreativeError(CREATIVE_ERROR.CREATIVE_NOT_CONFIGURED, "3D concept generation has no spend cap configured. No generation request was sent.", { details: { missing: ["SCENARIO_MAX_COST_PER_JOB"] } });
 
       const ref = await store.getReference(userId, referenceId);
       if (!ref) throw new CreativeError(CREATIVE_ERROR.MISSING_REFERENCE, "That reference image was not found.");
       assertIntact(sigOk(refSig(ref), ref.sig));
+
+      // Every stored job for this reference must verify before anything is
+      // decided from it. An unverifiable row, a running job, or an unresolved
+      // "may have been charged" job each stop here, before the cost preview.
+      const history = await store.listJobsForReference(userId, referenceId);
+      for (const j of history) assertIntact(jobIntact(j));
+      for (let j of history) {
+        j = await settleStale(j);
+        if (ACTIVE.has(j.status)) {
+          throw new CreativeError(CREATIVE_ERROR.DUPLICATE_ACTIVE_JOB, "A 3D concept is already being generated from this reference. No new generation request was sent.", { details: { jobId: j.jobId } });
+        }
+      }
+      const fresh = await store.listJobsForReference(userId, referenceId);
+      const latest = fresh.slice().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
+      if (latest?.status === JOB_STATUS.SUBMISSION_UNKNOWN && body.acknowledgeUnknownCharge !== true) {
+        throw new CreativeError(CREATIVE_ERROR.PRIOR_SUBMISSION_UNKNOWN, "The last generation from this reference may have run and been charged. Check the Scenario account, then resend with acknowledgeUnknownCharge: true to generate again.", { details: { jobId: latest.jobId } });
+      }
 
       const params = { ...config.extraParams, [config.imageParam]: config.imageParamIsArray ? [ref.providerAssetId] : ref.providerAssetId };
 
       // 4. Cost preview — free; must be readable and within the cap.
       const { cost } = await client.estimateCost(params);
       if (cost > config.maxCostPerJob) {
-        throw new CreativeError(CREATIVE_ERROR.COST_CAP_EXCEEDED, "This generation would cost more than the configured limit. Nothing was generated.", { details: { estimatedCost: cost, maxCostPerJob: config.maxCostPerJob } });
+        throw new CreativeError(CREATIVE_ERROR.COST_CAP_EXCEEDED, "This generation would cost more than the configured limit. No generation request was sent.", { details: { estimatedCost: cost, maxCostPerJob: config.maxCostPerJob } });
       }
 
       // 2 + 5. Reserve atomically before paying.
       const draft = {
         jobId: randomUUID(), userId, idempotencyKey, referenceId, provider: "scenario", modelId: config.modelId,
-        status: JOB_STATUS.SUBMITTING, providerJobId: null, providerStatus: null, providerProgress: null, outputs: [],
+        version: 1, status: JOB_STATUS.SUBMITTING, providerJobId: null, providerStatus: null, providerProgress: null, outputs: [],
         estimatedCost: cost, reportedCost: null, error: null,
         createdAt: iso(), submittedAt: null, completedAt: null, updatedAt: iso(), lastPolledAt: null,
       };
       draft.sig = jobSig(draft);
-      let reserved = await store.reserveJob(draft);
-      if (!reserved.created && reserved.conflict === "active") {
-        const settled = await settleStale(reserved.job);
-        if (settled.status !== reserved.job.status) reserved = await store.reserveJob(draft);
-      }
+      const reserved = await store.reserveJob(draft);
       if (!reserved.created) {
+        // The store refused atomically (a concurrent request won). The row it
+        // points at is verified before it is believed.
+        assertIntact(jobIntact(reserved.job));
         if (reserved.conflict === "key") return replay(reserved.job, referenceId);
-        throw new CreativeError(CREATIVE_ERROR.DUPLICATE_ACTIVE_JOB, "A 3D concept is already being generated from this reference. Nothing new was submitted.", { details: { jobId: reserved.job.jobId } });
+        throw new CreativeError(CREATIVE_ERROR.DUPLICATE_ACTIVE_JOB, "A 3D concept is already being generated from this reference. No new generation request was sent.", { details: { jobId: reserved.job.jobId } });
       }
 
       // 6. The paid call. Once.
@@ -154,9 +197,9 @@ export function createCreativeService({ store, client, config, now = () => new D
         job = await update(job, {
           status: unknown ? JOB_STATUS.SUBMISSION_UNKNOWN : JOB_STATUS.FAILED,
           completedAt: unknown ? null : iso(),
-          error: { code: ce.code, message: unknown ? "The request was sent but no answer arrived. It is not known whether a generation started or was charged." : ce.message },
+          error: { code: ce.code, message: unknown ? "The request was sent but no answer arrived. It is not known whether a generation started or was charged." : `${ce.message} Whether the provider charged for the refused request is not confirmed.` },
         });
-        throw new CreativeError(ce.code, job.error.message, { status: ce.status, details: { ...(ce.details ?? {}), jobId: job.jobId, jobStatus: job.status, outcomeUnknown: unknown } });
+        throw new CreativeError(ce.code, job.error.message, { status: ce.status, details: { ...(ce.details ?? {}), jobId: job.jobId, jobStatus: job.status, outcomeUnknown: unknown, billingOutcome: billingOutcome(job) } });
       }
     },
 
@@ -164,7 +207,7 @@ export function createCreativeService({ store, client, config, now = () => new D
     async getJob({ userId, jobId }) {
       let job = await store.getJob(userId, jobId);
       if (!job) throw new CreativeError(CREATIVE_ERROR.MISSING_JOB, "That generation was not found.");
-      assertIntact(sigOk(jobSig(job), job.sig));
+      assertIntact(jobIntact(job));
       job = await settleStale(job);
       let refresh = null;
       if (job.status === JOB_STATUS.PROCESSING && job.providerJobId) {
@@ -184,14 +227,14 @@ export function createCreativeService({ store, client, config, now = () => new D
 
     async listJobs({ userId }) {
       const jobs = await store.listJobs(userId);
-      return { jobs: jobs.filter((j) => sigOk(jobSig(j), j.sig)).map(toJobView) };
+      return { jobs: jobs.filter(jobIntact).map(toJobView) };
     },
 
     /** A CURRENT download address, resolved from the provider on every call — never a stored URL. */
     async getAssetLink({ userId, jobId, index = 0 }) {
       const job = await store.getJob(userId, jobId);
       if (!job) throw new CreativeError(CREATIVE_ERROR.MISSING_JOB, "That generation was not found.");
-      assertIntact(sigOk(jobSig(job), job.sig));
+      assertIntact(jobIntact(job));
       const out = job.status === JOB_STATUS.SUCCEEDED ? job.outputs?.[index] : null;
       if (!out) throw new CreativeError(CREATIVE_ERROR.ASSET_NOT_READY, "This generation has no asset to download.", { details: { jobStatus: job.status } });
       requireCredentials();
@@ -213,9 +256,9 @@ export function createCreativeService({ store, client, config, now = () => new D
   };
 
   function replay(prior, referenceId) {
-    assertIntact(sigOk(jobSig(prior), prior.sig));
+    assertIntact(jobIntact(prior));
     if (prior.referenceId !== referenceId) {
-      throw new CreativeError(CREATIVE_ERROR.IDEMPOTENCY_KEY_REUSED, "This idempotencyKey was already used for a different reference. Nothing was submitted.", { details: { jobId: prior.jobId } });
+      throw new CreativeError(CREATIVE_ERROR.IDEMPOTENCY_KEY_REUSED, "This idempotencyKey was already used for a different reference. No generation request was sent.", { details: { jobId: prior.jobId } });
     }
     return { job: toJobView(prior), replayed: true, httpStatus: 200 };
   }
@@ -258,8 +301,41 @@ function detectFormat(asset) {
   return null;
 }
 
+const REF_FIELDS = ["referenceId", "userId", "name", "contentType", "bytes", "sha256", "width", "height", "validation", "provider", "providerAssetId", "createdAt"];
+/** Every stored job field except `sig`. A field added to the row must be added here. */
+export const JOB_FIELDS = ["jobId", "userId", "idempotencyKey", "referenceId", "provider", "modelId", "version", "status", "providerJobId", "providerStatus", "providerProgress", "outputs", "estimatedCost", "reportedCost", "error", "createdAt", "submittedAt", "completedAt", "updatedAt", "lastPolledAt"];
+const TIME_FIELDS = new Set(["createdAt", "submittedAt", "completedAt", "updatedAt", "lastPolledAt"]);
+
+function pick(record, fields) {
+  const out = {};
+  for (const f of fields) {
+    const v = record[f] ?? null;
+    // A database returns the same instant in another spelling (+00:00 for Z).
+    out[f] = v !== null && TIME_FIELDS.has(f) ? new Date(v).toISOString() : v;
+  }
+  return out;
+}
+
+/** JSON with object keys sorted at every depth — jsonb does not preserve key order. */
+function canonical(v) {
+  if (v === null || typeof v !== "object") return JSON.stringify(v);
+  if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
+  return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canonical(v[k])}`).join(",")}}`;
+}
+
+/**
+ * not_submitted — the paid request was never sent for this job.
+ * reported      — the provider reported a cost for it.
+ * unconfirmed   — the paid request was sent (or may have been) and the
+ *                 provider has reported no cost. NOT a statement that it was free.
+ */
+function billingOutcome(j) {
+  if (typeof j.reportedCost === "number") return "reported";
+  return j.status === JOB_STATUS.SUBMITTING ? "not_submitted" : "unconfirmed";
+}
+
 function toReferenceView(r) {
-  return { referenceId: r.referenceId, name: r.name, contentType: r.contentType, bytes: r.bytes, sha256: r.sha256, createdAt: r.createdAt };
+  return { referenceId: r.referenceId, name: r.name, contentType: r.contentType, bytes: r.bytes, sha256: r.sha256, width: r.width, height: r.height, validation: r.validation, createdAt: r.createdAt };
 }
 
 export function toJobView(j) {
@@ -272,7 +348,7 @@ export function toJobView(j) {
     providerStatus: j.providerStatus ?? null,
     providerProgress: j.providerProgress ?? null,
     outputs: (j.outputs ?? []).map((o, index) => ({ index, format: o.format ?? null, mimeType: o.mimeType ?? null })),
-    usage: { estimatedCost: j.estimatedCost ?? null, reportedCost: j.reportedCost ?? null, unit: "provider_cost_units" },
+    usage: { estimatedCost: j.estimatedCost ?? null, reportedCost: j.reportedCost ?? null, unit: "provider_cost_units", billingOutcome: billingOutcome(j) },
     storage: { durableCopy: false, reason: "ASSET_STORAGE_NOT_CONFIGURED" },
     error: j.error ?? null,
     createdAt: j.createdAt,
