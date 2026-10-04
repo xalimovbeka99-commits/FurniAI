@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SIMULATED /api/creative · asset viewer demo (fixtures only, not Scenario)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- DEMO ONLY. Talks to a SIMULATED /api/creative stand-in served by serve.mjs.
+     Every model is a procedurally generated fixture. Nothing here comes from Scenario. -->
+<script type="importmap">
+{ "imports": {
+  "three": "/node_modules/three/build/three.module.js",
+  "three/addons/": "/node_modules/three/examples/jsm/"
+} }
+</script>
+<style>
+  body { margin: 0; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: #e9e6e1; color: #222; }
+  header { padding: 10px 16px; background: #222; color: #fff; display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+  header b { font-size: 15px; }
+  .sim { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 10px; background: #c0262d; color: #fff; letter-spacing: .02em; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 12px; padding: 12px; }
+  .stage { position: relative; }
+  #viewer { height: 440px; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+  .watermark { position: absolute; right: 10px; bottom: 10px; z-index: 5; pointer-events: none; font: 700 11px/1.2 system-ui, sans-serif;
+               color: #c0262d; background: rgba(255,255,255,.85); border: 1px solid #c0262d; border-radius: 6px; padding: 3px 7px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .controls span { width: 100%; font-size: 11px; color: #555; margin-top: 4px; }
+  button { font: inherit; font-size: 13px; padding: 5px 9px; border-radius: 6px; border: 1px solid #999; background: #fff; cursor: pointer; }
+  button:hover { background: #f3efe9; }
+  aside { background: #fff; border-radius: 10px; padding: 10px 12px; box-shadow: 0 1px 4px rgba(0,0,0,.15); font-size: 12px; }
+  aside h3 { margin: 4px 0 6px; font-size: 13px; }
+  pre.scroll { max-height: 300px; overflow: auto; background: #f7f6f3; border-radius: 6px; padding: 4px; }
+  pre { white-space: pre-wrap; word-break: break-word; margin: 0; font: 11px/1.35 ui-monospace, Menlo, monospace; }
+</style>
+</head>
+<body>
+<header>
+  <b>Asset viewer × /api/creative contract</b>
+  <span class="sim">SIMULATED /api/creative stand-in · fixtures only · not a Scenario result</span>
+  <span id="mode"></span>
+</header>
+<main>
+  <section>
+    <div class="stage">
+      <div id="viewer"></div>
+      <div class="watermark">SIMULATED · fixture model · not Scenario</div>
+    </div>
+    <div class="controls">
+      <span>Simulated jobs (watchJob polls GET ?resource=jobs; load resolves GET ?resource=asset)</span>
+      <button data-act="processing">Processing → succeeded</button>
+      <button data-act="submitting">Submitting</button>
+      <button data-act="glb">Succeeded GLB</button>
+      <button data-act="table">Succeeded GLB (table)</button>
+      <button data-act="expired">Expired url → re-resolve</button>
+      <button data-act="gone">410 ASSET_UNAVAILABLE</button>
+      <button data-act="integrity">409 RECORD_INTEGRITY_FAILED</button>
+      <button data-act="cors">No-CORS address (U7)</button>
+      <button data-act="fbx">FBX (download-only)</button>
+      <button data-act="nullfmt">Unrecognised format</button>
+      <button data-act="unknown">submission_unknown</button>
+      <button data-act="failed">failed</button>
+      <span>Viewer</span>
+      <button data-act="fit">Fit to view</button>
+      <button data-act="download">Download (fresh url)</button>
+      <button data-act="clear">Clear</button>
+      <button data-act="reset">Reset stand-in</button>
+    </div>
+  </section>
+  <aside>
+    <h3>/api/creative + signed-address calls (newest first)</h3>
+    <pre id="calls"></pre>
+    <h3>getState() (excerpt)</h3>
+    <pre id="state" class="scroll"></pre>
+    <h3>events</h3>
+    <pre id="log"></pre>
+  </aside>
+</main>
+<script type="module" src="./creative.js"></script>
+</body>
+</html>

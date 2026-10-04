@@ -10,11 +10,22 @@
  *   await viewer.load({ arrayBuffer, filename: "chair.glb" });
  *   viewer.dispose();
  *
+ * /api/creative (PROPOSED contract, AI visual concepts): pass
+ * `creativeSource: createCreativeAssetSource({ fetchImpl, getAuthToken })`, then
+ *   await viewer.load({ jobId, index: 0, format: "glb" });  // resolve -> load
+ *   await viewer.load({ job });                             // job object from ?resource=jobs
+ *   await viewer.watchJob(jobId);                           // poll 3-5 s until terminal
+ *   await viewer.download({ save: true });                  // re-resolves a FRESH url first
+ * The resolved url is never kept in state, in `current`, or in storage.
+ *
  * This file must NEVER import "three": the static Studio page already has
  * window.THREE (r128) and a second copy would break instanceof checks and
  * double the payload. Everything three-related arrives through options.
  *
  * State machine:  idle -> loading(fetching -> parsing) -> ready | error
+ *   creative:     idle -> loading(job-checking | job-submitting | job-processing
+ *                   -> resolving -> fetching -> parsing [-> retrying -> fetching -> parsing])
+ *                   -> ready | download-only | error
  *                 any  -> idle (clear)      any -> disposed (dispose)
  * A newer load()/clear()/dispose() supersedes an in-flight load: its fetch
  * is aborted and, if parsing already produced a scene, that scene is
@@ -37,6 +48,15 @@ import { computeFit, DEFAULT_VIEW_DIRECTION } from "./fit.js";
 import { describeScale, relativeProportions } from "./scale.js";
 import { DEFAULT_MAX_BYTES, fetchBytes, isAbortError, readBlob } from "./fetchBytes.js";
 import { createOverlay } from "./overlay.js";
+import {
+  creativeFilename,
+  isViewableFormat,
+  MIME_BY_FORMAT,
+  normalizeConcept,
+  normalizeCreativeFormat,
+  redactUrls,
+  safeJobMessage,
+} from "./creativeAsset.js";
 
 export const STATUS = Object.freeze({
   IDLE: "idle",
@@ -44,6 +64,8 @@ export const STATUS = Object.freeze({
   READY: "ready",
   ERROR: "error",
   DISPOSED: "disposed",
+  /** A concept whose format the viewer does not display (fbx/obj/usdz/stl/ply/zip/null): download offered. */
+  DOWNLOAD_ONLY: "download-only",
 });
 
 export const EVENTS = Object.freeze(["statechange", "progress", "ready", "error", "dispose"]);
@@ -54,6 +76,21 @@ export const KNOWN_UNSUPPORTED_EXTENSIONS = Object.freeze([
 ]);
 
 const DEP_KEYS = ["GLTFLoader", "OrbitControls", "RoomEnvironment"];
+
+/** Display failures after a successful resolve that justify ONE fresh resolve + retry (expired url, CORS, truncated body). */
+const RETRYABLE_DISPLAY_CODES = new Set(["FETCH_FAILED", "PARSE_FAILED", "UNSUPPORTED_FORMAT"]);
+
+const NO_CREATIVE = Object.freeze({ concept: null, job: null, actions: null, attempts: null });
+
+/** What a host may offer for a concept. Builder/export/production are never allowed (contract §1 UI rule). */
+function creativeActions({ view = false, download = false } = {}) {
+  return { view, download, openInBuilder: false, export: false, production: false };
+}
+
+/** `{ jobId, index?, format? }` without url/arrayBuffer/blob = an /api/creative job-output reference. */
+function isJobOutputRef(a) {
+  return Boolean(a && typeof a === "object" && typeof a.jobId === "string" && a.url === undefined && a.arrayBuffer == null && a.blob == null);
+}
 
 function defaultCreateRenderer(three) {
   const renderer = new three.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
@@ -90,6 +127,9 @@ export function mountAssetViewer(el, options = {}) {
   const onError = typeof options.onError === "function" ? options.onError : null;
   // A loader that never calls back (e.g. a broken polyfill) must not leave the UI stuck in "loading".
   const parseTimeoutMs = options.parseTimeoutMs === undefined ? 120000 : options.parseTimeoutMs;
+  const creative = options.creativeSource || null;
+  const setTimer = options.setTimeout || ((fn, ms) => setTimeout(fn, ms));
+  const clearTimer = options.clearTimeout || ((t) => clearTimeout(t));
 
   const listeners = new Map(EVENTS.map((e) => [e, new Set()]));
   let state = {
@@ -101,6 +141,8 @@ export function mountAssetViewer(el, options = {}) {
     model: null,
     error: null,
     capabilities: null,
+    source: null, // "local" | "creative"
+    ...NO_CREATIVE,
   };
   let seq = 0;
   let pending = null; // { id, abort }
@@ -115,7 +157,9 @@ export function mountAssetViewer(el, options = {}) {
   let envTarget = null;
   let model = null; // currently displayed Object3D
   let bounds = null; // { center:[x,y,z], radius, size:{x,y,z} }
-  let current = null; // { adapter, bytes, desc } of the displayed model (for download)
+  // Displayed item, for download(): local -> { kind:"local", adapter, bytes, desc };
+  // creative -> { kind:"creative", jobId, index, format, mimeType, filename, concept } (NO url, NO bytes).
+  let current = null;
   let rafId = null;
   let resizeObserver = null;
   let resizeListener = null;
@@ -127,7 +171,15 @@ export function mountAssetViewer(el, options = {}) {
   root.setAttribute("aria-label", "3D model preview");
   root.style.cssText = "position:relative;width:100%;height:100%;min-height:160px;overflow:hidden;";
   el.appendChild(root);
-  const overlay = options.ui === false ? null : createOverlay(doc, root);
+  const overlay =
+    options.ui === false
+      ? null
+      : createOverlay(doc, root, {
+          onDownload: () => {
+            const p = download({ save: true });
+            if (p && typeof p.then === "function") p.catch(() => {});
+          },
+        });
 
   function emit(event, payload) {
     for (const cb of [...listeners.get(event)]) {
@@ -336,20 +388,50 @@ export function mountAssetViewer(el, options = {}) {
 
   const superseded = () => ({ ok: false, superseded: true, state: snapshot() });
 
-  async function load(asset) {
-    if (disposed) {
-      return { ok: false, error: toErrorRecord(new AssetViewerError("VIEWER_DISPOSED")), state: snapshot() };
-    }
-    if (fatal) return { ok: false, error: toErrorRecord(fatal), state: snapshot() };
-
+  // ---- run bookkeeping: one "run" per load()/showJob()/watchJob() ----
+  function beginRun() {
     supersede();
     const id = seq;
-    const ctrl = typeof AbortController === "function" ? new AbortController() : null;
-    pending = { id, abort: ctrl ? () => ctrl.abort() : null };
-    const stale = () => disposed || id !== seq;
-    let parsedRoot = null;
+    const ctrls = [];
+    const sleepers = new Map(); // timer handle -> wake()
+    const run = {
+      id,
+      stale: () => disposed || id !== seq,
+      signal() {
+        const c = typeof AbortController === "function" ? new AbortController() : null;
+        if (c) ctrls.push(c);
+        return c ? c.signal : undefined;
+      },
+      sleep(ms) {
+        return new Promise((wake) => {
+          const t = setTimer(() => {
+            sleepers.delete(t);
+            wake();
+          }, ms);
+          sleepers.set(t, wake);
+        });
+      },
+    };
+    pending = {
+      id,
+      abort() {
+        ctrls.forEach((c) => c.abort());
+        sleepers.forEach((wake, t) => {
+          clearTimer(t);
+          wake();
+        });
+        sleepers.clear();
+      },
+    };
+    return run;
+  }
 
-    setState({ status: STATUS.LOADING, loadId: id, phase: "fetching", progress: null, error: null });
+  /**
+   * Fetch/read + sniff + parse + validate, WITHOUT touching the displayed
+   * model. Returns null when superseded; throws AssetViewerError otherwise.
+   */
+  async function prepareMesh(asset, run, labels = {}) {
+    let parsedRoot = null;
     try {
       const desc = normalizeAsset(asset);
       let explicit = null;
@@ -376,17 +458,17 @@ export function mountAssetViewer(el, options = {}) {
       } else {
         bytes = await fetchBytes(desc.url, {
           fetchImpl,
-          signal: ctrl ? ctrl.signal : undefined,
+          signal: run.signal(),
           maxBytes,
           credentials: options.fetchCredentials || "omit",
           onProgress: (p) => {
-            if (stale()) return;
+            if (run.stale()) return;
             setState({ progress: p });
-            emit("progress", { ...p, loadId: id });
+            emit("progress", { ...p, loadId: run.id });
           },
         });
       }
-      if (stale()) return superseded();
+      if (run.stale()) return null;
 
       // Content sniff wins over hints (storage often serves application/octet-stream).
       const head = new Uint8Array(bytes, 0, Math.min(bytes.byteLength, 16384));
@@ -400,7 +482,13 @@ export function mountAssetViewer(el, options = {}) {
       }
       setState({
         phase: "parsing",
-        asset: { source: desc.source, format: adapter.id, mime: adapter.mime, filename: downloadFilename(desc.filename, adapter), byteLength: bytes.byteLength },
+        asset: {
+          source: labels.source || desc.source,
+          format: adapter.id,
+          mime: adapter.mime,
+          filename: labels.filename || downloadFilename(desc.filename, adapter),
+          byteLength: bytes.byteLength,
+        },
       });
 
       let parsed;
@@ -408,13 +496,13 @@ export function mountAssetViewer(el, options = {}) {
         const resourcePath = desc.url && !desc.url.startsWith("data:") && !desc.url.startsWith("blob:") ? desc.url.split(/[?#]/)[0].replace(/[^/]*$/, "") : "";
         parsed = await withTimeout(adapter.load(bytes, { three, deps, resourcePath }), parseTimeoutMs);
       } catch (e) {
-        if (stale()) return superseded();
+        if (run.stale()) return null;
         throw e instanceof AssetViewerError ? e : new AssetViewerError("PARSE_FAILED", e && e.message ? e.message : String(e));
       }
       parsedRoot = (parsed && parsed.root) || null;
-      if (stale()) {
+      if (run.stale()) {
         disposeObject3D(parsedRoot);
-        return superseded();
+        return null;
       }
       if (!parsedRoot || typeof parsedRoot.traverse !== "function") {
         throw new AssetViewerError("EMPTY_SCENE", "adapter returned no scene");
@@ -429,42 +517,307 @@ export function mountAssetViewer(el, options = {}) {
         throw new AssetViewerError("EMPTY_SCENE", "scene bounds are empty or degenerate");
       }
       const color = enforceColorTexturesSRGB(three, parsedRoot);
-
-      // Swap: the previous model's GPU resources are released here.
-      removeModel();
-      model = parsedRoot;
+      const out = { root: parsedRoot, stats, color, size, sphere, info: (parsed && parsed.info) || {}, adapter, bytes, desc };
       parsedRoot = null;
-      scene.add(model);
-      bounds = { center: sphere.center.toArray(), radius: sphere.radius, size: { x: size.x, y: size.y, z: size.z } };
-      current = { adapter, bytes, desc };
-      pending = null;
-      applyFit(DEFAULT_VIEW_DIRECTION);
-
-      setState({
-        status: STATUS.READY,
-        phase: null,
-        progress: state.progress ? { ...state.progress, ratio: 1 } : null,
-        model: {
-          ...stats,
-          ...color,
-          animations: parsed.info && parsed.info.animations ? parsed.info.animations : 0,
-          warnings: stats.textureCount === 0 && parsed.info && parsed.info.declaredTextures > 0 ? ["TEXTURES_NOT_LOADED"] : [],
-          proportions: relativeProportions(size),
-          scale: describeScale({ hasScaleMetadata: desc.hasScaleMetadata }),
-        },
-      });
-      emit("ready", snapshot());
-      return { ok: true, state: snapshot() };
+      return out;
     } catch (err) {
       if (parsedRoot) disposeObject3D(parsedRoot);
-      if (stale() || isAbortError(err)) return superseded();
-      pending = null;
-      const rec = toErrorRecord(err);
-      removeModel(); // never leave a stale model on screen under an error
+      if (run.stale() || isAbortError(err)) return null;
+      throw err;
+    }
+  }
+
+  /** Swap the prepared scene in (the previous model's GPU resources are released here). */
+  function commitMesh(prep, currentInfo, extraState = {}) {
+    removeModel();
+    model = prep.root;
+    scene.add(model);
+    const { size, sphere } = prep;
+    bounds = { center: sphere.center.toArray(), radius: sphere.radius, size: { x: size.x, y: size.y, z: size.z } };
+    current = currentInfo;
+    pending = null;
+    applyFit(DEFAULT_VIEW_DIRECTION);
+    setState({
+      status: STATUS.READY,
+      phase: null,
+      progress: state.progress ? { ...state.progress, ratio: 1 } : null,
+      error: null,
+      ...extraState,
+      model: {
+        ...prep.stats,
+        ...prep.color,
+        animations: prep.info.animations ? prep.info.animations : 0,
+        warnings: prep.stats.textureCount === 0 && prep.info.declaredTextures > 0 ? ["TEXTURES_NOT_LOADED"] : [],
+        proportions: relativeProportions(size),
+        // Always relative: a concept's dimensionsVerified flag is never used to claim real size.
+        scale: describeScale({ hasScaleMetadata: Boolean(prep.desc && prep.desc.hasScaleMetadata) }),
+      },
+    });
+    emit("ready", snapshot());
+    return { ok: true, state: snapshot() };
+  }
+
+  function fail(err, extraState = {}, { keep = null, redact = false } = {}) {
+    pending = null;
+    const rec = toErrorRecord(err);
+    if (redact) rec.detail = redactUrls(rec.detail);
+    removeModel(); // never leave a stale model on screen under an error
+    if (keep) current = keep; // creative item that can still be downloaded
+    requestRender();
+    setState({ status: STATUS.ERROR, phase: null, progress: null, model: null, error: rec, ...extraState });
+    reportError(rec);
+    return { ok: false, error: rec, state: snapshot() };
+  }
+
+  function guard() {
+    if (disposed) return { ok: false, error: toErrorRecord(new AssetViewerError("VIEWER_DISPOSED")), state: snapshot() };
+    if (fatal) return { ok: false, error: toErrorRecord(fatal), state: snapshot() };
+    return null;
+  }
+
+  /**
+   * load(descriptor)            local/fixture path: { url | arrayBuffer | blob, ... }
+   * load({ jobId, index, format? })  /api/creative job-output reference (needs options.creativeSource)
+   * load({ job, index? })       a job object from GET ?resource=jobs&jobId=
+   */
+  async function load(asset) {
+    const blocked = guard();
+    if (blocked) return blocked;
+    if (asset && typeof asset === "object" && asset.job && typeof asset.job === "object") return showJob(asset.job, { index: asset.index });
+    if (isJobOutputRef(asset)) return loadCreativeRef(asset);
+
+    const run = beginRun();
+    const concept = asset && typeof asset === "object" && asset.concept ? normalizeConcept(asset.concept) : null;
+    setState({ status: STATUS.LOADING, loadId: run.id, phase: "fetching", progress: null, error: null, source: "local", ...NO_CREATIVE, concept });
+    try {
+      const prep = await prepareMesh(asset, run);
+      if (!prep) return superseded();
+      return commitMesh(prep, { kind: "local", adapter: prep.adapter, bytes: prep.bytes, desc: prep.desc });
+    } catch (err) {
+      if (run.stale() || isAbortError(err)) return superseded();
+      return fail(err);
+    }
+  }
+
+  // ---- /api/creative (AI visual concept) paths ----
+  function creativeInfo(jobId, index, format, mimeType, concept) {
+    return { kind: "creative", jobId, index, format, mimeType: mimeType || null, filename: creativeFilename(jobId, index, format), concept };
+  }
+
+  function enterDownloadOnly(info, extraState) {
+    pending = null;
+    removeModel();
+    current = info;
+    requestRender();
+    setState({
+      status: STATUS.DOWNLOAD_ONLY,
+      phase: null,
+      progress: null,
+      model: null,
+      error: null,
+      ...extraState,
+      asset: { source: "creative", format: info.format, mime: info.mimeType || MIME_BY_FORMAT[info.format] || "application/octet-stream", filename: info.filename, byteLength: null },
+      concept: info.concept,
+      actions: creativeActions({ download: true }),
+    });
+    return { ok: true, downloadOnly: true, state: snapshot() };
+  }
+
+  function missingSource(run) {
+    return fail(new AssetViewerError("MISSING_DEPENDENCY", "options.creativeSource (createCreativeAssetSource(...)) is required for job references"), {
+      loadId: run.id,
+      source: "creative",
+      ...NO_CREATIVE,
+      concept: normalizeConcept(null),
+    });
+  }
+
+  async function loadCreativeRef(ref) {
+    const run = beginRun();
+    if (!creative || typeof creative.resolve !== "function") return missingSource(run);
+    const index = ref.index === undefined || ref.index === null ? 0 : ref.index;
+    const jobInfo = { jobId: ref.jobId, index, status: null, outputCount: null };
+    return creativeFlow(run, { jobId: ref.jobId, index, format: ref.format, mimeType: ref.mimeType, concept: ref.concept }, jobInfo);
+  }
+
+  /**
+   * resolve -> (non glb/gltf: download-only) -> load mesh; on a fetch/parse
+   * failure re-resolve ONCE and retry ONCE, then ASSET_DISPLAY_FAILED. The
+   * resolved url lives only in local variables of this function.
+   */
+  async function creativeFlow(run, ref, jobInfo) {
+    const { jobId, index } = ref;
+    const attempts = { resolve: 0, display: 0 };
+    let concept = normalizeConcept(ref.concept);
+    const base = () => ({ loadId: run.id, source: "creative", job: { ...jobInfo }, concept, attempts: { ...attempts } });
+    const failC = (err, downloadable, info) => {
+      if (downloadable && err instanceof AssetViewerError) err.downloadAvailable = true;
+      return fail(err, { ...base(), actions: creativeActions({ download: downloadable }) }, { keep: downloadable ? info : null, redact: true });
+    };
+
+    // The job already told us the format: anything but glb/gltf (incl. null = unrecognised)
+    // is download-only and needs no address until the user actually downloads.
+    if (ref.format !== undefined) {
+      const known = normalizeCreativeFormat(ref.format);
+      if (!isViewableFormat(known)) return enterDownloadOnly(creativeInfo(jobId, index, known, ref.mimeType, concept), base());
+    }
+
+    removeModel();
+    requestRender();
+    setState({ status: STATUS.LOADING, phase: "resolving", progress: null, error: null, model: null, asset: null, ...base(), actions: creativeActions({}) });
+
+    const resolveFresh = async () => {
+      attempts.resolve++;
+      const d = await creative.resolve(jobId, index, { signal: run.signal() });
+      concept = d.concept;
+      return d;
+    };
+    const display = (d) => {
+      attempts.display++;
+      setState({ phase: "fetching", progress: null, ...base() });
+      return prepareMesh({ url: d.url, format: d.format, filename: d.filename }, run, { source: "creative", filename: d.filename });
+    };
+
+    let d;
+    try {
+      d = await resolveFresh();
+    } catch (e) {
+      if (run.stale() || isAbortError(e)) return superseded();
+      return failC(e, false);
+    }
+    if (run.stale()) return superseded();
+    if (!isViewableFormat(d.format)) return enterDownloadOnly(creativeInfo(jobId, index, d.format, d.mimeType, concept), base());
+
+    let prep = null;
+    let firstErr = null;
+    try {
+      prep = await display(d);
+    } catch (e) {
+      if (run.stale() || isAbortError(e)) return superseded();
+      firstErr = e;
+    }
+    let info = creativeInfo(jobId, index, d.format, d.mimeType, concept);
+    d = null; // drop the address as soon as it has been used once
+    if (firstErr) {
+      if (!RETRYABLE_DISPLAY_CODES.has(firstErr.code)) return failC(firstErr, true, info);
+      setState({ phase: "retrying", progress: null, ...base() });
+      let d2;
+      try {
+        d2 = await resolveFresh();
+      } catch (e) {
+        if (run.stale() || isAbortError(e)) return superseded();
+        return failC(e, false);
+      }
+      if (run.stale()) return superseded();
+      info = creativeInfo(jobId, index, d2.format, d2.mimeType, concept);
+      if (!isViewableFormat(d2.format)) return enterDownloadOnly(info, base());
+      try {
+        prep = await display(d2);
+      } catch (e2) {
+        if (run.stale() || isAbortError(e2)) return superseded();
+        const why = `first attempt ${firstErr.code}: ${firstErr.detail || ""}; retry after fresh resolve ${e2.code || "PARSE_FAILED"}: ${e2.detail || e2.message || ""}`;
+        return failC(new AssetViewerError("ASSET_DISPLAY_FAILED", why, { attempts: { ...attempts } }), true, info);
+      }
+      d2 = null;
+    }
+    if (!prep) return superseded();
+    return commitMesh(prep, info, { ...base(), actions: creativeActions({ view: true, download: true }) });
+  }
+
+  /** Render a job object from GET ?resource=jobs&jobId=. Never branches on providerStatus/providerProgress. */
+  function showJob(job, { index } = {}) {
+    const blocked = guard();
+    if (blocked) return Promise.resolve(blocked);
+    const run = beginRun();
+    return applyJob(run, job, { index });
+  }
+
+  async function applyJob(run, job, { index } = {}) {
+    if (!job || typeof job !== "object" || typeof job.jobId !== "string" || !job.jobId) {
+      return fail(new AssetViewerError("INVALID_ASSET", "job object needs a jobId"), { loadId: run.id, source: "creative", ...NO_CREATIVE });
+    }
+    const outputs = Array.isArray(job.outputs) ? job.outputs.filter((o) => o && typeof o === "object") : [];
+    const status = typeof job.status === "string" ? job.status : null;
+    const concept = normalizeConcept(job.concept);
+    const jobInfo = { jobId: job.jobId, index: null, status, outputCount: outputs.length };
+    const base = { loadId: run.id, source: "creative", job: jobInfo, concept, attempts: null, actions: creativeActions({}) };
+    const errExtra = { serverCode: job.error && typeof job.error.code === "string" ? job.error.code : null, jobStatus: status };
+
+    if (status === "submitting" || status === "processing") {
+      removeModel();
       requestRender();
-      setState({ status: STATUS.ERROR, phase: null, progress: null, model: null, error: rec });
-      reportError(rec);
-      return { ok: false, error: rec, state: snapshot() };
+      // No percentage: providerProgress has an unverified scale (contract §2.4).
+      setState({ status: STATUS.LOADING, phase: `job-${status}`, progress: null, error: null, model: null, asset: null, ...base });
+      return { ok: false, pending: true, terminal: false, state: snapshot() };
+    }
+    if (status === "succeeded") {
+      const want = index === undefined || index === null ? null : index;
+      const out = want === null ? outputs[0] : outputs.find((o) => o.index === want);
+      if (!out) {
+        return fail(new AssetViewerError("ASSET_NOT_READY", want === null ? "job succeeded but lists no outputs" : `job has no output index ${want}`, errExtra), base);
+      }
+      jobInfo.index = Number.isInteger(out.index) && out.index >= 0 ? out.index : want === null ? 0 : want;
+      const ref = { jobId: job.jobId, index: jobInfo.index, format: "format" in out ? out.format : undefined, mimeType: out.mimeType, concept: job.concept };
+      return creativeFlow(run, ref, jobInfo);
+    }
+    if (status === "failed") {
+      const msg = safeJobMessage(job.error && job.error.message);
+      return fail(new AssetViewerError("GENERATION_FAILED", `job failed: ${errExtra.serverCode || "no error code"}`, { ...errExtra, message: msg || undefined }), base, { redact: true });
+    }
+    if (status === "submission_unknown") {
+      return fail(
+        new AssetViewerError("SUBMISSION_UNKNOWN", `job submission_unknown: ${errExtra.serverCode || "no error code"}`, { ...errExtra, chargeMayHaveOccurred: true, autoRetry: false }),
+        base,
+      );
+    }
+    return fail(new AssetViewerError("JOB_STATUS_UNKNOWN", `unrecognised job status ${JSON.stringify(status)}`, errExtra), base);
+  }
+
+  /**
+   * Polls GET ?resource=jobs&jobId= every 3-5 s while the job is
+   * submitting/processing, then shows the terminal result. Superseded by any
+   * later load/showJob/watchJob/clear/dispose. Never auto-retries a
+   * generation; refresh.ok:false only means the status check failed.
+   */
+  async function watchJob(jobId, { index, intervalMs = 4000 } = {}) {
+    const blocked = guard();
+    if (blocked) return blocked;
+    const run = beginRun();
+    if (!creative || typeof creative.getJob !== "function") return missingSource(run);
+    const wait = Math.min(5000, Math.max(3000, Number(intervalMs) || 4000));
+    removeModel();
+    requestRender();
+    setState({
+      status: STATUS.LOADING,
+      loadId: run.id,
+      phase: "job-checking",
+      progress: null,
+      error: null,
+      model: null,
+      asset: null,
+      source: "creative",
+      job: { jobId, index: index === undefined ? null : index, status: null, outputCount: null },
+      concept: normalizeConcept(null),
+      attempts: null,
+      actions: creativeActions({}),
+    });
+    for (;;) {
+      let res;
+      try {
+        res = await creative.getJob(jobId, { signal: run.signal() });
+      } catch (e) {
+        if (run.stale() || isAbortError(e)) return superseded();
+        return fail(e, { source: "creative", concept: state.concept, job: state.job, actions: creativeActions({}) }, { redact: true });
+      }
+      if (run.stale()) return superseded();
+      const job = res && res.job;
+      if (job && (job.status === "submitting" || job.status === "processing")) {
+        await applyJob(run, job, { index });
+        await run.sleep(wait);
+        if (run.stale()) return superseded();
+        continue;
+      }
+      return applyJob(run, job, { index });
     }
   }
 
@@ -474,7 +827,7 @@ export function mountAssetViewer(el, options = {}) {
     removeModel();
     requestRender();
     if (fatal) return;
-    setState({ status: STATUS.IDLE, loadId: seq, phase: null, progress: null, asset: null, model: null, error: null });
+    setState({ status: STATUS.IDLE, loadId: seq, phase: null, progress: null, asset: null, model: null, error: null, source: null, ...NO_CREATIVE });
   }
 
   function fitToView() {
@@ -495,12 +848,25 @@ export function mountAssetViewer(el, options = {}) {
   }
 
   /**
-   * Hands back the ORIGINAL bytes (no re-export/conversion) with a filename
-   * and mime matching the detected format. `{ save: true }` additionally
-   * triggers a browser download via a temporary object URL.
+   * Local item: hands back the ORIGINAL bytes (no re-export/conversion) with a
+   * filename and mime matching the detected format, synchronously.
+   * `{ save: true }` additionally triggers a browser download via a temporary
+   * object URL.
+   *
+   * Creative item (ready, download-only, or a display error that still
+   * allows download): returns a Promise. It ALWAYS re-resolves a fresh url
+   * first (never reuses the one the mesh was loaded from) and resolves to
+   * { ok:true, url, filename, mime, format, jobId, index, resolvedAt, concept }
+   * or { ok:false, error }. Viewer state is not changed by a download.
    */
   function download({ save = false } = {}) {
-    if (disposed || state.status !== STATUS.READY || !current) return null;
+    if (disposed || !current) return null;
+    if (current.kind === "creative") {
+      const allowed =
+        state.status === STATUS.READY || state.status === STATUS.DOWNLOAD_ONLY || (state.status === STATUS.ERROR && state.actions && state.actions.download);
+      return allowed ? downloadCreative(current, save) : null;
+    }
+    if (state.status !== STATUS.READY) return null;
     const { adapter, bytes, desc } = current;
     const payload = {
       format: adapter.id,
@@ -522,6 +888,46 @@ export function mountAssetViewer(el, options = {}) {
       a.click();
       root.removeChild(a);
       setTimeout(() => win.URL.revokeObjectURL(href), 0);
+    }
+    return payload;
+  }
+
+  async function downloadCreative(info, save) {
+    let d;
+    try {
+      d = await creative.resolve(info.jobId, info.index);
+    } catch (e) {
+      const rec = toErrorRecord(e);
+      rec.detail = redactUrls(rec.detail);
+      return { ok: false, error: rec };
+    }
+    if (disposed) return { ok: false, error: toErrorRecord(new AssetViewerError("VIEWER_DISPOSED")) };
+    const payload = {
+      ok: true,
+      jobId: d.jobId,
+      index: d.index,
+      url: d.url,
+      format: d.format,
+      mime: d.mimeType || MIME_BY_FORMAT[d.format] || "application/octet-stream",
+      filename: d.filename,
+      resolvedAt: d.resolvedAt,
+      expiresAt: d.expiresAt,
+      expiryKnown: d.expiryKnown,
+      concept: d.concept,
+      freshlyResolved: true,
+    };
+    if (save) {
+      // Navigation is not subject to CORS, so this can work even when display failed (U7).
+      // Cross-origin addresses ignore `download`, so the provider may choose the file name.
+      const a = doc.createElement("a");
+      a.href = d.url;
+      a.download = d.filename;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.style.display = "none";
+      root.appendChild(a);
+      a.click();
+      root.removeChild(a);
     }
     return payload;
   }
@@ -578,6 +984,8 @@ export function mountAssetViewer(el, options = {}) {
 
   const handle = {
     load,
+    showJob,
+    watchJob,
     clear,
     fitToView,
     getState: snapshot,
