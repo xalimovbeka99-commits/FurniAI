@@ -48,6 +48,27 @@ function keyShape(value, pattern) {
  * @param {Record<string, string|undefined>} env
  * @returns {object} safe to return to an operator; contains no credential material
  */
+/**
+ * The Supabase project that issues the Studio's sign-in tokens. It is public
+ * (it ships in index.html with the anon key). /api/designs verifies a token
+ * against SUPABASE_URL, so if SUPABASE_URL names ANY other project every
+ * signed-in save answers 401 MISSING_AUTH. Override per deployment with
+ * FURNIAI_FRONTEND_AUTH_PROJECT_REF when the Studio is pointed elsewhere.
+ */
+export const STUDIO_AUTH_PROJECT_REF = "upavdjmovubblowrxncp";
+
+/** "<ref>" from https://<ref>.supabase.co — a public identifier, never a key. */
+export function supabaseProjectRef(url) {
+  if (typeof url !== "string" || !url.trim()) return null;
+  try {
+    const host = new URL(url.trim()).hostname;
+    const m = /^([a-z0-9]{20})\.supabase\.(co|in)$/.exec(host);
+    return m ? m[1] : `non-supabase-host:${host}`;
+  } catch {
+    return "unparseable-url";
+  }
+}
+
 export function describeProviderConfig(env = process.env) {
   const anthropic = {
     state: stateOf(env.ANTHROPIC_API_KEY),
@@ -71,7 +92,15 @@ export function describeProviderConfig(env = process.env) {
     prefixedOnly:
       stateOf(env.SUPABASE_URL) !== "configured" &&
       (stateOf(env.NEXT_PUBLIC_SUPABASE_URL) === "configured" || stateOf(env.NEXT_PUBLIC_SUPABASE_ANON_KEY) === "configured"),
+    projectRef: supabaseProjectRef(env.SUPABASE_URL),
+    studioAuthProjectRef:
+      stateOf(env.FURNIAI_FRONTEND_AUTH_PROJECT_REF) === "configured"
+        ? env.FURNIAI_FRONTEND_AUTH_PROJECT_REF.trim()
+        : STUDIO_AUTH_PROJECT_REF,
   };
+  // null = cannot tell (no SUPABASE_URL). false = every Studio sign-in token
+  // will be refused by /api/designs on this deployment.
+  supabase.acceptsStudioSignIn = supabase.projectRef === null ? null : supabase.projectRef === supabase.studioAuthProjectRef;
 
   let verdict;
   if (wouldAttempt.length === 0) {

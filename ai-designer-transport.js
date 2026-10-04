@@ -21,8 +21,11 @@ var AiDesignerTransport = (() => {
   var aiDesignerTransport_exports = {};
   __export(aiDesignerTransport_exports, {
     AI_DESIGNER_ENDPOINT: () => AI_DESIGNER_ENDPOINT,
+    REOPEN_OUTCOME: () => REOPEN_OUTCOME,
     RESULT_KIND: () => RESULT_KIND,
     RESULT_SOURCE: () => RESULT_SOURCE,
+    SAVE_OUTCOME: () => SAVE_OUTCOME,
+    createDesignSaveCoordinator: () => createDesignSaveCoordinator,
     invalidLiveStateGuardResult: () => invalidLiveStateGuardResult,
     isStaleAnswer: () => isStaleAnswer,
     isStaleForRevision: () => isStaleForRevision,
@@ -139,6 +142,9 @@ var AiDesignerTransport = (() => {
     }
     if (typeof spec.revision !== "number" || !Number.isInteger(spec.revision) || spec.revision < 1) {
       addError("INVALID_REVISION", "revision must be a positive integer (>= 1).", "revision");
+    }
+    if (spec.customerFinishKey !== void 0 && (typeof spec.customerFinishKey !== "string" || spec.customerFinishKey.trim() === "")) {
+      addError("INVALID_CUSTOMER_FINISH", "customerFinishKey, when present, must be a non-empty string.", "customerFinishKey");
     }
     if (spec.unit !== "mm") {
       addError("INVALID_UNIT", `unit must be "mm", got "${spec.unit}".`, "unit");
@@ -323,6 +329,12 @@ var AiDesignerTransport = (() => {
               const dropDmm = checkPositiveDeciMm(comp.clearDropAboveMm, `${compPath}.clearDropAboveMm`, "clearDropAboveMm");
               if (dropDmm !== null && internalCarcassHDmm !== null && dropDmm >= internalCarcassHDmm) {
                 addError("COMPONENT_OUTSIDE_BAY", `clearDropAboveMm (${comp.clearDropAboveMm}mm) exceeds internal carcass height (${internalCarcassHDmm / 10}mm).`, `${compPath}.clearDropAboveMm`);
+              }
+            }
+            if (typeof comp.type === "string" && comp.type.startsWith("HANGING_RAIL") && comp.targetClearDropMm !== void 0) {
+              const targetDmm = checkPositiveDeciMm(comp.targetClearDropMm, `${compPath}.targetClearDropMm`, "targetClearDropMm");
+              if (targetDmm !== null && internalCarcassHDmm !== null && targetDmm >= internalCarcassHDmm) {
+                addError("COMPONENT_OUTSIDE_BAY", `targetClearDropMm (${comp.targetClearDropMm}mm) exceeds internal carcass height (${internalCarcassHDmm / 10}mm).`, `${compPath}.targetClearDropMm`);
               }
             }
             if (comp.thicknessMm !== void 0) {
@@ -1059,6 +1071,104 @@ var AiDesignerTransport = (() => {
     return { panels, partIds };
   }
 
+  // src/lib/partgraph/hangingDropGeometry.js
+  var HANGING_DROP_ERROR = Object.freeze({
+    NOT_ACHIEVABLE: "HANGING_DROP_NOT_ACHIEVABLE",
+    RAIL_OUTSIDE_BAY: "HANGING_RAIL_OUTSIDE_BAY",
+    RAIL_INTERSECTS_PART: "HANGING_RAIL_INTERSECTS_PART",
+    INTERIOR_PART_OUTSIDE_BAY: "INTERIOR_PART_OUTSIDE_BAY"
+  });
+  var HANGING_DROP_DATUM = "rail centre to the upper face of the next structural part below it in the same bay (carcass bottom panel if none) \u2014 WARDROBE_RULEBOOK_V0.1 \xA7E";
+  var HangingDropGeometryError = class extends Error {
+    /**
+     * @param {string} code one of HANGING_DROP_ERROR
+     * @param {string} message
+     * @param {object} details
+     */
+    constructor(code, message, details) {
+      super(message);
+      this.name = "HangingDropGeometryError";
+      this.code = code;
+      this.details = details;
+    }
+  };
+  var fmt = (dmm) => `${dmm / 10}mm`;
+  function assertInteriorPartsInsideBay({ bayParts, yBotTopDmm, yTopBottomDmm }) {
+    for (const p of bayParts) {
+      if (p.minYDmm < yBotTopDmm || p.maxYDmm > yTopBottomDmm) {
+        throw new HangingDropGeometryError(
+          HANGING_DROP_ERROR.INTERIOR_PART_OUTSIDE_BAY,
+          `Part ${p.id} (Y ${fmt(p.minYDmm)} \u2013 ${fmt(p.maxYDmm)}) lies outside the bay clear height (${fmt(yBotTopDmm)} \u2013 ${fmt(yTopBottomDmm)}).`,
+          {
+            partId: p.id,
+            bayIndex: p.bayIndex,
+            partMinYMm: p.minYDmm / 10,
+            partMaxYMm: p.maxYDmm / 10,
+            bayClearFromYMm: yBotTopDmm / 10,
+            bayClearToYMm: yTopBottomDmm / 10
+          }
+        );
+      }
+    }
+  }
+  function assertHangingDropGeometry({ rails, bayParts, yBotTopDmm, yTopBottomDmm }) {
+    const measurements = [];
+    for (const rail of rails) {
+      const { comp, bayIndex, railCenterYDmm: y } = rail;
+      const base = {
+        componentId: comp.id,
+        componentType: comp.type,
+        bayIndex,
+        railCentreYMm: y / 10,
+        datum: HANGING_DROP_DATUM
+      };
+      if (!(y > yBotTopDmm && y < yTopBottomDmm)) {
+        throw new HangingDropGeometryError(
+          HANGING_DROP_ERROR.RAIL_OUTSIDE_BAY,
+          `Hanging rail "${comp.id}" centre (Y ${fmt(y)}) is not inside the bay clear height (${fmt(yBotTopDmm)} \u2013 ${fmt(yTopBottomDmm)}).`,
+          { ...base, bayClearFromYMm: yBotTopDmm / 10, bayClearToYMm: yTopBottomDmm / 10 }
+        );
+      }
+      const inBay = bayParts.filter((p) => p.bayIndex === bayIndex);
+      const pierced = inBay.find((p) => p.minYDmm < y && y < p.maxYDmm);
+      if (pierced) {
+        throw new HangingDropGeometryError(
+          HANGING_DROP_ERROR.RAIL_INTERSECTS_PART,
+          `Hanging rail "${comp.id}" centre (Y ${fmt(y)}) passes through part ${pierced.id} (${fmt(pierced.minYDmm)} \u2013 ${fmt(pierced.maxYDmm)}).`,
+          { ...base, partId: pierced.id }
+        );
+      }
+      let obstructionId = "CARCASS_BOTTOM";
+      let obstructionTopDmm = yBotTopDmm;
+      for (const p of inBay) {
+        if (p.maxYDmm <= y && p.maxYDmm > obstructionTopDmm) {
+          obstructionTopDmm = p.maxYDmm;
+          obstructionId = p.id;
+        }
+      }
+      const achievableDmm = y - obstructionTopDmm;
+      const measurement = {
+        ...base,
+        obstructionId,
+        obstructionUpperFaceYMm: obstructionTopDmm / 10,
+        achievableClearDropMm: achievableDmm / 10,
+        targetClearDropMm: comp.targetClearDropMm
+      };
+      if (comp.targetClearDropMm !== void 0) {
+        const targetDmm = toDeciMm(comp.targetClearDropMm, `${comp.id}.targetClearDropMm`);
+        if (targetDmm > achievableDmm) {
+          throw new HangingDropGeometryError(
+            HANGING_DROP_ERROR.NOT_ACHIEVABLE,
+            `Hanging rail "${comp.id}" declares a clear drop of ${fmt(targetDmm)}, but only ${fmt(achievableDmm)} is available above ${obstructionId === "CARCASS_BOTTOM" ? "the carcass bottom" : obstructionId}.`,
+            measurement
+          );
+        }
+      }
+      measurements.push(measurement);
+    }
+    return measurements;
+  }
+
   // src/lib/partgraph/buildStructuralPartGraph.js
   function resolveHangingRailTube(tubeType) {
     const raw = String(tubeType || "OVAL_TUBE_15X30").toUpperCase();
@@ -1365,6 +1475,7 @@ var AiDesignerTransport = (() => {
     const drawerPanels = [];
     const previews = [];
     const ledger = createComponentLedger();
+    const railPlacements = [];
     for (const bay of baySpans) {
       let currentBottomFaceY = yTopBottomDmm;
       let currentRailCenterY = null;
@@ -1416,6 +1527,7 @@ var AiDesignerTransport = (() => {
         } else if (comp.type.startsWith("HANGING_RAIL")) {
           const offsetBelowDmm = assertDeciMm(comp.offsetBelowShelfMm, `${comp.id}.offsetBelowShelfMm`);
           currentRailCenterY = currentBottomFaceY - offsetBelowDmm;
+          railPlacements.push({ comp, bayIndex: bay.index, railCenterYDmm: currentRailCenterY });
           const railHw = furniSpec.hardware?.hangingRails || {};
           const tube = resolveHangingRailTube(railHw.type || "OVAL_TUBE_15X30");
           const endInsetMm = 2;
@@ -1541,6 +1653,17 @@ var AiDesignerTransport = (() => {
         }
       }
     }
+    assertInteriorPartsInsideBay({
+      bayParts: [...fixedShelves, ...adjShelves, ...drawerPanels],
+      yBotTopDmm,
+      yTopBottomDmm
+    });
+    assertHangingDropGeometry({
+      rails: railPlacements,
+      bayParts: [...fixedShelves, ...adjShelves, ...drawerPanels],
+      yBotTopDmm,
+      yTopBottomDmm
+    });
     drawerPanels.sort((a, b) => a.bayIndex - b.bayIndex || a.minYDmm - b.minYDmm);
     for (const d of drawerPanels) {
       parts.push(createPanel(d));
@@ -1836,13 +1959,15 @@ var AiDesignerTransport = (() => {
         bayIndex: entry.bayIndex
       });
     }
+    const customerFinishKey = typeof furniSpec.customerFinishKey === "string" && furniSpec.customerFinishKey.trim() !== "" ? furniSpec.customerFinishKey : null;
+    const finishedParts = customerFinishKey ? parts.map((part) => ({ ...part, customerFinishKey, finishIntent: customerFinishKey })) : parts;
     return {
       partGraphVersion: PARTGRAPH_VERSION,
       sourceSpecId: furniSpec.specId,
       sourceRevision: furniSpec.revision,
       unitScale: "deci-mm",
       qualificationStatus: furniSpec.qualificationStatus,
-      parts,
+      parts: finishedParts,
       previews,
       operations,
       warnings,
@@ -1861,7 +1986,8 @@ var AiDesignerTransport = (() => {
           widthDmm: envWDmm,
           heightDmm: envHDmm,
           depthDmm: envDDmm
-        }
+        },
+        ...customerFinishKey ? { customerFinishKey } : {}
       }
     };
   }
@@ -2625,19 +2751,12 @@ var AiDesignerTransport = (() => {
       nextSpec.materials = { ...nextSpec.materials, customerFinishKey: key };
     }
     const nextProposal = createProposal(nextSpec);
-    let nextPartGraph = cloneJson(partGraph);
-    if (nextPartGraph && typeof nextPartGraph === "object") {
-      nextPartGraph.summary = {
-        ...nextPartGraph.summary || {},
-        customerFinishKey: key,
-        revision: nextSpec.revision
-      };
-      if (Array.isArray(nextPartGraph.parts)) {
-        nextPartGraph.parts = nextPartGraph.parts.map((part) => ({
-          ...part,
-          customerFinishKey: key,
-          finishIntent: key
-        }));
+    let nextPartGraph = null;
+    if (partGraph && typeof partGraph === "object") {
+      try {
+        nextPartGraph = buildStructuralPartGraph(nextSpec);
+      } catch (err) {
+        return { ok: false, error: `The finish could not be applied: ${err?.message || "compile failed"}` };
       }
     }
     const nextObservations = [
@@ -3318,6 +3437,28 @@ var AiDesignerTransport = (() => {
     APPROVAL_REJECTED: "APPROVAL_REJECTED",
     APPROVED: "APPROVED"
   });
+  var KERNEL_GEOMETRY_REFUSALS = /* @__PURE__ */ new Set([
+    "HANGING_DROP_NOT_ACHIEVABLE",
+    "HANGING_RAIL_OUTSIDE_BAY",
+    "HANGING_RAIL_INTERSECTS_PART",
+    "INTERIOR_PART_OUTSIDE_BAY",
+    "DEGENERATE_DRAWER_GEOMETRY",
+    "UNSUPPORTED_DIMENSION_PRECISION"
+  ]);
+  function compileOrRefuse(spec) {
+    try {
+      return { partGraph: buildStructuralPartGraph(spec), refusal: null };
+    } catch (err) {
+      if (!(err instanceof HangingDropGeometryError) && !KERNEL_GEOMETRY_REFUSALS.has(err?.code)) throw err;
+      return {
+        partGraph: null,
+        refusal: {
+          valid: false,
+          errors: [{ code: err.code, message: err.message, path: err.details?.componentId ?? err.field ?? "", details: err.details }]
+        }
+      };
+    }
+  }
   function unrepresentableComponents(partGraph) {
     const outcomes = partGraph?.componentOutcomes ?? [];
     const blocked = outcomes.filter((e) => e.outcome === COMPONENT_OUTCOME.UNSUPPORTED);
@@ -3419,8 +3560,22 @@ var AiDesignerTransport = (() => {
         safety: preApprovalSafety(assembled.spec)
       };
     }
+    const compiledDraft = compileOrRefuse(assembled.spec);
+    if (compiledDraft.refusal) {
+      return {
+        stage: PIPELINE_STAGE.VALIDATION_FAILED,
+        spec: assembled.spec,
+        derivations: assembled.derivations,
+        validation: compiledDraft.refusal,
+        observations,
+        origins,
+        proposal: null,
+        partGraph: null,
+        safety: preApprovalSafety(assembled.spec)
+      };
+    }
     const proposal = createProposal(assembled.spec);
-    const partGraph = buildStructuralPartGraph(assembled.spec);
+    const partGraph = compiledDraft.partGraph;
     const partGraphValidation = validatePartGraph(partGraph);
     const unrepresentable = unrepresentableComponents(partGraph);
     if (unrepresentable) {
@@ -4003,6 +4158,276 @@ var AiDesignerTransport = (() => {
       edits.push({ key, value: parsed.value, sourceText: typeof edit.sourceText === "string" ? edit.sourceText : null });
     }
     return { ok: errors.length === 0, edits, unsupported, reply, errors };
+  }
+
+  // src/lib/persistence/designSaveCoordinator.js
+  var SAVE_OUTCOME = Object.freeze({
+    SAVED: "SAVED",
+    /** The server already had exactly this revision (an earlier answer was lost). */
+    REPLAYED: "REPLAYED",
+    /** The session changed while the request was in flight; nothing was applied. */
+    DISCARDED_STALE_SESSION: "DISCARDED_STALE_SESSION",
+    /** Someone else saved first. `latest` describes what is stored. */
+    CONFLICT: "CONFLICT",
+    /** The design itself is not saveable (400 / fingerprint / integrity). Keep on-screen state. */
+    REFUSED: "REFUSED",
+    /** 401 — sign in again, then call retryPending(). */
+    SIGN_IN: "SIGN_IN",
+    /** Outcome unknown (network, timeout, 5xx). The identical body is kept for retryPending(). */
+    UNCONFIRMED: "UNCONFIRMED",
+    /** This deployment has no durable store. Keep local state. */
+    NOT_CONFIGURED: "NOT_CONFIGURED",
+    /** The design no longer exists for this caller (404). */
+    MISSING_DESIGN: "MISSING_DESIGN"
+  });
+  var REOPEN_OUTCOME = Object.freeze({
+    REOPENED: "REOPENED",
+    /** A later reopen or reset happened while this one was loading. */
+    SUPERSEDED: "SUPERSEDED",
+    NO_SAVED_REVISION: "NO_SAVED_REVISION",
+    REFUSED: "REFUSED",
+    SIGN_IN: "SIGN_IN",
+    UNAVAILABLE: "UNAVAILABLE",
+    MISSING_DESIGN: "MISSING_DESIGN",
+    NOT_CONFIGURED: "NOT_CONFIGURED"
+  });
+  var UNKNOWN_OUTCOME_CODES = /* @__PURE__ */ new Set(["NETWORK", "STORAGE_UNAVAILABLE", "AUTH_UNAVAILABLE", "UNKNOWN"]);
+  function classify(err) {
+    const code = err && typeof err.code === "string" ? err.code : "UNKNOWN";
+    const status = err && typeof err.status === "number" ? err.status : void 0;
+    if (code === "MISSING_AUTH" || status === 401) return { kind: "SIGN_IN", code };
+    if (code === "PERSISTENCE_NOT_CONFIGURED") return { kind: "NOT_CONFIGURED", code };
+    if (code === "MISSING_DESIGN" || status === 404) return { kind: "MISSING_DESIGN", code };
+    if (code === "STALE_REVISION") return { kind: "CONFLICT", code };
+    if (UNKNOWN_OUTCOME_CODES.has(code) || status !== void 0 && status >= 500) return { kind: "UNKNOWN", code };
+    return { kind: "REFUSED", code };
+  }
+  var safeError = (err) => ({
+    code: err && typeof err.code === "string" ? err.code : "UNKNOWN",
+    status: err && typeof err.status === "number" ? err.status : void 0,
+    message: err && typeof err.message === "string" ? err.message : "",
+    details: err && err.details && typeof err.details === "object" ? err.details : void 0
+  });
+  function createDesignSaveCoordinator({ client, getToken, getSessionId } = {}) {
+    for (const m of ["createDesign", "saveAcceptedRevision", "getDesign", "getRevision"]) {
+      if (!client || typeof client[m] !== "function") {
+        throw new TypeError(`createDesignSaveCoordinator: client.${m} is required.`);
+      }
+    }
+    if (typeof getSessionId !== "function") throw new TypeError("createDesignSaveCoordinator: getSessionId is required.");
+    if (typeof getToken !== "function") throw new TypeError("createDesignSaveCoordinator: getToken is required.");
+    let binding = { sessionId: null, designId: null, specId: null, storedRevision: null, name: null };
+    let pending = null;
+    let queue = Promise.resolve();
+    let navTicket = 0;
+    let savedChangeToken = null;
+    const live = () => getSessionId();
+    const bindingIsLive = (b) => b === binding && b.sessionId === live();
+    function snapshot() {
+      return {
+        sessionId: binding.sessionId,
+        designId: binding.designId,
+        specId: binding.specId,
+        storedRevision: binding.storedRevision,
+        name: binding.name,
+        savedChangeToken,
+        hasUnconfirmedSave: pending !== null && pending.binding === binding
+      };
+    }
+    function reset(sessionId = live()) {
+      navTicket += 1;
+      binding = { sessionId, designId: null, specId: null, storedRevision: null, name: null };
+      pending = null;
+      savedChangeToken = null;
+      return snapshot();
+    }
+    function bind({ sessionId = live(), designId, specId = null, storedRevision, name = null, changeToken = null }) {
+      navTicket += 1;
+      binding = { sessionId, designId, specId, storedRevision, name };
+      pending = null;
+      savedChangeToken = changeToken;
+      return snapshot();
+    }
+    async function send(req) {
+      return client.saveAcceptedRevision({ ...req.body, designId: req.designId, token: req.token });
+    }
+    function landed(b, req, saved, replay) {
+      b.storedRevision = saved.revision;
+      if (req.body.furniSpec && typeof req.body.furniSpec.specId === "string") b.specId = req.body.furniSpec.specId;
+      if (b === binding) savedChangeToken = req.changeToken;
+      if (pending === req) pending = null;
+      return {
+        status: replay ? SAVE_OUTCOME.REPLAYED : SAVE_OUTCOME.SAVED,
+        designId: b.designId,
+        storedRevision: saved.revision,
+        fingerprint: saved.fingerprint,
+        savedChangeToken: req.changeToken
+      };
+    }
+    async function onSaveError(b, req, err) {
+      const c = classify(err);
+      const error = safeError(err);
+      if (c.kind === "UNKNOWN") {
+        pending = req;
+        return { status: SAVE_OUTCOME.UNCONFIRMED, designId: b.designId, error };
+      }
+      if (c.kind === "SIGN_IN") {
+        pending = req;
+        return { status: SAVE_OUTCOME.SIGN_IN, designId: b.designId, error };
+      }
+      if (pending === req) pending = null;
+      if (c.kind === "CONFLICT") {
+        let latest = null;
+        try {
+          const token = await getToken();
+          const summary = await client.getDesign({ designId: b.designId, token });
+          latest = summary && summary.latestRevision ? summary.latestRevision : null;
+        } catch {
+          latest = null;
+        }
+        return {
+          status: SAVE_OUTCOME.CONFLICT,
+          designId: b.designId,
+          storedRevision: b.storedRevision,
+          latest,
+          error
+        };
+      }
+      if (c.kind === "NOT_CONFIGURED") return { status: SAVE_OUTCOME.NOT_CONFIGURED, error };
+      if (c.kind === "MISSING_DESIGN") return { status: SAVE_OUTCOME.MISSING_DESIGN, designId: b.designId, error };
+      return { status: SAVE_OUTCOME.REFUSED, designId: b.designId, error };
+    }
+    async function resend(b, req) {
+      try {
+        const token = await getToken() || req.token;
+        const saved = await send({ ...req, token });
+        if (!bindingIsLive(b)) return { status: SAVE_OUTCOME.DISCARDED_STALE_SESSION, designId: b.designId };
+        return landed(b, req, saved, saved && saved.idempotentReplay === true);
+      } catch (err) {
+        if (!bindingIsLive(b)) return { status: SAVE_OUTCOME.DISCARDED_STALE_SESSION, designId: b.designId };
+        return onSaveError(b, req, err);
+      }
+    }
+    async function doSave({ furniSpec, partGraph, fingerprint, origins = {}, name, changeToken = null, validationStatus = "ACCEPTED" }) {
+      const b = binding;
+      const startedIn = live();
+      if (b.sessionId !== startedIn) {
+        return { status: SAVE_OUTCOME.DISCARDED_STALE_SESSION, designId: b.designId };
+      }
+      if (pending && pending.binding === b) {
+        const first = await resend(b, pending);
+        if (first.status !== SAVE_OUTCOME.SAVED && first.status !== SAVE_OUTCOME.REPLAYED) return first;
+      }
+      const token = await getToken();
+      if (!token) return { status: SAVE_OUTCOME.SIGN_IN, designId: b.designId, error: { code: "MISSING_AUTH" } };
+      if (!b.designId) {
+        let created;
+        try {
+          created = await client.createDesign({ name: name || b.name || "Wardrobe design", token });
+        } catch (err) {
+          if (!bindingIsLive(b)) return { status: SAVE_OUTCOME.DISCARDED_STALE_SESSION, designId: null };
+          const c = classify(err);
+          const status = c.kind === "SIGN_IN" ? SAVE_OUTCOME.SIGN_IN : c.kind === "NOT_CONFIGURED" ? SAVE_OUTCOME.NOT_CONFIGURED : c.kind === "UNKNOWN" ? SAVE_OUTCOME.UNCONFIRMED : SAVE_OUTCOME.REFUSED;
+          return { status, designId: null, error: safeError(err) };
+        }
+        if (!bindingIsLive(b)) {
+          return {
+            status: SAVE_OUTCOME.DISCARDED_STALE_SESSION,
+            designId: null,
+            orphanedDesignId: created && created.designId ? created.designId : null
+          };
+        }
+        b.designId = created.designId;
+        b.name = created.name ?? name ?? null;
+      }
+      const prior = b.storedRevision;
+      const req = {
+        binding: b,
+        designId: b.designId,
+        token,
+        changeToken,
+        body: {
+          revision: prior == null ? 1 : prior + 1,
+          expectedPreviousRevision: prior == null ? null : prior,
+          fingerprint,
+          furniSpec,
+          partGraph,
+          origins,
+          validationStatus
+        }
+      };
+      try {
+        const saved = await send(req);
+        if (!bindingIsLive(b)) return { status: SAVE_OUTCOME.DISCARDED_STALE_SESSION, designId: b.designId };
+        return landed(b, req, saved, saved && saved.idempotentReplay === true);
+      } catch (err) {
+        if (!bindingIsLive(b)) return { status: SAVE_OUTCOME.DISCARDED_STALE_SESSION, designId: b.designId };
+        return onSaveError(b, req, err);
+      }
+    }
+    function save(args) {
+      const run = queue.then(() => doSave(args));
+      queue = run.catch(() => void 0);
+      return run;
+    }
+    function retryPending() {
+      const run = queue.then(async () => {
+        const b = binding;
+        if (!pending || pending.binding !== b) return { status: SAVE_OUTCOME.SAVED, designId: b.designId, storedRevision: b.storedRevision, nothingPending: true };
+        if (b.sessionId !== live()) return { status: SAVE_OUTCOME.DISCARDED_STALE_SESSION, designId: b.designId };
+        return resend(b, pending);
+      });
+      queue = run.catch(() => void 0);
+      return run;
+    }
+    function adoptLatestAsBase(latestRevision) {
+      if (!Number.isInteger(latestRevision) || latestRevision < 1) {
+        throw new TypeError("adoptLatestAsBase requires the stored latest revision number.");
+      }
+      binding.storedRevision = latestRevision;
+      savedChangeToken = null;
+      return snapshot();
+    }
+    async function reopen({ designId, revision } = {}) {
+      navTicket += 1;
+      const ticket = navTicket;
+      const superseded = () => ticket !== navTicket;
+      try {
+        const token = await getToken();
+        if (!token) return { status: REOPEN_OUTCOME.SIGN_IN };
+        let rev = revision;
+        let summary = null;
+        if (rev == null) {
+          summary = await client.getDesign({ designId, token });
+          if (superseded()) return { status: REOPEN_OUTCOME.SUPERSEDED };
+          rev = summary && summary.latestRevision ? summary.latestRevision.revision : null;
+          if (rev == null) return { status: REOPEN_OUTCOME.NO_SAVED_REVISION, designId };
+        }
+        const payload = await client.getRevision({ designId, revision: rev, token });
+        if (superseded()) return { status: REOPEN_OUTCOME.SUPERSEDED };
+        return {
+          status: REOPEN_OUTCOME.REOPENED,
+          designId: payload.designId || designId,
+          storedRevision: payload.revision,
+          specId: payload.furniSpec && payload.furniSpec.specId,
+          name: summary && summary.design ? summary.design.name : null,
+          payload
+        };
+      } catch (err) {
+        if (superseded()) return { status: REOPEN_OUTCOME.SUPERSEDED };
+        const c = classify(err);
+        const error = safeError(err);
+        if (c.kind === "SIGN_IN") return { status: REOPEN_OUTCOME.SIGN_IN, error };
+        if (c.kind === "MISSING_DESIGN") return { status: REOPEN_OUTCOME.MISSING_DESIGN, error };
+        if (c.kind === "NOT_CONFIGURED") return { status: REOPEN_OUTCOME.NOT_CONFIGURED, error };
+        if (c.kind === "UNKNOWN") return { status: REOPEN_OUTCOME.UNAVAILABLE, error };
+        return { status: REOPEN_OUTCOME.REFUSED, error };
+      }
+    }
+    function isSaved(currentChangeToken) {
+      return savedChangeToken !== null && currentChangeToken === savedChangeToken && binding.sessionId === live();
+    }
+    return { save, retryPending, reopen, bind, reset, adoptLatestAsBase, isSaved, snapshot };
   }
 
   // src/lib/adapters/aiDesignerTransport.js

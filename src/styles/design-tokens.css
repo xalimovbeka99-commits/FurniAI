@@ -1,0 +1,167 @@
+/**
+ * FurniAI Unified Visual System Design Tokens
+ * 
+ * Shared across FurniAI Studio, Landing, Catalog, and Marketing Navigation.
+ * Single source of truth for colors, typography, spacing, inputs, buttons, and panels.
+ */
+
+:root {
+  /* Surface & Background (Warm Mediterranean Architectural Paper) */
+  --paper: #FAF9F5;          /* Base background */
+  --paper-2: #F4F2EB;        /* Container / panel background */
+  --paper-3: #EAE5D9;        /* Hover / active container */
+  --paper-translucent: rgba(250, 249, 245, 0.88);
+  --paper-blur: blur(14px);
+
+  /* Ink & Typography Hierarchy */
+  --ink: #1C1E21;            /* Primary copy, headings, borders */
+  --ink-soft: #5C626E;       /* Secondary labels, units, annotations */
+  --ink-faint: #9EA3AE;      /* Placeholders, disabled states */
+
+  /* Accents & Brand Materials */
+  --brass: #00B4D8;          /* FurniAI Cyan / primary interactive accent */
+  --brass-bright: #00D2F4;   /* Hover / glowing accent */
+  --walnut: #C5A880;         /* Natural architectural wood tone */
+
+  /* Architectural Divider & Line Weights */
+  --line: #DFD9CC;           /* Structured borders, table dividers */
+  --line-soft: #EDE8DC;      /* Subtle dividers */
+
+  /* Geometry & Border Radii */
+  --r: 14px;                 /* Standard panel / card radius */
+  --r-sm: 8px;               /* Inputs, buttons, chips */
+  --r-pill: 100px;           /* Primary pill CTAs */
+
+  /* Status Colors */
+  --status-saved-bg: #f0fdf4;
+  --status-saved-text: #15803d;
+  --status-saved-border: #bbf7d0;
+
+  --status-unsaved-bg: #fffbeb;
+  --status-unsaved-text: #b45309;
+  --status-unsaved-border: #fde68a;
+
+  --status-saving-bg: #eff6ff;
+  --status-saving-text: #1d4ed8;
+  --status-saving-border: #bfdbfe;
+
+  --status-error-bg: #fef2f2;
+  --status-error-text: #b91c1c;
+  --status-error-border: #fecaca;
+
+  /* Typography Scales */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-serif: 'Fraunces', serif;
+  --font-mono: 'Space Mono', monospace;
+
+  /* Spacing Scale */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 14px;
+  --space-lg: 20px;
+  --space-xl: 28px;
+  --space-2xl: 40px;
+
+  /* Studio Workspace Dimensions */
+  --studio-panel-left: 370px;
+  --studio-panel-right: 300px;
+}
+
+/* ==========================================================================
+   Reusable UI Components System
+   ========================================================================== */
+
+/* Buttons */
+.btn {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 11px 20px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--ink);
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn:hover {
+  background: var(--brass);
+  border-color: var(--brass);
+  color: var(--paper);
+  transform: translateY(-1px);
+}
+.btn.ghost {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--ink);
+}
+.btn.ghost:hover {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+.btn.sm {
+  padding: 7px 13px;
+  font-size: 11.5px;
+  border-radius: var(--r-sm);
+}
+
+/* Form Inputs */
+.om-input, .ai-w-textarea {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  background: #ffffff;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 8px 11px;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.om-input:focus, .ai-w-textarea:focus {
+  border-color: var(--brass);
+  box-shadow: 0 0 0 2px rgba(0, 180, 216, 0.18);
+}
+
+/* Badges */
+.save-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+.save-status-badge.status-saved {
+  background: var(--status-saved-bg);
+  color: var(--status-saved-text);
+  border: 1px solid var(--status-saved-border);
+}
+.save-status-badge.status-unsaved {
+  background: var(--status-unsaved-bg);
+  color: var(--status-unsaved-text);
+  border: 1px solid var(--status-unsaved-border);
+}
+.save-status-badge.status-saving {
+  background: var(--status-saving-bg);
+  color: var(--status-saving-text);
+  border: 1px solid var(--status-saving-border);
+}
+.save-status-badge.status-conflict,
+.save-status-badge.status-error {
+  background: var(--status-error-bg);
+  color: var(--status-error-text);
+  border: 1px solid var(--status-error-border);
+}
+
+.origin-tag {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}

@@ -205,6 +205,9 @@ describe("the kernel boundary � DRAWER_BANK is structural and previews", () =>
   function approvedProposalWithDrawerBank() {
     const spec = clone(fixture);
     spec.specId = SPEC_ID;
+    // The bank takes 720 mm under the long rail; the rail must not keep
+    // claiming the golden 1400 mm drop (kernel refuses that since 2026-09-30).
+    delete spec.bays[0].components.find((c) => c.id === "rail-long-l1").targetClearDropMm;
     spec.bays[0].components.push({
       id: "drawer-bank-l1",
       type: COMPONENT_TYPES.DRAWER_BANK,

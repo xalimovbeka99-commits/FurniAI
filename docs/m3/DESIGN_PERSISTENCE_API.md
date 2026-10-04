@@ -11,12 +11,12 @@ values, CNC qualification.
 > handoff, comment or message disagrees with it, this file is correct — it is written
 > against the code and is covered by `src/lib/persistence/*.test.js`.
 >
-> **Verification status (2026-09-24):**
+> **Verification status (2026-09-30):**
 >
 > | Layer | Verified? | How |
 > |---|---|---|
 > | Application protocol | yes | `src/lib/persistence/*.test.js` (in-process store, fake PostgREST) |
-> | PostgreSQL 16 + PostgREST 12 + RLS + the committed migration | **yes, locally** | `node scripts/verify-persistence-db.mjs --local` — real database, real handlers in separate OS processes; 8/8 pass, evidence in `docs/m3/evidence/` |
+> | PostgreSQL 16 + PostgREST 12 + RLS + the committed migration | **yes, locally** | `node scripts/verify-persistence-db.mjs --local` — real database, real handlers in separate OS processes; 8/8 pass (re-run 2026-09-30 on `e7a4f70`, 50 rounds × 8 writers); Grok's harness `--real-db` 6/6 through `scripts/db-verify/with-local-stack.mjs`; evidence in `docs/m3/evidence/` |
 > | Supabase Auth (GoTrue), the Supabase gateway, a hosted project | **no** | `--target` mode exists and has **not been run**; it needs an approved non-production project |
 >
 > Say "verified against PostgreSQL locally", not "verified on Supabase", until `--target`
@@ -268,7 +268,7 @@ Every error body is `{ "ok": false, "code": "...", "error": "...", "details"?: {
 | `CONFLICT_DESIGN` | 409 | Unreachable through the API now that ids are server-assigned; kept in the enum | yes |
 | `FINGERPRINT_MISMATCH` | 409 | Body fingerprint ≠ recomputed, `details.expectedFingerprint` | yes |
 | `REVISION_INTEGRITY_FAILED` | 409 | **Reopen only**: the stored row no longer verifies, `details.reason` | nothing changed |
-| `INVALID_FURNISPEC` | 400 | Shape, `validateFurniSpec` (`details.errors`), compile failure (`details.compileError`), or compiles to invalid geometry (`details.compiledGraphInvalid`) | yes |
+| `INVALID_FURNISPEC` | 400 | Shape, `validateFurniSpec` (`details.errors`), compile failure (`details.compileError`; for a kernel geometry refusal — `HANGING_DROP_NOT_ACHIEVABLE`, `HANGING_RAIL_OUTSIDE_BAY`, `HANGING_RAIL_INTERSECTS_PART`, `INTERIOR_PART_OUTSIDE_BAY` — also `details.geometry` with the component/part id and measured mm), or compiles to invalid geometry (`details.compiledGraphInvalid`) | yes |
 | `INVALID_PARTGRAPH` | 400 | `validatePartGraph` (`details.errors`), identity/envelope mismatch, or not the compiler's graph for this spec (`details.compiledMismatch`) | yes |
 | `UNSUPPORTED_COMPONENT` | 400 | The graph's ledger records a component the kernel could not represent (`details.unsupported`) | yes |
 | `BAD_REQUEST` | 400 | Malformed body, missing `expectedPreviousRevision`, specId change, credential-shaped field, client-supplied `designId` | yes |
@@ -394,7 +394,10 @@ substituted for each other:
 | Change token | `changeToken` | every edit **and** every Undo; restarts on reopen |
 | Editing session | `sessionId` (browser only, never sent here) | page load, reopen, design switch, reset |
 
-**Not yet wired:** `index.html` does not call these endpoints. `reopenAiWardrobeDesign()`
-restores a client-side snapshot. Durable save/reopen reaches a customer only when the UI
-calls §4 — that is Antigravity's integration, and the browser journey for it does not exist
-yet.
+**Client wiring (2026-09-30):** Antigravity's uncommitted Studio work calls these endpoints
+(`persistAcceptedRevision`, `reopenDesignFromApi`) but applies late answers to whichever
+design is current. The session-safe client half is
+`AiDesignerTransport.createDesignSaveCoordinator` — see
+[`STUDIO_SAVE_REOPEN_CONTRACT.md`](./STUDIO_SAVE_REOPEN_CONTRACT.md) for the defects, the
+wiring and the browser journey (`tests/browser/studio-save-reopen-staleness.spec.js`,
+routed responses — not a hosted save).

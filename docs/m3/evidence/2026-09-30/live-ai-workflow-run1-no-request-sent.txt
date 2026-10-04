@@ -1,0 +1,20 @@
+with-local-stack: PostgreSQL 16.13 (Ubuntu 16.13-0ubuntu0.24.04.1), PostgREST 12.2.3, API 127.0.0.1:45367 (tokens withheld)
+============================================================================================
+FurniAI — LIVE AI TURN IN THE CUSTOMER WORKFLOW (bounded)
+============================================================================================
+date (UTC)                        : 2026-09-30T19:04:06.970Z
+model requested                   : claude-sonnet-5 (client default)
+provider order                    : anthropic,openai (default)
+transport to provider             : local relay → api.anthropic.com (requests counted)
+request ceiling                   : 3
+draft                             : DRAFT_PREVIEW, valid=true, width 1800 mm
+{"event":"ai_provider_call","operation":"design_propose","provider_requested":"anthropic","provider_used":null,"fallback_occurred":false,"fallback_reason_code":"SERVER_ERROR","latency_ms":null,"attempts":[{"provider":"anthropic","outcome":"failed_retriable","errorCode":"SERVER_ERROR","latencyMs":1368},{"provider":"openai","outcome":"skipped_unconfigured","errorCode":null,"latencyMs":null}],"all_failed":true,"at":"2026-09-30T19:04:08.417Z"}
+design propose unavailable [AI_PROVIDER_UNAVAILABLE]: A provider was unreachable or returned a server-side error. This is the genuine outage case.
+live turn latency                 : 1401 ms
+outbound provider requests        : 3 (statuses 0,0,0)
+result ok / kind / source         : false / DESIGNER_UNAVAILABLE / MODEL
+error (customer text)             : "The FurniAI designer is not available right now. Your design is unchanged — you can keep editing it directly."
+no secret in result               : true
+
+LIVE AI TURN: NOT ACCEPTED — DESIGNER_UNAVAILABLE. Nothing below was run.
+with-local-stack: cluster, PostgREST and data directory deleted.

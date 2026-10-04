@@ -99,3 +99,24 @@ describe("GET /api/design/health", () => {
     expect(r.headers["cache-control"]).toBe("no-store");
   });
 });
+
+describe("persistence: does this deployment accept the Studio's sign-in tokens?", () => {
+  it("reports the project ref (public), never the anon key, and whether it matches the Studio's auth project", async () => {
+    const { describeProviderConfig, STUDIO_AUTH_PROJECT_REF } = await import("./providerConfigReport.js");
+    const same = describeProviderConfig({ SUPABASE_URL: `https://${STUDIO_AUTH_PROJECT_REF}.supabase.co`, SUPABASE_ANON_KEY: "eyJsecret.anon.key" });
+    expect(same.persistence).toMatchObject({ configured: true, projectRef: STUDIO_AUTH_PROJECT_REF, acceptsStudioSignIn: true });
+    expect(JSON.stringify(same)).not.toContain("eyJsecret");
+
+    const other = describeProviderConfig({ SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co", SUPABASE_ANON_KEY: "k" });
+    expect(other.persistence).toMatchObject({ projectRef: "abcdefghijklmnopqrst", acceptsStudioSignIn: false });
+
+    const overridden = describeProviderConfig({
+      SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co", SUPABASE_ANON_KEY: "k",
+      FURNIAI_FRONTEND_AUTH_PROJECT_REF: "abcdefghijklmnopqrst",
+    });
+    expect(overridden.persistence.acceptsStudioSignIn).toBe(true);
+
+    expect(describeProviderConfig({}).persistence).toMatchObject({ projectRef: null, acceptsStudioSignIn: null });
+  });
+});
+

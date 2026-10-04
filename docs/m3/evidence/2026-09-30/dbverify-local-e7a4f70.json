@@ -1,0 +1,101 @@
+{
+  "runId": "96a7ddb5",
+  "mode": "local",
+  "versions": {
+    "postgres": "16.13 (Ubuntu 16.13-0ubuntu0.24.04.1)",
+    "postgrest": "PostgREST 12.2.3"
+  },
+  "results": [
+    {
+      "id": "S0",
+      "title": "RLS on, revisions append-only, unique(design_id, revision) present",
+      "verdict": "PASS",
+      "evidence": [
+        "rls: wardrobe_designs=true,wardrobe_revisions=true",
+        "policies: wardrobe_designs:INSERT,wardrobe_designs:SELECT,wardrobe_designs:UPDATE,wardrobe_revisions:INSERT,wardrobe_revisions:SELECT",
+        "unique: UNIQUE (design_id, revision)"
+      ]
+    },
+    {
+      "id": "T1",
+      "title": "two-user isolation — API AND PostgreSQL refuse B, hidden == nonexistent",
+      "verdict": "PASS",
+      "evidence": [
+        "A create 201, A save rev1 201",
+        "B GET / -> 404 MISSING_DESIGN; identical to nonexistent: true",
+        "B GET /revisions -> 404 MISSING_DESIGN; identical to nonexistent: true",
+        "B GET /revisions/1 -> 404 MISSING_DESIGN; identical to nonexistent: true",
+        "B POST /revisions -> 404 MISSING_DESIGN; identical to nonexistent: true",
+        "B list contains A's design: false",
+        "PostgREST as B: select design 200 rows=0; select revisions rows=0; insert revision 403 42501; update design rows=0",
+        "A afterwards: revision rows=1, name unchanged=true"
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "competing writes — 50 rounds × 8 separate processes, exactly one winner",
+      "verdict": "PASS",
+      "evidence": [
+        "50/50 rounds clean; losers STALE_REVISION=350 (of which decided by the unique constraint, details.concurrent=true: 66); CONFLICT_REVISION=0",
+        "ok  round 1: 201×1, 409 STALE×7, other×0, rows(rev 2)=1, send spread 11 ms",
+        "ok  round 50: 201×1, 409 STALE×7, other×0, rows(rev 51)=1, send spread 17 ms"
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "lost response — committed once, identical retry is a replay, changed retry refused",
+      "verdict": "PASS",
+      "evidence": [
+        "server produced: HTTP/1.1 201 Created; client received: no response (UND_ERR_SOCKET)",
+        "rows for rev 2 after the lost response: 1",
+        "identical retry -> 200 idempotentReplay=true; rows 1",
+        "changed-content retry -> 409 STALE_REVISION; rows 1; stored fingerprint unchanged=true"
+      ]
+    },
+    {
+      "id": "T4",
+      "title": "durability — written by process 1, which is then gone; reopened by a different process 2",
+      "verdict": "PASS",
+      "evidence": [
+        "P1 pid 18086 boot a9a3b13e store=supabase: create 201, save 201; exit 0; port now refuses connections: true",
+        "P2 pid 18094 boot 1df3ab3c store=supabase: reopen 200; fingerprint, FurniSpec and PartGraph identical: true",
+        "negative control (memory store): same process reopen 200, fresh process reopen 404 — the test detects non-durability: true",
+        "no fixed wait is used anywhere: independence is shown by pid, boot id and a refused port"
+      ]
+    },
+    {
+      "id": "T5",
+      "title": "immutability — the OWNER cannot update/delete a revision, delete the design, or give it away",
+      "verdict": "PASS",
+      "evidence": [
+        "owner PATCH revision -> 403, rows affected ?",
+        "owner DELETE revision -> 403, rows affected ?",
+        "owner DELETE design (would cascade to revisions) -> 403, rows affected 42501",
+        "owner PATCH owner_user_id -> 403 42501",
+        "revision rows afterwards 1, fingerprint intact true"
+      ]
+    },
+    {
+      "id": "T6",
+      "title": "contract — CAS mandatory, malformed id == nonexistent, client ids refused",
+      "verdict": "PASS",
+      "evidence": [
+        "save without expectedPreviousRevision -> 400 BAD_REQUEST",
+        "GET /api/designs/not-a-uuid -> 404; identical to a nonexistent uuid: true",
+        "(PostgREST itself answers a malformed uuid filter with 400 22P02 — which is why the store must not forward it)",
+        "create with a client-chosen designId -> 400 BAD_REQUEST",
+        "design updated_at advanced after a save (column grant allows the store's touch): true"
+      ]
+    },
+    {
+      "id": "T7",
+      "title": "storage outage and missing configuration are reported as what they are",
+      "verdict": "PASS",
+      "evidence": [
+        "store unreachable: read -> 503 STORAGE_UNAVAILABLE \"The design store could not be reached.\"",
+        "store unreachable: save -> 503 STORAGE_UNAVAILABLE \"The design store could not be reached. Your design was not saved.\"",
+        "deployment without SUPABASE_URL, signed-in caller -> 503 PERSISTENCE_NOT_CONFIGURED"
+      ]
+    }
+  ]
+}

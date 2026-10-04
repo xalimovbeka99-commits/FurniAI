@@ -24,6 +24,8 @@
     "verify:live-designer": "node scripts/verify-live-designer.mjs",
     "check:provider": "node scripts/check-provider-config.mjs",
     "dev:api": "node scripts/dev-api-server.mjs",
+    "scenario:discover": "node scripts/scenario-discover.mjs",
+    "test:creative": "vitest run src/lib/creative",
     "test:browser:f1": "playwright test tests/browser/f1-journey.spec.js"
   },
   "dependencies": {

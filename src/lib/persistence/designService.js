@@ -543,6 +543,9 @@ export function assertGraphIsCompiledFromSpec(spec, partGraph) {
         details: {
           compileError: typeof err?.code === "string" ? err.code : "COMPILE_FAILED",
           errors: Array.isArray(err?.validationErrors) ? err.validationErrors.slice(0, 20) : undefined,
+          // Structured geometry refusals (e.g. HANGING_DROP_NOT_ACHIEVABLE) carry
+          // the component id and the measured numbers — no credentials, no content.
+          geometry: err?.name === "HangingDropGeometryError" ? err.details : undefined,
         },
       }
     );

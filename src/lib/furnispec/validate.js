@@ -53,6 +53,10 @@ export function validateFurniSpec(spec) {
     addError("INVALID_REVISION", "revision must be a positive integer (>= 1).", "revision");
   }
 
+  if (spec.customerFinishKey !== undefined && (typeof spec.customerFinishKey !== "string" || spec.customerFinishKey.trim() === "")) {
+    addError("INVALID_CUSTOMER_FINISH", "customerFinishKey, when present, must be a non-empty string.", "customerFinishKey");
+  }
+
   if (spec.unit !== "mm") {
     addError("INVALID_UNIT", `unit must be "mm", got "${spec.unit}".`, "unit");
   }
@@ -266,6 +270,15 @@ export function validateFurniSpec(spec) {
             const dropDmm = checkPositiveDeciMm(comp.clearDropAboveMm, `${compPath}.clearDropAboveMm`, "clearDropAboveMm");
             if (dropDmm !== null && internalCarcassHDmm !== null && dropDmm >= internalCarcassHDmm) {
               addError("COMPONENT_OUTSIDE_BAY", `clearDropAboveMm (${comp.clearDropAboveMm}mm) exceeds internal carcass height (${internalCarcassHDmm / 10}mm).`, `${compPath}.clearDropAboveMm`);
+            }
+          }
+          if (typeof comp.type === "string" && comp.type.startsWith("HANGING_RAIL") && comp.targetClearDropMm !== undefined) {
+            // Type, sign and 0.1 mm precision here; whether the compiled carcass can
+            // actually deliver the drop is checked by the kernel against placed
+            // geometry (partgraph/hangingDropGeometry.js).
+            const targetDmm = checkPositiveDeciMm(comp.targetClearDropMm, `${compPath}.targetClearDropMm`, "targetClearDropMm");
+            if (targetDmm !== null && internalCarcassHDmm !== null && targetDmm >= internalCarcassHDmm) {
+              addError("COMPONENT_OUTSIDE_BAY", `targetClearDropMm (${comp.targetClearDropMm}mm) exceeds internal carcass height (${internalCarcassHDmm / 10}mm).`, `${compPath}.targetClearDropMm`);
             }
           }
           if (comp.thicknessMm !== undefined) {

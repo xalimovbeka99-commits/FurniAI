@@ -1,0 +1,5 @@
+with-local-stack: PostgreSQL 16.13 (Ubuntu 16.13-0ubuntu0.24.04.1), PostgREST 12.2.3, API 127.0.0.1:39991 (tokens withheld)
+  ✓  1 [chromium] › tests/browser/studio-workflow-acceptance.spec.js:97:7 › ACCEPTANCE — customer workflow against a real database › saved data, reopened state, 3D geometry and exports describe the same design (1.1m)
+  ✘  2 [chromium] › tests/browser/studio-workflow-acceptance.spec.js:206:7 › ACCEPTANCE — customer workflow against a real database › KNOWN STUDIO GAP (D10): the summary panel after reopen shows the reopened design (47.0s)
+  2 passed (1.9m)
+with-local-stack: cluster, PostgREST and data directory deleted.

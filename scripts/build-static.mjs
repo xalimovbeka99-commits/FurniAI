@@ -51,6 +51,18 @@ await build({
   outfile: resolve(root, "my-designs.js"),
 });
 
+// Browser HTTP client for /api/designs* (durable save/reopen).
+await build({
+  entryPoints: [resolve(root, "src/lib/persistence/designsApiClient.js")],
+  bundle: true,
+  format: "iife",
+  globalName: "DesignsApiClientBundle",
+  footer: {
+    js: "globalThis.DesignsApiClient = DesignsApiClientBundle.DesignsApiClient || DesignsApiClientBundle.default || DesignsApiClientBundle; globalThis.createDesignsApiClient = DesignsApiClientBundle.createDesignsApiClient; globalThis.mapDesignsApiError = DesignsApiClientBundle.mapDesignsApiError; globalThis.DesignsApiError = DesignsApiClientBundle.DesignsApiError;",
+  },
+  outfile: resolve(root, "designs-api-client.js"),
+});
+
 const files = [
   "index.html",
   "styles.css",
@@ -59,6 +71,7 @@ const files = [
   "partgraph-runtime-bridge.js",
   "ai-designer-transport.js",
   "my-designs.js",
+  "designs-api-client.js",
   "vendor-three-r128.min.js",
   "vendor-supabase.min.js",
 ];

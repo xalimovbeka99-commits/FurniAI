@@ -18,7 +18,10 @@
  * - Hardware drilling remains BLOCKED_PENDING_HARDWARE_APPROVAL.
  * - SHELF → SHELF_FIXED is an explicit mapping assumption (WardrobeModel has no kind).
  * - HANGING_RAIL LONG vs SHORT keeps prior product heuristic (drop > 1000 → LONG)
- *   to avoid silent intent change; Claude nearer-target mapping is documented only.
+ *   to avoid silent intent change; the drop is now the model's real clear drop,
+ *   and the rail is placed at the model's rod centre (2026-09-30).
+ * - SHELF / HANGING_RAIL / DRAWER_BANK positions are translated from the model's
+ *   interior-floor datum; components are emitted top-down per bay.
  */
 
 import {
@@ -36,6 +39,7 @@ import {
 } from "../furnispec/schema.js";
 import { validateFurniSpec } from "../furnispec/validate.js";
 import { resolve, ruleIdOf, doorsForBayWidth } from "../rules/wardrobeRuleCatalog.js";
+import { zoneHeightMm } from "../wardrobe-model/schema.js";
 
 function pad2(n) {
   return String(n).padStart(2, "0");
@@ -133,48 +137,80 @@ export function adaptWardrobeModelToFurniSpec(wardrobeModel, options = {}) {
     const components = [];
 
     const secComponents = Array.isArray(sec.components) ? sec.components : [];
-    secComponents.forEach((comp, compIdx) => {
+
+    // WardrobeModel positions are heights above the section's interior floor
+    // (wardrobe-model/schema.js). FurniSpec positions a SHELF from the bay
+    // floor (offsetFromBottomMm) and a HANGING_RAIL relative to the underside
+    // of whatever the kernel placed above it (offsetBelowShelfMm), walking the
+    // bay top-down. So the zone components are emitted top-down and every
+    // position is translated from the model's own geometry.
+    //
+    // Before 2026-09-30 a rail was always put 100 mm under the shelf above it
+    // and its model POSITION was declared as its clear DROP: a rail the
+    // customer placed 1400 mm above the floor, over a shelf at 400 mm, was
+    // compiled 264 mm above the floor, under that shelf, claiming a 1400 mm
+    // drop. A shelf's position was measured from the carcass top instead of
+    // the floor. Both are corrected here; nothing is clamped or relocated —
+    // a model that does not fit the carcass is refused by the kernel.
+    const interiorTopMm = carcassHeightMm - 2 * panelThicknessMm;
+    const zoneOf = (comp) => {
+      const t = String(comp.type || "").toUpperCase();
+      const pos = Number(comp.positionMm) || 0;
+      const h =
+        comp.heightMm != null && Number.isFinite(Number(comp.heightMm))
+          ? Number(comp.heightMm)
+          : zoneHeightMm(t, comp);
+      return { t, pos, h };
+    };
+    const ordered = secComponents
+      .map((comp, compIdx) => ({ comp, compIdx, ...zoneOf(comp) }))
+      .sort((a, b) => b.pos - a.pos || a.compIdx - b.compIdx);
+
+    let underFaceAboveMm = interiorTopMm; // underside of the component above, from interior floor
+    ordered.forEach(({ comp, compIdx, t: cType, pos, h }) => {
       const cId = comp.id || `${bayId}-comp-${compIdx + 1}`;
-      const cType = String(comp.type || "").toUpperCase();
 
       if (cType === "SHELF") {
         // Mapping assumption: WardrobeModel SHELF → SHELF_FIXED (labelled on draft).
         const shelfDepthMm = carcassDepthMm - resolve("fixedShelfRearSetbackMm");
-        const pos = Number(comp.positionMm) || 0;
-        let openingAbove;
-        if (pos > 0) {
-          openingAbove = carcassHeightMm - pos - panelThicknessMm;
-          // Do NOT silently clamp/relocate with a 50 mm floor — that moves the shelf.
-          if (!(openingAbove > 0)) {
-            throw new Error(
-              `Cannot adapt shelf "${cId}": position ${pos}mm leaves non-positive clear opening above ` +
-                `(${openingAbove}mm). Refuse rather than relocate.`
-            );
-          }
-        } else {
-          openingAbove = resolve("topCompartmentClearOpeningMm");
-        }
         components.push({
           id: cId,
           type: COMPONENT_TYPES.SHELF_FIXED,
-          clearOpeningAboveMm: openingAbove,
+          offsetFromBottomMm: pos,
           thicknessMm: panelThicknessMm,
           depthMm: shelfDepthMm,
         });
+        underFaceAboveMm = pos;
       } else if (cType === "HANGING_RAIL") {
-        const drop = Number(comp.positionMm) || resolve("longHangingTargetClearDropMm");
-        // Preserve prior product heuristic (drop > 1000 → LONG) to avoid silent reclass.
+        // Rod centre = position + zone/2 (wardrobe-model/kernel.js auto-stack).
+        const rodCentreMm = pos + h / 2;
+        const offsetBelowMm = underFaceAboveMm - rodCentreMm;
+        if (!(offsetBelowMm > 0)) {
+          const err = new Error(
+            `Cannot adapt hanging rail "${cId}": its rod centre (${rodCentreMm}mm above the floor) is not below ` +
+              `the component above it (underside ${underFaceAboveMm}mm). Refuse rather than relocate.`
+          );
+          err.code = "RAIL_POSITION_NOT_REPRESENTABLE";
+          throw err;
+        }
+        // The drop the MODEL actually has: rod centre down to the top of the
+        // highest zone component below it in this section, or the floor.
+        const obstructionTopMm = ordered
+          .filter((o) => o.comp !== comp && o.t !== "DOOR" && o.t !== "DIVIDER" && o.pos + o.h <= rodCentreMm)
+          .reduce((top, o) => Math.max(top, o.pos + o.h), 0);
+        const drop = rodCentreMm - obstructionTopMm;
+        // Preserve prior product heuristic (drop > 1000 → LONG), now on the real drop.
         components.push({
           id: cId,
           type: drop > 1000 ? COMPONENT_TYPES.HANGING_RAIL_LONG : COMPONENT_TYPES.HANGING_RAIL_SHORT,
-          offsetBelowShelfMm: resolve("hangingRailOffsetBelowShelfMm"),
+          offsetBelowShelfMm: offsetBelowMm,
           targetClearDropMm: drop,
         });
       } else if (cType === "DRAWER_BANK") {
         components.push({
           id: cId,
           type: COMPONENT_TYPES.DRAWER_BANK,
-          offsetFromBottomMm: Number(comp.positionMm) || 0,
+          offsetFromBottomMm: pos,
           rows: comp.rows || 3,
         });
       } else if (cType === "DOOR" || cType === "DIVIDER") {

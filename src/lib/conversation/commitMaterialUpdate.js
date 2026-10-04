@@ -9,6 +9,7 @@
  * a swatch name, or later structural rebuilds fail materialsFor().
  */
 import { createProposal } from "./approval.js";
+import { buildStructuralPartGraph } from "../partgraph/buildStructuralPartGraph.js";
 import { OBSERVATION_ORIGIN } from "./intakeModel.js";
 
 function cloneJson(value) {
@@ -50,19 +51,15 @@ export function applyCustomerFinishAnnotation({
 
   const nextProposal = createProposal(nextSpec);
 
-  let nextPartGraph = cloneJson(partGraph);
-  if (nextPartGraph && typeof nextPartGraph === "object") {
-    nextPartGraph.summary = {
-      ...(nextPartGraph.summary || {}),
-      customerFinishKey: key,
-      revision: nextSpec.revision,
-    };
-    if (Array.isArray(nextPartGraph.parts)) {
-      nextPartGraph.parts = nextPartGraph.parts.map((part) => ({
-        ...part,
-        customerFinishKey: key,
-        finishIntent: key,
-      }));
+  // The accepted graph is recompiled from the annotated spec — never patched —
+  // so that what is shown, exported and saved is exactly what the compiler
+  // makes of this spec (the save path refuses anything else).
+  let nextPartGraph = null;
+  if (partGraph && typeof partGraph === "object") {
+    try {
+      nextPartGraph = buildStructuralPartGraph(nextSpec);
+    } catch (err) {
+      return { ok: false, error: `The finish could not be applied: ${err?.message || "compile failed"}` };
     }
   }
 
