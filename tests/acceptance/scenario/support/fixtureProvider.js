@@ -53,7 +53,7 @@ export function freshProviderState(overrides = {}) {
     generateDelayMs: 0,
     jobDelaysMs: [], // delay for the Nth /jobs call (0-based), e.g. [400, 0]
     jobMode: "ok", // ok | http500
-    assetMode: "ok", // ok | gone404 | gone410 | http500
+    assetMode: "ok", // ok | gone404 | gone410 | http500 | http429
     assetExtension: "glb",
     assetMimeType: null, // the provider asset record's mimeType (stand-in sends none)
     cdnVariant: "cube",
@@ -159,6 +159,7 @@ export async function startFixtureProvider(overrides = {}, { port = 0 } = {}) {
       if (s.assetMode === "gone404") return send(res, 404, { message: "asset not found" });
       if (s.assetMode === "gone410") return send(res, 410, { message: "asset gone" });
       if (s.assetMode === "http500") return send(res, 500, { message: "simulated asset lookup outage" });
+      if (s.assetMode === "http429") return send(res, 429, { message: "simulated asset lookup rate limit" });
       const id = decodeURIComponent(p.split("/").pop());
       const token = createHash("sha256").update(`${id}:${s.calls.asset}:${Date.now()}:${Math.random()}`).digest("hex").slice(0, 24);
       issued.add(token);

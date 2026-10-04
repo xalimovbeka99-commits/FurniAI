@@ -1,5 +1,5 @@
 {
-  "note": "Deterministic test fixtures (LOCAL). Regenerate with generate-fixtures.mjs; --check verifies.",
+  "note": "Deterministic test fixtures (LOCAL). Regenerate with node tests/fixtures/scenario/generate-fixtures.cli.mjs; --check verifies.",
   "files": {
     "textured-cube.glb": {
       "bytes": 2244,

@@ -1,1 +1,6 @@
 docs/m3/patches/*.patch text eol=lf
+# Scenario acceptance (Grok QA): ES modules must load on CRLF checkouts (core.autocrlf=true); GLB fixtures are raw bytes.
+tests/fixtures/scenario/*.mjs text eol=lf
+tests/fixtures/scenario/*.json text eol=lf
+tests/fixtures/scenario/*.glb binary
+tests/acceptance/scenario/**/*.mjs text eol=lf

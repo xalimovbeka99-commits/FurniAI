@@ -2,7 +2,8 @@
 
 **Author:** Grok Quality Engineer. **Date:** 2026-10-04, Asia/Dubai (GST, UTC+4).
 **Branch:** `grok/scenario-acceptance` (local only, **not pushed**).
-**Base:** `integ/scenario-candidate` = `485f8a691d3890e4b47bd7cb65b6f6efa2d53220`
+**Base:** `integ/scenario-candidate` = `485f8a691d3890e4b47bd7cb65b6f6efa2d53220` (§1–§8); the
+follow-up (§0) is verified on `ce3626a` + Projects `53f4384` (contains Asset `b34e259`)
 (`42c3fa6` + Projects concept gallery `34f80a7` under `src/lib/projects/**`, not attached to any page).
 **Contract under test:** `docs/creative/SCENARIO_3D_API_CONTRACT.md` — **status PROPOSED**.
 
@@ -10,6 +11,84 @@
 > was billed, no hosted database was used, no secret was read. The browser layer runs against a
 > **TEST HARNESS** page, not the FurniAI product UI. Neither the asset viewer v2 nor the concept
 > gallery is attached to any product page at `485f8a6`.
+
+## 0. Follow-up — candidate `ce3626a` + Projects `53f4384` (contains Asset `b34e259`)
+
+**Candidate:** `integ/scenario-candidate` = `ce3626ae395ac8b21e6fcad76691aea0ae958910` (485f8a6 +
+this branch's 687f20a; tree identical to 687f20a). **Verified against a throwaway local merge**
+`ce3626a` + `grok/projects-assets` **`53f438458c73920558ac1ba98d65ccd87e705316`** (tree `9d23a8e0…`),
+deleted afterwards. `53f4384` = `6d0adfd` (G1/G2) → `c862c6e` (collector deleted) → `ae7af53`
+(merge of `grok/asset-viewer` **`b34e259`**, tree `f2dac04f`; second parent verified = `b34e259`) →
+`53f4384` (v2.1 adoption). `src/lib/assetViewer` tree is `6aba98a0` in `b34e259`, `ae7af53` and
+`53f4384` alike, so merging `b34e259` on top is a no-op. All refs arrived as git bundles of **refs**
+(not bare SHAs), sha256-checked on both sides; the Windows temp bundles were deleted.
+
+**Scope review.** `b34e259` vs `7eaa414`: `src/lib/assetViewer/**` **plus** `docs/m3/asset-viewer/**`
+and `tests/assetViewer/**` (new `creativeRetry.test.js`; edits to `creativeSource`/`creativeViewer`
+tests). `53f4384` vs `34f80a7` (own commits): `src/lib/projects/**`, `docs/m3/projects/**` (incl.
+two PNGs) **plus** `tests/projects/**` (new `assetFailures.test.js`; edits to assets, gallery,
+polling, state, viewer tests, `helpers.js`, `fixtures/fakeViewer.js`), and deletes the
+`conceptGallery.collect.test.js` collector (→ C5). The gallery imports exactly one Asset symbol,
+the pure `isRetryableResolveError`. No backend, `api/**`, `index.html`, migration or root-config change.
+
+### Status of the findings
+| ID | Status on the merge | Evidence (test) |
+|---|---|---|
+| **G1** | **FIXED** — integrity (and missing-job, 403) from Open or Download makes the card job-errored: badge "Integrity check failed", `data-error=integrity`, the job text, **no Open and no Download**, `jobErrors {kind:"integrity"}`, spinner 0 | `G1 FIXED (was KNOWN_DEFECT …)` (flipped from `it.fails`); `RECORD_INTEGRITY_FAILED from Open …`; `RECORD_INTEGRITY_FAILED from Download …` (1 call, nothing downloaded, Open unreachable); `integrity found by the action path (Open) and by the poll path give the SAME card state` (only `data-status` differs: the server status) |
+| **G2** | **FIXED** — an Open whose resolve fails on 5xx says `MSG.serverAsset`, never "Downloading it may still work" | `Open re-resolves ONCE on a transient resolve failure …` |
+| **V1** | **FIXED** — `load()` re-resolves exactly once on network, 5xx and 429 (phase `retrying`), never a third time; never on 400/401/402/403/404/409/410, `*_NOT_CONFIGURED` or a malformed 2xx | `viewerV21`: `V1 load()` × 5 kinds (network, real 502, real 429, 503 no code, 500 INTERNAL); `V1/V5: NO retry on 4xx` × 10 kinds |
+| **V2** | **FIXED, with caveat N1** — a malformed 2xx (not JSON, `ok:false`, no asset, no/non-http url, other job/index) is `RESOLVE_MALFORMED` (`cause:"malformed"`, never retried); a transport failure is `RESOLVE_FAILED` (`cause:"network"`) | `V2 RESOLVE_FAILED vs RESOLVE_MALFORMED` × 9 |
+| **V3** | **FIXED** — a blank/missing notice falls back to text **equal** to the server's `CONCEPT_NOTICE.notice` | `V4 …` blank / no field / no concept |
+| **V4** | **FIXED** — 403 `UNAUTHORIZED`, bare 403 and a 403 HTML page → `FORBIDDEN` with its own message; 401 stays `SIGN_IN_REQUIRED` | `V3 403 is FORBIDDEN …` × 4 |
+| **V5** | **FIXED** — `download({jobId,index})` re-resolves exactly once on the same transient kinds (`attempts {resolve:2}`), fresh address, viewer state untouched; no retry on 4xx/malformed | `V5 download()` × 5; `V1/V5: NO retry on 4xx` |
+| V6 (`renderConceptNotice`) | **works** — default/true: one overlay copy, verbatim; false: overlay empty + `data-av-concept-host-rendered`, `getState().concept.notice` still the server text, in ready and error states. **The gallery passes `false`** and shows the notice once, in its panel, before/after load and after an error | `V6 renderConceptNotice` × 3; `V6 + gallery: …renderConceptNotice:false…` |
+| notice verbatim | **works** — a 2 kB notice with leading/trailing spaces, tabs, newlines and markup-like text reaches state, overlay and `download().concept` byte-for-byte | `V4 … never trimmed, collapsed, truncated or rewritten` |
+
+Projects' three claims for the 687f20a suite on `53f4384` were checked independently against the
+contract, not copied: the 687f20a suite gives **111/114** there (reproduced); (1) G1 → `it`: the
+contract makes `RECORD_INTEGRITY_FAILED` a property of the **record** (§3.7 "a row edited around the
+API is refused"), so a job-level lock is the right reading (A7); (2) the integrity test's Download
+button is now null — asserted, and the Download path got its own test; (3) Open on 502 now makes
+**2** resolves (`[502, 502]`, `MSG.serverAsset`): §2.5 "if a load fails, call it again once" read
+with v2.1's V1 rule — one retry, never two. Also asserted on the gallery's Open **and** Download:
+`RESOLVE_MALFORMED`, 403 and 404 are **never retried** (1 call each); malformed stays per-file;
+403/404 lock the card (403 = "Not allowed", lifted by the next good list); 410 stays per-file (the
+card keeps Ready and both actions — §2.5 makes 410 about the file).
+
+### New findings (follow-up)
+| ID | Owner | Sev | Finding |
+|---|---|---|---|
+| N1 | Asset | Low (doc/brief) | `RESOLVE_FAILED` does **not** mean "network only": an unknown server code (e.g. 500 `INTERNAL`) is also `RESOLVE_FAILED`, with `details.cause:"http"` (documented in `creativeAsset.js`). Hosts must read `details.cause`, not the code. Test: `FINDING (not network-only) …` |
+| N2 | Projects | Info | 403 locks one card ("Not allowed") until the next successful list; correct per CONCEPT_GALLERY.md §5 but the contract defines no 403 (A9). The earlier "lock across refresh" wording for integrity was corrected in 53f4384 (§5 row "integrity": the next refresh drops the row if the server still refuses it) — tested: a still-invalid row is dropped, a restored row comes back **Ready** (server truth, no sticky client lock) |
+| N3 | Projects / Integration | Low | the gallery shows `PROVIDER_RATE_LIMITED` (429) as "FurniAI couldn't get this file." (no "try again in a moment"), unlike 5xx. Honest, but a rate limit is the case where "try again in a moment" is most true |
+| N4 | Integration | Medium (gate) | C5 below — `tests/projects/**` is outside the root vitest run once the collector is gone |
+| N5 | Grok QA (fixed here) | Low | `tests/fixtures/scenario/generate-fixtures.mjs` had a `#!` shebang and is imported by Vitest; on a CRLF checkout (`core.autocrlf=true`, Bekzod's Windows default) `#!/usr/bin/env node\r` breaks the import. Fixed in this commit (see below) |
+
+### Counts (follow-up)
+`:4173` checked free before each Playwright run; harness on 4417/4420, `reuseExistingServer:false`.
+| Run | 3-way merge (`ce3626a` + `53f4384` [+ `b34e259` no-op]) + this commit | This branch's tip alone (= `ce3626a` tree + this commit) |
+|---|---|---|
+| `npx vitest run` | **1929 passed / 0 failed / 4 skipped / 20 todo** (1953; 126 files + 1 skipped) — `tests/projects/**` not included (C5) | **1915 passed / 45 failed / 4 skipped / 20 todo** (1984) — the 45 are exactly the new/updated v2.1 + G1/G2 tests below; everything else green |
+| …scenario acceptance (`tests/acceptance/scenario`) | **161/161** (api 51 · tampering 42 · tamperingSupabase 7 · galleryViewer 20 · viewerV21 41); **26** `it.fails` KNOWN_DEFECT remain (D-series + api), G1 no longer one | 116 passed / **45 failed**: galleryViewer 8 (G1, both integrity paths, refresh/remount, action≡poll, Open 502 retry, no-retry malformed/4xx, V6+gallery) and viewerV21 37 (all but the 4 that 7eaa414 already satisfies). Expected: these assert v2.1 / 6d0adfd behaviour |
+| `--config tests/projects/vitest.config.js` | **116/116** (8 files) — matches Projects' claim | n/a (old 73 run via the 34f80a7 collector, green) |
+| Scenario Playwright harness | **25 passed / 0 failed / 4 skipped** (29; the 4 antigravity `test.fail` KNOWN_DEFECTs fail as expected) | **25 passed / 0 failed / 4 skipped** |
+
+### CRLF (N5) fix in this commit
+- `generate-fixtures.mjs` is now a pure module: no shebang, no CLI. The CLI moved to
+  `generate-fixtures.cli.mjs` (no shebang; `node tests/fixtures/scenario/generate-fixtures.cli.mjs [--check]`).
+  `manifest.json` changed only in its `note`. GLB bytes unchanged (sha256 of all 7 identical before/after,
+  regenerated twice; `--check` all `ok`).
+- `.gitattributes` (kept the patch rule) adds `tests/fixtures/scenario/*.mjs text eol=lf`, `*.json text
+  eol=lf`, `*.glb binary` (`html-as.glb` is text-like and must never be converted) and
+  `tests/acceptance/scenario/**/*.mjs text eol=lf`.
+- Verified on three throwaway clones of this commit, each merged with `53f4384` (merge trees identical,
+  `12c7afd1`): **LF clone** → `npx vitest run` **1929/0/4/20**; **`git -c core.autocrlf=true clone`**
+  (every other text file checked out CRLF; the two generators, `manifest.json` and the harness
+  `server.mjs` stay `w/lf`; `html-as.glb` stays `-text`; all 7 GLB sha256 identical) → **1929/0/4/20**,
+  gallery config 116/116; **forced CRLF** on both generators (`sed 's/$/\r/'`) → scenario 161/161, full
+  1929/0/4/20, `generate-fixtures.cli.mjs --check` all `ok`. **Control:** the 687f20a generator (with
+  the shebang) forced to CRLF makes `api.acceptance.test.js` fail to load (`SyntaxError: Invalid or
+  unexpected token`, 0 tests) — the defect this fixes. The clones were deleted.
 
 ## 1. Tracks
 
@@ -63,12 +142,12 @@ the fixture server. Storage spies assert nothing is written to local/sessionStor
 | 3 | "resolved FRESH on every open and download, never cached" | green — every issued address is revoked between opens and the next Open still loads; 2 opens + 2 downloads = 4 resolves, 4 distinct addresses |
 | 4 | "one retry on a failed load" | green — 1 dead address → re-resolved once and shown (`attempts {resolve:2, display:2}`); 2 dead → `ASSET_DISPLAY_FAILED` after exactly 2 resolves, Download still enabled |
 | 5 | "one retry on a transient resolve failure for Download" | green — 502 then 200 → one download; 502 twice → honest server message, no download, no third call |
-| 6 | "CURRENT_BEHAVIOUR Open does NOT retry a transient resolve failure (502)" | green — pins today's behaviour (see ambiguity A1, finding G2) |
+| 6 | ~~"CURRENT_BEHAVIOUR Open does NOT retry a transient resolve failure (502)"~~ → **"Open re-resolves ONCE on a transient resolve failure"** (follow-up) | green on the §0 merge — 502→200 shown (`attempts {resolve:2, display:1}`); 502,502 → `MSG.serverAsset`, not "Downloading it may still work", exactly 2 resolves, card stays Ready (A1 settled by v2.1 V1; G2 fixed) |
 | 7 | "expired (410 ASSET_UNAVAILABLE)" | green — "no longer available … no stored copy" for Open and Download, no model, no retry, no CDN fetch |
 | 8 | "not ready (409 ASSET_NOT_READY)" | green — honest message, no model, no address retry, one `getJob` re-check, card becomes "Generating" without Open. Reaching 409 for a card held as succeeded needs a non-monotonic row; status is unsigned (D1b), so the test flips it |
-| 9 | "RECORD_INTEGRITY_FAILED is never rendered as a usable asset" | green — no model, no provider asset call, no CDN fetch, no download; Refresh drops the row |
+| 9 | "RECORD_INTEGRITY_FAILED from Open is never rendered as a usable asset" (follow-up: was "…Download starts nothing") | green on the §0 merge — no model, no provider asset call, no CDN fetch; the card then has **neither Open nor Download** (the old test clicked Download, which no longer exists); Refresh drops the row. The Download path is its own test (§0) |
 | 10 | "RECORD_INTEGRITY_FAILED while polling" | green — badge "Integrity check failed", no Open/Download, polling stops, provider never asked |
-| 11 | "KNOWN_DEFECT G1 …card must stop advertising the concept as Ready" | `it.fails` — see G1 |
+| 11 | "G1 FIXED (was KNOWN_DEFECT …)" | **`it`** (flipped in the follow-up) — green on the §0 merge; fails on `ce3626a` alone, as expected |
 | 12 | "submission_unknown shows 'May have been charged' with NO button on the card" | green — exact copy `May have been charged. ` + `SUBMISSION_UNKNOWN_WARNING`; zero buttons on the card, the only control on the gallery is the list Refresh; after Refresh and a full poll interval: only GETs, zero `getJob`, zero asset calls, provider counters unchanged, generate = 1 |
 | 13 | "owner isolation" | green — user B's gallery is empty; B's resolver and `getJob` for A's job → 404 `MISSING_JOB`; B's viewer shows no model; no provider/CDN call |
 | 14 | "reopen" | green — after `destroy()` (viewer disposed, DOM removed) a new gallery lists the concept from the server and Open resolves a **new** address (old ones revoked) with the same bytes |
@@ -124,17 +203,17 @@ sniffed and refused, 410 not re-called, `download({save:true})` re-resolves, the
 GLB inspector, relative W:H:D only, `openInBuilder:false`. Findings:
 | ID | Sev | Where | Fix direction |
 |---|---|---|---|
-| V1 | Low | `mountAssetViewer.js:682-687` — a 5xx/network failure of the **resolve** call itself is not retried; only display failures are (`RETRYABLE_DISPLAY_CODES`, `:81`) | decide with the contract owner (ambiguity A1); if "load" includes the resolve, retry once on network/5xx |
-| V2 | Low | `creativeAsset.js:183`, `:187`, `:204` — `RESOLVE_FAILED` with no status for both a network error and a malformed ok:true body | distinct code or `network:true` so hosts don't retry a malformed body |
-| V3 | Low | `creativeAsset.js:46` `DEFAULT_CONCEPT_NOTICE` ("no separately editable parts") vs server `CONCEPT_NOTICE` `creativeService.js:30` ("doors or panels") | use the contract wording |
-| V4 | Low | `creativeAsset.js:123` maps 403 → `SIGN_IN_REQUIRED`; the contract defines only 401 | align with the contract |
-| V5 | Low | `viewer.download()` (`mountAssetViewer.js` ~`:857`) re-resolves but has no retry-once and only serves the loaded item | document, or add retry-once |
+| V1 — **FIXED in b34e259** (§0) | Low | `mountAssetViewer.js:682-687` — a 5xx/network failure of the **resolve** call itself is not retried; only display failures are (`RETRYABLE_DISPLAY_CODES`, `:81`) | decide with the contract owner (ambiguity A1); if "load" includes the resolve, retry once on network/5xx |
+| V2 — **FIXED in b34e259**, with a caveat (§0 N1) | Low | `creativeAsset.js:183`, `:187`, `:204` — `RESOLVE_FAILED` with no status for both a network error and a malformed ok:true body | distinct code or `network:true` so hosts don't retry a malformed body |
+| V3 — **FIXED in b34e259** | Low | `creativeAsset.js:46` `DEFAULT_CONCEPT_NOTICE` ("no separately editable parts") vs server `CONCEPT_NOTICE` `creativeService.js:30` ("doors or panels") | use the contract wording |
+| V4 — **FIXED in b34e259** | Low | `creativeAsset.js:123` maps 403 → `SIGN_IN_REQUIRED`; the contract defines only 401 | align with the contract |
+| V5 — **FIXED in b34e259** | Low | `viewer.download()` (`mountAssetViewer.js` ~`:857`) re-resolves but has no retry-once and only serves the loaded item | document, or add retry-once |
 
 ### Projects Engineer — concept gallery (`src/lib/projects/**`)
 | ID | Sev | Where | Fix direction |
 |---|---|---|---|
-| **G1** | Medium | `mountConceptGallery.js:364` and `:481` re-check the job only for `ASSET_NOT_READY`; `render.js:218` keeps rendering outputs. After an asset-level `409 RECORD_INTEGRITY_FAILED` (Open or Download) the card still says **"Ready"** with enabled Open/Download. No mesh or file is ever served (test 9), but the card advertises a usable asset. Test: `KNOWN_DEFECT G1 after Open/Download returns 409 RECORD_INTEGRITY_FAILED the card must stop advertising the concept as Ready with Open/Download (mountConceptGallery.js:364/:481 re-check only ASSET_NOT_READY)` | on `INTEGRITY` / `NOT_FOUND` from `runAsset` / `openInViewer`, dispatch `JOB_ERR` for the job (as the poll path does at `:285`, `:320`) |
-| G2 | Low | `mountConceptGallery.js:476-477` — an Open whose resolve fails with 5xx/network says "The 3D view couldn't show this file. Downloading it may still work." | map `SERVER`/`NETWORK` to `ASSET_MESSAGES` (server outage, not a file problem) |
+| **G1** — **FIXED in 6d0adfd, verified on 53f4384** (§0) | Medium | `mountConceptGallery.js:364` and `:481` re-check the job only for `ASSET_NOT_READY`; `render.js:218` keeps rendering outputs. After an asset-level `409 RECORD_INTEGRITY_FAILED` (Open or Download) the card still says **"Ready"** with enabled Open/Download. No mesh or file is ever served (test 9), but the card advertises a usable asset. Test: `KNOWN_DEFECT G1 after Open/Download returns 409 RECORD_INTEGRITY_FAILED the card must stop advertising the concept as Ready with Open/Download (mountConceptGallery.js:364/:481 re-check only ASSET_NOT_READY)` | on `INTEGRITY` / `NOT_FOUND` from `runAsset` / `openInViewer`, dispatch `JOB_ERR` for the job (as the poll path does at `:285`, `:320`) |
+| G2 — **FIXED in 6d0adfd, verified on 53f4384** (§0) | Low | `mountConceptGallery.js:476-477` — an Open whose resolve fails with 5xx/network says "The 3D view couldn't show this file. Downloading it may still work." | map `SERVER`/`NETWORK` to `ASSET_MESSAGES` (server outage, not a file problem) |
 | G3 | Info | `render.js:86-94` placeholder tile | correct per contract (no thumbnail field); a preview needs a contract change (A2) |
 | G4 | Info / blocker for mounting | `mountConceptGallery.js:16-26` — the list client (`listJobs`) is injected and **no product implementation exists**; tests use a test-side adapter | owner decision (CONCEPT_GALLERY.md §10 Q1) |
 
@@ -150,7 +229,8 @@ GLB inspector, relative W:H:D only, `openInBuilder:false`. Findings:
 | C1 | Medium (gate) | `npm run docs:check` fails on the candidate: 3 `file:///c:/Users/xalim/OneDrive/...` links in `docs/artifacts/studio-redesign-delivery/DELIVERY.md` | fix or exempt before calling the candidate green |
 | C2 | Medium (gate) | the existing browser suite is not green on the candidate (13 failures, identical with and without this branch: 7 × `r3f-builder.spec.js` (the Next.js `/builder` server is not started by this config: "no real pixels ever rendered"), `capture-redesign-screenshots.spec.js:23` (hard-codes `http://127.0.0.1:4173` at `:26,40,76,93,102,110`, so it fails by construction off 4173), `exp01-integ-extras.spec.js:5`, `site.spec.js:1252` (#9), `:1726` (#26), `:1883` (#30), `studio-save-reopen-staleness.spec.js:77` (#1 REPRODUCTION, a documented-defect test), `webgl-context-stability.spec.js:122`) — see §2 | publish a browser baseline with the vitest baseline; split environment-dependent specs (`r3f-builder` needs the Next server) |
 | C3 | Low | the requested `git bundle create … <bare SHA>` is refused by git ("Refusing to create empty bundle"); the bundle was made from `refs/heads/integ/scenario-candidate`, verified to point at `485f8a6` before bundling and after fetch | hand off a ref or tag, not a bare SHA |
-| C4 | Low | root `vitest.config.js` include omits `tests/projects/**` and `tests/assetViewer/**`; they run only via `src/lib/projects/conceptGallery/conceptGallery.collect.test.js` and `src/lib/assetViewer/assetViewer.collect.test.js` (each warns of double runs if the glob is added) | add the globs and delete the collectors in one integration commit |
+| C4 — superseded by C5 | Low | root `vitest.config.js` include omits `tests/projects/**` and `tests/assetViewer/**`; they run only via `src/lib/projects/conceptGallery/conceptGallery.collect.test.js` and `src/lib/assetViewer/assetViewer.collect.test.js` (each warns of double runs if the glob is added) | add the globs and delete the collectors in one integration commit |
+| **C5** | Medium (gate) | Projects deleted its collector in `c862c6e` ("root include is Integration's"), so on any merge containing `53f4384` the root `npx vitest run` **no longer runs `tests/projects/**` at all** (116 tests). They pass only via `npx vitest run --config tests/projects/vitest.config.js` (116/116 on the §0 merge). `tests/assetViewer/**` still runs through `src/lib/assetViewer/assetViewer.collect.test.js` | add `tests/projects/**/*.test.js` (and `tests/assetViewer/**/*.test.js`, deleting that collector in the same commit) to the root include; Grok QA did not touch the root config |
 
 Antigravity's `db52d21` is not part of the candidate and was not used.
 
@@ -158,6 +238,8 @@ Antigravity's `db52d21` is not part of the candidate and was not used.
 - **A1 "if a load fails, call it again once" (§2.5).** Does a 5xx/network failure of the
   `?resource=asset` call count, or only a failed fetch/parse of `url`? The viewer retries only
   display failures; the gallery's Download also retries a transient resolve. Pick one.
+  *Follow-up:* v2.1 (b34e259) and the gallery (53f4384) now both re-resolve once on network/5xx/429
+  through one rule, `isRetryableResolveError`; the contract text itself is unchanged.
 - **A2 No thumbnail / preview / prompt** in the job view (§2.4). The gallery shows a placeholder.
   Is a preview planned (it would need durable storage, U6)?
 - **A3 `format` "read from the returned asset" (§2.4).** Today: URL extension or mimeType only,
@@ -171,8 +253,12 @@ Antigravity's `db52d21` is not part of the candidate and was not used.
   mark the whole job unusable in the UI (G1)? The contract only lists the code.
 - **A8 Save / reopen.** No save-to-project, no `designId`; the list is capped at 50 — are older
   concepts reachable at all?
-- **A9 Auth codes.** Only 401 is defined; the viewer treats 403 as signed-out (V4).
+- **A9 Auth codes.** Only 401 is defined; the viewer treated 403 as signed-out (V4). *Follow-up:*
+  403 is FORBIDDEN in v2.1 and a job-level "Not allowed" state in the gallery (lifted by a list
+  refresh) — still undefined by the contract.
 - **A10 Who renders `concept.notice`** (viewer overlay vs host panel) — risk of showing it twice.
+  *Follow-up:* settled in code — the gallery passes `renderConceptNotice:false` and shows it once
+  in its panel (tested, §0).
 - **A11 List refresh.** `GET ?resource=jobs` reads the store only, so N non-terminal jobs mean N
   `getJob` calls per round.
 - **A12 Who owns the browser list client** (`listJobs`).
@@ -191,7 +277,8 @@ Antigravity's `db52d21` is not part of the candidate and was not used.
 ## 8. How to reproduce
 ```
 npx vitest run                                                     # all tracks in-process
-npx vitest run tests/acceptance/scenario                           # scenario acceptance only (114)
+npx vitest run tests/acceptance/scenario                           # scenario acceptance only (114; 161 after the follow-up)
+npx vitest run --config tests/projects/vitest.config.js            # gallery suites (not in the root include, C5)
 npx playwright test --config=playwright.scenario.config.js         # TEST HARNESS (4417) + real index.html (4420)
 SCENARIO_QA_STATIC_PORT=4418 npx playwright test --config=playwright.regression.config.js   # sanitized browser suite
 ```
