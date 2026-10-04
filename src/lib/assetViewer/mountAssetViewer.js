@@ -16,7 +16,13 @@
  *   await viewer.load({ job });                             // job object from ?resource=jobs
  *   await viewer.watchJob(jobId);                           // poll 3-5 s until terminal
  *   await viewer.download({ save: true });                  // re-resolves a FRESH url first
+ *   await viewer.download({ jobId, index: 1, save: true });  // any item, not just the one on screen
  * The resolved url is never kept in state, in `current`, or in storage.
+ * A retryable resolve failure (network, 5xx, 429; isRetryableResolveError)
+ * is re-resolved ONCE, on load and on download alike.
+ * `renderConceptNotice: false` hides the overlay's concept notice for a host
+ * that renders it itself; getState().concept.notice still carries the text
+ * and the host must then ALWAYS show it.
  *
  * This file must NEVER import "three": the static Studio page already has
  * window.THREE (r128) and a second copy would break instanceof checks and
@@ -24,7 +30,8 @@
  *
  * State machine:  idle -> loading(fetching -> parsing) -> ready | error
  *   creative:     idle -> loading(job-checking | job-submitting | job-processing
- *                   -> resolving -> fetching -> parsing [-> retrying -> fetching -> parsing])
+ *                   -> resolving [-> retrying(resolve)] -> fetching -> parsing
+ *                   [-> retrying -> fetching -> parsing])
  *                   -> ready | download-only | error
  *                 any  -> idle (clear)      any -> disposed (dispose)
  * A newer load()/clear()/dispose() supersedes an in-flight load: its fetch
@@ -50,6 +57,7 @@ import { DEFAULT_MAX_BYTES, fetchBytes, isAbortError, readBlob } from "./fetchBy
 import { createOverlay } from "./overlay.js";
 import {
   creativeFilename,
+  isRetryableResolveError,
   isViewableFormat,
   MIME_BY_FORMAT,
   normalizeConcept,
@@ -130,6 +138,8 @@ export function mountAssetViewer(el, options = {}) {
   const creative = options.creativeSource || null;
   const setTimer = options.setTimeout || ((fn, ms) => setTimeout(fn, ms));
   const clearTimer = options.clearTimeout || ((t) => clearTimeout(t));
+  // A host that renders concept.notice itself turns the overlay's copy off; state still carries the text.
+  const renderConceptNotice = options.renderConceptNotice !== false;
 
   const listeners = new Map(EVENTS.map((e) => [e, new Set()]));
   let state = {
@@ -175,6 +185,7 @@ export function mountAssetViewer(el, options = {}) {
     options.ui === false
       ? null
       : createOverlay(doc, root, {
+          renderConceptNotice,
           onDownload: () => {
             const p = download({ save: true });
             if (p && typeof p.then === "function") p.catch(() => {});
@@ -641,9 +652,12 @@ export function mountAssetViewer(el, options = {}) {
   }
 
   /**
-   * resolve -> (non glb/gltf: download-only) -> load mesh; on a fetch/parse
-   * failure re-resolve ONCE and retry ONCE, then ASSET_DISPLAY_FAILED. The
-   * resolved url lives only in local variables of this function.
+   * resolve [-> one more resolve on a retryable resolve failure]
+   * -> (non glb/gltf: download-only) -> load mesh; on a fetch/parse failure
+   * re-resolve ONCE and retry ONCE, then ASSET_DISPLAY_FAILED. The two retry
+   * budgets are independent: at most 3 resolves and 2 mesh fetches per load.
+   * The re-resolve of the display retry is not itself retried. The resolved
+   * url lives only in local variables of this function.
    */
   async function creativeFlow(run, ref, jobInfo) {
     const { jobId, index } = ref;
@@ -672,6 +686,22 @@ export function mountAssetViewer(el, options = {}) {
       concept = d.concept;
       return d;
     };
+    // V1: a transient resolve failure (network, 5xx, 429) gets exactly ONE more resolve.
+    // Never 401/403/404/409/410, ASSET_NOT_READY, integrity, malformed bodies or *_NOT_CONFIGURED.
+    const resolveWithRetry = async () => {
+      try {
+        return await resolveFresh();
+      } catch (e) {
+        if (run.stale() || isAbortError(e) || !isRetryableResolveError(e)) throw e;
+        setState({ phase: "retrying", progress: null, ...base() });
+        try {
+          return await resolveFresh();
+        } catch (e2) {
+          if (e2 instanceof AssetViewerError) e2.attempts = { ...attempts };
+          throw e2;
+        }
+      }
+    };
     const display = (d) => {
       attempts.display++;
       setState({ phase: "fetching", progress: null, ...base() });
@@ -680,7 +710,7 @@ export function mountAssetViewer(el, options = {}) {
 
     let d;
     try {
-      d = await resolveFresh();
+      d = await resolveWithRetry();
     } catch (e) {
       if (run.stale() || isAbortError(e)) return superseded();
       return failC(e, false);
@@ -848,19 +878,30 @@ export function mountAssetViewer(el, options = {}) {
   }
 
   /**
+   * download({ save? })                current item.
+   * download({ jobId, index?, save? }) explicit /api/creative reference: any
+   *   item (e.g. another gallery tile), in any viewer state; needs
+   *   options.creativeSource. Does not touch the displayed item or state.
+   *
    * Local item: hands back the ORIGINAL bytes (no re-export/conversion) with a
    * filename and mime matching the detected format, synchronously.
    * `{ save: true }` additionally triggers a browser download via a temporary
    * object URL.
    *
    * Creative item (ready, download-only, or a display error that still
-   * allows download): returns a Promise. It ALWAYS re-resolves a fresh url
-   * first (never reuses the one the mesh was loaded from) and resolves to
-   * { ok:true, url, filename, mime, format, jobId, index, resolvedAt, concept }
-   * or { ok:false, error }. Viewer state is not changed by a download.
+   * allows download) or explicit reference: returns a Promise. It ALWAYS
+   * re-resolves a fresh url first (never reuses the one the mesh was loaded
+   * from, nor one from an earlier download) and, on a retryable resolve
+   * failure, re-resolves ONCE more. Resolves to
+   * { ok:true, url, filename, mime, format, jobId, index, resolvedAt, concept, attempts }
+   * or { ok:false, error, attempts }. Viewer state is not changed by a download.
    */
-  function download({ save = false } = {}) {
-    if (disposed || !current) return null;
+  function download(opts) {
+    const o = opts && typeof opts === "object" ? opts : {};
+    const save = o.save === true;
+    if (disposed) return null;
+    if (o.jobId !== undefined) return downloadRef(o, save);
+    if (!current) return null;
     if (current.kind === "creative") {
       const allowed =
         state.status === STATUS.READY || state.status === STATUS.DOWNLOAD_ONLY || (state.status === STATUS.ERROR && state.actions && state.actions.download);
@@ -892,16 +933,37 @@ export function mountAssetViewer(el, options = {}) {
     return payload;
   }
 
+  function downloadRef(ref, save) {
+    if (!creative || typeof creative.resolve !== "function") {
+      const e = new AssetViewerError("MISSING_DEPENDENCY", "options.creativeSource (createCreativeAssetSource(...)) is required to download a job reference");
+      return Promise.resolve({ ok: false, error: toErrorRecord(e), attempts: { resolve: 0 } });
+    }
+    const index = ref.index === undefined || ref.index === null ? 0 : ref.index;
+    return downloadCreative({ jobId: ref.jobId, index }, save);
+  }
+
   async function downloadCreative(info, save) {
+    const attempts = { resolve: 0 };
+    const resolveOnce = () => {
+      attempts.resolve++;
+      return creative.resolve(info.jobId, info.index);
+    };
     let d;
     try {
-      d = await creative.resolve(info.jobId, info.index);
+      try {
+        d = await resolveOnce();
+      } catch (e) {
+        // V5: same rule as load(): ONE fresh re-resolve on a retryable failure, never a cached url.
+        if (disposed || !isRetryableResolveError(e)) throw e;
+        d = await resolveOnce();
+      }
     } catch (e) {
       const rec = toErrorRecord(e);
       rec.detail = redactUrls(rec.detail);
-      return { ok: false, error: rec };
+      rec.attempts = { ...attempts };
+      return { ok: false, error: rec, attempts: { ...attempts } };
     }
-    if (disposed) return { ok: false, error: toErrorRecord(new AssetViewerError("VIEWER_DISPOSED")) };
+    if (disposed) return { ok: false, error: toErrorRecord(new AssetViewerError("VIEWER_DISPOSED")), attempts: { ...attempts } };
     const payload = {
       ok: true,
       jobId: d.jobId,
@@ -915,6 +977,7 @@ export function mountAssetViewer(el, options = {}) {
       expiryKnown: d.expiryKnown,
       concept: d.concept,
       freshlyResolved: true,
+      attempts: { ...attempts },
     };
     if (save) {
       // Navigation is not subject to CORS, so this can work even when display failed (U7).

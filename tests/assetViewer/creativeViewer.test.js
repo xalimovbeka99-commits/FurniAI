@@ -196,18 +196,18 @@ describe("failure after resolve: ONE fresh resolve + ONE retry, then an honest e
 
 describe("resolve errors -> distinct viewer codes, concept notice still shown", () => {
   it.each([
-    ["sim-gone", "ASSET_UNAVAILABLE", 410],
-    ["sim-integrity", "RECORD_INTEGRITY_FAILED", 409],
-    ["sim-processing", "ASSET_NOT_READY", 409],
-    ["sim-provider-down", "PROVIDER_UNAVAILABLE", 502],
-    ["no-such-job", "CONCEPT_NOT_FOUND", 404],
-  ])("%s -> %s", async (jobId, code, status) => {
+    ["sim-gone", "ASSET_UNAVAILABLE", 410, 1],
+    ["sim-integrity", "RECORD_INTEGRITY_FAILED", 409, 1],
+    ["sim-processing", "ASSET_NOT_READY", 409, 1],
+    ["sim-provider-down", "PROVIDER_UNAVAILABLE", 502, 2], // v2.1 (V1): a 502 is re-resolved ONCE, then reported
+    ["no-such-job", "CONCEPT_NOT_FOUND", 404, 1],
+  ])("%s -> %s", async (jobId, code, status, resolves) => {
     const t = mountCreative();
     const r = await t.viewer.load({ jobId, index: 0, format: "glb" });
     expect(r.ok).toBe(false);
     expect(t.viewer.getState()).toMatchObject({ status: "error", error: { code, status, message: ERROR_MESSAGE[code] }, actions: { download: false } });
     expect(t.cdnCalls).toHaveLength(0);
-    expect(t.sim.count("api", "asset")).toBe(1); // a resolve error is final: no blind retry
+    expect(t.sim.count("api", "asset")).toBe(resolves); // non-retryable: final at once; retryable: exactly one more resolve
     const o = overlayText(t);
     expect(o.status.textContent).toBe(ERROR_MESSAGE[code]);
     expect(o.concept.textContent).toBe(DEFAULT_CONCEPT_NOTICE); // server never sent a concept for this load
@@ -231,12 +231,17 @@ describe("resolve errors -> distinct viewer codes, concept notice still shown", 
   it("503s: AUTH_UNAVAILABLE, PERSISTENCE_NOT_CONFIGURED, STORAGE_UNAVAILABLE map to distinct codes", async () => {
     const t = mountCreative();
     const seen = [];
-    for (const code of ["AUTH_UNAVAILABLE", "PERSISTENCE_NOT_CONFIGURED", "STORAGE_UNAVAILABLE", "CREATIVE_NOT_CONFIGURED"]) {
-      t.sim.failNext({ resource: "asset", status: 503, code });
+    const calls = [];
+    // Transient 503s are re-resolved once (so they must fail twice to be reported); *_NOT_CONFIGURED is not retried.
+    for (const [code, times] of [["AUTH_UNAVAILABLE", 2], ["PERSISTENCE_NOT_CONFIGURED", 1], ["STORAGE_UNAVAILABLE", 2], ["CREATIVE_NOT_CONFIGURED", 1]]) {
+      for (let i = 0; i < times; i++) t.sim.failNext({ resource: "asset", status: 503, code });
+      const before = t.sim.count("api", "asset");
       await t.viewer.load({ jobId: "sim-glb-chair", index: 0 });
       seen.push(t.viewer.getState().error.code);
+      calls.push(t.sim.count("api", "asset") - before);
     }
     expect(seen).toEqual(["SIGN_IN_UNAVAILABLE", "CONCEPTS_NOT_CONFIGURED", "SERVICE_UNAVAILABLE", "CONCEPTS_NOT_CONFIGURED"]);
+    expect(calls).toEqual([2, 1, 2, 1]);
     t.viewer.dispose();
   });
 
