@@ -16,6 +16,8 @@ export const ERROR_CODE = Object.freeze({
   // ---- /api/creative (AI visual concept) contract, see creativeAsset.js ----
   SIGN_IN_REQUIRED: "SIGN_IN_REQUIRED",
   SIGN_IN_UNAVAILABLE: "SIGN_IN_UNAVAILABLE",
+  /** v2.1: HTTP 403 / UNAUTHORIZED. Signed in, but not allowed. Before v2.1 this was SIGN_IN_REQUIRED. */
+  FORBIDDEN: "FORBIDDEN",
   CONCEPTS_NOT_CONFIGURED: "CONCEPTS_NOT_CONFIGURED",
   SERVICE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
   PROVIDER_UNAVAILABLE: "PROVIDER_UNAVAILABLE",
@@ -23,7 +25,10 @@ export const ERROR_CODE = Object.freeze({
   ASSET_NOT_READY: "ASSET_NOT_READY",
   ASSET_UNAVAILABLE: "ASSET_UNAVAILABLE",
   RECORD_INTEGRITY_FAILED: "RECORD_INTEGRITY_FAILED",
+  /** Network/transport failure (details.cause "network"), or an unrecognised server code (details.cause "http"). */
   RESOLVE_FAILED: "RESOLVE_FAILED",
+  /** v2.1: a 2xx whose body is not a usable answer (details.cause "malformed"). Before v2.1 this was RESOLVE_FAILED. Never retried. */
+  RESOLVE_MALFORMED: "RESOLVE_MALFORMED",
   ASSET_DISPLAY_FAILED: "ASSET_DISPLAY_FAILED",
   GENERATION_FAILED: "GENERATION_FAILED",
   SUBMISSION_UNKNOWN: "SUBMISSION_UNKNOWN",
@@ -42,6 +47,7 @@ export const ERROR_MESSAGE = Object.freeze({
   VIEWER_DISPOSED: "The 3D viewer has been closed.",
   SIGN_IN_REQUIRED: "Please sign in to view this 3D concept.",
   SIGN_IN_UNAVAILABLE: "Sign-in is temporarily unavailable, so this 3D concept can't be opened right now. Please try again later.",
+  FORBIDDEN: "This account doesn't have permission to open this 3D concept. Signing in again won't change that.",
   CONCEPTS_NOT_CONFIGURED: "3D concepts aren't available on this site yet.",
   SERVICE_UNAVAILABLE: "The 3D concept service is temporarily unavailable. Please try again later.",
   PROVIDER_UNAVAILABLE: "The 3D generation service couldn't be reached. Please try again later.",
@@ -50,6 +56,7 @@ export const ERROR_MESSAGE = Object.freeze({
   ASSET_UNAVAILABLE: "This 3D concept is no longer available. The generation service no longer has the file and no copy was kept.",
   RECORD_INTEGRITY_FAILED: "This 3D concept can't be opened because its record failed a safety check.",
   RESOLVE_FAILED: "The 3D concept couldn't be opened. Please try again.",
+  RESOLVE_MALFORMED: "The 3D concept service sent a reply that couldn't be read, so this concept can't be opened right now.",
   ASSET_DISPLAY_FAILED: "This 3D concept couldn't be displayed here. Downloading it may still work.",
   GENERATION_FAILED: "The 3D concept couldn't be generated.",
   SUBMISSION_UNKNOWN:
@@ -58,7 +65,7 @@ export const ERROR_MESSAGE = Object.freeze({
 });
 
 /** Extra serialisable fields an AssetViewerError may carry into its record. */
-const RECORD_EXTRAS = ["status", "serverCode", "jobStatus", "downloadAvailable", "chargeMayHaveOccurred", "autoRetry", "attempts"];
+const RECORD_EXTRAS = ["status", "serverCode", "jobStatus", "downloadAvailable", "chargeMayHaveOccurred", "autoRetry", "attempts", "details"];
 
 export class AssetViewerError extends Error {
   /**
@@ -66,7 +73,8 @@ export class AssetViewerError extends Error {
    * @param {string} [detail] developer-facing detail (not shown to customers)
    * @param {object} [extra] e.g. { status } for FETCH_FAILED, { serverCode } for
    *   /api/creative errors, { message } to replace the default customer message
-   *   with a vetted one (used for a failed job's own error message).
+   *   with a vetted one (used for a failed job's own error message),
+   *   { details: { cause, retryable } } for /api/creative resolve failures.
    */
   constructor(code, detail, extra = {}) {
     const { message, ...rest } = extra || {};

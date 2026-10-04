@@ -12,5 +12,5 @@ export { ERROR_CODE, ERROR_MESSAGE } from "./errors.js";
 export { createAdapterRegistry } from "./adapters/registry.js";
 export { glbAdapter, gltfJsonAdapter, DEFAULT_ADAPTERS } from "./adapters/gltf.js";
 export { RELATIVE_SCALE_LABEL } from "./scale.js";
-export { createCreativeAssetSource, normalizeConcept, VIEWABLE_FORMATS, DEFAULT_CONCEPT_NOTICE } from "./creativeAsset.js";
+export { createCreativeAssetSource, isRetryableResolveError, normalizeConcept, VIEWABLE_FORMATS, DEFAULT_CONCEPT_NOTICE } from "./creativeAsset.js";
 export const version = "asset-viewer-module/2";
