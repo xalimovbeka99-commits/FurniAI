@@ -22,7 +22,7 @@ const STATUS_HINT = Object.freeze({
   [JOB_STATUS.PROCESSING]: "Generating the 3D concept. This page checks for updates automatically.",
 });
 
-const JOB_ERROR_LABEL = Object.freeze({ [ERROR_KIND.INTEGRITY]: "Integrity check failed", [ERROR_KIND.NOT_FOUND]: "Not found" });
+const JOB_ERROR_LABEL = Object.freeze({ [ERROR_KIND.INTEGRITY]: "Integrity check failed", [ERROR_KIND.NOT_FOUND]: "Not found", [ERROR_KIND.FORBIDDEN]: "Not allowed" });
 
 export function el(doc, tag, attrs, ...children) {
   const node = doc.createElement(tag);
@@ -245,7 +245,7 @@ export function renderBody(doc, body, state, ctx) {
   }
   if (state.list === LIST_STATUS.ERROR) {
     const kind = state.error?.kind || ERROR_KIND.REQUEST;
-    const p = panel(doc, kind, LIST_MESSAGES[kind] || LIST_MESSAGES[ERROR_KIND.REQUEST], kind === ERROR_KIND.SIGNED_OUT ? null : ctx.onRefresh);
+    const p = panel(doc, kind, LIST_MESSAGES[kind] || LIST_MESSAGES[ERROR_KIND.REQUEST], kind === ERROR_KIND.SIGNED_OUT || kind === ERROR_KIND.FORBIDDEN ? null : ctx.onRefresh);
     if (state.error?.code) p.setAttribute("data-code", state.error.code);
     body.appendChild(p);
     return;

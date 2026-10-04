@@ -55,11 +55,15 @@ function mountConcepts() {
       creativeSource,                        // download + polling + the viewer's resolve
       mountAssetViewer: AV && AV.mountAssetViewer,
       viewerOptions: { three: window.THREE, deps: { GLTFLoader, OrbitControls } }, // per ASSET_VIEWER.md
+      // No renderConceptNotice here: the gallery always passes false and shows the notice itself.
     },
   );
 }
 // on route change away from #/projects:  conceptGallery?.destroy(); conceptGallery = null;
 ```
+
+This needs Asset Engineer's bundle at **v2.1** (`b34e259`) or later: `renderConceptNotice`,
+`FORBIDDEN` and `RESOLVE_MALFORMED` are v2.1.
 
 The gallery stops polling by itself while the tab is hidden. `destroy()` stops it for good
 and disposes the viewer.

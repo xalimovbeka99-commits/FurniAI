@@ -3,15 +3,18 @@
  * GET /api/creative?resource=jobs (contract: SCENARIO_3D_API_CONTRACT.md,
  * PROPOSED). Framework-free; renders into `root` without innerHTML.
  *
- * Everything the gallery needs that Asset Engineer's viewer v2 already does
- * (src/lib/assetViewer at 42c3fa6) is INJECTED, never imported or rebuilt:
+ * Everything the gallery needs that Asset Engineer's viewer already does
+ * (src/lib/assetViewer, v2.1 at b34e259) is INJECTED, never rebuilt:
  *   - creativeSource = createCreativeAssetSource({ fetchImpl, getAuthToken })
  *       .resolve(jobId, index, { signal }) -> fresh { url, format, filename, concept, ... } per call
  *       .getJob(jobId, { signal })         -> { job, refresh }
- *   - mountAssetViewer(el, { ...viewerOptions, creativeSource }) -> handle with
- *       load({ jobId, index, format }) (resolves + one re-resolve/retry on display failure) and dispose()
- * The only call v2 does not cover is the list, so that is the one thing the
- * gallery asks of `client`.
+ *   - mountAssetViewer(el, { ...viewerOptions, creativeSource, renderConceptNotice: false }) -> handle with
+ *       load({ jobId, index, format }) (resolves, one re-resolve on a retryable resolve failure,
+ *       one re-resolve + retry on a display failure), getState() and dispose()
+ * The one import from their code is the pure rule isRetryableResolveError, so the
+ * gallery's Download retries exactly when the viewer would. The only call v2 does
+ * not cover is the list, so that is the one thing the gallery asks of `client`.
+ * The gallery always renders concept.notice itself (card and viewer panel).
  *
  * @typedef {object} CreativeJobsListClient
  *   Thin injected client for the list. It receives the bearer token from
@@ -50,7 +53,8 @@
  * @returns {{ refresh: () => Promise<void>, destroy: () => void, getState: () => object }}
  */
 import { CODE, FALLBACK_CONCEPT_NOTICE, MAX_BACKOFF_MS, MAX_POLL_MS, MIN_POLL_MS, isViewableFormat } from "./contract.js";
-import { ASSET_MESSAGES, ConceptAssetError, ERROR_KIND, classifyError, isAbortError, isRetryableAssetError } from "./errors.js";
+import { isRetryableResolveError } from "../../assetViewer/creativeAsset.js";
+import { ASSET_MESSAGES, ConceptAssetError, DISPLAY_FAILED_MESSAGE, DISPLAY_FAILURE_CODES, ERROR_KIND, classifyError, isAbortError } from "./errors.js";
 import { defaultFormatDate, el, pollingText, renderBody } from "./render.js";
 import { LIST_STATUS, assetKey, hasPollableJobs, initialState, reduce, snapshot } from "./state.js";
 import { CONCEPT_GALLERY_CSS, CONCEPT_GALLERY_STYLE_ID } from "./styles.js";
@@ -62,6 +66,9 @@ export function clampPollInterval(ms) {
   if (!Number.isFinite(n)) return 4000;
   return Math.min(MAX_POLL_MS, Math.max(MIN_POLL_MS, n));
 }
+
+/** Failures about the job record (or the account's access to it), not one file: the card is locked. */
+const JOB_LEVEL_KINDS = new Set([ERROR_KIND.INTEGRITY, ERROR_KIND.NOT_FOUND, ERROR_KIND.FORBIDDEN]);
 
 function signedOutError() {
   return { status: null, code: CODE.SIGNED_OUT };
@@ -282,7 +289,7 @@ export function mountConceptGallery(root, options = {}) {
       if (isAbortError(r.err)) return;
       const c = classifyError(r.err);
       if (c.kind === ERROR_KIND.SIGNED_OUT) return goSignedOut(c);
-      if (c.kind === ERROR_KIND.INTEGRITY || c.kind === ERROR_KIND.NOT_FOUND) dispatch({ type: "JOB_ERR", jobId: r.jobId, error: c });
+      if (JOB_LEVEL_KINDS.has(c.kind)) dispatch({ type: "JOB_ERR", jobId: r.jobId, error: c });
       else failed = true;
     }
     const failures = failed ? state.pollFailures + 1 : 0;
@@ -317,7 +324,7 @@ export function mountConceptGallery(root, options = {}) {
     } catch (err) {
       if (destroyed || isAbortError(err)) return;
       const c = classifyError(err);
-      if (c.kind === ERROR_KIND.INTEGRITY || c.kind === ERROR_KIND.NOT_FOUND) dispatch({ type: "JOB_ERR", jobId, error: c });
+      if (JOB_LEVEL_KINDS.has(c.kind)) dispatch({ type: "JOB_ERR", jobId, error: c });
     } finally {
       t.done();
     }
@@ -328,7 +335,8 @@ export function mountConceptGallery(root, options = {}) {
     const t = track();
     try {
       const d = await source.resolve(jobId, index, { signal: t.signal }); // fresh address on every call
-      if (!d || typeof d.url !== "string" || !d.url) throw { status: null, code: CODE.INVALID_RESPONSE };
+      // v2.1's source already answers RESOLVE_MALFORMED for this; a custom source may not.
+      if (!d || typeof d.url !== "string" || !d.url) throw { status: null, code: CODE.INVALID_RESPONSE, details: { cause: "malformed", retryable: false } };
       return d;
     } finally {
       t.done();
@@ -339,10 +347,11 @@ export function mountConceptGallery(root, options = {}) {
     try {
       return await resolveAssetOnce(jobId, index);
     } catch (first) {
-      const c = classifyError(first);
-      if (!isRetryableAssetError(c)) throw new ConceptAssetError(c, first);
+      // Asset Engineer's rule (v2.1), so Download retries exactly when the viewer's load
+      // would: network, 5xx, 429. Never a malformed body, 401/403/404/409/410 or *_NOT_CONFIGURED.
+      if (!isRetryableResolveError(first)) throw new ConceptAssetError(classifyError(first), first);
       try {
-        return await resolveAssetOnce(jobId, index); // contract §2.5: call it again once
+        return await resolveAssetOnce(jobId, index); // one retry at most, with a fresh resolve
       } catch (second) {
         throw new ConceptAssetError(classifyError(second), second);
       }
@@ -361,7 +370,7 @@ export function mountConceptGallery(root, options = {}) {
       const e = err instanceof ConceptAssetError ? err : new ConceptAssetError(classifyError(err), err);
       dispatch({ type: "ASSET_ERR", key, action, error: { kind: e.kind, code: e.code } });
       announce(ASSET_MESSAGES[e.kind] || ASSET_MESSAGES[ERROR_KIND.REQUEST]);
-      if (e.kind === ERROR_KIND.ASSET_NOT_READY && !destroyed) refreshOneJob(jobId);
+      afterAssetFailure(jobId, { kind: e.kind, code: e.code, status: e.status });
       throw e;
     }
   }
@@ -399,6 +408,7 @@ export function mountConceptGallery(root, options = {}) {
   let viewerPanel = null;
   let viewerStatus = null;
   let viewerHost = null;
+  let viewerNotice = null;
   let openSeq = 0;
 
   function closeViewer() {
@@ -413,6 +423,7 @@ export function mountConceptGallery(root, options = {}) {
     viewer = null;
     viewerStatus = null;
     viewerHost = null;
+    viewerNotice = null;
     if (viewerPanel && viewerPanel.parentNode) viewerPanel.parentNode.removeChild(viewerPanel);
     viewerPanel = null;
   }
@@ -427,11 +438,14 @@ export function mountConceptGallery(root, options = {}) {
       viewerPanel = el(doc, "section", { class: "fcg-viewer", "aria-labelledby": `${idPrefix}-viewer-title`, "data-viewer-panel": "" });
       viewerSlot.appendChild(viewerPanel);
       // The viewer resolves the address itself through the same injected source.
-      viewer = mountViewer(viewerHost, { ...viewerOptions, creativeSource: source });
+      // renderConceptNotice:false: the panel shows the notice itself (always), so the
+      // viewer's overlay must not show it a second time. Set last so it can't be overridden.
+      viewer = mountViewer(viewerHost, { ...viewerOptions, creativeSource: source, renderConceptNotice: false });
     }
     viewerPanel.textContent = "";
     viewerPanel.appendChild(el(doc, "div", { class: "fcg-viewer-head" }, heading, close));
-    viewerPanel.appendChild(el(doc, "p", { class: "fcg-notice", "data-concept-notice": "", text: request.notice }));
+    viewerNotice = el(doc, "p", { class: "fcg-notice", "data-concept-notice": "", text: request.notice });
+    viewerPanel.appendChild(viewerNotice);
     viewerPanel.appendChild(viewerHost);
     viewerPanel.appendChild(viewerStatus);
     viewerPanel.setAttribute("data-job-id", request.jobId);
@@ -467,18 +481,60 @@ export function mountConceptGallery(root, options = {}) {
       dispatch({ type: "ASSET_OK", key });
       return;
     }
+    showViewerNotice();
     if (result.ok) {
       dispatch({ type: "ASSET_OK", key });
       setStatus(result.downloadOnly ? "This file can't be shown in the 3D view. Use Download." : "");
       return;
     }
     const c = classifyError({ name: "AssetViewerError", ...result.error });
-    const known = [ERROR_KIND.ASSET_NOT_READY, ERROR_KIND.ASSET_UNAVAILABLE, ERROR_KIND.INTEGRITY, ERROR_KIND.NOT_FOUND, ERROR_KIND.SIGNED_OUT].includes(c.kind);
-    const text = known ? ASSET_MESSAGES[c.kind] : "The 3D view couldn't show this file. Downloading it may still work.";
-    dispatch({ type: "ASSET_ERR", key, action: "open", error: known ? c : { kind: ERROR_KIND.REQUEST, code: result.error?.code || c.code } });
+    // Only a failure to *show* the file (ASSET_DISPLAY_FAILED and the viewer's other display
+    // codes) suggests Download. A server, network, sign-in, permission, configuration or
+    // malformed-answer failure would hit Download too, so it gets its own message (QE G2).
+    const displayFailure = c.kind === ERROR_KIND.REQUEST && DISPLAY_FAILURE_CODES.has(result.error?.code || "VIEWER_ERROR");
+    const text = displayFailure ? DISPLAY_FAILED_MESSAGE : ASSET_MESSAGES[c.kind] || ASSET_MESSAGES[ERROR_KIND.REQUEST];
+    dispatch({ type: "ASSET_ERR", key, action: "open", error: c.kind === ERROR_KIND.REQUEST ? { kind: ERROR_KIND.REQUEST, code: result.error?.code || c.code } : c });
     setStatus(text, c.code);
     announce(text);
-    if (c.kind === ERROR_KIND.ASSET_NOT_READY && !destroyed) refreshOneJob(request.jobId);
+    afterAssetFailure(request.jobId, c);
+  }
+
+  /**
+   * The viewer was mounted with renderConceptNotice:false, so the panel must always carry the
+   * notice. It starts with the job's (or the fallback) and switches to the server's text from
+   * this resolve when the viewer has one (v2.1 keeps it verbatim; noticeSource "server").
+   */
+  function showViewerNotice() {
+    if (!viewerNotice || !viewer || typeof viewer.getState !== "function") return;
+    let concept = null;
+    try {
+      concept = viewer.getState()?.concept || null;
+    } catch {
+      return;
+    }
+    const text = concept && concept.noticeSource === "server" && typeof concept.notice === "string" && concept.notice.trim() ? concept.notice : null;
+    if (text && viewerNotice.textContent !== text) viewerNotice.textContent = text;
+  }
+
+  /**
+   * What an Open/Download failure means for the card (QE G1). It matches the polling path:
+   * - 409 RECORD_INTEGRITY_FAILED, 404 MISSING_JOB and 403 (FORBIDDEN / UNAUTHORIZED) are about
+   *   the job record or the account's access to it, not this one file. The card becomes
+   *   job-errored ("Integrity check failed" / "Not found" / "Not allowed"): no Open or Download,
+   *   never polled. The next list refresh drops the row if the server still refuses it; a
+   *   "Not allowed" lock is lifted by a successful refresh so the user can try again.
+   * - 409 ASSET_NOT_READY re-checks the job once.
+   * - 410 ASSET_UNAVAILABLE stays per-file. The record is intact and the server status is still
+   *   succeeded (contract §2.5: "Scenario no longer has it"), so the card keeps its status and
+   *   just shows the message on that file. Nothing is retried automatically.
+   */
+  function afterAssetFailure(jobId, c) {
+    if (destroyed) return;
+    if (JOB_LEVEL_KINDS.has(c.kind)) {
+      dispatch({ type: "JOB_ERR", jobId, error: { kind: c.kind, code: c.code, status: c.status ?? null } });
+    } else if (c.kind === ERROR_KIND.ASSET_NOT_READY) {
+      refreshOneJob(jobId);
+    }
   }
 
   async function download(jobId, index) {

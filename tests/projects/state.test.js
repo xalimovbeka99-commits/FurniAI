@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { initialState, normalizeJob, reduce, hasPollableJobs, snapshot } from "../../src/lib/projects/conceptGallery/state.js";
-import { classifyError, ERROR_KIND, isRetryableAssetError } from "../../src/lib/projects/conceptGallery/errors.js";
+import { classifyError, ERROR_KIND } from "../../src/lib/projects/conceptGallery/errors.js";
 import { clampPollInterval } from "../../src/lib/projects/conceptGallery/mountConceptGallery.js";
 import { isNonTerminal, isViewableFormat } from "../../src/lib/projects/conceptGallery/contract.js";
 import { errorFor, jobView, networkError, succeededJob, unknownJob, failedJob } from "./fixtures/contractFixtures.js";
@@ -72,12 +72,19 @@ describe("concept gallery state", () => {
     expect(classifyError(errorFor("MISSING_JOB")).kind).toBe(ERROR_KIND.NOT_FOUND);
   });
 
-  it("only transient asset failures are retried", () => {
-    expect(isRetryableAssetError(classifyError(networkError()))).toBe(true);
-    expect(isRetryableAssetError(classifyError(errorFor("PROVIDER_UNAVAILABLE")))).toBe(true);
-    for (const c of ["ASSET_NOT_READY", "ASSET_UNAVAILABLE", "RECORD_INTEGRITY_FAILED", "MISSING_AUTH", "MISSING_JOB"]) {
-      expect(isRetryableAssetError(classifyError(errorFor(c)))).toBe(false);
-    }
+  it("only 401 is signed out; 403 / UNAUTHORIZED / FORBIDDEN is its own kind (v2.1)", () => {
+    expect(classifyError({ status: 401 }).kind).toBe(ERROR_KIND.SIGNED_OUT);
+    expect(classifyError({ status: 403 }).kind).toBe(ERROR_KIND.FORBIDDEN);
+    expect(classifyError({ status: 403, code: "UNAUTHORIZED" })).toMatchObject({ kind: ERROR_KIND.FORBIDDEN, code: "UNAUTHORIZED" });
+    expect(classifyError({ status: 403, code: "SOMETHING_NEW" }).kind).toBe(ERROR_KIND.FORBIDDEN);
+    expect(classifyError({ name: "AssetViewerError", code: "FORBIDDEN", status: 403 }).kind).toBe(ERROR_KIND.FORBIDDEN);
+    expect(classifyError({ name: "AssetViewerError", code: "FORBIDDEN", serverCode: "UNAUTHORIZED", status: 403 }).kind).toBe(ERROR_KIND.FORBIDDEN);
+  });
+
+  it("v2.1 RESOLVE_MALFORMED is its own kind; RESOLVE_FAILED without a status is the network", () => {
+    expect(classifyError({ name: "AssetViewerError", code: "RESOLVE_MALFORMED", details: { cause: "malformed", retryable: false } }).kind).toBe(ERROR_KIND.MALFORMED);
+    expect(classifyError({ name: "AssetViewerError", code: "RESOLVE_FAILED", details: { cause: "network", retryable: true } }).kind).toBe(ERROR_KIND.NETWORK);
+    expect(classifyError({ status: null, code: "INVALID_RESPONSE" }).kind).toBe(ERROR_KIND.MALFORMED);
   });
 
   it("poll interval is clamped to the contract's 3-5 s", () => {

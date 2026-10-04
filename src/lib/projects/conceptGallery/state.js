@@ -35,6 +35,8 @@ export function initialState() {
 export const assetKey = (jobId, index) => `${jobId}:${index}`;
 
 const str = (v) => (typeof v === "string" ? v : null);
+/** The server's notice verbatim (never trimmed or shortened); a blank one counts as missing (v2.1 rule). */
+const notice = (v) => (typeof v === "string" && v.trim() ? v : null);
 
 /** Copy only the contract fields; anything else the server adds is ignored. */
 export function normalizeJob(raw) {
@@ -64,7 +66,7 @@ export function normalizeJob(raw) {
     submittedAt: str(raw.submittedAt),
     completedAt: str(raw.completedAt),
     updatedAt: str(raw.updatedAt),
-    notice: str(raw.concept?.notice),
+    notice: notice(raw.concept?.notice),
     concept: raw.concept && typeof raw.concept === "object" ? conceptCopy(raw.concept) : null,
   };
 }
@@ -122,7 +124,8 @@ export function reduce(state, action) {
         list: LIST_STATUS.READY,
         error: null,
         jobs,
-        jobErrors: keepIds(state.jobErrors),
+        // A 403 lock is about access at that moment; a list the account may read lifts it.
+        jobErrors: Object.fromEntries(Object.entries(keepIds(state.jobErrors)).filter(([, e]) => e.kind !== ERROR_KIND.FORBIDDEN)),
         checkDelayed: keepIds(state.checkDelayed),
         assets: Object.fromEntries(Object.entries(state.assets).filter(([k]) => ids.has(k.slice(0, k.lastIndexOf(":"))))),
       };

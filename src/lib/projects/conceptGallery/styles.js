@@ -70,7 +70,7 @@ export const CONCEPT_GALLERY_CSS = `
 .fcg-meta dt{color:var(--ink-soft,#5C626E)}
 .fcg-meta dd{margin:0;overflow-wrap:anywhere}
 .fcg-dim{color:var(--ink-faint,#9EA3AE)}
-.fcg-notice{margin:0;padding:var(--space-sm,8px) 10px;border-radius:var(--r-sm,8px);background:var(--paper-2,#F4F2EB);border:1px solid var(--line-soft,#EDE8DC);font-size:12px;color:var(--ink-soft,#5C626E)}
+.fcg-notice{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;padding:var(--space-sm,8px) 10px;border-radius:var(--r-sm,8px);background:var(--paper-2,#F4F2EB);border:1px solid var(--line-soft,#EDE8DC);font-size:12px;color:var(--ink-soft,#5C626E)}
 .fcg-hint{margin:0;font-size:12px;color:var(--ink-soft,#5C626E)}
 .fcg-msg{margin:0;padding:var(--space-sm,8px) 10px;border-radius:var(--r-sm,8px);font-size:12.5px;border:1px solid}
 .fcg-msg-error{background:var(--status-error-bg,#fef2f2);color:var(--status-error-text,#b91c1c);border-color:var(--status-error-border,#fecaca)}
@@ -82,6 +82,5 @@ export const CONCEPT_GALLERY_CSS = `
 .fcg-skeleton{height:280px;border-radius:var(--r,14px);background:linear-gradient(90deg,var(--paper-3,#EAE5D9),var(--paper-2,#F4F2EB),var(--paper-3,#EAE5D9));background-size:200% 100%;animation:fcg-shimmer 1.2s linear infinite}
 @keyframes fcg-shimmer{to{background-position:-200% 0}}
 @media (max-width:480px){.fcg-list,.fcg-skeletons{grid-template-columns:1fr}.fcg-head{flex-wrap:wrap}}
-@media (prefers-reduced-motion:reduce){.fcg-skeleton,.fcg-badge[data-error]{background:var(--status-error-bg,#fef2f2);color:var(--status-error-text,#b91c1c);border-color:var(--status-error-border,#fecaca)}
-.fcg-spinner{animation:none}}
+@media (prefers-reduced-motion:reduce){.fcg-skeleton,.fcg-spinner{animation:none}}
 `;

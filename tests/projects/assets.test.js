@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { byAttr, deferred, flush } from "./fakeDom.js";
+import { byAttr, byClass, deferred, flush } from "./fakeDom.js";
 import { setup, card, button, announcer } from "./helpers.js";
+import { isRetryableResolveError } from "../../src/lib/assetViewer/creativeAsset.js";
+import { ASSET_MESSAGES, ERROR_KIND, JOB_MESSAGES } from "../../src/lib/projects/conceptGallery/errors.js";
 import { assetBody, errorFor, jobBody, listBody, networkError, succeededJob, CONCEPT, jobView } from "./fixtures/contractFixtures.js";
 
 function succeededSetup(assetHandler, extra = {}) {
@@ -100,7 +102,9 @@ describe("concept gallery: asset URLs", () => {
     await expect(opened[0].resolveUrl()).rejects.toMatchObject({ name: "ConceptAssetError", code: "RECORD_INTEGRITY_FAILED", kind: "integrity" });
     await flush();
     expect(client.count("getAssetUrl")).toBe(1);
-    expect(byAttr(root, "data-asset-error", "RECORD_INTEGRITY_FAILED")[0].textContent).toMatch(/integrity check/);
+    // The record is refused, so the card becomes job-errored (no Open/Download); see assetFailures.test.js.
+    expect(byAttr(root, "data-job-error", "RECORD_INTEGRITY_FAILED")[0].textContent).toMatch(/integrity check/);
+    expect(button(root, "open")).toBeNull();
   });
 
   it("409 ASSET_NOT_READY: message, no retry, and the job's status is re-checked once", async () => {
@@ -175,15 +179,109 @@ describe("concept gallery: asset URLs", () => {
     expect(client.count("getAssetUrl")).toBe(0);
   });
 
-  it("an asset body without a url is never downloaded (source answers RESOLVE_FAILED; see open question)", async () => {
+  it("an asset body without a url is never downloaded and never retried (v2.1 RESOLVE_MALFORMED)", async () => {
     const { root, client, downloads } = succeededSetup((j) => () => ({ ok: true, asset: { jobId: j.jobId, index: 0 } }));
     await flush();
     button(root, "download").click();
     await flush();
     expect(downloads).toHaveLength(0);
-    // createCreativeAssetSource reports a malformed body and a network error with the same
-    // status-less RESOLVE_FAILED, so the gallery's single transient retry also fires here.
-    expect(client.count("getAssetUrl")).toBe(2);
-    expect(byAttr(root, "data-asset-error")).toHaveLength(1);
+    // v2.1 answers RESOLVE_MALFORMED (details.cause "malformed", retryable false), so the
+    // gallery's retry (isRetryableResolveError) doesn't fire. Before v2.1 this made 2 calls.
+    expect(client.count("getAssetUrl")).toBe(1);
+    const msg = byAttr(root, "data-asset-error", "RESOLVE_MALFORMED")[0].textContent;
+    expect(msg).toMatch(/couldn't read/);
+    expect(msg).not.toMatch(/try again/i);
+  });
+
+  // ---- v2.1 (b34e259): Download retries exactly when the viewer would ---------
+  const RETRY_TABLE = [
+    ["a network failure", () => networkError(), 2],
+    ["500 INTERNAL", () => errorFor("INTERNAL"), 2],
+    ["502 PROVIDER_UNAVAILABLE", () => errorFor("PROVIDER_UNAVAILABLE"), 2],
+    ["429 PROVIDER_RATE_LIMITED", () => ({ status: 429, code: "PROVIDER_RATE_LIMITED" }), 2],
+    ["503 STORAGE_UNAVAILABLE", () => ({ status: 503, code: "STORAGE_UNAVAILABLE" }), 2],
+    ["503 CREATIVE_STORE_NOT_CONFIGURED", () => errorFor("CREATIVE_STORE_NOT_CONFIGURED"), 1],
+    ["401 MISSING_AUTH", () => errorFor("MISSING_AUTH"), 1],
+    ["403 UNAUTHORIZED", () => ({ status: 403, code: "UNAUTHORIZED" }), 1],
+    ["404 MISSING_JOB", () => errorFor("MISSING_JOB"), 1],
+    ["409 ASSET_NOT_READY", () => errorFor("ASSET_NOT_READY"), 1],
+    ["409 RECORD_INTEGRITY_FAILED", () => errorFor("RECORD_INTEGRITY_FAILED"), 1],
+    ["410 ASSET_UNAVAILABLE", () => errorFor("ASSET_UNAVAILABLE"), 1],
+    ["400 BAD_REQUEST", () => ({ status: 400, code: "BAD_REQUEST" }), 1],
+    ["a malformed body", (j) => ({ ok: true, asset: { jobId: j.jobId, index: 0 } }), 1],
+  ];
+
+  it.each(RETRY_TABLE)("v2.1: Download after %s makes %i asset call(s), the same as isRetryableResolveError says", async (_, failure, calls) => {
+    const job = succeededJob();
+    const answer = () => {
+      const r = failure(job);
+      if (r instanceof Error || r.status) throw r;
+      return r;
+    };
+    const downloads = [];
+    const { root, client, creativeSource } = setup(
+      { listJobs: () => listBody([job]), getJob: () => jobBody(job), getAssetUrl: answer },
+      { startDownload: (d) => downloads.push(d) },
+    );
+    await flush();
+    button(root, "download").click();
+    await flush();
+    expect(client.count("getAssetUrl")).toBe(calls);
+    expect(downloads).toHaveLength(0); // every attempt failed: nothing is downloaded
+    // Cross-check against Asset Engineer's own rule on the real source's error.
+    const err = await creativeSource.resolve(job.jobId, 0).catch((e) => e);
+    expect(isRetryableResolveError(err)).toBe(calls === 2);
+    expect(err.details).toMatchObject({ retryable: calls === 2 });
+  });
+
+  it("v2.1: at most one retry, and each attempt is a fresh resolve that is never stored", async () => {
+    let n = 0;
+    const urls = [];
+    const { root, client, downloads, gallery } = succeededSetup((j) => ({ index }) => {
+      if (n++ % 2 === 0) throw errorFor("INTERNAL");
+      const b = assetBody(j, index);
+      urls.push(b.asset.url);
+      return b;
+    });
+    await flush();
+    button(root, "download").click();
+    await flush();
+    button(root, "download").click();
+    await flush();
+    expect(client.count("getAssetUrl")).toBe(4);
+    expect(downloads.map((d) => d.url)).toEqual(urls);
+    expect(new Set(urls).size).toBe(2);
+    expect(JSON.stringify(gallery.getState())).not.toContain("cdn.fixture.invalid");
+  });
+
+  it("v2.1 (V4): 403 on Download locks the card as Not allowed (no retry, no sign-out); a successful refresh lifts it", async () => {
+    let forbidden = true;
+    const job = succeededJob();
+    const { root, client, gallery } = setup(
+      {
+        listJobs: () => listBody([job]),
+        getJob: () => jobBody(job),
+        getAssetUrl: ({ index }) => {
+          if (forbidden) throw { status: 403, code: "UNAUTHORIZED", message: "Signed in but not allowed." };
+          return assetBody(job, index);
+        },
+      },
+      { startDownload: () => {} },
+    );
+    await flush();
+    button(root, "download").click();
+    await flush();
+    expect(client.count("getAssetUrl")).toBe(1);
+    const c = card(root, job.jobId);
+    expect(byClass(c, "fcg-badge-text")[0].textContent).toBe("Not allowed");
+    expect(byAttr(c, "data-job-error", "UNAUTHORIZED")[0].textContent).toBe(JOB_MESSAGES[ERROR_KIND.FORBIDDEN]);
+    expect(button(c, "download")).toBeNull();
+    expect(announcer(root).textContent).toBe(ASSET_MESSAGES[ERROR_KIND.FORBIDDEN]);
+    expect(announcer(root).textContent).not.toMatch(/^Sign in/);
+    expect(gallery.getState().list).toBe("ready");
+    forbidden = false;
+    await gallery.refresh();
+    await flush();
+    expect(button(card(root, job.jobId), "download")).not.toBeNull();
   });
 });

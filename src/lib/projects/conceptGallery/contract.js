@@ -58,6 +58,12 @@ export const CODE = Object.freeze({
   ASSET_UNAVAILABLE: "ASSET_UNAVAILABLE",
   RECORD_INTEGRITY_FAILED: "RECORD_INTEGRITY_FAILED",
   INTERNAL: "INTERNAL",
+  /**
+   * 403 is not in the contract (only 401 is auth). The persistence layer can answer
+   * 403 UNAUTHORIZED (signed in, not allowed); v2.1's viewer maps it to FORBIDDEN.
+   */
+  UNAUTHORIZED: "UNAUTHORIZED",
+  FORBIDDEN: "FORBIDDEN",
   /** Client-side codes (never sent by the server). */
   NETWORK: "NETWORK",
   SIGNED_OUT: "SIGNED_OUT",

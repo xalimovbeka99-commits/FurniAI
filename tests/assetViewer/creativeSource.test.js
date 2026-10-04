@@ -8,6 +8,7 @@ import {
   creativeFilename,
   DEFAULT_CONCEPT_NOTICE,
   ERROR_MESSAGE,
+  isRetryableResolveError,
   mapCreativeError,
   normalizeConcept,
   normalizeCreativeFormat,
@@ -95,22 +96,27 @@ describe("createCreativeAssetSource.resolve", () => {
     expect(d.format).toBe("glb");
   });
 
-  it("malformed ok bodies -> RESOLVE_FAILED (no url, non-http url, other job, non-JSON 200)", async () => {
+  it("malformed ok bodies -> RESOLVE_MALFORMED, cause 'malformed', not retryable (no url, non-http url, other job, non-JSON 200)", async () => {
     const bodies = [
       { ok: true, asset: { jobId: "j", index: 0, format: "glb" } },
       { ok: true, asset: { jobId: "j", index: 0, url: "javascript:alert(1)", format: "glb" } },
       { ok: true, asset: { jobId: "other", index: 0, url: "https://x.invalid/a.glb" } },
       { ok: true, asset: { jobId: "j", index: 3, url: "https://x.invalid/a.glb" } },
       { ok: true },
+      { ok: false, code: "MISSING_JOB" }, // an error body behind a 200 is not an answer either
       undefined,
     ];
     for (const b of bodies) {
       const src = createCreativeAssetSource({ fetchImpl: jsonFetch(200, b), getAuthToken: () => "t" });
-      await expect(src.resolve("j", 0)).rejects.toMatchObject({ code: "RESOLVE_FAILED" });
+      const e = await src.resolve("j", 0).catch((x) => x);
+      expect(e).toMatchObject({ code: "RESOLVE_MALFORMED", message: ERROR_MESSAGE.RESOLVE_MALFORMED, details: { cause: "malformed", retryable: false } });
+      expect(isRetryableResolveError(e)).toBe(false);
     }
+    const g = createCreativeAssetSource({ fetchImpl: jsonFetch(200, { ok: true }), getAuthToken: () => "t" });
+    await expect(g.getJob("j")).rejects.toMatchObject({ code: "RESOLVE_MALFORMED", details: { cause: "malformed" } });
   });
 
-  it("network error -> RESOLVE_FAILED with any address redacted from detail", async () => {
+  it("network error -> RESOLVE_FAILED, cause 'network', retryable, with any address redacted from detail", async () => {
     const src = createCreativeAssetSource({
       fetchImpl: async () => {
         throw new TypeError("Failed to fetch https://cdn.example/secret?X-Sig=abc");
@@ -119,6 +125,8 @@ describe("createCreativeAssetSource.resolve", () => {
     });
     const e = await src.resolve("j", 0).catch((x) => x);
     expect(e.code).toBe("RESOLVE_FAILED");
+    expect(e.details).toEqual({ cause: "network", retryable: true });
+    expect(isRetryableResolveError(e)).toBe(true);
     expect(e.detail).not.toMatch(/https?:|X-Sig/);
   });
 });
@@ -126,7 +134,8 @@ describe("createCreativeAssetSource.resolve", () => {
 describe("error mapping switches on `code`, not message text or bare status", () => {
   const cases = [
     [401, "MISSING_AUTH", "SIGN_IN_REQUIRED"],
-    [403, "UNAUTHORIZED", "SIGN_IN_REQUIRED"],
+    [403, "UNAUTHORIZED", "FORBIDDEN"],
+    [403, "FORBIDDEN", "FORBIDDEN"],
     [503, "AUTH_UNAVAILABLE", "SIGN_IN_UNAVAILABLE"],
     [503, "PERSISTENCE_NOT_CONFIGURED", "CONCEPTS_NOT_CONFIGURED"],
     [503, "CREATIVE_NOT_CONFIGURED", "CONCEPTS_NOT_CONFIGURED"],
@@ -159,6 +168,45 @@ describe("error mapping switches on `code`, not message text or bare status", ()
     expect(e.message).not.toContain(code);
     expect(e.message).not.toMatch(/design|three|gltf|webgl|undefined|null/i);
     expect(e.jobStatus).toBe("processing");
+    expect(e.details).toEqual({ cause: "http", retryable: RETRYABLE.has(code) });
+  });
+
+  // The viewer's default resolve-retry rule (V1): network, 5xx and 429 only, minus states a retry can't change.
+  const RETRYABLE = new Set([
+    "AUTH_UNAVAILABLE",
+    "STORAGE_UNAVAILABLE",
+    "PROVIDER_UNAVAILABLE",
+    "PROVIDER_AUTH_REJECTED",
+    "PROVIDER_UNEXPECTED_RESPONSE",
+    "PROVIDER_REJECTED_REQUEST",
+    "PROVIDER_RATE_LIMITED",
+    "INTERNAL",
+  ]);
+
+  it("isRetryableResolveError: retry network/5xx/429; never 401/402/403/404/409/410, not-configured, malformed or abort", () => {
+    expect(isRetryableResolveError(mapCreativeError(502, null))).toBe(true);
+    expect(isRetryableResolveError(mapCreativeError(503, null))).toBe(true);
+    expect(isRetryableResolveError(mapCreativeError(429, null))).toBe(true);
+    for (const st of [400, 401, 402, 403, 404, 409, 410, 418]) expect(isRetryableResolveError(mapCreativeError(st, null)), String(st)).toBe(false);
+    expect(isRetryableResolveError(mapCreativeError(503, { code: "CREATIVE_NOT_CONFIGURED" }))).toBe(false);
+    expect(isRetryableResolveError(mapCreativeError(500, { code: "RECORD_INTEGRITY_FAILED" }))).toBe(false); // the code wins over a wrong status
+    const abort = new Error("aborted");
+    abort.name = "AbortError";
+    for (const x of [abort, null, undefined, "x", new Error("plain"), { code: "SIGN_IN_REQUIRED" }]) expect(isRetryableResolveError(x)).toBe(false);
+    // a custom source without details.cause: the HTTP status decides
+    expect(isRetryableResolveError({ code: "SERVICE_UNAVAILABLE", status: 503 })).toBe(true);
+    expect(isRetryableResolveError({ code: "ASSET_UNAVAILABLE", status: 410 })).toBe(false);
+  });
+
+  it("403 is never 'signed out': FORBIDDEN with an honest message, distinct from 401 (V4)", async () => {
+    for (const body of [{ ok: false, code: "UNAUTHORIZED", error: "x" }, { ok: false, code: "FORBIDDEN" }, null]) {
+      const src = createCreativeAssetSource({ fetchImpl: jsonFetch(403, body === null ? undefined : body), getAuthToken: () => "t" });
+      const e = await src.resolve("j", 0).catch((x) => x);
+      expect(e).toMatchObject({ code: "FORBIDDEN", status: 403, message: ERROR_MESSAGE.FORBIDDEN, details: { cause: "http", retryable: false } });
+      expect(e.message).not.toBe(ERROR_MESSAGE.SIGN_IN_REQUIRED);
+      expect(e.message).not.toMatch(/please sign in/i);
+    }
+    expect(mapCreativeError(401, null).code).toBe("SIGN_IN_REQUIRED");
   });
 
   it("the two 409s are told apart by code", () => {
@@ -168,6 +216,7 @@ describe("error mapping switches on `code`, not message text or bare status", ()
 
   it("no code at all (proxy/HTML error page) falls back to HTTP status class", () => {
     expect(mapCreativeError(401, null).code).toBe("SIGN_IN_REQUIRED");
+    expect(mapCreativeError(403, null).code).toBe("FORBIDDEN");
     expect(mapCreativeError(404, null).code).toBe("CONCEPT_NOT_FOUND");
     expect(mapCreativeError(410, {}).code).toBe("ASSET_UNAVAILABLE");
     expect(mapCreativeError(503, null).code).toBe("SERVICE_UNAVAILABLE");
@@ -215,6 +264,18 @@ describe("helpers", () => {
     }
     expect(DEFAULT_CONCEPT_NOTICE).toMatch(/AI-generated visual concept/);
     expect(DEFAULT_CONCEPT_NOTICE).toMatch(/no verified measurements/);
+  });
+
+  it("V3: the fallback notice is the server's CONCEPT_NOTICE text exactly (creativeService.js @ 7f42f95)", () => {
+    expect(DEFAULT_CONCEPT_NOTICE).toBe(SIM_CONCEPT.notice);
+    expect(DEFAULT_CONCEPT_NOTICE).toBe(
+      "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.",
+    );
+  });
+
+  it("V3: a server notice is kept verbatim (no trimming, collapsing or truncation)", () => {
+    const odd = `  Server wording v9:\n  AI concept,   NOT a design.  ${"x".repeat(700)} `;
+    expect(normalizeConcept({ notice: odd })).toMatchObject({ notice: odd, noticeSource: "server" });
   });
 
   it("formats: only the backend's list, lower-cased; anything else is null", () => {
