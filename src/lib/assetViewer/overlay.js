@@ -7,6 +7,8 @@
  *
  * Contract UI rule (§1): `concept.notice` is visible whenever a concept is on
  * screen or offered for download. No dimensions are ever shown.
+ * `renderConceptNotice: false` (mount option) hides ONLY this overlay's copy
+ * of the notice, for a host that renders it itself and so must always show it.
  */
 import { RELATIVE_SCALE_LABEL } from "./scale.js";
 
@@ -35,7 +37,7 @@ export function downloadOnlyText(format) {
     : "Preview isn't available for this file type. You can still download the file.";
 }
 
-export function createOverlay(doc, root, { onDownload } = {}) {
+export function createOverlay(doc, root, { onDownload, renderConceptNotice = true } = {}) {
   const stack = doc.createElement("div");
   stack.setAttribute("data-av-top", "");
   stack.style.cssText =
@@ -43,6 +45,7 @@ export function createOverlay(doc, root, { onDownload } = {}) {
 
   const concept = doc.createElement("div");
   concept.setAttribute("data-av-concept", "");
+  if (!renderConceptNotice) concept.setAttribute("data-av-concept-host-rendered", "");
   concept.setAttribute("role", "note");
   concept.style.cssText = FONT + BOX + "background:#fff4d6;color:#4a3800;border:1px solid #e0c060;max-width:100%;font-size:12px;";
 
@@ -82,7 +85,8 @@ export function createOverlay(doc, root, { onDownload } = {}) {
     update(state) {
       status.setAttribute("data-av-state", state.status);
       // The concept notice is shown in EVERY state that carries a concept (loading, ready, download-only, error).
-      show(concept, state.concept && state.status !== "disposed" && state.status !== "idle" ? state.concept.notice : "");
+      // With renderConceptNotice:false the host shows it (from getState().concept.notice) instead.
+      show(concept, renderConceptNotice && state.concept && state.status !== "disposed" && state.status !== "idle" ? state.concept.notice : "");
       const canDownload = Boolean(state.actions && state.actions.download);
       let offerButton = false;
 

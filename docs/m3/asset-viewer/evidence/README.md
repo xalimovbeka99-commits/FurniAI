@@ -69,6 +69,12 @@ The page passes `getAuthToken: () => "sim-token"`. The stand-in rejects any call
 without that Bearer token (401 `MISSING_AUTH`). Its signed addresses are **single use**:
 a second GET of the same address gets a 403, so reusing a url would show up as a failure.
 
+**v2.1 note:** these SIMULATED captures were taken at `24f6721`, before the v2.1 hardening
+(V1–V6). They were not re-captured. None of the 14 steps goes through a path that v2.1
+changed: there is no 5xx or network failure on resolve, no 403 API answer and no malformed
+body. The 410 and 409 steps are still not retried. The notice shown is the stand-in's
+verbatim server text, which is also the v2.1 fallback. The video was not regenerated.
+
 | file | shows |
 |---|---|
 | `creative/01-processing.png` | `watchJob("sim-processing")`: `loading:job-processing`, "Generating 3D concept… This can take a few minutes." The stand-in sends `providerProgress: 0.37`; it is not shown and no % appears anywhere (`noPercentage: true`, `progress: null`) |

@@ -17,6 +17,12 @@
  *   Each resolve() is one GET with a freshly obtained Bearer token.
  * - Errors are mapped by the response `code`, never by message text (the
  *   auth messages mention "design"; 409 is shared by two codes).
+ * - Every resolve failure carries `details.cause`: "network" (transport,
+ *   RESOLVE_FAILED), "malformed" (a 2xx without a usable body,
+ *   RESOLVE_MALFORMED) or "http" (an error answer, mapped by code), plus
+ *   `details.retryable` from isRetryableResolveError(). The viewer re-resolves
+ *   ONCE on a retryable failure; hosts calling resolve() themselves should
+ *   use the same predicate.
  * - Only glb/gltf are viewable; every other format (or null) is download-only.
  */
 import { AssetViewerError } from "./errors.js";
@@ -40,24 +46,27 @@ export const MIME_BY_FORMAT = Object.freeze({
 });
 
 /**
- * Used ONLY when a response lacks `concept.notice` (the contract says every
- * job/asset response carries one). Deliberately as strict as the server's.
+ * Fallback used ONLY when a response lacks a non-blank `concept.notice` (the
+ * contract says every job/asset response carries one). Character-for-character
+ * copy of CONCEPT_NOTICE.notice in src/lib/creative/creativeService.js (backend
+ * bundle 7f42f95, line 36), so the fallback never drifts from the server's text.
  */
 export const DEFAULT_CONCEPT_NOTICE =
-  "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable parts, and cannot be manufactured from.";
+  "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.";
 
 const CONCEPT_FLAGS = ["editable", "dimensionsVerified", "partsSeparable", "manufacturable"];
-const MAX_NOTICE_CHARS = 600;
 const MAX_JOB_MESSAGE_CHARS = 300;
 
 /**
  * Normalised concept block for viewer state. Flags are reported as the
  * server sent them (booleans only, default false), but the viewer never
  * acts on a `true`: no dimensions, no editing, no export, whatever they say.
+ * A non-blank server `notice` is kept VERBATIM (no trimming, collapsing or
+ * truncation; it is only ever rendered with textContent).
  */
 export function normalizeConcept(concept) {
   const c = concept && typeof concept === "object" ? concept : null;
-  const notice = c && typeof c.notice === "string" ? c.notice.replace(/\s+/g, " ").trim().slice(0, MAX_NOTICE_CHARS) : "";
+  const notice = c && typeof c.notice === "string" && c.notice.trim() ? c.notice : "";
   const out = { kind: c && typeof c.kind === "string" && c.kind ? c.kind : "visual_concept" };
   for (const k of CONCEPT_FLAGS) out[k] = c && typeof c[k] === "boolean" ? c[k] : false;
   out.notice = notice || DEFAULT_CONCEPT_NOTICE;
@@ -98,7 +107,9 @@ export function redactUrls(text) {
 
 const CODE_MAP = Object.freeze({
   MISSING_AUTH: "SIGN_IN_REQUIRED",
-  UNAUTHORIZED: "SIGN_IN_REQUIRED",
+  // persistence/errors.js answers UNAUTHORIZED with 403: signed in, not allowed. Not "please sign in".
+  UNAUTHORIZED: "FORBIDDEN",
+  FORBIDDEN: "FORBIDDEN",
   AUTH_UNAVAILABLE: "SIGN_IN_UNAVAILABLE",
   PERSISTENCE_NOT_CONFIGURED: "CONCEPTS_NOT_CONFIGURED",
   CREATIVE_NOT_CONFIGURED: "CONCEPTS_NOT_CONFIGURED",
@@ -118,9 +129,10 @@ const CODE_MAP = Object.freeze({
   PROVIDER_INSUFFICIENT_CREDITS: "PROVIDER_UNAVAILABLE",
 });
 
-/** Fallback when a response carries no `code` at all (e.g. a proxy error page). */
+/** Fallback when a response carries no `code` at all (e.g. a proxy error page). Only 401 means signed out. */
 function codeForStatus(status) {
-  if (status === 401 || status === 403) return "SIGN_IN_REQUIRED";
+  if (status === 401) return "SIGN_IN_REQUIRED";
+  if (status === 403) return "FORBIDDEN";
   if (status === 404) return "CONCEPT_NOT_FOUND";
   if (status === 410) return "ASSET_UNAVAILABLE";
   if (status >= 500) return "SERVICE_UNAVAILABLE";
@@ -128,9 +140,58 @@ function codeForStatus(status) {
 }
 
 /**
+ * Viewer codes that a second identical GET cannot change, whatever the HTTP
+ * status says: auth/permission, not-found/gone/not-ready, integrity, a bad
+ * request, and a deployment that is not set up (503 *_NOT_CONFIGURED).
+ */
+const NEVER_RETRY_CODES = new Set([
+  "SIGN_IN_REQUIRED",
+  "FORBIDDEN",
+  "CONCEPT_NOT_FOUND",
+  "ASSET_NOT_READY",
+  "ASSET_UNAVAILABLE",
+  "RECORD_INTEGRITY_FAILED",
+  "INVALID_ASSET",
+  "CONCEPTS_NOT_CONFIGURED",
+  "RESOLVE_MALFORMED",
+]);
+
+/**
+ * The viewer's default resolve-retry rule (contract §2.5 only says "if a load
+ * fails, call it again once"; it is silent on a failed resolve):
+ *   retry ONCE on a network/transport error, any 5xx, or 429
+ *   (incl. PROVIDER_UNAVAILABLE / PROVIDER_AUTH_REJECTED / ... 502, PROVIDER_RATE_LIMITED 429,
+ *   AUTH_UNAVAILABLE / STORAGE_UNAVAILABLE 503, INTERNAL 500);
+ *   never on 401/402/403/404/409/410, ASSET_NOT_READY, RECORD_INTEGRITY_FAILED,
+ *   a malformed body, *_NOT_CONFIGURED, a missing token or an abort.
+ * Accepts errors from custom sources too: without `details.cause`, the HTTP `status` decides.
+ */
+export function isRetryableResolveError(err) {
+  if (!err || typeof err !== "object") return false;
+  if (err.name === "AbortError" || err.code === 20) return false;
+  const cause = err.details && typeof err.details === "object" ? err.details.cause : undefined;
+  if (cause === "network") return true;
+  if (cause === "malformed") return false;
+  if (NEVER_RETRY_CODES.has(err.code)) return false;
+  const s = err.status;
+  return Number.isInteger(s) && (s === 429 || (s >= 500 && s <= 599));
+}
+
+function withCause(err, cause) {
+  err.details = { cause };
+  err.details.retryable = isRetryableResolveError(err);
+  return err;
+}
+
+function malformed(detail, extra) {
+  return withCause(new AssetViewerError("RESOLVE_MALFORMED", detail, extra), "malformed");
+}
+
+/**
  * Maps an /api/creative error response to an AssetViewerError. Switches on
  * `body.code`; HTTP status is only consulted when there is no code. Unknown
- * codes (incl. INTERNAL) become RESOLVE_FAILED.
+ * codes (incl. INTERNAL) become RESOLVE_FAILED. `details.cause` is "http".
+ * The server's own `details` are not copied (only `jobStatus` is kept).
  */
 export function mapCreativeError(status, body) {
   const serverCode = body && typeof body.code === "string" && body.code ? body.code : null;
@@ -138,7 +199,7 @@ export function mapCreativeError(status, body) {
   const extra = { status, serverCode };
   const details = body && body.details && typeof body.details === "object" ? body.details : null;
   if (details && typeof details.jobStatus === "string") extra.jobStatus = details.jobStatus;
-  return new AssetViewerError(viewerCode, `/api/creative HTTP ${status} ${serverCode || "(no code)"}`, extra);
+  return withCause(new AssetViewerError(viewerCode, `/api/creative HTTP ${status} ${serverCode || "(no code)"}`, extra), "http");
 }
 
 async function readJson(res) {
@@ -180,11 +241,11 @@ export function createCreativeAssetSource({ fetchImpl, getAuthToken, baseUrl = D
       });
     } catch (e) {
       if (e && (e.name === "AbortError" || e.code === 20)) throw e;
-      throw new AssetViewerError("RESOLVE_FAILED", redactUrls(`network error: ${e && e.message ? e.message : e}`));
+      throw withCause(new AssetViewerError("RESOLVE_FAILED", redactUrls(`network error: ${e && e.message ? e.message : e}`)), "network");
     }
     const body = await readJson(res);
     if (!res.ok || !body || body.ok !== true) {
-      if (res.ok) throw new AssetViewerError("RESOLVE_FAILED", `/api/creative HTTP ${res.status}: body is not an ok:true JSON object`, { status: res.status });
+      if (res.ok) throw malformed(`/api/creative HTTP ${res.status}: body is not an ok:true JSON object`, { status: res.status });
       throw mapCreativeError(res.status, body);
     }
     return body;
@@ -201,10 +262,10 @@ export function createCreativeAssetSource({ fetchImpl, getAuthToken, baseUrl = D
     const body = await call({ resource: "asset", jobId: jobId.trim(), index: String(i) }, signal);
     const a = body.asset;
     if (!a || typeof a !== "object" || typeof a.url !== "string" || !/^https?:\/\//i.test(a.url)) {
-      throw new AssetViewerError("RESOLVE_FAILED", "asset response has no http(s) url");
+      throw malformed("asset response has no http(s) url", { status: 200 });
     }
     if ((a.jobId !== undefined && a.jobId !== jobId.trim()) || (a.index !== undefined && a.index !== i)) {
-      throw new AssetViewerError("RESOLVE_FAILED", "asset response is for a different job/index");
+      throw malformed("asset response is for a different job/index", { status: 200 });
     }
     const format = normalizeCreativeFormat(a.format);
     return {
@@ -226,7 +287,7 @@ export function createCreativeAssetSource({ fetchImpl, getAuthToken, baseUrl = D
   async function getJob(jobId, { signal } = {}) {
     if (typeof jobId !== "string" || !jobId.trim()) throw new AssetViewerError("INVALID_ASSET", "jobId is required");
     const body = await call({ resource: "jobs", jobId: jobId.trim() }, signal);
-    if (!body.job || typeof body.job !== "object") throw new AssetViewerError("RESOLVE_FAILED", "jobs response has no job object");
+    if (!body.job || typeof body.job !== "object") throw malformed("jobs response has no job object", { status: 200 });
     return { job: body.job, refresh: body.refresh && typeof body.refresh === "object" ? body.refresh : null };
   }
 

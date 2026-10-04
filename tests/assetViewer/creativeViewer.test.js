@@ -196,18 +196,18 @@ describe("failure after resolve: ONE fresh resolve + ONE retry, then an honest e
 
 describe("resolve errors -> distinct viewer codes, concept notice still shown", () => {
   it.each([
-    ["sim-gone", "ASSET_UNAVAILABLE", 410],
-    ["sim-integrity", "RECORD_INTEGRITY_FAILED", 409],
-    ["sim-processing", "ASSET_NOT_READY", 409],
-    ["sim-provider-down", "PROVIDER_UNAVAILABLE", 502],
-    ["no-such-job", "CONCEPT_NOT_FOUND", 404],
-  ])("%s -> %s", async (jobId, code, status) => {
+    ["sim-gone", "ASSET_UNAVAILABLE", 410, 1],
+    ["sim-integrity", "RECORD_INTEGRITY_FAILED", 409, 1],
+    ["sim-processing", "ASSET_NOT_READY", 409, 1],
+    ["sim-provider-down", "PROVIDER_UNAVAILABLE", 502, 2], // v2.1 (V1): a 502 is re-resolved ONCE, then reported
+    ["no-such-job", "CONCEPT_NOT_FOUND", 404, 1],
+  ])("%s -> %s", async (jobId, code, status, resolves) => {
     const t = mountCreative();
     const r = await t.viewer.load({ jobId, index: 0, format: "glb" });
     expect(r.ok).toBe(false);
     expect(t.viewer.getState()).toMatchObject({ status: "error", error: { code, status, message: ERROR_MESSAGE[code] }, actions: { download: false } });
     expect(t.cdnCalls).toHaveLength(0);
-    expect(t.sim.count("api", "asset")).toBe(1); // a resolve error is final: no blind retry
+    expect(t.sim.count("api", "asset")).toBe(resolves); // non-retryable: final at once; retryable: exactly one more resolve
     const o = overlayText(t);
     expect(o.status.textContent).toBe(ERROR_MESSAGE[code]);
     expect(o.concept.textContent).toBe(DEFAULT_CONCEPT_NOTICE); // server never sent a concept for this load
@@ -231,12 +231,17 @@ describe("resolve errors -> distinct viewer codes, concept notice still shown", 
   it("503s: AUTH_UNAVAILABLE, PERSISTENCE_NOT_CONFIGURED, STORAGE_UNAVAILABLE map to distinct codes", async () => {
     const t = mountCreative();
     const seen = [];
-    for (const code of ["AUTH_UNAVAILABLE", "PERSISTENCE_NOT_CONFIGURED", "STORAGE_UNAVAILABLE", "CREATIVE_NOT_CONFIGURED"]) {
-      t.sim.failNext({ resource: "asset", status: 503, code });
+    const calls = [];
+    // Transient 503s are re-resolved once (so they must fail twice to be reported); *_NOT_CONFIGURED is not retried.
+    for (const [code, times] of [["AUTH_UNAVAILABLE", 2], ["PERSISTENCE_NOT_CONFIGURED", 1], ["STORAGE_UNAVAILABLE", 2], ["CREATIVE_NOT_CONFIGURED", 1]]) {
+      for (let i = 0; i < times; i++) t.sim.failNext({ resource: "asset", status: 503, code });
+      const before = t.sim.count("api", "asset");
       await t.viewer.load({ jobId: "sim-glb-chair", index: 0 });
       seen.push(t.viewer.getState().error.code);
+      calls.push(t.sim.count("api", "asset") - before);
     }
     expect(seen).toEqual(["SIGN_IN_UNAVAILABLE", "CONCEPTS_NOT_CONFIGURED", "SERVICE_UNAVAILABLE", "CONCEPTS_NOT_CONFIGURED"]);
+    expect(calls).toEqual([2, 1, 2, 1]);
     t.viewer.dispose();
   });
 
@@ -380,6 +385,64 @@ describe("concept honesty: notice always, no dimensions, no builder/export/produ
     expect(u.container.find("data-av-concept").textContent).toBe(DEFAULT_CONCEPT_NOTICE);
     u.viewer.dispose();
     t.viewer.dispose();
+  });
+});
+
+describe("v2.1: server notice verbatim (V3), 403 is FORBIDDEN not signed-out (V4)", () => {
+  it("V3: the server's concept.notice is rendered verbatim, not the viewer's own text", async () => {
+    const t = mountCreative();
+    const serverNotice = "SIMULATED server wording (test only):  AI-generated visual concept,  not a FurniAI design. No verified measurements.";
+    const resolve = t.source.resolve;
+    // Wrap the real adapter so normalizeConcept runs on the server text exactly as the HTTP path would.
+    const { normalizeConcept } = await import("../../src/lib/assetViewer/index.js");
+    const src = { resolve: async (...a) => ({ ...(await resolve(...a)), concept: normalizeConcept({ ...SIM_CONCEPT, notice: serverNotice }) }) };
+    const { mountForTest } = await import("./helpers/mountHarness.js");
+    const u = mountForTest({ options: { fetch: t.sim.fetch, creativeSource: src } });
+    await u.viewer.load({ jobId: "sim-glb-chair", index: 0 });
+    expect(u.viewer.getState().concept).toMatchObject({ notice: serverNotice, noticeSource: "server" });
+    const node = u.container.find("data-av-concept");
+    expect(node.textContent).toBe(serverNotice);
+    expect(node.textContent).not.toBe(DEFAULT_CONCEPT_NOTICE);
+    u.viewer.dispose();
+    t.viewer.dispose();
+  });
+
+  it("V3: through the HTTP adapter, the stand-in's verbatim CONCEPT_NOTICE reaches the overlay unchanged", async () => {
+    const t = mountCreative();
+    await t.viewer.load({ jobId: "sim-fbx", index: 0 });
+    expect(overlayText(t).concept.textContent).toBe(SIM_CONCEPT.notice);
+    expect(t.viewer.getState().concept.noticeSource).toBe("server");
+    t.viewer.dispose();
+  });
+
+  it("V4: HTTP 403 (UNAUTHORIZED / FORBIDDEN / no code) -> FORBIDDEN state with an honest message, never 'please sign in'", async () => {
+    for (const forced of [{ status: 403, code: "UNAUTHORIZED" }, { status: 403, code: "FORBIDDEN" }]) {
+      const t = mountCreative();
+      t.sim.failNext({ resource: "asset", ...forced });
+      const r = await t.viewer.load({ jobId: "sim-glb-chair", index: 0, format: "glb" });
+      expect(r.ok).toBe(false);
+      expect(t.viewer.getState()).toMatchObject({
+        status: "error",
+        error: { code: "FORBIDDEN", status: 403, serverCode: forced.code, message: ERROR_MESSAGE.FORBIDDEN, details: { cause: "http", retryable: false } },
+        actions: { download: false },
+      });
+      expect(t.sim.count("api", "asset")).toBe(1); // not retried
+      const o = overlayText(t);
+      expect(o.status.textContent).toBe(ERROR_MESSAGE.FORBIDDEN);
+      expect(o.status.textContent).not.toMatch(/please sign in/i);
+      expect(o.concept.textContent).toBe(DEFAULT_CONCEPT_NOTICE);
+      t.viewer.dispose();
+    }
+    // A bare 403 from a proxy (no JSON code) is FORBIDDEN too; a 401 stays SIGN_IN_REQUIRED.
+    const { mountForTest } = await import("./helpers/mountHarness.js");
+    const { createCreativeAssetSource } = await import("../../src/lib/assetViewer/index.js");
+    for (const [status, code] of [[403, "FORBIDDEN"], [401, "SIGN_IN_REQUIRED"]]) {
+      const source = createCreativeAssetSource({ fetchImpl: async () => new Response("<html>denied</html>", { status }), getAuthToken: () => "t" });
+      const u = mountForTest({ options: { creativeSource: source } });
+      await u.viewer.load({ jobId: "j", index: 0 });
+      expect(u.viewer.getState().error).toMatchObject({ code, status, message: ERROR_MESSAGE[code] });
+      u.viewer.dispose();
+    }
   });
 });
 

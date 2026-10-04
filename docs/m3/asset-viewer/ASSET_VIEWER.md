@@ -6,6 +6,11 @@
 **PROPOSED** `/api/creative` contract (`docs/creative/SCENARIO_3D_API_CONTRACT.md` in
 the Claude backend bundle, §12 below).
 
+**v2.1 hardening (V1–V6)** sits on top of `f971fae` and changes retry, error codes,
+the notice fallback, `download(ref)` and `renderConceptNotice`. See the
+[changelog](#changelog) at the end. All evidence is still **SIMULATED** (fixtures and a
+local stand-in). No Scenario request of any kind has been made.
+
 **The viewer is NOT attached to any page.** Mounting waits for Antigravity to
 confirm the runtime. Their redesign tip `8744d07` is not available here, so mount point and
 runtime compatibility are unverified.
@@ -96,7 +101,8 @@ const v = mountAssetViewer(el, { three, deps, creativeSource });
 await v.load({ jobId, index: 0, format: "glb" });   // resolve -> glb/gltf: load | other: download-only
 await v.load({ job });                              // a job object from GET ?resource=jobs&jobId=
 await v.watchJob(jobId);                            // polls every 3-5 s until terminal, then shows it
-await v.download({ save: true });                   // re-resolves a FRESH url first
+await v.download({ save: true });                   // current item: re-resolves a FRESH url first
+await v.download({ jobId, index: 1, save: true });  // any item (e.g. another gallery tile), state untouched
 ```
 
 The **contract** is `load`, `dispose` and `onError`. These extras are also available:
@@ -107,7 +113,8 @@ The **contract** is `load`, `dispose` and `onError`. These extras are also avail
 | `fitToView()` | re-frames the model and keeps the current orbit direction. Returns the fit numbers, or `null` when no model is loaded |
 | `getState()` | JSON-safe snapshot (§4) |
 | `on(event, cb)` | `statechange`, `progress`, `ready`, `error`, `dispose`. Returns an unsubscribe function. Unknown event names throw |
-| `download({ save? })` | local item: original bytes plus filename and mime, synchronously (§7). Concept: a **Promise**. It re-resolves a fresh url and returns `{ ok, url, filename, … }`. Returns `null` when nothing can be downloaded |
+| `download({ save? })` | local item: original bytes plus filename and mime, synchronously (§7). Concept: a **Promise**. It re-resolves a fresh url (and once more on a retryable failure, §12.4) and returns `{ ok, url, filename, …, attempts }`. Returns `null` when nothing can be downloaded or the viewer is disposed |
+| `download({ jobId, index = 0, save? })` | v2.1: an explicit `/api/creative` reference. Downloads **any** item, not just the one on screen, in any viewer state (idle, ready, error…). Same fresh-resolve and retry rule. It never changes the displayed item or state. Needs `creativeSource`; without one it gives `{ ok:false, error:{ code:"MISSING_DEPENDENCY" } }`. With no `jobId`, the current item is the target, as before |
 | `showJob(job, { index? })` | renders a job object (§12.4). Same as `load({ job, index })` |
 | `watchJob(jobId, { index?, intervalMs=4000 })` | polls `getJob`. The interval is clamped to 3–5 s. Polling is superseded by any later load, clear or dispose |
 
@@ -134,6 +141,7 @@ The **contract** is `load`, `dispose` and `onError`. These extras are also avail
 | `fov` | 40 | |
 | `ui` | `true` | built-in status overlay and scale badge. `false` lets the host render its own UI from events |
 | `creativeSource` | none | `createCreativeAssetSource(...)` (§12). Required for `{ jobId }` references and jobs. Without it you get `MISSING_DEPENDENCY` |
+| `renderConceptNotice` | `true` | v2.1. `false` hides **only** the overlay's `concept.notice` banner, for a host that renders the notice itself (so it doesn't show twice). `getState().concept.notice` and every `statechange` still carry the text. **With `false` (or `ui:false`) the host is responsible for always showing `concept.notice`** wherever the concept is shown or offered for download (contract §1 UI rule) |
 | `setTimeout` / `clearTimeout` | globals | polling timers, injectable for tests |
 | `createRenderer`, `requestAnimationFrame`, `cancelAnimationFrame` | browser defaults | injection points for tests |
 
@@ -166,7 +174,8 @@ idle ──load()──▶ loading{phase: fetching ─▶ parsing} ──▶ rea
 any ── dispose() ──▶ disposed (terminal; load() → VIEWER_DISPOSED)
 
 concept: loading{job-checking | job-submitting | job-processing}      (no %)
-         ─▶ loading{resolving ─▶ fetching ─▶ parsing [─▶ retrying ─▶ fetching ─▶ parsing]}
+         ─▶ loading{resolving [─▶ retrying (resolve, v2.1)] ─▶ fetching ─▶ parsing
+                    [─▶ retrying ─▶ fetching ─▶ parsing]}
          ─▶ ready | download-only | error
 ```
 
@@ -194,14 +203,25 @@ concept: loading{job-checking | job-submitting | job-processing}      (no %)
 | `MISSING_DEPENDENCY` | `three` or a required loader class was not injected | The 3D viewer isn't fully set up on this page. |
 | `VIEWER_DISPOSED` | `load()` after `dispose()` | The 3D viewer has been closed. |
 
-The concept codes (§12.3) are `SIGN_IN_REQUIRED`, `SIGN_IN_UNAVAILABLE`,
+The concept codes (§12.3) are `SIGN_IN_REQUIRED`, `SIGN_IN_UNAVAILABLE`, `FORBIDDEN` (v2.1),
 `CONCEPTS_NOT_CONFIGURED`, `SERVICE_UNAVAILABLE`, `PROVIDER_UNAVAILABLE`,
 `CONCEPT_NOT_FOUND`, `ASSET_NOT_READY`, `ASSET_UNAVAILABLE`,
-`RECORD_INTEGRITY_FAILED`, `RESOLVE_FAILED`, `ASSET_DISPLAY_FAILED`,
+`RECORD_INTEGRITY_FAILED`, `RESOLVE_FAILED`, `RESOLVE_MALFORMED` (v2.1), `ASSET_DISPLAY_FAILED`,
 `GENERATION_FAILED`, `SUBMISSION_UNKNOWN` and `JOB_STATUS_UNKNOWN`.
 
 An error record can carry these extra fields: `status`, `serverCode` (the backend's `code`),
-`jobStatus`, `downloadAvailable`, `chargeMayHaveOccurred`, `autoRetry:false` and `attempts`.
+`jobStatus`, `downloadAvailable`, `chargeMayHaveOccurred`, `autoRetry:false`, `attempts` and
+(v2.1, resolve failures) `details: { cause: "network" | "malformed" | "http", retryable }`.
+
+**Backwards compatibility (v2.1).** No code was removed or renamed. Two cases now get a new,
+more specific code. Hosts that switch on these should add the new code next to the old one.
+A host with a generic fallback keeps working, because every code has a customer-safe `message`.
+
+| situation | before v2.1 | v2.1 |
+|---|---|---|
+| HTTP 403 (`UNAUTHORIZED`, `FORBIDDEN`, or no code) | `SIGN_IN_REQUIRED` | `FORBIDDEN` |
+| 2xx with a malformed or invalid body | `RESOLVE_FAILED` | `RESOLVE_MALFORMED` |
+| network or transport error; unknown server code / `INTERNAL` | `RESOLVE_FAILED` | `RESOLVE_FAILED` (unchanged, now with `details.cause`) |
 
 `detail` is for developers and logs, for example `"Invalid typed array length: 2048"`. It is never rendered.
 
@@ -297,7 +317,10 @@ These are the **original bytes**. Nothing is re-exported or converted.
   avoids this, which is one more reason to prefer it.
 
 - **Concepts** never keep bytes or the url. `download()` calls `?resource=asset`
-  again and gets a fresh address. With `save:true` it clicks a temporary
+  again and gets a fresh address. On a retryable failure (§12.4) it calls once more,
+  again for a **fresh** address; it never falls back to an earlier url. The result carries
+  `attempts: { resolve }`. `download({ jobId, index })` (v2.1) does the same for any item and
+  leaves the displayed item and state untouched. With `save:true` it clicks a temporary
   `<a href download target=_blank rel="noopener noreferrer">`. A navigation is not
   subject to CORS, so this can work even when display failed (U7).
   Cross-origin addresses ignore the `download` filename, so the provider may choose
@@ -400,7 +423,10 @@ await build({
     onError: (e) => studioToast(e.message),                        // e.code / e.serverCode for analytics
   });
   viewer.watchJob(jobIdFromPostJobs);       // or viewer.load({ jobId, index: 0, format })
-  // download button (host-owned): await viewer.download({ save: true });   // fresh url each time
+  // download button (host-owned): await viewer.download({ save: true });   // fresh url each time, one retry
+  // another tile:                    await viewer.download({ jobId, index, save: true });
+  // host shows concept.notice itself? mount with renderConceptNotice:false and ALWAYS render
+  //   viewer.getState().concept.notice (or the download result's concept.notice) yourself
   // NEVER: open in builder, show dimensions, export/production (state.actions says false)
   // leaving the panel:  viewer.dispose();
 </script>
@@ -412,7 +438,8 @@ that calls `mountAssetViewer(ref.current, { three: THREE, deps })` and returns
 
 ## 11. Tests, demo, evidence
 
-- `npx vitest run --config tests/assetViewer/vitest.config.js` runs **152 tests in 13 files**.
+- `npx vitest run --config tests/assetViewer/vitest.config.js` runs **194 tests in 14 files**
+  (v2.1; it was 152 in 13 at `f971fae`). v2.1 adds `creativeRetry.test.js` and extends `creativeSource` and `creativeViewer`.
   Round 1 has 65 tests in 10 files: state, errors, supersede, dispose, fit, scale, download, registry, r128 and no-bundled-three.
   Round 2 adds `creativeSource`, `creativeViewer` and `creativeJob`, which run against the SIMULATED stand-in (§12.6).
   They use real three 0.166 scene classes and the real GLTFLoader. Only the GPU (a fake
@@ -460,15 +487,16 @@ and a test enforces that.
 | `format` (`glb gltf fbx obj usdz stl ply zip` or `null`) | `format` | lower-cased. Unknown values become `null`. **The resolve-time format is authoritative.** The backend computes `detectFormat(asset) ?? out.format`, so it can differ from `job.outputs[i].format` |
 | `mimeType` (may be `null`) | `mimeType` | |
 | | `filename` | `furniai-concept-<jobId>-<index>.<format \| bin>`, never taken from the provider address |
-| `concept` | `concept` | normalised: the notice is kept (trimmed, at most 600 chars) and the flags are booleans (default `false`). Without a notice, a strict default is used and `noticeSource:"viewer-default"` |
+| `concept` | `concept` | normalised. The flags are booleans (default `false`). A non-blank server `notice` is kept **verbatim** (v2.1: not trimmed, collapsed or truncated; it is rendered with textContent only), with `noticeSource:"server"`. Without one, `DEFAULT_CONCEPT_NOTICE` is used with `noticeSource:"viewer-default"`. That fallback is a character-for-character copy of `CONCEPT_NOTICE.notice` in `creativeService.js` at `7f42f95` (tested) |
 | `resolvedAt`, `expiresAt:null`, `expiryKnown:false`, `durableCopy:false` | same | informational only |
-| `jobId` / `index` | checked | a mismatch gives `RESOLVE_FAILED` |
+| `jobId` / `index` | checked | a mismatch gives `RESOLVE_MALFORMED` (v2.1; was `RESOLVE_FAILED`) |
 
 ### 12.3 Error mapping (switch on `code`; HTTP status only when `code` is absent)
 
 | backend `code` (HTTP) | viewer `code` | customer message (abridged) |
 |---|---|---|
-| `MISSING_AUTH` (401), `UNAUTHORIZED` (403) | `SIGN_IN_REQUIRED` | Please sign in to view this 3D concept. |
+| `MISSING_AUTH` (401); a 401 without a code; no token (no request is sent) | `SIGN_IN_REQUIRED` | Please sign in to view this 3D concept. |
+| `UNAUTHORIZED` (403, persistence: signed in but not allowed), `FORBIDDEN`; a 403 without a code | `FORBIDDEN` (v2.1) | This account doesn't have permission to open this 3D concept. Signing in again won't change that. |
 | `AUTH_UNAVAILABLE` (503) | `SIGN_IN_UNAVAILABLE` | Sign-in is temporarily unavailable… |
 | `PERSISTENCE_NOT_CONFIGURED`, `CREATIVE_NOT_CONFIGURED`, `CREATIVE_STORE_NOT_CONFIGURED`, `CREATIVE_GENERATION_DISABLED` (503) | `CONCEPTS_NOT_CONFIGURED` | 3D concepts aren't available on this site yet. |
 | `STORAGE_UNAVAILABLE` (503); a 5xx without a code | `SERVICE_UNAVAILABLE` | temporarily unavailable |
@@ -478,7 +506,15 @@ and a test enforces that.
 | `ASSET_UNAVAILABLE` (410) | `ASSET_UNAVAILABLE` | no longer available… no copy was kept |
 | `RECORD_INTEGRITY_FAILED` (409) | `RECORD_INTEGRITY_FAILED` | failed a safety check |
 | `BAD_REQUEST` (400) | `INVALID_ASSET` | |
-| `INTERNAL` (500), unknown codes, network errors, malformed `ok:true` bodies | `RESOLVE_FAILED` | couldn't be opened. Please try again. |
+| network or transport errors (`details.cause:"network"`); `INTERNAL` (500) and unknown codes (`"http"`) | `RESOLVE_FAILED` | couldn't be opened. Please try again. |
+| a 2xx whose body is not usable: not JSON, `ok !== true`, no or non-http(s) `url`, another job or index, a jobs answer without `job` (`details.cause:"malformed"`) | `RESOLVE_MALFORMED` (v2.1) | The 3D concept service sent a reply that couldn't be read… |
+
+Every resolve error from `createCreativeAssetSource` carries
+`details: { cause, retryable }`. `cause` is `"network"`, `"malformed"` or `"http"` (any
+mapped error answer). `retryable` comes from the exported `isRetryableResolveError(err)`,
+the same rule the viewer uses (§12.4). The server's own `details` object is not copied:
+only `jobStatus` is kept. A missing token (`SIGN_IN_REQUIRED` before any request) carries no
+`details`.
 
 The backend's message text is never used: the auth messages mention "design", and
 409 is shared by two codes. Viewer messages never contain the code or any technical words
@@ -497,6 +533,31 @@ The backend's message text is never used: the auth messages mention "design", an
      The error carries `downloadAvailable:true` and `attempts:{resolve:2, display:2}`, and download stays offered.
   5. If the re-resolve itself fails, its mapped error is reported (for example a 410).
   6. `EMPTY_SCENE` and `FILE_TOO_LARGE` are not retried.
+  7. **v2.1 (V1):** if the **first resolve** (step 2) fails retryably, the viewer resolves
+     **once more** (phase `retrying`) before giving up, then reports that second error with
+     `attempts`. This budget is separate from the display retry in step 4, so one load makes at
+     most **3 resolves and 2 mesh fetches**. The re-resolve in step 4 is not retried again.
+     See the retry policy below.
+
+  **Retry policy (viewer default, v2.1).** Contract §2.5 says only "if a load fails, call it
+  again once". It does not say whether a failed *resolve* counts as a failed load (§12.7 item 11).
+  The viewer treats a transient resolve failure as one, and nothing else:
+
+  | failure | load / open | download | why |
+  |---|---|---|---|
+  | network or transport error (`RESOLVE_FAILED`, `cause:"network"`) | re-resolve **once** | re-resolve **once** | transient |
+  | any 5xx: `PROVIDER_UNAVAILABLE`, `PROVIDER_AUTH_REJECTED`, `PROVIDER_REJECTED_REQUEST`, `PROVIDER_UNEXPECTED_RESPONSE` (502), `AUTH_UNAVAILABLE`, `STORAGE_UNAVAILABLE` (503), `INTERNAL` (500), a 5xx without a code | re-resolve **once** | re-resolve **once** | may be transient. A resolve is a GET and is never billed |
+  | 429 `PROVIDER_RATE_LIMITED`, or a 429 without a code | re-resolve **once** (no back-off) | re-resolve **once** | may be transient |
+  | 503 `PERSISTENCE_NOT_CONFIGURED` / `CREATIVE_*_NOT_CONFIGURED` / `CREATIVE_GENERATION_DISABLED` | no | no | deployment state; a retry cannot change it |
+  | 401 / no token, 403, 404, 409 `ASSET_NOT_READY`, 409 `RECORD_INTEGRITY_FAILED`, 410, 400, 402 | no | no | permanent for this request |
+  | malformed 2xx body (`RESOLVE_MALFORMED`) | no | no | the same server would send the same body |
+  | mesh `FETCH_FAILED` / `PARSE_FAILED` / `UNSUPPORTED_FORMAT` after a good resolve | fresh resolve **+** refetch, **once** | n/a (download does not fetch bytes) | expired address, CORS, truncation (unchanged) |
+  | `EMPTY_SCENE`, `FILE_TOO_LARGE` | no | n/a | the file itself |
+  | abort / superseded | no (`superseded:true`) | n/a | |
+
+  Hosts that call `source.resolve()` themselves, such as the gallery's download button,
+  should use `isRetryableResolveError(err)` (exported from `index.js` and the browser entry)
+  so they behave the same.
 - **Job** `load({ job })` / `showJob(job)` / `watchJob(jobId)`:
 
   | `job.status` | viewer |
@@ -513,7 +574,8 @@ The backend's message text is never used: the auth messages mention "design", an
   no percentage exists for job phases. `refresh.ok:false` is ignored, as the contract says.
   `progress` is `null` in job phases. A percentage appears only for the **byte download**
   of the mesh, which is measured locally.
-- **Download** always re-resolves (§7).
+- **Download** always re-resolves (§7) and retries once by the same policy. `download({ jobId, index })`
+  targets any item.
 
 ### 12.5 Concept honesty in state and overlay
 
@@ -523,7 +585,14 @@ The backend's message text is never used: the auth messages mention "design", an
 - `state.attempts` = `{ resolve, display }`.
 - `state.source` is `"creative"` or `"local"`.
 - The overlay shows `concept.notice` in a separate banner (`[data-av-concept]`) in **every** state
-  that carries a concept: loading, ready, download-only and error.
+  that carries a concept: loading, ready, download-only and error. The server's text is shown
+  verbatim. The viewer's own text appears only when the server sent none, and that fallback
+  equals the server's text (v2.1, V3).
+- **`renderConceptNotice: false`** (v2.1, V6) hides that banner, so a host that renders the
+  notice itself does not show it twice. The banner node stays in the DOM, empty, hidden and marked
+  `data-av-concept-host-rendered`. `getState().concept.notice` is still set in every concept
+  state, including errors before any server answer, where it holds the fallback text. **The host
+  must then always show it**, as it must with `ui:false`.
 - The overlay's Download button (`[data-av-download]`) appears for download-only, and for
   display errors that still allow download.
 - The scale badge stays "Relative scale, not measured · W:H:D …".
@@ -535,6 +604,16 @@ The backend's message text is never used: the auth messages mention "design", an
 fixtures only and is not Scenario. It returns the backend's response shapes, its
 verbatim `CONCEPT_NOTICE` and its error messages. Its signed addresses are **single use**: a second GET
 returns 403, so any url reuse fails the tests. A mutation that cached the url failed 6 tests.
+Re-checked in v2.1 (suite of 194):
+
+- adapter `resolve()` memoised per job/index: **13 tests fail**
+- viewer `download()` reusing a cached descriptor: **3 fail**
+- no load resolve retry (V1 reverted): **13 fail**
+- no download retry: **2 fail**
+- `renderConceptNotice` ignored: **1 fails**
+- 403 mapped back to `SIGN_IN_REQUIRED`: **6 fail**
+- malformed bodies reported as `RESOLVE_FAILED`: **2 fail**
+- the old "editable parts" fallback text: **1 fails**
 
 The 87 new tests cover:
 
@@ -587,6 +666,16 @@ The 87 new tests cover:
 10. **`submitting` older than 120 s becomes `submission_unknown`** with
     `error.code PROVIDER_UNAVAILABLE`. A client that switched on `error.code` would
     misread this as a transient provider outage. The viewer switches on `status`.
+11. **§2.5 "if a load fails, call it again once" is ambiguous** (v2.1). It doesn't say
+    whether a failed *resolve* (5xx, network) counts, or whether the "once" is shared with the
+    display retry. The viewer's default is in the §12.4 retry policy: one resolve retry for
+    network/5xx/429 only, with a separate budget from the display retry.
+12. **The notice text in the contract doc is abridged** (`"AI-generated visual concept. …"`).
+    The server's real text in `creativeService.js` says "no separately editable **doors or
+    panels**". Until v2.1 the viewer's fallback said "parts", so it drifted. It is now a verbatim copy.
+13. **`UNAUTHORIZED` is 403 in `persistence/errors.js`**: signed in but not allowed. The
+    contract lists only `401 MISSING_AUTH`. Up to v2.1 the viewer told those users to sign in.
+    It now reports `FORBIDDEN`.
 
 ---
 
@@ -633,6 +722,12 @@ The 87 new tests cover:
     verbatim provider text. Should the backend replace it with FurniAI copy?
 11. **Analytics and logging** (round 1 question 10): should `code`, `serverCode` and `detail` (urls
     redacted) be logged?
+12. **Retry policy sign-off (v2.1).** Is the viewer default in §12.4 what the contract means? In
+    particular: are `*_NOT_CONFIGURED` 503s really never worth a retry, and should a 429 wait
+    (`Retry-After`) instead of retrying at once? The backend sends no `Retry-After` today.
+13. **Host-rendered notice (v2.1).** The gallery should set `renderConceptNotice:false` and show
+    `getState().concept.notice` (or a download result's `concept.notice`) itself. Who checks
+    that it is always visible?
 
 ## Known limitations
 
@@ -641,3 +736,30 @@ The 87 new tests cover:
 - No KTX2, Draco or meshopt support (would be added by injection once confirmed).
 - The built-in overlay is minimal. A host can pass `ui:false` and render its own from events.
 - r128 residual PMREM geometry (§8).
+
+## Changelog
+
+### v2.1 hardening (V1–V6)
+
+Builds on `f971fae`. Only module-owned paths changed. All test evidence is **SIMULATED**
+(stand-in and fixtures). **No real Scenario run.**
+
+- **V1:** `load()` re-resolves **once** when the asset resolve itself fails retryably
+  (network, 5xx, 429). It never does so for 401/403/404/409/410, `ASSET_NOT_READY`,
+  integrity, malformed bodies or `*_NOT_CONFIGURED`. This is the viewer's default, because
+  contract §2.5 is ambiguous (§12.4, §12.7 item 11).
+- **V2:** `RESOLVE_FAILED` now means network or transport only (plus unknown server codes). A bad
+  body is the new `RESOLVE_MALFORMED`, which is never retried. Every resolve error carries
+  `details.cause` (`network | malformed | http`) and `details.retryable`. New export:
+  `isRetryableResolveError`.
+- **V3:** the server's `concept.notice` is shown verbatim. The fallback `DEFAULT_CONCEPT_NOTICE`
+  now equals the server's text exactly ("…no separately editable doors or panels…").
+- **V4:** only 401 means signed out. A 403 (`UNAUTHORIZED`, `FORBIDDEN`, or no code) becomes the new
+  `FORBIDDEN`, with an honest message.
+- **V5:** `download()` follows the same fresh-resolve and single-retry rule, and accepts
+  `download({ jobId, index, save })` for an item that isn't on screen. It never reuses a url.
+- **V6:** new mount option `renderConceptNotice` (default `true`). With `false` the host renders
+  the notice, and must always do so. `getState().concept.notice` still carries it.
+- Bundle (esbuild IIFE of `entry.js`): unminified 72,727 → 76,522 bytes (limit 96 KiB), minified
+  40,675 → 42,538 bytes (limit 48 KiB). `version` stays `asset-viewer-module/2`.
+- Tests: 152 → 194 asset-viewer tests; root `npx vitest run` 1631 → 1673 passed, 4 skipped, 20 todo.

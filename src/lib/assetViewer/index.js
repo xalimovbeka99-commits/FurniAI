@@ -16,6 +16,7 @@ export { DEFAULT_MAX_BYTES } from "./fetchBytes.js";
 export {
   createCreativeAssetSource,
   mapCreativeError,
+  isRetryableResolveError,
   normalizeConcept,
   normalizeCreativeFormat,
   isViewableFormat,
