@@ -13,3 +13,19 @@ export { describeScale, relativeProportions, RELATIVE_SCALE_LABEL } from "./scal
 export { disposeObject3D, collectResources } from "./dispose.js";
 export { markTextureSRGB, isTextureSRGB, configureRendererOutput, SRGB_TEXTURE_SLOTS } from "./colorSpace.js";
 export { DEFAULT_MAX_BYTES } from "./fetchBytes.js";
+export {
+  createCreativeAssetSource,
+  mapCreativeError,
+  normalizeConcept,
+  normalizeCreativeFormat,
+  isViewableFormat,
+  creativeFilename,
+  safeJobMessage,
+  redactUrls,
+  CREATIVE_FORMATS,
+  VIEWABLE_FORMATS,
+  MIME_BY_FORMAT,
+  DEFAULT_CONCEPT_NOTICE,
+  DEFAULT_CREATIVE_BASE_URL,
+} from "./creativeAsset.js";
+export { downloadOnlyText } from "./overlay.js";

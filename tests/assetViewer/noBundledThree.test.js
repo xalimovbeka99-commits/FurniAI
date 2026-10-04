@@ -45,11 +45,15 @@ describe("no bundled three.js", () => {
     expect(inputs.every((i) => i.startsWith("src/lib/assetViewer/"))).toBe(true);
     const code = out.outputFiles[0].text;
     expect(code).not.toMatch(/class\s+WebGLRenderer|REVISION\s*=\s*["']\d+|function\s+WebGLRenderer/);
-    expect(code.length).toBeLessThan(60 * 1024);
+    // Unminified ceiling raised from 60 KiB to 96 KiB in round 2 for the /api/creative
+    // adapter + job states; the minified ceiling is the one that matters for the page.
+    expect(code.length).toBeLessThan(96 * 1024);
+    const min = await build({ entryPoints: [join(SRC, "entry.js")], bundle: true, minify: true, format: "iife", globalName: "FurniAssetViewer", write: false, logLevel: "silent" });
+    expect(min.outputFiles[0].text.length).toBeLessThan(48 * 1024);
     // the bundle evaluates without any THREE global and exposes the mount API
     const fn = new Function(`${code}; return FurniAssetViewer;`);
     const api = fn();
     expect(typeof api.mountAssetViewer).toBe("function");
-    expect(api.version).toBe("asset-viewer-module/1");
+    expect(api.version).toBe("asset-viewer-module/2");
   });
 });
