@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TEST HARNESS — Scenario 3D contract (not the product UI)</title>
+<script type="importmap">
+{ "imports": { "three": "/vendor/three/three.module.js", "three/addons/": "/vendor/three/addons/" } }
+</script>
+<style>
+  * { box-sizing: border-box; }
+  body { font: 15px/1.4 system-ui, sans-serif; margin: 0; padding: 12px; max-width: 760px; }
+  #banner { background: #b00020; color: #fff; padding: 8px 10px; font-weight: 700; border-radius: 6px; }
+  section { border: 1px solid #ccc; border-radius: 6px; padding: 10px; margin-top: 10px; }
+  button { font-size: 15px; padding: 8px 12px; margin: 4px 4px 4px 0; }
+  .warn { background: #fff3cd; border: 1px solid #c79100; padding: 8px; border-radius: 6px; }
+  .err { background: #fde8e8; border: 1px solid #b00020; padding: 8px; border-radius: 6px; }
+  .notice { background: #eef; padding: 8px; border-radius: 6px; }
+  canvas { max-width: 100%; display: block; }
+  #canvas { width: 100%; height: 220px; background: #222; }
+  [hidden] { display: none !important; }
+  code { word-break: break-all; }
+</style>
+</head>
+<body>
+  <div id="banner" data-testid="harness-banner">TEST HARNESS — not the FurniAI product UI. Local stand-in provider; no Scenario call, nothing billed (SIMULATED).</div>
+
+  <section>
+    <h2>1. Reference image</h2>
+    <input id="reference" type="file" accept="image/png,image/jpeg,image/webp">
+    <button id="upload" type="button">Upload reference</button>
+    <div id="upload-status" data-testid="upload-status"></div>
+  </section>
+
+  <section>
+    <h2>2. Generate</h2>
+    <button id="generate" type="button">Generate 3D concept</button>
+    <div>Status: <strong id="status" data-testid="status">idle</strong> · job <code id="job-id"></code></div>
+    <div id="info" data-testid="info"></div>
+    <div id="warning" class="warn" data-testid="warning" hidden></div>
+    <div id="error" class="err" data-testid="error" hidden></div>
+  </section>
+
+  <section>
+    <h2>3. View — real asset viewer v2 (src/lib/assetViewer, 7eaa414) with its /api/creative resolver</h2>
+    <div id="notice" class="notice" data-testid="concept-notice" hidden></div>
+    <button id="view" type="button" disabled>View</button>
+    <button id="download" type="button" disabled>Download (contract client)</button>
+    <button id="download-viewer" type="button" disabled>Download (viewer)</button>
+    <div id="viewer" data-testid="viewer" style="width:100%;height:260px;position:relative;"></div>
+    <canvas id="canvas" width="640" height="220" hidden></canvas>
+    <div id="view-info" data-testid="view-info"></div>
+    <div id="asset-error" class="err" data-testid="asset-error" hidden></div>
+  </section>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

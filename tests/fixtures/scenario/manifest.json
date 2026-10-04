@@ -1,0 +1,33 @@
+{
+  "note": "Deterministic test fixtures (LOCAL). Regenerate with generate-fixtures.mjs; --check verifies.",
+  "files": {
+    "textured-cube.glb": {
+      "bytes": 2244,
+      "sha256": "7760387b6369181213eb1d54f7bd393bb83c47214f8010482a6deecdbb12b49c"
+    },
+    "truncated.glb": {
+      "bytes": 1346,
+      "sha256": "ce4bf53ed549a9b50c1d25b19bc8f46c74cc1abc14ed87a20c98ec93645840c9"
+    },
+    "bad-magic.glb": {
+      "bytes": 2244,
+      "sha256": "8844e85d6ce17760dc78200069b2a55f97766c5d75e1d56bb0c4232944871011"
+    },
+    "no-mesh.glb": {
+      "bytes": 2104,
+      "sha256": "53e7af6acf302598c4c24183a0f465ae67bb08933001955a1617e85cc3f99bc5"
+    },
+    "missing-texture.glb": {
+      "bytes": 2204,
+      "sha256": "4701b7e793c3fa3dc9c5f872db749c4fac1fe2a86c3d3aa090f5437b2be06f17"
+    },
+    "corrupt-texture.glb": {
+      "bytes": 2244,
+      "sha256": "962fbcf4b669052a53e619771d44c5336778821d7d70b7f452a69fa20c9c09ee"
+    },
+    "html-as.glb": {
+      "bytes": 162,
+      "sha256": "44d5ff0fa06f84d184a0ae03cf0cc32aa4600a09b14390b1150bdf7fe8cc8855"
+    }
+  }
+}
