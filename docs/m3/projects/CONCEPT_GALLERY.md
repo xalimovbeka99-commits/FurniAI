@@ -85,12 +85,13 @@ mountConceptGallery(root, {
 | signed out | no token, `401 MISSING_AUTH`, or v2 `SIGN_IN_REQUIRED` | "Sign in to see your 3D concepts." Polling stops |
 | network | rejection without status | message + Try again |
 | 5xx | `≥ 500` | message + Try again (server text is not shown) |
+| asset: 5xx / network | `≥ 500` or no status on Open or Download | "FurniAI couldn't get this file right now. Try again in a moment." (network: "…check your connection"). Never suggests the other button, because it would fail the same way (QE G2). Download retries once first; the card stays Ready |
 | not configured | `503 *_NOT_CONFIGURED` / v2 `CONCEPTS_NOT_CONFIGURED` | "3D concepts aren't available on this deployment yet." |
 | asset: not ready | `409 ASSET_NOT_READY` | message; the job is re-checked once |
-| asset: unavailable | `410 ASSET_UNAVAILABLE` | "no longer available … no stored copy" |
-| integrity | `409 RECORD_INTEGRITY_FAILED` | message; on `getJob` the badge becomes "Integrity check failed" and that job stops polling |
-| job gone | `404 MISSING_JOB` while polling | "This concept no longer exists." It stops polling |
-| viewer | `ASSET_DISPLAY_FAILED` or a viewer start failure | "couldn't show this file. Downloading it may still work." Download stays available |
+| asset: unavailable | `410 ASSET_UNAVAILABLE` | "no longer available … no stored copy" on **that file only**. The card keeps its server status (Ready) and its other outputs. Nothing is retried automatically; a user click is one more honest asset call. The record is intact and contract §2.5 makes 410 about the file, so it is not treated like integrity |
+| integrity | `409 RECORD_INTEGRITY_FAILED` from `getJob` **or from Open/Download** | the card becomes job-errored: badge "Integrity check failed", the job message, **no Open, no Download**, never polled. One path for poll and asset (QE G1). The next list refresh drops the row if the server still refuses it |
+| job gone | `404 MISSING_JOB` while polling or from Open/Download | badge "Not found", "This concept no longer exists.", no Open/Download, no polling |
+| viewer | `ASSET_DISPLAY_FAILED` or another viewer-side code | "The 3D view couldn't show this file. Downloading it may still work." This is the **only** message that points at Download. Download stays available |
 
 Accessibility: the region is a `section` labelled by its heading, and each card is an `article`.
 Badges carry text, so colour is never the only signal. There is a `role=status` live region and
@@ -122,6 +123,9 @@ is honoured.
   `ASSET_NOT_READY`, `ASSET_UNAVAILABLE`, `RECORD_INTEGRITY_FAILED`, `MISSING_JOB`, 400 and 401
   are not retried.
 - Only `glb`/`gltf` get "Open 3D view". Every other format, and `null`, is download-only.
+- A failed Open or Download goes through one function, `afterAssetFailure()` in
+  `mountConceptGallery.js`. Integrity or missing-job → the job error, as in polling.
+  `ASSET_NOT_READY` → one job re-check. Everything else stays on that file.
 
 ## 6. Viewer alignment (Asset Engineer, v2 at 42c3fa6)
 
@@ -164,9 +168,14 @@ The bundle imports no client, no viewer and no fixtures. Mounting needs the asse
 
 ## 9. Tests and evidence
 
-- `npx vitest run --config tests/projects/vitest.config.js` runs 7 files and 73 tests. The root
-  `npx vitest run` collects them through `conceptGallery.collect.test.js`. All hooks are scoped
-  inside `describe()`, so fake timers and stubs don't leak.
+- `npx vitest run --config tests/projects/vitest.config.js` runs 8 files and 90 tests. The root
+  `npx vitest run` collects them through `conceptGallery.collect.test.js` (see "Running the tests"
+  below). All hooks are scoped inside `describe()`, so fake timers and stubs don't leak.
+- `assetFailures.test.js` covers QE G1 and G2: integrity or missing-job from Download, from Open
+  through the viewer, and from `onOpenConcept`'s `resolveUrl()`. It also covers the lock across
+  refresh, multi-output, 410 per file, late results after `destroy()`, and the Open and Download
+  5xx/network/not-configured wording. The fake viewer handle is shared in
+  `tests/projects/fixtures/fakeViewer.js`.
 - `fixtureShape.test.js` pins the fixtures to the contract and does not depend on the handler.
 - **`creativeContract.test.js` (committed)** runs the real `api/creative.js` on this branch
   in-process, with fake req/res objects, the memory store, and an in-memory provider stand-in in
@@ -186,6 +195,38 @@ The bundle imports no client, no viewer and no fixtures. Mounting needs the asse
   It uses **fixture data only**, with the real source over a fixture fetch and no viewer mounted.
   `node docs/m3/projects/demo/capture.mjs [--update]` writes 13 states plus a 390 px view to
   `docs/m3/projects/artifacts/`.
+
+### Running the tests
+
+The root `vitest.config.js` include list (Integration-owned) does not cover `tests/projects/**`.
+Until it does, the collector **`src/lib/projects/conceptGallery/conceptGallery.collect.test.js`**
+imports every suite, so they run from the root. Proposed line for CraZy, added to `test.include`
+in the root `vitest.config.js` after `"tests/contract/**/*.test.js",`:
+
+```js
+      "tests/projects/**/*.test.js",
+```
+
+**Delete the collector in the same integration commit that adds this line.** Otherwise every
+concept-gallery suite runs twice from the root (no failure, just duplicates). Until then, keep the
+collector and don't add the line on its own.
+
+### QE review fixes (after 34f80a7)
+
+- **G1:** after Open or Download returns `409 RECORD_INTEGRITY_FAILED`, the card no longer shows
+  Ready with Open and Download. It becomes "Integrity check failed" with no Open or Download, the
+  same as the polling path. `404 MISSING_JOB` gets the same treatment ("Not found"), also matching
+  polling. `410 ASSET_UNAVAILABLE` stays per file (see §3).
+- **G2:** a 5xx, network or not-configured failure on Open now uses the same honest message as
+  Download ("FurniAI couldn't get this file right now. Try again in a moment.") and no longer says
+  "Downloading it may still work". That hint is kept only for real display failures. The Download
+  5xx wording was checked: it was already honest and is unchanged.
+- QE acceptance (`tests/acceptance/scenario/galleryViewer.acceptance.test.js` @ 687f20a) needs
+  three updates when it takes this fix. Flip the `it.fails` "KNOWN_DEFECT G1 …" to `it`. In
+  "CURRENT_BEHAVIOUR Open does NOT retry a transient resolve failure (502)", expect
+  `MSG.serverAsset`, not `MSG.displayFailed`. In "RECORD_INTEGRITY_FAILED is never rendered as a
+  usable asset", the Download click after the failed Open is gone: the button no longer exists,
+  so assert it is `null`.
 
 ## 10. Open questions
 

@@ -41,8 +41,9 @@ try {
     await shoot(name, state, desktop, async (page) => {
       if (state === "loading") return page.waitForSelector('[data-panel="loading"]');
       await page.waitForFunction(() => window.__gallery && window.__gallery.getState().list !== "loading");
-      if (state.startsWith("asset_") || state === "integrity") await page.waitForSelector("[data-asset-error]");
-      if (state === "integrity") await page.waitForSelector("[data-job-error]", { timeout: 6000 });
+      if (state.startsWith("asset_")) await page.waitForSelector("[data-asset-error]");
+      // Download on the Ready card and the poll on the processing card both end job-errored (QE G1).
+      if (state === "integrity") await page.waitForFunction(() => document.querySelectorAll("[data-job-error]").length === 2, null, { timeout: 8000 });
       if (state === "polling") await page.waitForFunction(() => document.querySelector(".fcg-live").textContent.length > 0);
     });
   }
