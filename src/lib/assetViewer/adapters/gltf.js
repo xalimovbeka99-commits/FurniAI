@@ -38,7 +38,12 @@ function parseWithGltfLoader(arrayBuffer, { deps, resourcePath }) {
           const root = (gltf && (gltf.scene || (gltf.scenes && gltf.scenes[0]))) || null;
           resolve({
             root,
-            info: { animations: gltf && gltf.animations ? gltf.animations.length : 0 },
+            info: {
+              animations: gltf && gltf.animations ? gltf.animations.length : 0,
+              // GLTFLoader only console.errors a texture it cannot decode and returns
+              // the model without it; the viewer turns this into a visible warning.
+              declaredTextures: (gltf && gltf.parser && gltf.parser.json && gltf.parser.json.textures && gltf.parser.json.textures.length) || 0,
+            },
           });
         },
         (err) => reject(err instanceof Error ? err : new Error(String(err && err.message ? err.message : err))),

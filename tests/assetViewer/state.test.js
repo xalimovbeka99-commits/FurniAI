@@ -117,3 +117,27 @@ describe("asset viewer state machine", () => {
     t.viewer.dispose(); // idempotent
   });
 });
+
+describe("silent texture failures become a visible warning", () => {
+  it("model.warnings = ['TEXTURES_NOT_LOADED'] when the file declares textures but none arrived", async () => {
+    const THREE = await import("three");
+    const lossy = {
+      id: "lossy",
+      mime: "application/x-lossy",
+      extensions: ["lossy"],
+      // what GLTFLoader does when an embedded image cannot be decoded: console.error + model without map
+      load: async () => ({ root: new THREE.Group().add(new THREE.Mesh(new THREE.BoxGeometry(), new THREE.MeshStandardMaterial())), info: { declaredTextures: 1 } }),
+    };
+    const t = mountForTest({ options: { adapters: [lossy] } });
+    await t.viewer.load({ arrayBuffer: new ArrayBuffer(1), format: "lossy" });
+    expect(t.viewer.getState().model.warnings).toEqual(["TEXTURES_NOT_LOADED"]);
+    t.viewer.dispose();
+  });
+
+  it("the real GLTFLoader path reports declaredTextures, so a decoded chair has no warning", async () => {
+    const t = mountForTest();
+    await t.viewer.load({ arrayBuffer: fixtureArrayBuffer("chair-textured.glb") });
+    expect(t.viewer.getState().model).toMatchObject({ textureCount: 1, warnings: [] });
+    t.viewer.dispose();
+  });
+});

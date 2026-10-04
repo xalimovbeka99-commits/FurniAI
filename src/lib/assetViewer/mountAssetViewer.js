@@ -209,7 +209,9 @@ export function mountAssetViewer(el, options = {}) {
         envTarget = null;
       } finally {
         if (room) {
-          if (typeof room.dispose === "function") room.dispose();
+          // r128's Scene.prototype.dispose is a "has been removed" stub that only logs.
+          const own = typeof room.dispose === "function" && room.dispose !== three.Scene.prototype.dispose;
+          if (own) room.dispose();
           else disposeObject3D(room);
         }
         if (pmrem) pmrem.dispose();
@@ -446,6 +448,7 @@ export function mountAssetViewer(el, options = {}) {
           ...stats,
           ...color,
           animations: parsed.info && parsed.info.animations ? parsed.info.animations : 0,
+          warnings: stats.textureCount === 0 && parsed.info && parsed.info.declaredTextures > 0 ? ["TEXTURES_NOT_LOADED"] : [],
           proportions: relativeProportions(size),
           scale: describeScale({ hasScaleMetadata: desc.hasScaleMetadata }),
         },
