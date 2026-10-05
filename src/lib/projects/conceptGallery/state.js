@@ -14,7 +14,7 @@
  *   }
  * URLs are NEVER part of this state (contract §2.5).
  */
-import { CODE, isNonTerminal } from "./contract.js";
+import { CODE, isBillingOutcome, isNonTerminal } from "./contract.js";
 import { ERROR_KIND } from "./errors.js";
 
 export const LIST_STATUS = Object.freeze({ LOADING: "loading", READY: "ready", ERROR: "error" });
@@ -66,9 +66,24 @@ export function normalizeJob(raw) {
     submittedAt: str(raw.submittedAt),
     completedAt: str(raw.completedAt),
     updatedAt: str(raw.updatedAt),
+    // Rev 2 §2.4. `estimatedCost` is a pre-submission preview, not a bill: never copied.
+    billing: billingCopy(raw.usage),
+    // Rev 2: whether FurniAI keeps its own copy of the file (always false today).
+    durableCopy: typeof raw.storage?.durableCopy === "boolean" ? raw.storage.durableCopy : null,
     notice: notice(raw.concept?.notice),
     concept: raw.concept && typeof raw.concept === "object" ? conceptCopy(raw.concept) : null,
   };
+}
+
+/**
+ * `outcome` is null when the server sent none (rev 1) or an unknown value, which
+ * renders as "not reported", never as a guess. A reported cost without the
+ * `reported` outcome is not shown.
+ */
+function billingCopy(u) {
+  const outcome = u && typeof u === "object" && isBillingOutcome(u.billingOutcome) ? u.billingOutcome : null;
+  const cost = outcome === "reported" && typeof u.reportedCost === "number" && Number.isFinite(u.reportedCost) ? u.reportedCost : null;
+  return { outcome, reportedCost: cost, unit: outcome === "reported" ? str(u.unit) : null };
 }
 
 const CONCEPT_FIELDS = ["kind", "editable", "dimensionsVerified", "partsSeparable", "manufacturable", "notice"];

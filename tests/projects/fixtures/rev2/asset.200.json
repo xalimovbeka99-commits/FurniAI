@@ -1,0 +1,33 @@
+{
+  "_fixture": {
+    "simulated": true,
+    "generatedByScenario": false,
+    "request": {
+      "method": "GET",
+      "url": "/api/creative?resource=asset&jobId=00000000-0000-4000-8000-000000000005&index=0"
+    },
+    "httpStatus": 200
+  },
+  "response": {
+    "ok": true,
+    "asset": {
+      "jobId": "00000000-0000-4000-8000-000000000005",
+      "index": 0,
+      "url": "https://fixtures.invalid/SYNTHETIC-box-not-scenario-generated.glb",
+      "format": "glb",
+      "mimeType": null,
+      "resolvedAt": "2026-10-04T10:00:00.000Z",
+      "expiresAt": null,
+      "expiryKnown": false,
+      "durableCopy": false,
+      "concept": {
+        "kind": "visual_concept",
+        "editable": false,
+        "dimensionsVerified": false,
+        "partsSeparable": false,
+        "manufacturable": false,
+        "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from."
+      }
+    }
+  }
+}

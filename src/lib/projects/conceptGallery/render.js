@@ -6,7 +6,7 @@
  * providerProgress and providerStatus are deliberately never read here.
  */
 import { FALLBACK_CONCEPT_NOTICE, JOB_STATUS, SUBMISSION_UNKNOWN_WARNING, isKnownStatus, isNonTerminal, isViewableFormat } from "./contract.js";
-import { ASSET_MESSAGES, ERROR_KIND, JOB_MESSAGES, LIST_MESSAGES } from "./errors.js";
+import { ASSET_MESSAGES, BILLING_TEXT, ERROR_KIND, FAILED_MESSAGES, JOB_MESSAGES, LIST_MESSAGES } from "./errors.js";
 import { LIST_STATUS, assetKey } from "./state.js";
 
 export const STATUS_LABEL = Object.freeze({
@@ -82,15 +82,42 @@ function formatsText(outputs) {
   return outputs.length === 1 ? names[0] : `${outputs.length} files: ${names.join(", ")}`;
 }
 
-/** Neutral placeholder: the contract provides no thumbnail or preview image. */
-function placeholderTile(doc) {
+/**
+ * Thumbnail slot. Contract rev 2 still has no thumbnail, preview or reference-image
+ * field, so this is a neutral placeholder (never an <img>, never a URL). It is
+ * aria-hidden: the card's title and status already say everything it shows.
+ */
+function placeholderTile(doc, job) {
+  const fmt = job.status === JOB_STATUS.SUCCEEDED && job.outputs[0]?.format ? job.outputs[0].format.toUpperCase() : null;
   return el(
     doc,
     "div",
-    { class: "fcg-tile", "aria-hidden": "true" },
+    { class: "fcg-tile", "aria-hidden": "true", "data-thumbnail": "none" },
     el(doc, "span", { class: "fcg-tile-cube" }),
-    el(doc, "span", { class: "fcg-tile-label", text: "3D concept" }),
+    el(doc, "span", { class: "fcg-tile-label", text: fmt ? `3D concept · ${fmt}` : "3D concept" }),
+    el(doc, "span", { class: "fcg-tile-sub", text: "No preview image" }),
   );
+}
+
+/** Rev 2 usage.billingOutcome as one truthful line. Never "free" / "no charge". */
+export function billingText(job) {
+  const b = job.billing || {};
+  if (b.outcome === "reported") return b.reportedCost === null ? BILLING_TEXT.reportedNoCost : BILLING_TEXT.reported(b.reportedCost, b.unit);
+  if (b.outcome === "not_submitted") return BILLING_TEXT.not_submitted;
+  if (b.outcome === "unconfirmed") return isNonTerminal(job.status) ? BILLING_TEXT.unconfirmedPending : BILLING_TEXT.unconfirmed;
+  return BILLING_TEXT.missing;
+}
+
+/** Failed-job sentence: our own for known rev 2 codes, else the sanitised server message. */
+export function failedText(error) {
+  const own = error?.code ? FAILED_MESSAGES[error.code] : null;
+  return own || jobErrorText(error?.message) || "The generation service reported a failure.";
+}
+
+/** Card title: the contract has no name field, so "3D concept" plus the created date. */
+function titleText(job, formatDate) {
+  const d = job.createdAt ? formatDate(job.createdAt) : "—";
+  return d === "—" ? "3D concept" : `3D concept · ${d}`;
 }
 
 function outputActions(doc, job, output, state, ctx, multiple) {
@@ -156,11 +183,9 @@ export function renderCard(doc, job, state, ctx, n) {
     "data-status": known ? job.status : "unknown",
     "aria-labelledby": titleId,
   });
-  card.appendChild(placeholderTile(doc));
+  card.appendChild(placeholderTile(doc, job));
   const body = el(doc, "div", { class: "fcg-body" });
-  body.appendChild(
-    el(doc, "h3", { class: "fcg-card-title", id: titleId }, "Concept ", el(doc, "code", { class: "fcg-id", text: job.jobId })),
-  );
+  body.appendChild(el(doc, "h3", { class: "fcg-card-title", id: titleId, text: titleText(job, ctx.formatDate) }));
   const badge = el(
     doc,
     "p",
@@ -173,6 +198,7 @@ export function renderCard(doc, job, state, ctx, n) {
   const meta = el(doc, "dl", { class: "fcg-meta" });
   meta.appendChild(metaRow(doc, "Created", timeEl(doc, job.createdAt, ctx.formatDate)));
   meta.appendChild(metaRow(doc, "Updated", timeEl(doc, job.updatedAt, ctx.formatDate)));
+  meta.appendChild(metaRow(doc, "Job ID", el(doc, "code", { class: "fcg-id", text: job.jobId })));
   if (job.sourceReferenceId) {
     meta.appendChild(metaRow(doc, "Reference", el(doc, "code", { class: "fcg-id", text: job.sourceReferenceId })));
   }
@@ -180,6 +206,12 @@ export function renderCard(doc, job, state, ctx, n) {
     meta.appendChild(metaRow(doc, "Model", doc.createTextNode([job.model, job.provider && `(${job.provider})`].filter(Boolean).join(" "))));
   }
   meta.appendChild(metaRow(doc, "Files", doc.createTextNode(formatsText(job.outputs))));
+  if (job.status === JOB_STATUS.SUCCEEDED && job.durableCopy === false) {
+    meta.appendChild(
+      metaRow(doc, "File storage", el(doc, "span", { "data-durable-copy": "false", text: "Held by the generation service only. FurniAI keeps no copy, so it may stop being available." })),
+    );
+  }
+  meta.appendChild(metaRow(doc, "Billing", el(doc, "span", { "data-billing": job.billing?.outcome || "unknown", text: billingText(job) })));
   body.appendChild(meta);
 
   body.appendChild(el(doc, "p", { class: "fcg-notice", "data-concept-notice": "", text: job.notice || FALLBACK_CONCEPT_NOTICE }));
@@ -204,7 +236,7 @@ export function renderCard(doc, job, state, ctx, n) {
         "p",
         { class: "fcg-msg fcg-msg-error", "data-failed": job.error?.code || "" },
         el(doc, "strong", { text: "Generation failed. " }),
-        jobErrorText(job.error?.message) || "The generation service reported a failure.",
+        failedText(job.error),
       ),
     );
   } else if (job.status === JOB_STATUS.SUBMISSION_UNKNOWN) {

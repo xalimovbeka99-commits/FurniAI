@@ -63,13 +63,24 @@ describe("concept gallery: list states", () => {
     expect(byTag(root, "a")).toHaveLength(0);
   });
 
-  it("failed job shows the server's error message and offers no retry", async () => {
+  it("failed job: own wording for a known rev 2 code (server text carries billing claims), no retry", async () => {
     const f = failedJob();
     const { root } = setup(listOf(f));
     await flush();
     const c = card(root, f.jobId);
-    expect(byAttr(c, "data-failed", "PROVIDER_REJECTED_REQUEST")[0].textContent).toContain(f.error.message);
+    const p = byAttr(c, "data-failed", "PROVIDER_REJECTED_REQUEST")[0];
+    expect(p.textContent).toBe("Generation failed. The generation service refused this request.");
+    expect(p.textContent).not.toContain(f.error.message);
     expect(byTag(c, "button")).toHaveLength(0);
+  });
+
+  it("failed job with an unknown code or PROVIDER_GENERATION_FAILED shows the sanitised server message", async () => {
+    const a = failedJob({ jobId: "fail-a", error: { code: "SOMETHING_NEW", message: "The provider\nsaid  no." } });
+    const b = failedJob({ jobId: "fail-b", error: { code: "PROVIDER_GENERATION_FAILED", message: "simulated generation failure" } });
+    const { root } = setup(listOf(a, b));
+    await flush();
+    expect(byAttr(card(root, "fail-a"), "data-failed")[0].textContent).toBe("Generation failed. The provider said no.");
+    expect(byAttr(card(root, "fail-b"), "data-failed")[0].textContent).toBe("Generation failed. simulated generation failure");
   });
 
   it("submission_unknown: 'may have been charged; not retried' and no retry control", async () => {

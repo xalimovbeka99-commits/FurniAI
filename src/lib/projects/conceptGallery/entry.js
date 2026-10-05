@@ -7,4 +7,4 @@
  * client is injected at mount time. Test/demo fakes are not part of the bundle.
  */
 export * from "./index.js";
-export const version = "concept-gallery/1";
+export const version = "concept-gallery/2";

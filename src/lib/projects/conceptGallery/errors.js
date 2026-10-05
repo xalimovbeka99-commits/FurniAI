@@ -25,8 +25,14 @@ export const ERROR_KIND = Object.freeze({
   FORBIDDEN: "forbidden",
   /** A 2xx answer that can't be used (v2.1 RESOLVE_MALFORMED). Never retried. */
   MALFORMED: "malformed",
+  /** HTTP 429 / PROVIDER_RATE_LIMITED: busy; same "try again in a moment" spirit as 5xx. */
+  RATE_LIMITED: "rate_limited",
+  /** Rev 2 §4 refusals that a retry in a moment won't fix (402 credits, provider auth, rejected request). */
+  PROVIDER_REFUSED: "provider_refused",
   REQUEST: "request",
 });
+
+const PROVIDER_REFUSED = new Set([CODE.PROVIDER_INSUFFICIENT_CREDITS, CODE.PROVIDER_AUTH_REJECTED, CODE.PROVIDER_REJECTED_REQUEST]);
 
 const NOT_CONFIGURED = new Set([
   CODE.CREATIVE_NOT_CONFIGURED,
@@ -99,6 +105,8 @@ export function classifyError(err) {
   if (code && NOT_CONFIGURED.has(code)) return { kind: ERROR_KIND.NOT_CONFIGURED, code, status };
   if (code === CODE.INVALID_RESPONSE) return { kind: ERROR_KIND.MALFORMED, code, status };
   if (status === 403) return { kind: ERROR_KIND.FORBIDDEN, code: code || CODE.FORBIDDEN, status };
+  if (code === CODE.PROVIDER_RATE_LIMITED || status === 429) return { kind: ERROR_KIND.RATE_LIMITED, code: code || "HTTP_429", status };
+  if ((code && PROVIDER_REFUSED.has(code)) || status === 402) return { kind: ERROR_KIND.PROVIDER_REFUSED, code: code || "HTTP_402", status };
   if (status === null && (code === null || code === CODE.NETWORK)) {
     return { kind: ERROR_KIND.NETWORK, code: CODE.NETWORK, status: null };
   }
@@ -116,6 +124,8 @@ export const LIST_MESSAGES = Object.freeze({
   [ERROR_KIND.NOT_FOUND]: "Your concept list couldn't be found.",
   [ERROR_KIND.FORBIDDEN]: "This account doesn't have permission to see these 3D concepts. Signing in again won't change that.",
   [ERROR_KIND.MALFORMED]: "FurniAI sent a reply this page couldn't read, so your 3D concepts can't be shown right now.",
+  [ERROR_KIND.RATE_LIMITED]: "FurniAI is busy and couldn't load your 3D concepts right now. Try again in a moment.",
+  [ERROR_KIND.PROVIDER_REFUSED]: "The 3D generation service isn't accepting requests from FurniAI right now, so your 3D concepts can't be shown. Try again later.",
   [ERROR_KIND.REQUEST]: "FurniAI couldn't load your 3D concepts.",
 });
 
@@ -132,6 +142,9 @@ export const ASSET_MESSAGES = Object.freeze({
   [ERROR_KIND.NOT_CONFIGURED]: "3D concept files aren't available on this deployment yet.",
   [ERROR_KIND.FORBIDDEN]: "This account doesn't have permission to get this file. Signing in again won't change that.",
   [ERROR_KIND.MALFORMED]: "FurniAI sent a reply this page couldn't read, so this file can't be opened or downloaded right now.",
+  // Starts like the 5xx text on purpose (QE nit, acceptance pins the prefix): busy, so try again shortly.
+  [ERROR_KIND.RATE_LIMITED]: "FurniAI couldn't get this file right now because the service is busy. Try again in a moment.",
+  [ERROR_KIND.PROVIDER_REFUSED]: "FurniAI couldn't get this file: the 3D generation service refused the request. Try again later.",
   [ERROR_KIND.REQUEST]: "FurniAI couldn't get this file.",
 });
 
@@ -146,6 +159,38 @@ export const JOB_MESSAGES = Object.freeze({
   [ERROR_KIND.INTEGRITY]: "This concept's record failed an integrity check. It is not used and is no longer updated.",
   [ERROR_KIND.NOT_FOUND]: "This concept no longer exists.",
   [ERROR_KIND.FORBIDDEN]: "This account doesn't have permission to open this concept. Signing in again won't change that.",
+});
+
+/**
+ * Rev 2 §2.3 `409 PRIOR_SUBMISSION_UNKNOWN` (POST only). The gallery never submits;
+ * this is the wording a host's Generate flow should reuse. It never says "no charge".
+ */
+export const PRIOR_SUBMISSION_UNKNOWN_MESSAGE =
+  "The last 3D concept requested from this reference never got an answer from the generation service. It may have run and may have been charged. Generating again could be charged a second time, so only continue if you mean to.";
+
+/**
+ * Billing wording per rev 2 `usage.billingOutcome`. Never "free" / "no charge":
+ * FurniAI only knows whether it sent the paid request and any cost the service reported.
+ */
+export const BILLING_TEXT = Object.freeze({
+  not_submitted: "Not sent yet: FurniAI hasn't sent the paid generation request for this concept.",
+  unconfirmed: "Not confirmed: the request was or may have been sent and no cost has been reported. It may have been charged.",
+  unconfirmedPending: "Not confirmed yet: the request was sent and no cost has been reported so far.",
+  reported: (cost, unit) => `Cost reported by the generation service: ${cost} ${unit === "provider_cost_units" || !unit ? "provider units (unit unverified)" : unit}.`,
+  reportedNoCost: "Reported, but the amount wasn't included.",
+  missing: "Not reported by this server.",
+});
+
+/**
+ * Our own sentence for known rev 2 failure codes. The server's message for these
+ * mixes in billing claims we render separately, so it isn't shown. Unknown codes and
+ * PROVIDER_GENERATION_FAILED (the provider's own reason) fall back to the sanitised message.
+ */
+export const FAILED_MESSAGES = Object.freeze({
+  [CODE.PROVIDER_REJECTED_REQUEST]: "The generation service refused this request.",
+  [CODE.PROVIDER_RATE_LIMITED]: "The generation service was busy and refused this request.",
+  [CODE.PROVIDER_INSUFFICIENT_CREDITS]: "The generation service reported that FurniAI's account doesn't have enough credits.",
+  [CODE.PROVIDER_AUTH_REJECTED]: "The generation service didn't accept FurniAI's credentials.",
 });
 
 /** Error thrown by resolveUrl() so a viewer can switch on `.code` too. */

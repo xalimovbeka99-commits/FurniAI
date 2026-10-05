@@ -1,0 +1,19 @@
+{
+  "_fixture": {
+    "simulated": true,
+    "generatedByScenario": false,
+    "request": {
+      "method": "GET",
+      "url": "/api/creative?resource=asset&jobId=00000000-0000-4000-8000-000000000003"
+    },
+    "httpStatus": 409
+  },
+  "response": {
+    "ok": false,
+    "code": "ASSET_NOT_READY",
+    "error": "This generation has no asset to download.",
+    "details": {
+      "jobStatus": "processing"
+    }
+  }
+}

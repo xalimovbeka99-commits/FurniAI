@@ -54,6 +54,10 @@ export const CONCEPT_GALLERY_CSS = `
 .fcg-tile{aspect-ratio:16/9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--space-sm,8px);background:var(--paper-2,#F4F2EB);border-bottom:1px solid var(--line-soft,#EDE8DC);color:var(--ink-faint,#9EA3AE)}
 .fcg-tile-cube{width:34px;height:34px;border:2px solid currentColor;border-radius:4px;transform:rotate(45deg) skew(-8deg,-8deg)}
 .fcg-tile-label{font-family:var(--font-mono,'Space Mono',monospace);font-size:11px;letter-spacing:.06em;text-transform:uppercase}
+.fcg-tile-sub{font-size:11px;color:var(--ink-faint,#9EA3AE)}
+.fcg-card[data-status="succeeded"] .fcg-tile{color:var(--brass,#1B4D3E)}
+.fcg-card[data-status="failed"] .fcg-tile,.fcg-card[data-status="submission_unknown"] .fcg-tile{color:var(--ink-soft,#5C626E)}
+[data-billing]{overflow-wrap:anywhere}
 .fcg-body{padding:var(--space-md,14px);display:flex;flex-direction:column;gap:var(--space-sm,8px);flex:1}
 .fcg-card-title{margin:0;font-size:14px;font-weight:600;overflow-wrap:anywhere}
 .fcg-id{font-family:var(--font-mono,'Space Mono',monospace);font-size:12px;overflow-wrap:anywhere;word-break:break-all}

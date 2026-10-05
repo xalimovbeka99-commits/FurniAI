@@ -1,6 +1,9 @@
 /**
- * Constants from docs/creative/SCENARIO_3D_API_CONTRACT.md (status: PROPOSED),
- * checked against Claude's backend at 7f42f956 (src/lib/creative/*).
+ * Constants from docs/creative/SCENARIO_3D_API_CONTRACT.md (status: PROPOSED).
+ * Revision 1 was checked against Claude's backend at 7f42f956; revision 2
+ * (Claude's 3946b53, not yet merged into integ/scenario-candidate) adds
+ * usage.billingOutcome, storage.durableCopy and the provider error codes
+ * below. The gallery reads both: a rev 1 server simply has no billingOutcome.
  *
  * The gallery only reads what that contract returns. It has no prompt field,
  * no reference image URL, no thumbnail, no dimensions and no designId, so the
@@ -45,6 +48,19 @@ export const FALLBACK_CONCEPT_NOTICE =
 export const SUBMISSION_UNKNOWN_WARNING =
   "We sent this request to the generation service but never got an answer. It may have been charged. It has not been retried, and FurniAI will not retry it automatically.";
 
+/**
+ * Contract rev 2 §2.4 / §4: `usage.billingOutcome`. FurniAI knows whether it sent
+ * the paid request; it does not know what was charged unless a cost is reported.
+ * `unconfirmed` is NOT "free" and is never rendered as "no charge".
+ */
+export const BILLING_OUTCOME = Object.freeze({
+  NOT_SUBMITTED: "not_submitted",
+  UNCONFIRMED: "unconfirmed",
+  REPORTED: "reported",
+});
+const BILLING_OUTCOMES = new Set(Object.values(BILLING_OUTCOME));
+export const isBillingOutcome = (v) => BILLING_OUTCOMES.has(v);
+
 /** Error `code`s the gallery switches on. Codes, never message text. */
 export const CODE = Object.freeze({
   MISSING_AUTH: "MISSING_AUTH",
@@ -58,6 +74,16 @@ export const CODE = Object.freeze({
   ASSET_UNAVAILABLE: "ASSET_UNAVAILABLE",
   RECORD_INTEGRITY_FAILED: "RECORD_INTEGRITY_FAILED",
   INTERNAL: "INTERNAL",
+  /** Rev 2 §2.3 (POST only; the gallery never submits, but hosts can reuse the wording). */
+  PRIOR_SUBMISSION_UNKNOWN: "PRIOR_SUBMISSION_UNKNOWN",
+  /** Rev 2 §4 provider errors (job.error, and possibly an asset resolve). */
+  PROVIDER_INSUFFICIENT_CREDITS: "PROVIDER_INSUFFICIENT_CREDITS",
+  PROVIDER_AUTH_REJECTED: "PROVIDER_AUTH_REJECTED",
+  PROVIDER_RATE_LIMITED: "PROVIDER_RATE_LIMITED",
+  PROVIDER_REJECTED_REQUEST: "PROVIDER_REJECTED_REQUEST",
+  PROVIDER_UNAVAILABLE: "PROVIDER_UNAVAILABLE",
+  PROVIDER_UNEXPECTED_RESPONSE: "PROVIDER_UNEXPECTED_RESPONSE",
+  PROVIDER_GENERATION_FAILED: "PROVIDER_GENERATION_FAILED",
   /**
    * 403 is not in the contract (only 401 is auth). The persistence layer can answer
    * 403 UNAUTHORIZED (signed in, not allowed); v2.1's viewer maps it to FORBIDDEN.
