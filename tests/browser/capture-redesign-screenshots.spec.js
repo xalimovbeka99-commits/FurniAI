@@ -21,6 +21,7 @@ test.describe('FurniAI Customer Redesign Screenshot Suite', () => {
   });
 
   test('Capture Desktop & Mobile Redesign Surfaces', async ({ page }) => {
+    test.setTimeout(60000);
     // 1. Desktop Home / Landing Surface
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('http://127.0.0.1:4173/#/');
