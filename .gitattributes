@@ -4,3 +4,7 @@ tests/fixtures/scenario/*.mjs text eol=lf
 tests/fixtures/scenario/*.json text eol=lf
 tests/fixtures/scenario/*.glb binary
 tests/acceptance/scenario/**/*.mjs text eol=lf
+
+# Claude creative (Scenario): shebang .mjs imported by Vitest must stay LF under core.autocrlf=true
+scripts/make-creative-fixtures.mjs text eol=lf
+scripts/verify-creative-db.mjs text eol=lf
