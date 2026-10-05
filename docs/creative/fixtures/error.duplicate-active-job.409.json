@@ -1,0 +1,23 @@
+{
+  "_fixture": {
+    "simulated": true,
+    "generatedByScenario": false,
+    "request": {
+      "method": "POST",
+      "url": "/api/creative?resource=jobs",
+      "body": {
+        "referenceId": "00000000-0000-4000-8000-000000000002",
+        "idempotencyKey": "click-0002"
+      }
+    },
+    "httpStatus": 409
+  },
+  "response": {
+    "ok": false,
+    "code": "DUPLICATE_ACTIVE_JOB",
+    "error": "A 3D concept is already being generated from this reference. No new generation request was sent.",
+    "details": {
+      "jobId": "00000000-0000-4000-8000-000000000003"
+    }
+  }
+}

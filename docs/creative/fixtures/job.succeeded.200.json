@@ -1,0 +1,56 @@
+{
+  "_fixture": {
+    "simulated": true,
+    "generatedByScenario": false,
+    "request": {
+      "method": "GET",
+      "url": "/api/creative?resource=jobs&jobId=00000000-0000-4000-8000-000000000005"
+    },
+    "httpStatus": 200
+  },
+  "response": {
+    "ok": true,
+    "job": {
+      "jobId": "00000000-0000-4000-8000-000000000005",
+      "status": "succeeded",
+      "provider": "scenario",
+      "model": "model_SIMULATED-not-a-real-model-id",
+      "sourceReferenceId": "00000000-0000-4000-8000-000000000004",
+      "providerStatus": "sim-done",
+      "providerProgress": null,
+      "outputs": [
+        {
+          "index": 0,
+          "format": "glb",
+          "mimeType": null
+        }
+      ],
+      "usage": {
+        "estimatedCost": 12,
+        "reportedCost": 12,
+        "unit": "provider_cost_units",
+        "billingOutcome": "reported"
+      },
+      "storage": {
+        "durableCopy": false,
+        "reason": "ASSET_STORAGE_NOT_CONFIGURED"
+      },
+      "error": null,
+      "createdAt": "2026-10-04T10:00:00.000Z",
+      "submittedAt": "2026-10-04T10:00:00.000Z",
+      "completedAt": "2026-10-04T10:00:00.000Z",
+      "updatedAt": "2026-10-04T10:00:00.000Z",
+      "concept": {
+        "kind": "visual_concept",
+        "editable": false,
+        "dimensionsVerified": false,
+        "partsSeparable": false,
+        "manufacturable": false,
+        "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from."
+      }
+    },
+    "refresh": {
+      "ok": true
+    }
+  }
+}

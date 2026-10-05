@@ -1,0 +1,23 @@
+{
+  "_fixture": {
+    "simulated": true,
+    "generatedByScenario": false,
+    "request": {
+      "method": "POST",
+      "url": "/api/creative?resource=references",
+      "body": {
+        "name": "cut.png",
+        "dataBase64": "<base64 of a truncated PNG>"
+      }
+    },
+    "httpStatus": 422
+  },
+  "response": {
+    "ok": false,
+    "code": "INVALID_IMAGE",
+    "error": "The reference image cannot be used: the PNG is truncated.",
+    "details": {
+      "detected": "image/png"
+    }
+  }
+}

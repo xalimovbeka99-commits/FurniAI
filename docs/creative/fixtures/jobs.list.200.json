@@ -1,0 +1,268 @@
+{
+  "_fixture": {
+    "simulated": true,
+    "generatedByScenario": false,
+    "request": {
+      "method": "GET",
+      "url": "/api/creative?resource=jobs"
+    },
+    "httpStatus": 200
+  },
+  "response": {
+    "ok": true,
+    "jobs": [
+      {
+        "jobId": "00000000-0000-4000-8000-000000000011",
+        "status": "submission_unknown",
+        "provider": "scenario",
+        "model": "model_SIMULATED-not-a-real-model-id",
+        "sourceReferenceId": "00000000-0000-4000-8000-000000000010",
+        "providerStatus": null,
+        "providerProgress": null,
+        "outputs": [],
+        "usage": {
+          "estimatedCost": 12,
+          "reportedCost": null,
+          "unit": "provider_cost_units",
+          "billingOutcome": "unconfirmed"
+        },
+        "storage": {
+          "durableCopy": false,
+          "reason": "ASSET_STORAGE_NOT_CONFIGURED"
+        },
+        "error": {
+          "code": "PROVIDER_UNAVAILABLE",
+          "message": "The request was sent but no answer arrived. It is not known whether a generation started or was charged."
+        },
+        "createdAt": "2026-10-04T10:00:00.000Z",
+        "submittedAt": null,
+        "completedAt": null,
+        "updatedAt": "2026-10-04T10:00:00.000Z",
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from."
+        }
+      },
+      {
+        "jobId": "00000000-0000-4000-8000-000000000009",
+        "status": "failed",
+        "provider": "scenario",
+        "model": "model_SIMULATED-not-a-real-model-id",
+        "sourceReferenceId": "00000000-0000-4000-8000-000000000010",
+        "providerStatus": "sim-failed",
+        "providerProgress": null,
+        "outputs": [],
+        "usage": {
+          "estimatedCost": 12,
+          "reportedCost": null,
+          "unit": "provider_cost_units",
+          "billingOutcome": "unconfirmed"
+        },
+        "storage": {
+          "durableCopy": false,
+          "reason": "ASSET_STORAGE_NOT_CONFIGURED"
+        },
+        "error": {
+          "code": "PROVIDER_GENERATION_FAILED",
+          "message": "simulated generation failure"
+        },
+        "createdAt": "2026-10-04T10:00:00.000Z",
+        "submittedAt": "2026-10-04T10:00:00.000Z",
+        "completedAt": "2026-10-04T10:00:00.000Z",
+        "updatedAt": "2026-10-04T10:00:00.000Z",
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from."
+        }
+      },
+      {
+        "jobId": "00000000-0000-4000-8000-000000000008",
+        "status": "failed",
+        "provider": "scenario",
+        "model": "model_SIMULATED-not-a-real-model-id",
+        "sourceReferenceId": "00000000-0000-4000-8000-000000000004",
+        "providerStatus": null,
+        "providerProgress": null,
+        "outputs": [],
+        "usage": {
+          "estimatedCost": 12,
+          "reportedCost": null,
+          "unit": "provider_cost_units",
+          "billingOutcome": "unconfirmed"
+        },
+        "storage": {
+          "durableCopy": false,
+          "reason": "ASSET_STORAGE_NOT_CONFIGURED"
+        },
+        "error": {
+          "code": "PROVIDER_REJECTED_REQUEST",
+          "message": "The 3D generation service refused the request. Whether the provider charged for the refused request is not confirmed."
+        },
+        "createdAt": "2026-10-04T10:00:00.000Z",
+        "submittedAt": null,
+        "completedAt": "2026-10-04T10:00:00.000Z",
+        "updatedAt": "2026-10-04T10:00:00.000Z",
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from."
+        }
+      },
+      {
+        "jobId": "00000000-0000-4000-8000-000000000007",
+        "status": "failed",
+        "provider": "scenario",
+        "model": "model_SIMULATED-not-a-real-model-id",
+        "sourceReferenceId": "00000000-0000-4000-8000-000000000004",
+        "providerStatus": null,
+        "providerProgress": null,
+        "outputs": [],
+        "usage": {
+          "estimatedCost": 12,
+          "reportedCost": null,
+          "unit": "provider_cost_units",
+          "billingOutcome": "unconfirmed"
+        },
+        "storage": {
+          "durableCopy": false,
+          "reason": "ASSET_STORAGE_NOT_CONFIGURED"
+        },
+        "error": {
+          "code": "PROVIDER_RATE_LIMITED",
+          "message": "The 3D generation service is rate-limiting requests. Whether the provider charged for the refused request is not confirmed."
+        },
+        "createdAt": "2026-10-04T10:00:00.000Z",
+        "submittedAt": null,
+        "completedAt": "2026-10-04T10:00:00.000Z",
+        "updatedAt": "2026-10-04T10:00:00.000Z",
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from."
+        }
+      },
+      {
+        "jobId": "00000000-0000-4000-8000-000000000006",
+        "status": "failed",
+        "provider": "scenario",
+        "model": "model_SIMULATED-not-a-real-model-id",
+        "sourceReferenceId": "00000000-0000-4000-8000-000000000004",
+        "providerStatus": null,
+        "providerProgress": null,
+        "outputs": [],
+        "usage": {
+          "estimatedCost": 12,
+          "reportedCost": null,
+          "unit": "provider_cost_units",
+          "billingOutcome": "unconfirmed"
+        },
+        "storage": {
+          "durableCopy": false,
+          "reason": "ASSET_STORAGE_NOT_CONFIGURED"
+        },
+        "error": {
+          "code": "PROVIDER_INSUFFICIENT_CREDITS",
+          "message": "The 3D generation service reported insufficient credits. Whether the provider charged for the refused request is not confirmed."
+        },
+        "createdAt": "2026-10-04T10:00:00.000Z",
+        "submittedAt": null,
+        "completedAt": "2026-10-04T10:00:00.000Z",
+        "updatedAt": "2026-10-04T10:00:00.000Z",
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from."
+        }
+      },
+      {
+        "jobId": "00000000-0000-4000-8000-000000000005",
+        "status": "succeeded",
+        "provider": "scenario",
+        "model": "model_SIMULATED-not-a-real-model-id",
+        "sourceReferenceId": "00000000-0000-4000-8000-000000000004",
+        "providerStatus": "sim-done",
+        "providerProgress": null,
+        "outputs": [
+          {
+            "index": 0,
+            "format": "glb",
+            "mimeType": null
+          }
+        ],
+        "usage": {
+          "estimatedCost": 12,
+          "reportedCost": 12,
+          "unit": "provider_cost_units",
+          "billingOutcome": "reported"
+        },
+        "storage": {
+          "durableCopy": false,
+          "reason": "ASSET_STORAGE_NOT_CONFIGURED"
+        },
+        "error": null,
+        "createdAt": "2026-10-04T10:00:00.000Z",
+        "submittedAt": "2026-10-04T10:00:00.000Z",
+        "completedAt": "2026-10-04T10:00:00.000Z",
+        "updatedAt": "2026-10-04T10:00:00.000Z",
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from."
+        }
+      },
+      {
+        "jobId": "00000000-0000-4000-8000-000000000003",
+        "status": "processing",
+        "provider": "scenario",
+        "model": "model_SIMULATED-not-a-real-model-id",
+        "sourceReferenceId": "00000000-0000-4000-8000-000000000002",
+        "providerStatus": "sim-running",
+        "providerProgress": 0.5,
+        "outputs": [],
+        "usage": {
+          "estimatedCost": 12,
+          "reportedCost": null,
+          "unit": "provider_cost_units",
+          "billingOutcome": "unconfirmed"
+        },
+        "storage": {
+          "durableCopy": false,
+          "reason": "ASSET_STORAGE_NOT_CONFIGURED"
+        },
+        "error": null,
+        "createdAt": "2026-10-04T10:00:00.000Z",
+        "submittedAt": "2026-10-04T10:00:00.000Z",
+        "completedAt": null,
+        "updatedAt": "2026-10-04T10:00:00.000Z",
+        "concept": {
+          "kind": "visual_concept",
+          "editable": false,
+          "dimensionsVerified": false,
+          "partsSeparable": false,
+          "manufacturable": false,
+          "notice": "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from."
+        }
+      }
+    ]
+  }
+}

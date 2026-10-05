@@ -1,0 +1,31 @@
+{
+  "_fixture": {
+    "simulated": true,
+    "generatedByScenario": false,
+    "request": {
+      "method": "POST",
+      "url": "/api/creative?resource=references",
+      "body": {
+        "name": "wardrobe.png",
+        "contentType": "image/png",
+        "dataBase64": "<base64 of SYNTHETIC-reference-drawing.png>"
+      }
+    },
+    "httpStatus": 201
+  },
+  "response": {
+    "ok": true,
+    "reference": {
+      "referenceId": "00000000-0000-4000-8000-000000000002",
+      "name": "wardrobe.png",
+      "contentType": "image/png",
+      "bytes": 236,
+      "sha256": "d6af411f7fb41a9e3e579194f9d900911da86e533b35ab9eec667aac33bfd4c9",
+      "width": 64,
+      "height": 48,
+      "validation": "decoded",
+      "createdAt": "2026-10-04T10:00:00.000Z"
+    },
+    "reused": false
+  }
+}

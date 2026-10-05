@@ -1,0 +1,20 @@
+{
+  "_fixture": {
+    "simulated": true,
+    "generatedByScenario": false,
+    "request": {
+      "method": "POST",
+      "url": "/api/creative?resource=jobs",
+      "body": {
+        "referenceId": "00000000-0000-4000-8000-000000000002",
+        "idempotencyKey": "x"
+      }
+    },
+    "httpStatus": 400
+  },
+  "response": {
+    "ok": false,
+    "code": "BAD_REQUEST",
+    "error": "idempotencyKey is required: 8–128 characters of A–Z, a–z, 0–9, '_' or '-'. Generate one per Generate click and resend it unchanged on retry."
+  }
+}

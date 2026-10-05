@@ -6,12 +6,19 @@ export const CREATIVE_ERROR = Object.freeze({
   BAD_REQUEST: "BAD_REQUEST",
   UNSUPPORTED_FILE_TYPE: "UNSUPPORTED_FILE_TYPE",
   FILE_TOO_LARGE: "FILE_TOO_LARGE",
+  /** Right type, but truncated, corrupt or outside the accepted dimensions. */
+  INVALID_IMAGE: "INVALID_IMAGE",
   MISSING_REFERENCE: "MISSING_REFERENCE",
   MISSING_JOB: "MISSING_JOB",
   /** Same user, same reference and model, and a job is still running. No provider call was made. */
   DUPLICATE_ACTIVE_JOB: "DUPLICATE_ACTIVE_JOB",
   /** The idempotency key was already used with a different request. */
   IDEMPOTENCY_KEY_REUSED: "IDEMPOTENCY_KEY_REUSED",
+  /**
+   * The last generation for this reference ended `submission_unknown`: it may
+   * have run and been charged. A new one needs `acknowledgeUnknownCharge: true`.
+   */
+  PRIOR_SUBMISSION_UNKNOWN: "PRIOR_SUBMISSION_UNKNOWN",
   /** Credentials, model id or input mapping absent on this deployment. */
   CREATIVE_NOT_CONFIGURED: "CREATIVE_NOT_CONFIGURED",
   /** Paid generation is switched off (SCENARIO_LIVE_GENERATION_ENABLED != "yes"). */
@@ -34,7 +41,7 @@ export const CREATIVE_ERROR = Object.freeze({
   /** The provider no longer serves the asset; there is no durable copy. */
   ASSET_UNAVAILABLE: "ASSET_UNAVAILABLE",
   STORAGE_UNAVAILABLE: "STORAGE_UNAVAILABLE",
-  /** A stored record does not carry this server's signature (written around the API). Never used. */
+  /** A stored record does not verify against this server's signature. Never acted on; blocks new generations for its reference. */
   RECORD_INTEGRITY_FAILED: "RECORD_INTEGRITY_FAILED",
 });
 
@@ -42,10 +49,12 @@ const STATUS = {
   BAD_REQUEST: 400,
   UNSUPPORTED_FILE_TYPE: 415,
   FILE_TOO_LARGE: 413,
+  INVALID_IMAGE: 422,
   MISSING_REFERENCE: 404,
   MISSING_JOB: 404,
   DUPLICATE_ACTIVE_JOB: 409,
   IDEMPOTENCY_KEY_REUSED: 409,
+  PRIOR_SUBMISSION_UNKNOWN: 409,
   CREATIVE_NOT_CONFIGURED: 503,
   CREATIVE_GENERATION_DISABLED: 503,
   CREATIVE_STORE_NOT_CONFIGURED: 503,

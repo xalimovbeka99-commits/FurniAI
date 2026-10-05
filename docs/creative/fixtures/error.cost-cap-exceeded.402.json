@@ -1,0 +1,24 @@
+{
+  "_fixture": {
+    "simulated": true,
+    "generatedByScenario": false,
+    "request": {
+      "method": "POST",
+      "url": "/api/creative?resource=jobs",
+      "body": {
+        "referenceId": "00000000-0000-4000-8000-000000000002",
+        "idempotencyKey": "click-0001"
+      }
+    },
+    "httpStatus": 402
+  },
+  "response": {
+    "ok": false,
+    "code": "COST_CAP_EXCEEDED",
+    "error": "This generation would cost more than the configured limit. No generation request was sent.",
+    "details": {
+      "estimatedCost": 21,
+      "maxCostPerJob": 20
+    }
+  }
+}

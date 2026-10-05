@@ -1,0 +1,25 @@
+{
+  "_fixture": {
+    "simulated": true,
+    "generatedByScenario": false,
+    "request": {
+      "method": "POST",
+      "url": "/api/creative?resource=jobs",
+      "body": {
+        "referenceId": "00000000-0000-4000-8000-000000000001",
+        "idempotencyKey": "click-0001"
+      }
+    },
+    "httpStatus": 503
+  },
+  "response": {
+    "ok": false,
+    "code": "CREATIVE_NOT_CONFIGURED",
+    "error": "3D concept generation is not configured on this deployment.",
+    "details": {
+      "missing": [
+        "SCENARIO_3D_MODEL_ID"
+      ]
+    }
+  }
+}

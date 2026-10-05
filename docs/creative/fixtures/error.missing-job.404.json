@@ -1,0 +1,16 @@
+{
+  "_fixture": {
+    "simulated": true,
+    "generatedByScenario": false,
+    "request": {
+      "method": "GET",
+      "url": "/api/creative?resource=jobs&jobId=00000000-0000-4000-8000-000000000001"
+    },
+    "httpStatus": 404
+  },
+  "response": {
+    "ok": false,
+    "code": "MISSING_JOB",
+    "error": "That generation was not found."
+  }
+}

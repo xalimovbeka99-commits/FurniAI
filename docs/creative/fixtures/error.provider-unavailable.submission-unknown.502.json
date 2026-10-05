@@ -1,0 +1,28 @@
+{
+  "_fixture": {
+    "simulated": true,
+    "generatedByScenario": false,
+    "request": {
+      "method": "POST",
+      "url": "/api/creative?resource=jobs",
+      "body": {
+        "referenceId": "00000000-0000-4000-8000-000000000010",
+        "idempotencyKey": "click-0009"
+      }
+    },
+    "httpStatus": 502
+  },
+  "response": {
+    "ok": false,
+    "code": "PROVIDER_UNAVAILABLE",
+    "error": "The request was sent but no answer arrived. It is not known whether a generation started or was charged.",
+    "details": {
+      "providerHttpStatus": 503,
+      "providerMessage": "upstream",
+      "jobId": "00000000-0000-4000-8000-000000000011",
+      "jobStatus": "submission_unknown",
+      "outcomeUnknown": true,
+      "billingOutcome": "unconfirmed"
+    }
+  }
+}
