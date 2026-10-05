@@ -1,7 +1,8 @@
 /**
- * FIXTURE DATA shaped exactly like SCENARIO_3D_API_CONTRACT.md (PROPOSED)
- * §2.4 / §2.5 / §5 and like toJobView / getAssetLink / toCreativeErrorBody in
- * Claude's backend at 7f42f956. Not real Scenario output: ids, dates, models
+ * FIXTURE DATA shaped exactly like SCENARIO_3D_API_CONTRACT.md revision 2
+ * (PROPOSED) §2.4 / §2.5 / §4 and like toJobView / getAssetLink /
+ * toCreativeErrorBody in Claude's backend (3946b53, merged at f472aef).
+ * Claude's own published pack is copied unmodified in ./rev2/. Not real Scenario output: ids, dates, models
  * and URLs are invented.
  */
 export const CONCEPT = Object.freeze({
@@ -20,7 +21,8 @@ export const JOB_VIEW_KEYS = Object.freeze([
   "outputs", "usage", "storage", "error", "createdAt", "submittedAt", "completedAt", "updatedAt", "concept",
 ]);
 export const OUTPUT_KEYS = Object.freeze(["index", "format", "mimeType"]);
-export const USAGE_KEYS = Object.freeze(["estimatedCost", "reportedCost", "unit"]);
+/** Rev 2 added billingOutcome. */
+export const USAGE_KEYS = Object.freeze(["estimatedCost", "reportedCost", "unit", "billingOutcome"]);
 export const STORAGE_KEYS = Object.freeze(["durableCopy", "reason"]);
 export const CONCEPT_KEYS = Object.freeze(Object.keys(CONCEPT));
 export const ASSET_VIEW_KEYS = Object.freeze([
@@ -51,7 +53,13 @@ export function jobView(overrides = {}) {
     updatedAt: "2026-10-04T07:10:05.000Z",
     concept: { ...CONCEPT },
   };
-  return { ...base, ...overrides };
+  const job = { ...base, ...overrides };
+  // Rev 2 server rule (toJobView): reported if a cost is reported, not_submitted while submitting, else unconfirmed.
+  if (!("billingOutcome" in job.usage)) {
+    const outcome = typeof job.usage.reportedCost === "number" ? "reported" : job.status === "submitting" ? "not_submitted" : "unconfirmed";
+    job.usage = { ...job.usage, billingOutcome: outcome };
+  }
+  return job;
 }
 
 export const glbOutput = (index = 0) => ({ index, format: "glb", mimeType: "model/gltf-binary" });

@@ -222,8 +222,8 @@ describe("concept gallery: injected asset viewer (v2)", () => {
     expect(button(card(root, job.jobId), "open")).not.toBeNull(); // not a record problem: no lock
   });
 
-  it("v2.1 (V4): a 403 on Open is FORBIDDEN, not signed out: the card says Not allowed, no sign-in prompt", async () => {
-    const { root, client, job, gallery } = viewerSetup(v2Like([]), {
+  it("AE Q15: a 403 on Open is FORBIDDEN, page-wide: the panel says why, the list becomes the permission panel, no sign-in prompt", async () => {
+    const { root, client, gallery } = viewerSetup(v2Like([]), {
       getAssetUrl: () => Promise.reject({ status: 403, code: "UNAUTHORIZED", message: "Not allowed." }),
     });
     await flush();
@@ -231,10 +231,9 @@ describe("concept gallery: injected asset viewer (v2)", () => {
     await flush();
     expect(client.count("getAssetUrl")).toBe(1);
     expect(byAttr(root, "data-viewer-status")[0].textContent).toBe(ASSET_MESSAGES[ERROR_KIND.FORBIDDEN]);
-    const c = card(root, job.jobId);
-    expect(byClass(c, "fcg-badge-text")[0].textContent).toBe("Not allowed");
-    expect(button(c, "open")).toBeNull();
-    expect(button(c, "download")).toBeNull();
-    expect(gallery.getState().list).toBe("ready"); // the list is not switched to signed-out
+    expect(gallery.getState()).toMatchObject({ list: "error", error: { kind: "forbidden" } });
+    expect(byAttr(root, "data-panel", "forbidden")).toHaveLength(1);
+    expect(byAttr(root, "data-action", "open")).toHaveLength(0);
+    expect(root.textContent).not.toMatch(/Sign in/);
   });
 });

@@ -1,12 +1,12 @@
 /**
- * Contract rev 2 (Claude 3946b53, PROPOSED, not yet merged into the candidate):
+ * Contract rev 2 (Claude 3946b53, PROPOSED; merged into integ/scenario-candidate at f472aef):
  * the gallery against Claude's own published fixture pack, copied unmodified to
  * fixtures/rev2/. SIMULATED data: nothing here came from Scenario.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { allAttributeValues, byAttr, byClass, byTag, flush } from "./fakeDom.js";
 import { setup, card, cards, button, panel } from "./helpers.js";
 import { BILLING_OUTCOME, JOB_STATUS, SUBMISSION_UNKNOWN_WARNING } from "../../src/lib/projects/conceptGallery/contract.js";
@@ -49,11 +49,11 @@ describe("rev 2 fixture pack: provenance and shape", () => {
     for (const f of files) expect(fx(f)._fixture, f).toMatchObject({ simulated: true, generatedByScenario: false });
   });
 
-  it("job views keep the rev 1 key set; usage gains exactly billingOutcome", () => {
+  it("job views match the shared fixture key sets (usage includes billingOutcome)", () => {
     const views = [...LIST, ...["job.failed.200.json", "job.processing.200.json", "job.succeeded.200.json", "job.submission-unknown.200.json"].map((f) => body(f).job)];
     for (const j of views) {
       expect(Object.keys(j).sort()).toEqual([...JOB_VIEW_KEYS].sort());
-      expect(Object.keys(j.usage).sort()).toEqual([...USAGE_KEYS, "billingOutcome"].sort());
+      expect(Object.keys(j.usage).sort()).toEqual([...USAGE_KEYS].sort());
       expect(Object.values(BILLING_OUTCOME)).toContain(j.usage.billingOutcome);
       expect(Object.keys(j.storage).sort()).toEqual([...STORAGE_KEYS].sort());
       expect(Object.keys(j.concept).sort()).toEqual([...CONCEPT_KEYS].sort());
@@ -261,5 +261,51 @@ describe("rev 2: GET error fixtures", () => {
     await flush();
     expect(client.count("getAssetUrl")).toBe(1);
     expect(byAttr(root, "data-asset-error", "PROVIDER_INSUFFICIENT_CREDITS")[0].textContent).toBe(ASSET_MESSAGES[ERROR_KIND.PROVIDER_REFUSED]);
+  });
+});
+
+describe("AE answers (Oct 5): Q14 source.isRetryable, 429 retry wait", () => {
+  afterEach(() => vi.useRealTimers());
+  const ok = () => byStatus("succeeded");
+
+  it("Q14: a source with isRetryable(err) decides the Download retry (isRetryableResolveError is the fallback)", async () => {
+    const job = ok();
+    const seen = [];
+    const source = {
+      getJob: () => new Promise(() => {}),
+      resolve: () => Promise.reject(Object.assign(new Error("x"), { status: 404, code: "MISSING_JOB" })),
+      isRetryable: (e) => (seen.push(e.code), true), // a source that says even 404 is retryable
+    };
+    const downloads = [];
+    const { root } = setup({ listJobs: () => ({ ok: true, jobs: [job] }) }, { noSource: true, creativeSource: source, startDownload: (d) => downloads.push(d) });
+    await flush();
+    button(root, "download").click();
+    await flush();
+    expect(seen).toEqual(["MISSING_JOB"]); // asked once, after the first failure; one retry at most
+    expect(downloads).toHaveLength(0);
+  });
+
+  it("a 429 waits about a second before its one fresh re-resolve; nothing else waits", async () => {
+    vi.useFakeTimers();
+    const job = ok();
+    let calls = 0;
+    const downloads = [];
+    const { root } = setupList([job], { rateLimitRetryDelayMs: undefined, startDownload: (d) => downloads.push(d) }, {
+      getAssetUrl: () => {
+        calls++;
+        if (calls === 1) throw fixtureError("error.provider-rate-limited.429.json");
+        return body("asset.200.json");
+      },
+    });
+    await flush();
+    button(root, "download").click();
+    await flush();
+    expect(calls).toBe(1);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(calls).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await flush();
+    expect(calls).toBe(2);
+    expect(downloads).toHaveLength(1);
   });
 });

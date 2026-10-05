@@ -254,7 +254,7 @@ describe("concept gallery: asset URLs", () => {
     expect(JSON.stringify(gallery.getState())).not.toContain("cdn.fixture.invalid");
   });
 
-  it("v2.1 (V4): 403 on Download locks the card as Not allowed (no retry, no sign-out); a successful refresh lifts it", async () => {
+  it("AE Q15: 403 on Download is page-wide (no retry, not 'sign in'); Refresh brings the list back", async () => {
     let forbidden = true;
     const job = succeededJob();
     const { root, client, gallery } = setup(
@@ -272,15 +272,13 @@ describe("concept gallery: asset URLs", () => {
     button(root, "download").click();
     await flush();
     expect(client.count("getAssetUrl")).toBe(1);
-    const c = card(root, job.jobId);
-    expect(byClass(c, "fcg-badge-text")[0].textContent).toBe("Not allowed");
-    expect(byAttr(c, "data-job-error", "UNAUTHORIZED")[0].textContent).toBe(JOB_MESSAGES[ERROR_KIND.FORBIDDEN]);
-    expect(button(c, "download")).toBeNull();
+    expect(gallery.getState()).toMatchObject({ list: "error", error: { kind: "forbidden", code: "UNAUTHORIZED" } });
+    expect(card(root, job.jobId)).toBeNull();
+    expect(byAttr(root, "data-panel", "forbidden")).toHaveLength(1);
     expect(announcer(root).textContent).toBe(ASSET_MESSAGES[ERROR_KIND.FORBIDDEN]);
     expect(announcer(root).textContent).not.toMatch(/^Sign in/);
-    expect(gallery.getState().list).toBe("ready");
     forbidden = false;
-    await gallery.refresh();
+    button(root, "refresh").click();
     await flush();
     expect(button(card(root, job.jobId), "download")).not.toBeNull();
   });

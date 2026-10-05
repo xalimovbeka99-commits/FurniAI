@@ -177,7 +177,7 @@ describe("concept gallery: polling", () => {
     expect(polled.filter((id) => id === ok.jobId)).toHaveLength(2);
   });
 
-  it("v2.1: 403 on one job's getJob marks that card Not allowed and stops polling only it; nobody is signed out", async () => {
+  it("AE Q15: 403 on a poll is page-wide (account/session), like signed-out: permission panel, polling stops, not 'sign in'", async () => {
     const bad = jobView();
     const ok = jobView();
     const { root, client, gallery } = setup({
@@ -189,13 +189,13 @@ describe("concept gallery: polling", () => {
     });
     await flush();
     await tick(4000);
-    expect(byClass(card(root, bad.jobId), "fcg-badge-text")[0].textContent).toBe("Not allowed");
-    expect(byAttr(card(root, bad.jobId), "data-job-error", "UNAUTHORIZED")).toHaveLength(1);
-    expect(gallery.getState().list).toBe("ready");
-    await tick(4000);
-    const polled = client.calls.filter((c) => c.method === "getJob").map((c) => c.args.jobId);
-    expect(polled.filter((id) => id === bad.jobId)).toHaveLength(1);
-    expect(polled.filter((id) => id === ok.jobId)).toHaveLength(2);
+    expect(gallery.getState()).toMatchObject({ list: "error", polling: false, error: { kind: "forbidden", code: "UNAUTHORIZED" } });
+    expect(card(root, bad.jobId)).toBeNull();
+    expect(byAttr(root, "data-panel", "forbidden")).toHaveLength(1);
+    expect(root.textContent).not.toMatch(/Sign in/);
+    const before = client.calls.filter((c) => c.method === "getJob").length;
+    await tick(30000);
+    expect(client.calls.filter((c) => c.method === "getJob").length).toBe(before);
   });
 
   it("a poll round answered after a refresh is discarded (stale guard)", async () => {

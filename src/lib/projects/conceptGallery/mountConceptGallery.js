@@ -68,7 +68,15 @@ export function clampPollInterval(ms) {
 }
 
 /** Failures about the job record (or the account's access to it), not one file: the card is locked. */
-const JOB_LEVEL_KINDS = new Set([ERROR_KIND.INTEGRITY, ERROR_KIND.NOT_FOUND, ERROR_KIND.FORBIDDEN]);
+/**
+ * Failures about one job record. 403 is NOT one of them (AE Q15, Oct 5): the backend's 403 is
+ * about the account/session, and another person's job answers 404 MISSING_JOB, so a 403 from a
+ * poll, Open or Download is page-wide, like a signed-out list (see goPageWide).
+ */
+const JOB_LEVEL_KINDS = new Set([ERROR_KIND.INTEGRITY, ERROR_KIND.NOT_FOUND]);
+const PAGE_WIDE_KINDS = new Set([ERROR_KIND.SIGNED_OUT, ERROR_KIND.FORBIDDEN]);
+/** AE: a 429 re-resolve waits about a second (the one retry, never more). */
+export const RATE_LIMIT_RETRY_DELAY_MS = 1000;
 
 function signedOutError() {
   return { status: null, code: CODE.SIGNED_OUT };
@@ -109,6 +117,9 @@ export function mountConceptGallery(root, options = {}) {
   const mountViewer = source && typeof options.mountAssetViewer === "function" ? options.mountAssetViewer : null;
   const viewerOptions = options.viewerOptions && typeof options.viewerOptions === "object" ? options.viewerOptions : {};
   const startDownload = typeof options.startDownload === "function" ? options.startDownload : defaultStartDownload;
+  const rateLimitRetryDelayMs = Number.isFinite(options.rateLimitRetryDelayMs) && options.rateLimitRetryDelayMs >= 0 ? options.rateLimitRetryDelayMs : RATE_LIMIT_RETRY_DELAY_MS;
+  // AE Q14: prefer the source's own rule when it has one; isRetryableResolveError until then.
+  const isRetryable = (err) => (source && typeof source.isRetryable === "function" ? Boolean(source.isRetryable(err)) : isRetryableResolveError(err));
   const setT = (fn, ms) => globalThis.setTimeout(fn, ms);
   const clearT = (id) => globalThis.clearTimeout(id);
   const idPrefix = `fcg${++mountCount}`;
@@ -198,7 +209,8 @@ export function mountConceptGallery(root, options = {}) {
     return t;
   }
 
-  function goSignedOut(err) {
+  /** Signed out (401) or not allowed (403): the whole list is replaced by one panel; polling stops. */
+  function goPageWide(err) {
     stopPolling();
     dispatch({ type: "SIGNED_OUT", error: err });
   }
@@ -221,7 +233,7 @@ export function mountConceptGallery(root, options = {}) {
     } catch (err) {
       if (destroyed || seq !== listSeq || isAbortError(err)) return;
       const c = classifyError(err);
-      if (c.kind === ERROR_KIND.SIGNED_OUT) goSignedOut(c);
+      if (c.kind === ERROR_KIND.SIGNED_OUT) goPageWide(c);
       else dispatch({ type: "LIST_ERR", error: c });
     } finally {
       t.done();
@@ -264,7 +276,7 @@ export function mountConceptGallery(root, options = {}) {
       try {
         accessToken = await token();
       } catch (err) {
-        if (!destroyed && gen === pollGen) goSignedOut(classifyError(err));
+        if (!destroyed && gen === pollGen) goPageWide(classifyError(err));
         return;
       }
     }
@@ -288,7 +300,7 @@ export function mountConceptGallery(root, options = {}) {
       }
       if (isAbortError(r.err)) return;
       const c = classifyError(r.err);
-      if (c.kind === ERROR_KIND.SIGNED_OUT) return goSignedOut(c);
+      if (PAGE_WIDE_KINDS.has(c.kind)) return goPageWide(c);
       if (JOB_LEVEL_KINDS.has(c.kind)) dispatch({ type: "JOB_ERR", jobId: r.jobId, error: c });
       else failed = true;
     }
@@ -324,7 +336,8 @@ export function mountConceptGallery(root, options = {}) {
     } catch (err) {
       if (destroyed || isAbortError(err)) return;
       const c = classifyError(err);
-      if (JOB_LEVEL_KINDS.has(c.kind)) dispatch({ type: "JOB_ERR", jobId, error: c });
+      if (c.kind === ERROR_KIND.FORBIDDEN) goPageWide(c);
+      else if (JOB_LEVEL_KINDS.has(c.kind)) dispatch({ type: "JOB_ERR", jobId, error: c });
     } finally {
       t.done();
     }
@@ -349,7 +362,11 @@ export function mountConceptGallery(root, options = {}) {
     } catch (first) {
       // Asset Engineer's rule (v2.1), so Download retries exactly when the viewer's load
       // would: network, 5xx, 429. Never a malformed body, 401/403/404/409/410 or *_NOT_CONFIGURED.
-      if (!isRetryableResolveError(first)) throw new ConceptAssetError(classifyError(first), first);
+      if (!isRetryable(first)) throw new ConceptAssetError(classifyError(first), first);
+      if (first && first.status === 429 && rateLimitRetryDelayMs > 0) {
+        await new Promise((r) => setT(r, rateLimitRetryDelayMs));
+        if (destroyed) throw new ConceptAssetError(classifyError(first), first);
+      }
       try {
         return await resolveAssetOnce(jobId, index); // one retry at most, with a fresh resolve
       } catch (second) {
@@ -518,11 +535,11 @@ export function mountConceptGallery(root, options = {}) {
 
   /**
    * What an Open/Download failure means for the card (QE G1). It matches the polling path:
-   * - 409 RECORD_INTEGRITY_FAILED, 404 MISSING_JOB and 403 (FORBIDDEN / UNAUTHORIZED) are about
-   *   the job record or the account's access to it, not this one file. The card becomes
-   *   job-errored ("Integrity check failed" / "Not found" / "Not allowed"): no Open or Download,
-   *   never polled. The next list refresh drops the row if the server still refuses it; a
-   *   "Not allowed" lock is lifted by a successful refresh so the user can try again.
+   * - 403 (FORBIDDEN / UNAUTHORIZED) is about the account/session (AE Q15): page-wide, the list is
+   *   replaced by the permission panel like a signed-out list. Refresh is the way back.
+   * - 409 RECORD_INTEGRITY_FAILED and 404 MISSING_JOB are about the job record, not this one file.
+   *   The card becomes job-errored ("Integrity check failed" / "Not found"): no Open or Download,
+   *   never polled. The next list refresh drops the row if the server still refuses it.
    * - 409 ASSET_NOT_READY re-checks the job once.
    * - 410 ASSET_UNAVAILABLE stays per-file. The record is intact and the server status is still
    *   succeeded (contract §2.5: "Scenario no longer has it"), so the card keeps its status and
@@ -530,7 +547,9 @@ export function mountConceptGallery(root, options = {}) {
    */
   function afterAssetFailure(jobId, c) {
     if (destroyed) return;
-    if (JOB_LEVEL_KINDS.has(c.kind)) {
+    if (c.kind === ERROR_KIND.FORBIDDEN) {
+      goPageWide({ kind: c.kind, code: c.code, status: c.status ?? null });
+    } else if (JOB_LEVEL_KINDS.has(c.kind)) {
       dispatch({ type: "JOB_ERR", jobId, error: { kind: c.kind, code: c.code, status: c.status ?? null } });
     } else if (c.kind === ERROR_KIND.ASSET_NOT_READY) {
       refreshOneJob(jobId);

@@ -1,7 +1,8 @@
 /**
  * In-process contract check: the REAL api/creative.js handler (Claude's
- * backend as merged into integ/scenario-candidate, identical to 7f42f956)
- * with a STAND-IN provider fetch and the memory store. FIXTURES ONLY.
+ * backend, contract revision 2 as merged into integ/scenario-candidate at
+ * f472aef from 3946b53) with a STAND-IN provider fetch and the memory store.
+ * FIXTURES ONLY.
  *
  * No Scenario network, no paid call: globalThis.fetch is replaced for the
  * whole file by an in-memory provider stand-in that throws for any host other
@@ -19,9 +20,10 @@ import { createCreativeAssetSource } from "../../src/lib/assetViewer/index.js";
 import { mountConceptGallery } from "../../src/lib/projects/conceptGallery/index.js";
 import * as F from "./fixtures/contractFixtures.js";
 import { byAttr, createFakeDocument } from "./fakeDom.js";
+// Rev 2 validates the whole image (a bare PNG signature is 422 INVALID_IMAGE): Claude's SYNTHETIC 64×48 drawing.
+import { PNG } from "../../src/lib/creative/testImages.js";
 
 const STAND_IN = "https://scenario.stand-in.invalid/v1";
-const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64, 7)]);
 const ENV = {
   FURNIAI_PERSISTENCE_TEST_AUTH: "yes",
   SCENARIO_API_KEY: "stand-in-key",
@@ -172,6 +174,8 @@ describe("creative contract, in-process (scoped stubs)", () => {
       expectSameShape(list.body.jobs[0], F.jobView());
       expect(list.body.jobs[0].concept).toEqual(F.CONCEPT);
       expect(list.body.jobs[0].storage).toEqual(F.jobView().storage);
+      expect(sorted(list.body.jobs[0].usage)).toEqual([...F.USAGE_KEYS].sort());
+      expect(list.body.jobs[0].usage.billingOutcome).toBe("unconfirmed"); // sent, no cost reported yet (rev 2 §2.4)
 
       expectErrorBody(await call("GET", `resource=asset&jobId=${jobId}&index=0`), 409, "ASSET_NOT_READY");
 
@@ -186,6 +190,7 @@ describe("creative contract, in-process (scoped stubs)", () => {
       const p2 = await call("GET", `resource=jobs&jobId=${jobId}`);
       expect(p2.body.job.status).toBe("succeeded");
       expectSameShape(p2.body.job, F.succeededJob());
+      expect(p2.body.job.usage).toMatchObject({ billingOutcome: "reported", reportedCost: 12 });
       for (const o of p2.body.job.outputs) expect(sorted(o)).toEqual([...F.OUTPUT_KEYS].sort());
 
       const a1 = await call("GET", `resource=asset&jobId=${jobId}&index=0`);
@@ -220,6 +225,8 @@ describe("creative contract, in-process (scoped stubs)", () => {
       expect(f.body.job.status).toBe("failed");
       expectSameShape(f.body.job, F.failedJob());
       expect(sorted(f.body.job.error)).toEqual(["code", "message"]);
+      expect(f.body.job.error.code).toBe("PROVIDER_GENERATION_FAILED");
+      expect(f.body.job.usage.billingOutcome).toBe("unconfirmed"); // failed is NOT free (rev 2 §4)
 
       getSharedMemoryCreativeStore()._raw.jobs.clear();
       provider.dropGenerate = true;
@@ -229,6 +236,7 @@ describe("creative contract, in-process (scoped stubs)", () => {
       const j = (await call("GET", "resource=jobs")).body.jobs[0];
       expect(j.status).toBe("submission_unknown");
       expectSameShape(j, F.unknownJob());
+      expect(j.usage.billingOutcome).toBe("unconfirmed");
       expect(provider.calls.generate).toBe(generatesBefore + 1); // one paid call, never resubmitted
     });
 

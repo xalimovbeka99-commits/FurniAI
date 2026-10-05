@@ -21,6 +21,8 @@ export function setup(handlers = {}, options = {}) {
     client,
     getAccessToken: () => "test-token",
     formatDate: (iso) => `D(${iso})`,
+    rateLimitRetryDelayMs: 0, // the ~1 s 429 wait has its own fake-timer test
+
     ...(creativeSource ? { creativeSource } : {}),
     ...galleryOptions,
   });

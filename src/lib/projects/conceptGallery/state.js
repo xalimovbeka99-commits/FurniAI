@@ -139,7 +139,7 @@ export function reduce(state, action) {
         list: LIST_STATUS.READY,
         error: null,
         jobs,
-        // A 403 lock is about access at that moment; a list the account may read lifts it.
+        // Defensive only: 403 is page-wide since AE Q15, so no FORBIDDEN job error should exist.
         jobErrors: Object.fromEntries(Object.entries(keepIds(state.jobErrors)).filter(([, e]) => e.kind !== ERROR_KIND.FORBIDDEN)),
         checkDelayed: keepIds(state.checkDelayed),
         assets: Object.fromEntries(Object.entries(state.assets).filter(([k]) => ids.has(k.slice(0, k.lastIndexOf(":"))))),
