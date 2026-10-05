@@ -1,0 +1,24 @@
+{
+  "_fixture": {
+    "simulated": true,
+    "generatedByScenario": false,
+    "request": {
+      "method": "POST",
+      "url": "/api/creative?resource=jobs",
+      "body": {
+        "referenceId": "00000000-0000-4000-8000-000000000004",
+        "idempotencyKey": "click-0007"
+      }
+    },
+    "httpStatus": 502
+  },
+  "response": {
+    "ok": false,
+    "code": "PROVIDER_AUTH_REJECTED",
+    "error": "The 3D generation service rejected this deployment's credentials.",
+    "details": {
+      "providerHttpStatus": 401,
+      "providerMessage": "Unauthorized"
+    }
+  }
+}

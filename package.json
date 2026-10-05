@@ -26,6 +26,8 @@
     "dev:api": "node scripts/dev-api-server.mjs",
     "scenario:discover": "node scripts/scenario-discover.mjs",
     "test:creative": "vitest run src/lib/creative",
+    "verify:creative-db": "node scripts/verify-creative-db.mjs",
+    "fixtures:creative": "node scripts/make-creative-fixtures.mjs",
     "test:browser:f1": "playwright test tests/browser/f1-journey.spec.js"
   },
   "dependencies": {

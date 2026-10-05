@@ -1,0 +1,27 @@
+{
+  "_fixture": {
+    "simulated": true,
+    "generatedByScenario": false,
+    "request": {
+      "method": "POST",
+      "url": "/api/creative?resource=references",
+      "body": {
+        "name": "notes.png",
+        "dataBase64": "dGhpcyBpcyB0ZXh0LCBub3QgYW4gaW1hZ2UgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIA=="
+      }
+    },
+    "httpStatus": 415
+  },
+  "response": {
+    "ok": false,
+    "code": "UNSUPPORTED_FILE_TYPE",
+    "error": "The reference must be a PNG, JPEG or WebP image.",
+    "details": {
+      "accepted": [
+        "image/png",
+        "image/jpeg",
+        "image/webp"
+      ]
+    }
+  }
+}

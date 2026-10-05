@@ -46,3 +46,17 @@ grant usage on schema public to anon, authenticated;
 alter default privileges in schema public grant all on tables to anon, authenticated;
 alter default privileges in schema public grant all on sequences to anon, authenticated;
 alter default privileges in schema public grant all on functions to anon, authenticated;
+
+-- service_role — Supabase's server-side role: BYPASSRLS and full privileges on
+-- public tables. Modelled for scripts/verify-creative-db.mjs, where the API
+-- server (and only it) writes generation records. The persistence harnesses
+-- never mint a token for this role.
+do $$ begin
+  if not exists (select 1 from pg_roles where rolname = 'service_role') then create role service_role nologin noinherit bypassrls; end if;
+end $$;
+grant service_role to authenticator;
+grant usage on schema public to service_role;
+grant usage on schema auth to service_role;
+alter default privileges in schema public grant all on tables to service_role;
+alter default privileges in schema public grant all on sequences to service_role;
+alter default privileges in schema public grant all on functions to service_role;

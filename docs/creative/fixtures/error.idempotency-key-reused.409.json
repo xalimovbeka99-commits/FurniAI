@@ -1,0 +1,23 @@
+{
+  "_fixture": {
+    "simulated": true,
+    "generatedByScenario": false,
+    "request": {
+      "method": "POST",
+      "url": "/api/creative?resource=jobs",
+      "body": {
+        "referenceId": "00000000-0000-4000-8000-000000000004",
+        "idempotencyKey": "click-0001"
+      }
+    },
+    "httpStatus": 409
+  },
+  "response": {
+    "ok": false,
+    "code": "IDEMPOTENCY_KEY_REUSED",
+    "error": "This idempotencyKey was already used for a different reference. No generation request was sent.",
+    "details": {
+      "jobId": "00000000-0000-4000-8000-000000000003"
+    }
+  }
+}

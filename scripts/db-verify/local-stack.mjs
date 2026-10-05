@@ -87,9 +87,9 @@ async function waitFor(check, { timeoutMs = 20000, what = "service" } = {}) {
 }
 
 /**
- * @param {{ root: string, migration: string, log?: (s: string) => void }} opts
+ * @param {{ root: string, migration: string, extraMigrations?: string[], log?: (s: string) => void }} opts
  */
-export async function startLocalStack({ root, migration, log = () => {} }) {
+export async function startLocalStack({ root, migration, extraMigrations = [], log = () => {} }) {
   if (typeof process.getuid === "function" && process.getuid() === 0) {
     throw new Error("PostgreSQL refuses to run as root. Run --local as an unprivileged user.");
   }
@@ -129,6 +129,7 @@ export async function startLocalStack({ root, migration, log = () => {} }) {
 
   psqlRun(null, { file: path.join(root, "scripts/db-verify/supabase-compat.sql") });
   psqlRun(null, { file: migration });
+  for (const extra of extraMigrations) psqlRun(null, { file: extra });
   log(`applied: supabase-compat.sql (local stand-in), ${path.relative(root, migration)} (as committed)`);
 
   const confPath = path.join(dir, "postgrest.conf");
@@ -204,6 +205,8 @@ export async function startLocalStack({ root, migration, log = () => {} }) {
       A: mintJwt(jwtSecret, { sub: users.A, role: "authenticated" }),
       B: mintJwt(jwtSecret, { sub: users.B, role: "authenticated" }),
     },
+    // Only verify-creative-db.mjs uses this: the server-side write credential.
+    serviceRoleKey: mintJwt(jwtSecret, { role: "service_role" }),
     versions: { postgres: pgVersion, postgrest: restVersion },
     sql: (s) => psqlRun(s),
     setRestDown(v) { restDown = Boolean(v); },

@@ -57,10 +57,10 @@ export function createScenarioClient(cfg, { fetchImpl = globalThis.fetch } = {})
     // 402 is the conventional code; the message test covers a provider that
     // reports exhausted credits under another 4xx. (unverified for Scenario)
     if (res.status === 402 || (res.status < 500 && INSUFFICIENT_RE.test(providerMessage || ""))) {
-      throw new CreativeError(CREATIVE_ERROR.PROVIDER_INSUFFICIENT_CREDITS, "The 3D generation account has insufficient credits. Nothing was generated.", { details });
+      throw new CreativeError(CREATIVE_ERROR.PROVIDER_INSUFFICIENT_CREDITS, "The 3D generation service reported insufficient credits.", { details });
     }
     if (res.status === 429) {
-      throw new CreativeError(CREATIVE_ERROR.PROVIDER_RATE_LIMITED, "The 3D generation service is rate-limiting requests. Nothing was generated.", { details });
+      throw new CreativeError(CREATIVE_ERROR.PROVIDER_RATE_LIMITED, "The 3D generation service is rate-limiting requests.", { details });
     }
     if (res.status >= 500) {
       throw new CreativeError(CREATIVE_ERROR.PROVIDER_UNAVAILABLE, "The 3D generation service is unavailable right now.", { details, outcomeUnknown: billable });
@@ -68,7 +68,7 @@ export function createScenarioClient(cfg, { fetchImpl = globalThis.fetch } = {})
     if (res.status === 404) {
       throw new CreativeError(CREATIVE_ERROR.PROVIDER_REJECTED_REQUEST, "The 3D generation service did not find the requested resource.", { details: { ...details, notFound: true } });
     }
-    throw new CreativeError(CREATIVE_ERROR.PROVIDER_REJECTED_REQUEST, "The 3D generation service refused the request. Nothing was generated.", { details });
+    throw new CreativeError(CREATIVE_ERROR.PROVIDER_REJECTED_REQUEST, "The 3D generation service refused the request.", { details });
   }
 
   return {

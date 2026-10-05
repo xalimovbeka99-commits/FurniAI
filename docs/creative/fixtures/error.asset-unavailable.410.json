@@ -1,0 +1,19 @@
+{
+  "_fixture": {
+    "simulated": true,
+    "generatedByScenario": false,
+    "request": {
+      "method": "GET",
+      "url": "/api/creative?resource=asset&jobId=00000000-0000-4000-8000-000000000005&index=0"
+    },
+    "httpStatus": 410
+  },
+  "response": {
+    "ok": false,
+    "code": "ASSET_UNAVAILABLE",
+    "error": "The generation service no longer holds this asset, and FurniAI has no stored copy of it.",
+    "details": {
+      "durableCopy": false
+    }
+  }
+}

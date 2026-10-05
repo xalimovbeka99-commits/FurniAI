@@ -6,9 +6,12 @@
  *   node scripts/scenario-discover.mjs model <modelId>
  *       GET /models/{id}. Read-only. Prints the model's declared inputs.
  *
- *   node scripts/scenario-discover.mjs estimate <modelId> <image-file> <imageParam> [--array] [--data-url]
- *       Uploads the image as an asset (POST /assets) and asks for a cost
- *       preview (?dryRun=true). Starts NO generation. Prints the raw preview.
+ *   node scripts/scenario-discover.mjs estimate <modelId> <image-file> <imageParam> --upload-ok [--array] [--data-url]
+ *       UPLOADS THE IMAGE to the Scenario account as an asset (POST /assets) —
+ *       it leaves your machine and stays in that account — then asks for a
+ *       cost preview (?dryRun=true). Starts NO generation. Prints the raw
+ *       preview. Refuses to run without --upload-ok. Whether Scenario charges
+ *       for storing an uploaded asset is not known to this script.
  *
  *   node scripts/scenario-discover.mjs job <providerJobId>
  *       GET /jobs/{id}. Read-only. Prints the raw job (status word, asset ids).
@@ -44,6 +47,8 @@ try {
     show(`GET /jobs/${pos[0]} → HTTP ${res.status} (raw)`, await res.json().catch(() => null));
   } else if (cmd === "estimate" && pos.length >= 3) {
     const [modelId, file, imageParam] = pos;
+    if (!flags.has("--upload-ok")) fail(`"estimate" UPLOADS ${path.basename(file)} to the Scenario account before asking for the cost preview.\nNothing was called. Re-run with --upload-ok to allow the upload. No generation is started either way.`);
+    console.log(`NOTE: uploading ${path.basename(file)} to the Scenario account now (POST /assets). No generation will be started.`);
     const cfg = { ...base, modelId, uploadAsDataUrl: flags.has("--data-url") };
     const client = createScenarioClient(cfg);
     const ref = validateReferenceUpload({ name: path.basename(file), dataBase64: readFileSync(file).toString("base64") });
@@ -54,7 +59,7 @@ try {
     show("dry-run cost preview (raw) — NO generation was started", est.raw);
     console.log(`\ncost read by FurniAI: ${est.cost}`);
   } else {
-    fail("usage: scenario-discover.mjs model <modelId> | estimate <modelId> <image> <imageParam> [--array] [--data-url] | job <providerJobId>");
+    fail("usage: scenario-discover.mjs model <modelId> | estimate <modelId> <image> <imageParam> --upload-ok [--array] [--data-url] | job <providerJobId>");
   }
 } catch (err) {
   console.error(`\n${err.code ?? "ERROR"}: ${err.message}`);

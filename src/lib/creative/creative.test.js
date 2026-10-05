@@ -13,8 +13,11 @@ import { validateReferenceUpload, MAX_REFERENCE_BYTES } from "./referenceUpload.
 import { readScenarioConfig } from "./scenarioConfig.js";
 import { createSupabaseCreativeStore } from "./supabaseStore.js";
 
-const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64, 7)]);
-const JPEG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(64, 3)]);
+import { PNG, JPEG, WEBP } from "./testImages.js";
+import { crc32 } from "node:zlib";
+/** Signature bytes only — what the first version of these tests wrongly used as "an image". */
+const PNG_SIGNATURE_ONLY = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64, 7)]);
+const JPEG_SIGNATURE_ONLY = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(64, 3)]);
 const b64 = (buf) => buf.toString("base64");
 
 const ENV_KEYS = ["SCENARIO_API_KEY", "SCENARIO_API_SECRET", "SCENARIO_API_BASE_URL", "SCENARIO_3D_MODEL_ID", "SCENARIO_3D_IMAGE_PARAM", "SCENARIO_3D_IMAGE_PARAM_IS_ARRAY", "SCENARIO_3D_EXTRA_PARAMS_JSON", "SCENARIO_STATUS_SUCCESS", "SCENARIO_STATUS_FAILURE", "SCENARIO_LIVE_GENERATION_ENABLED", "SCENARIO_MAX_COST_PER_JOB", "SCENARIO_ASSET_UPLOAD_DATA_URL", "CREATIVE_RECORD_SIGNING_KEY", "FURNIAI_PERSISTENCE_TEST_AUTH", "VERCEL_ENV", "SUPABASE_URL", "SUPABASE_ANON_KEY"];
@@ -75,12 +78,49 @@ describe("reference upload", () => {
   it("accepts PNG/JPEG by content, hands it to the provider once, and returns no provider id", async () => {
     const r = await upload(PNG);
     expect(r.status).toBe(201);
-    expect(r.body.reference).toMatchObject({ contentType: "image/png", bytes: PNG.length, name: "wardrobe.png" });
+    expect(r.body.reference).toMatchObject({ contentType: "image/png", bytes: PNG.length, name: "wardrobe.png", width: 64, height: 48, validation: "decoded" });
     expect(r.body.reference.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(r.text).not.toContain("asset_ref_");
     expect(sim.state.calls.upload).toBe(1);
     expect(sim.state.lastUploadBody.image).toBe(b64(PNG));
-    expect((await upload(JPEG)).body.reference.contentType).toBe("image/jpeg");
+    expect((await upload(JPEG)).body.reference).toMatchObject({ contentType: "image/jpeg", width: 64, height: 48, validation: "structure" });
+    expect((await upload(WEBP)).body.reference).toMatchObject({ contentType: "image/webp", width: 64, height: 48, validation: "structure" });
+  });
+
+  it("signature-like bytes are NOT an image: a correct magic number with no decodable content is refused", async () => {
+    for (const fake of [PNG_SIGNATURE_ONLY, JPEG_SIGNATURE_ONLY]) {
+      const r = await upload(fake);
+      expect(r.status).toBe(422);
+      expect(r.body.code).toBe("INVALID_IMAGE");
+    }
+    expect(sim.state.calls.upload).toBe(0);
+  });
+
+  it("PNG is decoded in full: truncation, a corrupt checksum, corrupt pixel data and trailing data are each refused", () => {
+    const refuse = (buf, re) => expect(() => validateReferenceUpload({ dataBase64: b64(buf) })).toThrow(expect.objectContaining({ code: "INVALID_IMAGE", message: expect.stringMatching(re) }));
+    refuse(PNG.subarray(0, PNG.length - 20), /truncated/);
+    const flipped = Buffer.from(PNG); flipped[PNG.indexOf("IDAT") + 10] ^= 0xff;
+    refuse(flipped, /checksum/);
+    // Valid chunk checksums around a compressed stream that is not valid: only a real inflate catches this.
+    const at = PNG.indexOf("IDAT"); const len = PNG.readUInt32BE(at - 4);
+    const garbage = Buffer.from(PNG); garbage.fill(0x55, at + 4, at + 4 + len);
+    garbage.writeUInt32BE(crc32(garbage.subarray(at, at + 4 + len)), at + 4 + len);
+    refuse(garbage, /decompressed|dimensions|corrupt/);
+    refuse(Buffer.concat([PNG, Buffer.from("extra")]), /after the end/);
+  });
+
+  it("JPEG and WebP are checked structurally only — a truncated file is refused, and the result says `structure`", () => {
+    for (const buf of [JPEG.subarray(0, JPEG.length - 30), WEBP.subarray(0, WEBP.length - 30)]) {
+      expect(() => validateReferenceUpload({ dataBase64: b64(buf) })).toThrow(expect.objectContaining({ code: "INVALID_IMAGE" }));
+    }
+    expect(validateReferenceUpload({ dataBase64: b64(JPEG) }).validation).toBe("structure");
+  });
+
+  it("refuses images outside the accepted dimensions (header says 1×1)", () => {
+    const tiny = Buffer.from(PNG); const ih = tiny.indexOf("IHDR");
+    tiny.writeUInt32BE(1, ih + 4); tiny.writeUInt32BE(1, ih + 8);
+    tiny.writeUInt32BE(crc32(tiny.subarray(ih, ih + 17)), ih + 17);
+    expect(() => validateReferenceUpload({ dataBase64: b64(tiny) })).toThrow(expect.objectContaining({ code: "INVALID_IMAGE" }));
   });
 
   it("re-uploading identical bytes reuses the reference without a second provider upload", async () => {
@@ -102,7 +142,7 @@ describe("reference upload", () => {
   });
 
   it("refuses oversize, empty, non-base64 and data: URL bodies before any provider call", () => {
-    const big = Buffer.concat([PNG, Buffer.alloc(MAX_REFERENCE_BYTES)]);
+    const big = Buffer.concat([PNG, Buffer.alloc(MAX_REFERENCE_BYTES)]); // size is checked before content
     expect(() => validateReferenceUpload({ dataBase64: b64(big) })).toThrow(expect.objectContaining({ code: "FILE_TOO_LARGE", status: 413 }));
     expect(() => validateReferenceUpload({ dataBase64: "" })).toThrow(expect.objectContaining({ code: "BAD_REQUEST" }));
     expect(() => validateReferenceUpload({ dataBase64: "data:image/png;base64," + b64(PNG) })).toThrow(expect.objectContaining({ code: "BAD_REQUEST" }));
@@ -145,7 +185,7 @@ describe("submission, status and result", () => {
     expect(s.body.replayed).toBe(false);
     const job = s.body.job;
     expect(job).toMatchObject({ status: "processing", provider: "scenario", model: "model_sim-img23d", sourceReferenceId: ref, providerStatus: "sim-running", outputs: [] });
-    expect(job.usage).toEqual({ estimatedCost: 12, reportedCost: null, unit: "provider_cost_units" });
+    expect(job.usage).toEqual({ estimatedCost: 12, reportedCost: null, unit: "provider_cost_units", billingOutcome: "unconfirmed" });
     expect(job.submittedAt).toBeTruthy();
     expect(sim.state.lastGenerateBody).toEqual({ image: ["asset_ref_1"] });
     expect(sim.state.lastAuth).toBe("Basic " + Buffer.from(`sim-key:${SECRET}`).toString("base64"));
@@ -157,7 +197,7 @@ describe("submission, status and result", () => {
     await settle();
     const p2 = await poll(job.jobId);
     expect(p2.body.job).toMatchObject({ status: "succeeded", providerStatus: "sim-done", outputs: [{ index: 0, format: "glb" }] });
-    expect(p2.body.job.usage.reportedCost).toBe(12);
+    expect(p2.body.job.usage).toMatchObject({ reportedCost: 12, billingOutcome: "reported" });
     expect(p2.body.job.completedAt).toBeTruthy();
     expect(p2.body.job.storage).toEqual({ durableCopy: false, reason: "ASSET_STORAGE_NOT_CONFIGURED" });
 
@@ -370,6 +410,35 @@ describe("provider failures", () => {
     expect(sim.state.calls.generate).toBe(1);
   });
 
+  it("after submission_unknown, generating again needs an explicit acknowledgement that a charge may already exist", async () => {
+    const ref = (await upload()).body.reference.referenceId;
+    sim.state.onGenerate = refuse(503, { message: "upstream" });
+    await submit(ref, "click-0001");
+    sim.state.onGenerate = null;
+    const blocked = await submit(ref, "click-0002");
+    expect(blocked.status).toBe(409);
+    expect(blocked.body).toMatchObject({ code: "PRIOR_SUBMISSION_UNKNOWN", details: { jobId: expect.any(String) } });
+    expect(sim.state.calls.generate).toBe(1);
+    const acked = await call("POST", "resource=jobs", { body: { referenceId: ref, idempotencyKey: "click-0002", acknowledgeUnknownCharge: true } });
+    expect(acked.status).toBe(202);
+    expect(sim.state.calls.generate).toBe(2);
+  });
+
+  it("no provider error is ever described as free: refused paid calls are `unconfirmed`, never 'nothing was generated'", async () => {
+    const ref = (await upload()).body.reference.referenceId;
+    const seen = [];
+    for (const [i, [code, body]] of [[402, { message: "Payment required" }], [429, { message: "slow" }], [400, { message: "bad input" }], [503, { message: "upstream" }]].entries()) {
+      sim.state.onGenerate = refuse(code, body);
+      const r = await call("POST", "resource=jobs", { body: { referenceId: ref, idempotencyKey: `click-100${i}`, acknowledgeUnknownCharge: true } });
+      seen.push(r);
+      expect(r.body.details.billingOutcome).toBe("unconfirmed");
+      const stored = (await poll(r.body.details.jobId)).body.job;
+      expect(stored.usage.billingOutcome).toBe("unconfirmed");
+      expect(stored.error.message).toMatch(/not confirmed|not known/);
+    }
+    for (const r of seen) expect(r.text).not.toMatch(/nothing was generated|no charge|not charged|free/i);
+  });
+
   it("a dropped connection on the paid call → submission_unknown, one call", async () => {
     const ref = (await upload()).body.reference.referenceId;
     sim.state.onGenerate = async (req) => { req.socket.destroy(); return true; };
@@ -424,6 +493,90 @@ describe("asset addresses", () => {
 });
 
 describe("stored-record integrity", () => {
+  // REGRESSION (intake on 7f42f95): `status` was not covered by the signature,
+  // so a running row flipped to `failed` was accepted and a new key bought a
+  // second generation for the same reference.
+  it("a running row flipped to failed (signature untouched) is refused, and a new key does NOT submit again", async () => {
+    const ref = (await upload()).body.reference.referenceId;
+    const job = (await submit(ref, "click-0001")).body.job.jobId;
+    getSharedMemoryCreativeStore()._raw.jobs.get(job).status = "failed";
+    const again = await submit(ref, "click-0002");
+    expect(sim.state.calls.generate).toBe(1);
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe("RECORD_INTEGRITY_FAILED");
+    expect((await poll(job)).body.code).toBe("RECORD_INTEGRITY_FAILED");
+  });
+  const TAMPER = {
+    status: (r) => (r.status = "succeeded"),
+    idempotencyKey: (r) => (r.idempotencyKey = "freed-key-0001"),
+    referenceId: (r) => (r.referenceId = "00000000-0000-4000-8000-000000000009"),
+    modelId: (r) => (r.modelId = "model_cheaper"),
+    providerJobId: (r) => (r.providerJobId = "job_of_someone_else"),
+    version: (r) => (r.version += 1),
+    estimatedCost: (r) => (r.estimatedCost = 0),
+    reportedCost: (r) => (r.reportedCost = 0),
+    error: (r) => (r.error = { code: "X", message: "y" }),
+    createdAt: (r) => (r.createdAt = "2020-01-01T00:00:00.000Z"),
+    submittedAt: (r) => (r.submittedAt = null),
+    completedAt: (r) => (r.completedAt = "2026-10-04T00:00:00.000Z"),
+    providerStatus: (r) => (r.providerStatus = "sim-done"),
+    outputs: (r) => (r.outputs = [{ assetId: "asset_x", format: "glb", mimeType: null }]),
+  };
+  for (const [field, mutate] of Object.entries(TAMPER)) {
+    it(`every stored job field is authenticated: an edited \`${field}\` is refused and unlocks nothing`, async () => {
+      const ref = (await upload()).body.reference.referenceId;
+      const job = (await submit(ref, "click-0001")).body.job.jobId;
+      mutate(getSharedMemoryCreativeStore()._raw.jobs.get(job));
+      const before = { ...sim.state.calls };
+      expect((await poll(job)).body.code).toBe("RECORD_INTEGRITY_FAILED");
+      expect((await call("GET", `resource=asset&jobId=${job}`)).body.code).toBe("RECORD_INTEGRITY_FAILED");
+      const again = await submit(ref, "click-0002");
+      // referenceId moved the row out from under its reference: the signature
+      // cannot see that (the row is simply absent for this reference). That
+      // case is closed by database write authority — verify-creative-db.mjs.
+      if (field !== "referenceId") expect(again.body.code).toBe("RECORD_INTEGRITY_FAILED");
+      if (field !== "referenceId") expect(sim.state.calls).toEqual(before);
+      expect((await call("GET", "resource=jobs")).body.jobs.map((j) => j.jobId)).not.toContain(job);
+    });
+  }
+
+  it("the signed field list covers every column the store persists", async () => {
+    const { JOB_FIELDS } = await import("./creativeService.js");
+    await submit((await upload()).body.reference.referenceId);
+    const row = [...getSharedMemoryCreativeStore()._raw.jobs.values()][0];
+    expect(Object.keys(row).filter((k) => k !== "sig").sort()).toEqual([...JOB_FIELDS].sort());
+  });
+
+  it("replaying an OLDER validly-signed state never unlocks a generation: it can only look still-running", async () => {
+    const ref = (await upload()).body.reference.referenceId;
+    const job = (await submit(ref, "click-0001")).body.job.jobId;
+    const raw = getSharedMemoryCreativeStore()._raw.jobs;
+    const older = structuredClone(raw.get(job)); // signed `processing`, version 2
+    sim.state.outcome = "failure";
+    expect((await poll(job)).body.job.status).toBe("failed");
+    raw.set(job, older); // roll the row back
+    const again = await submit(ref, "click-0002");
+    expect(again.body.code).toBe("DUPLICATE_ACTIVE_JOB");
+    expect(sim.state.calls.generate).toBe(1);
+  });
+
+  it("a stale writer cannot overwrite a newer row (compare-and-swap on version)", async () => {
+    const store = getSharedMemoryCreativeStore();
+    const job = (await submit((await upload()).body.reference.referenceId)).body.job.jobId;
+    const row = store._raw.jobs.get(job);
+    expect(row.version).toBe(2);
+    expect(await store.updateJob(row.userId, job, 1, { status: "failed", version: 2 })).toBeNull();
+    expect(store._raw.jobs.get(job).status).toBe("processing");
+  });
+
+  it("an edited reference row is refused on re-upload too, with no second provider upload", async () => {
+    const ref = (await upload()).body.reference.referenceId;
+    getSharedMemoryCreativeStore()._raw.references.get(ref).bytes = 1;
+    const r = await upload();
+    expect(r.body.code).toBe("RECORD_INTEGRITY_FAILED");
+    expect(sim.state.calls.upload).toBe(1);
+  });
+
   it("a job row altered around the API (forged provider job or asset) is refused, with no provider call", async () => {
     const job = (await submit((await upload()).body.reference.referenceId)).body.job.jobId;
     await poll(job);
@@ -491,20 +644,28 @@ describe("durable store adapter (fake PostgREST — not a database)", () => {
   }
   const job = { jobId: "11111111-1111-4111-8111-111111111111", userId: "22222222-2222-4222-8222-222222222222", idempotencyKey: "click-0001", referenceId: "33333333-3333-4333-8333-333333333333", provider: "scenario", modelId: "m", status: "submitting", outputs: [], sig: "s", createdAt: "2026-10-04T00:00:00.000Z" };
 
-  it("queries as the caller (never a service-role key) and maps a unique violation to a key replay", async () => {
+  it("reads as the caller, writes with the server credential, and maps a unique violation to a key replay", async () => {
     const f = fakeRest();
-    const store = createSupabaseCreativeStore({ url: "https://x.supabase.co", anonKey: "anon", accessToken: "user-jwt", fetchImpl: f.fetchImpl });
+    const store = createSupabaseCreativeStore({ url: "https://x.supabase.co", anonKey: "anon", accessToken: "user-jwt", serviceRoleKey: "server-key", fetchImpl: f.fetchImpl });
     expect((await store.reserveJob(job)).created).toBe(true);
     const second = await store.reserveJob({ ...job, jobId: "44444444-4444-4444-8444-444444444444" });
     expect(second).toMatchObject({ created: false, conflict: "key", job: { jobId: job.jobId, idempotencyKey: "click-0001" } });
     expect(f.rows).toHaveLength(1);
     expect(f.rows[0]).toMatchObject({ owner_user_id: job.userId, idempotency_key: "click-0001", reference_id: job.referenceId });
-    expect(f.calls.every((c) => c.auth === "Bearer user-jwt" && c.apikey === "anon")).toBe(true);
+    for (const c of f.calls) {
+      if (c.method === "GET") expect(c).toMatchObject({ auth: "Bearer user-jwt", apikey: "anon" });
+      else expect(c).toMatchObject({ auth: "Bearer server-key", apikey: "server-key" });
+    }
+    expect(f.calls.some((c) => c.method === "GET")).toBe(true);
+  });
+
+  it("refuses to exist without a server write credential — it never falls back to writing as the caller", () => {
+    expect(() => createSupabaseCreativeStore({ url: "https://x.supabase.co", anonKey: "anon", accessToken: "user-jwt" })).toThrow(expect.objectContaining({ code: "CREATIVE_STORE_NOT_CONFIGURED" }));
   });
 
   it("a malformed id is answered as absent without a query", async () => {
     const f = fakeRest();
-    const store = createSupabaseCreativeStore({ url: "https://x.supabase.co", anonKey: "anon", accessToken: "t", fetchImpl: f.fetchImpl });
+    const store = createSupabaseCreativeStore({ url: "https://x.supabase.co", anonKey: "anon", accessToken: "t", serviceRoleKey: "k", fetchImpl: f.fetchImpl });
     expect(await store.getJob(job.userId, "not-a-uuid")).toBeNull();
     expect(f.calls).toHaveLength(0);
   });
