@@ -5,11 +5,18 @@
 on any branch**, and this branch changes nothing outside `src/lib/projects/**`,
 `tests/projects/**` and `docs/m3/projects/**`.
 
+**Rev 2 check (7 Oct 2026, base `f472aef2e0ca`):** there is still **no agreed mount point**.
+`index.html` at `f472aef` has no concept/asset-viewer section, no `#conceptGalleryRoot`, no
+`concept-gallery.js` or asset-viewer script tag, and this branch does not change `index.html`
+(`git diff f472aef -- index.html` is empty). The anchors below are unchanged at `f472aef`
+(`showProjects` l.1548, `getStudioAccessToken` l.2930, `loadProjects` l.5070, `#view-projects`
+l.5334, `#projectsGrid` l.5346).
+
 AG's page at `8744d07`, as merged into `integ/scenario-candidate` `42c3fa6`, has no mount point
 for generated assets. This page proposes one so the AI visual concepts from `/api/creative`
 can appear next to "My Saved Designs". The final markup, wording and placement are yours.
 
-## What exists today (at 42c3fa6)
+## What exists today (at 42c3fa6, unchanged at f472aef)
 
 - Route `#/projects` → `showProjects()` (about line 1548) unhides `#view-projects` (about line
   5334): `.projects-header-bar` ("My Saved Designs") plus `.projects-container > #projectsGrid`,
@@ -35,32 +42,33 @@ are **not** FurniAI designs: they have no designId, no dimensions and no builder
 contract also requires `concept.notice` wherever one appears. Separate sections keep the two
 lists from being confused.
 
-## Proposed wiring (once both bundles are built)
+## Proposed wiring (rev 2, once both bundles are built)
 
 ```js
 // once, on first showProjects(); destroy when leaving the view
 let conceptGallery = null;
 function mountConcepts() {
-  if (conceptGallery || !window.FurniConceptGallery) return;
-  const AV = window.FurniAssetViewer;                       // Asset Engineer's bundle
-  const creativeSource = AV && AV.createCreativeAssetSource({
-    fetchImpl: window.fetch.bind(window),
-    getAuthToken: getStudioAccessToken,
+  const CG = window.FurniConceptGallery;
+  if (conceptGallery || !CG) return;
+  const AV = window.FurniAssetViewer;                        // Asset Engineer's bundle
+  const fetchImpl = window.fetch.bind(window);
+  const getAccessToken = () => CG.studioAccessToken(window); // delegates to AG's getStudioAccessToken
+  conceptGallery = CG.mountConceptGallery(document.getElementById("conceptGalleryRoot"), {
+    client: CG.createCreativeJobsClient({ fetchImpl }),      // listJobs / getJob / getConfig, no retry
+    getAccessToken,
+    creativeSource: AV && AV.createCreativeAssetSource({ fetchImpl, getAuthToken: getAccessToken }),
+    mountAssetViewer: AV && AV.mountAssetViewer,
+    viewerOptions: { three: window.THREE, deps: { GLTFLoader, OrbitControls } }, // per ASSET_VIEWER.md
+    // optional: resolveReferenceThumbnail({ referenceId, jobId, signal }) -> url | null
   });
-  conceptGallery = window.FurniConceptGallery.mountConceptGallery(
-    document.getElementById("conceptGalleryRoot"),
-    {
-      client: creativeJobsListClient,        // OPEN: owner TBD (Claude / AG), see below
-      getAccessToken: getStudioAccessToken,
-      creativeSource,                        // download + polling + the viewer's resolve
-      mountAssetViewer: AV && AV.mountAssetViewer,
-      viewerOptions: { three: window.THREE, deps: { GLTFLoader, OrbitControls } }, // per ASSET_VIEWER.md
-      // No renderConceptNotice here: the gallery always passes false and shows the notice itself.
-    },
-  );
 }
 // on route change away from #/projects:  conceptGallery?.destroy(); conceptGallery = null;
 ```
+
+The list client is no longer an open point: `createCreativeJobsClient` (thin, in
+`src/lib/projects/conceptGallery/jobsClient.js`) covers `GET ?resource=jobs`, `jobs&jobId` and
+`config`. It is **not** a fork of `DesignsApiClient`; if AG exports a generic authed request
+(AG-1), the client can switch to it with no gallery change.
 
 This needs Asset Engineer's bundle at **v2.1** (`b34e259`) or later: `renderConceptNotice`,
 `FORBIDDEN` and `RESOLVE_MALFORMED` are v2.1.
@@ -76,5 +84,9 @@ and disposes the viewer.
    for job status?
 3. The page has `GLTFLoader` and `OrbitControls`? r128 globals need the shim Asset Engineer
    documents in `docs/m3/asset-viewer/ASSET_VIEWER.md`.
-4. Who provides `creativeJobsListClient` (`listJobs` only)? Asset Engineer's
-   `createCreativeAssetSource` covers `getJob` and the asset, but not the list.
+4. ~~Who provides the list client?~~ Done: `FurniConceptGallery.createCreativeJobsClient`.
+5. AG-1: could `designsApiClient` export a generic authed JSON request / `authHeaders`, so the
+   jobs client reuses it instead of its own 30-line fetch wrapper?
+6. AG-2: could the token helper be exposed under a stable name (e.g.
+   `window.FurniAuth.getAccessToken`)? `studioAccessToken()` uses `getStudioAccessToken` today.
+7. AG-3: please confirm the mount point (this section, or a tab) so it can be marked agreed.

@@ -1,0 +1,96 @@
+{
+  "mode": "layout",
+  "original": {
+    "width": 1200,
+    "height": 1403
+  },
+  "clone": {
+    "width": 1440,
+    "height": 2328
+  },
+  "compared_at": {
+    "width": 480,
+    "height": 561
+  },
+  "height_delta_pct": 38.3,
+  "score": 44.4,
+  "verdict": "different",
+  "regions": [
+    {
+      "x": 100,
+      "y": 100,
+      "w": 1000,
+      "h": 1200,
+      "cells": 42,
+      "where": "middle centre"
+    },
+    {
+      "x": 100,
+      "y": 0,
+      "w": 600,
+      "h": 300,
+      "cells": 10,
+      "where": "top left"
+    },
+    {
+      "x": 200,
+      "y": 1200,
+      "w": 500,
+      "h": 200,
+      "cells": 7,
+      "where": "bottom centre"
+    },
+    {
+      "x": 100,
+      "y": 300,
+      "w": 100,
+      "h": 400,
+      "cells": 4,
+      "where": "top left"
+    },
+    {
+      "x": 600,
+      "y": 300,
+      "w": 200,
+      "h": 200,
+      "cells": 3,
+      "where": "top centre"
+    },
+    {
+      "x": 300,
+      "y": 400,
+      "w": 200,
+      "h": 200,
+      "cells": 3,
+      "where": "top left"
+    },
+    {
+      "x": 1100,
+      "y": 0,
+      "w": 100,
+      "h": 100,
+      "cells": 1,
+      "where": "top right"
+    },
+    {
+      "x": 700,
+      "y": 1100,
+      "w": 100,
+      "h": 100,
+      "cells": 1,
+      "where": "bottom centre"
+    },
+    {
+      "x": 1000,
+      "y": 1300,
+      "w": 100,
+      "h": 100,
+      "cells": 1,
+      "where": "bottom right"
+    }
+  ],
+  "files": {
+    "original": "artifacts/03-list.png",
+    "clone": "artifacts/rev2/desktop/03-list-rev2-fixture.SYNTHETIC.png"
+  }
+}

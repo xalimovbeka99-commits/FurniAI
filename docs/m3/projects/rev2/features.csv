@@ -1,0 +1,32 @@
+feature,area,priority,original,clone,notes
+List concepts from GET /api/creative?resource=jobs (server is source of truth),gallery list,must,yes,yes,thin createCreativeJobsClient; one fetch per call; no browser storage
+Card: title + date + status,card,must,yes,yes,
+Card: Result available yes/no row,card,must,yes,yes,data-result: Available (GLB) / Not yet / None / Not available
+Card: Open/Download only when a result is available,card,must,yes,yes,tested as a status x outputs table in rev2Brief
+Card: visible Concept label + badge; no dimensions; no designId link; concept.notice shown,card,must,yes,yes,data-kind-label=concept; DesignsApiClient trap test
+Card: reference thumbnail when one exists,card,should,yes,partial,host hook resolveReferenceThumbnail; contract rev 2 has no thumbnail field (Claude request C-2); placeholder otherwise
+State: loading,states,must,yes,yes,
+State: 401 signed out,states,must,yes,yes,
+State: page-wide 403,states,must,yes,yes,contract silent on 403 (Claude request C-5)
+State: empty (distinct from failure),states,must,yes,yes,failed loads say "This doesn't mean you have none"
+State: network / 5xx / malformed error,states,must,yes,yes,
+State: unavailable (503 not configured / generation disabled / no budget),states,must,yes,yes,availability from GET ?resource=config
+State: provider unavailable (PROVIDER_UNAVAILABLE / UNEXPECTED_RESPONSE),states,must,yes,yes,
+State: 429 rate limited (list / poll / asset),states,must,yes,yes,no automatic retry; polling pauses
+Reload restores jobs from GET jobs,reload,must,yes,yes,real reload in e2e F05-H1 and capture 28 (MOCKED route)
+Unfinished jobs resume polling after reload,reload,must,yes,yes,3-5 s; stops on terminal or destroy
+No browser storage presented as durable,reload,must,yes,yes,e2e afterEach asserts localStorage/sessionStorage length 0; unit Proxy spy
+billingOutcome not_submitted / unconfirmed / reported shown truthfully,billing,must,yes,yes,never says "no charge" for unknown
+PRIOR_SUBMISSION_UNKNOWN + acknowledgeUnknownCharge,billing,must,yes,yes,submitOutcome.describeSubmitResponse; card note on submission_unknown
+Budget (COST_CAP_EXCEEDED 402 / COST_UNVERIFIED 502),billing,must,yes,yes,
+User-initiated retries only (resolve + download),retry,must,yes,yes,Try opening again / Try download again / Check status again / Try again
+No auto retry inside AE viewer,retry,should,yes,partial,AE viewer v2.1 re-resolves once internally; question AE-1
+Polling 3-5 s; stops when terminal or destroyed,polling,must,yes,yes,pauses after 3 failed rounds or one 429
+Reuse AG token helper / no fork of DesignsApiClient,integration,must,yes,yes,studioAccessToken() delegates to getStudioAccessToken
+Reuse AG generic authed request,integration,should,yes,no,not exported by designsApiClient (AG request AG-1)
+Mount on agreed mount point,integration,must,yes,partial,no agreed mount in f472aef; MOUNT_PROPOSAL.md updated; index.html untouched
+AG design tokens with fallbacks,visual,must,yes,yes,src/styles/design-tokens.css
+Desktop 1440 + mobile 390 layouts,visual,must,yes,yes,56 SYNTHETIC screenshots
+Accessibility (axe) on states,visual,must,yes,yes,16 states x 2 projects; 0 violations
+Focus returns to opener after Close 3D view,a11y,should,yes,yes,BUG-003 fixed
+List beyond 50 jobs,gallery list,could,yes,partial,truncated note shown; pagination is Claude request C-1

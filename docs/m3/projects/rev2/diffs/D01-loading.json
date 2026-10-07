@@ -1,0 +1,48 @@
+{
+  "mode": "layout",
+  "original": {
+    "width": 1200,
+    "height": 800
+  },
+  "clone": {
+    "width": 1440,
+    "height": 900
+  },
+  "compared_at": {
+    "width": 480,
+    "height": 300
+  },
+  "height_delta_pct": -6.2,
+  "score": 42.4,
+  "verdict": "different",
+  "regions": [
+    {
+      "x": 0,
+      "y": 0,
+      "w": 700,
+      "h": 200,
+      "cells": 10,
+      "where": "top left"
+    },
+    {
+      "x": 900,
+      "y": 100,
+      "w": 200,
+      "h": 100,
+      "cells": 2,
+      "where": "top right"
+    },
+    {
+      "x": 1100,
+      "y": 0,
+      "w": 100,
+      "h": 100,
+      "cells": 1,
+      "where": "top right"
+    }
+  ],
+  "files": {
+    "original": "artifacts/01-loading.png",
+    "clone": "artifacts/rev2/desktop/01-loading.SYNTHETIC.png"
+  }
+}
