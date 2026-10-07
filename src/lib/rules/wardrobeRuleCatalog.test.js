@@ -28,7 +28,10 @@ describe("wardrobe rule catalog", () => {
   });
 
   it("names the bay count, doors-per-bay and bay-split rules as unruled", () => {
-    expect(unapprovedRuleKeys()).toEqual(["bayCountForWidth", "doorsPerBay", "unevenBayWidthDistribution"]);
+    // doorsPerBay left this roster on 2026-09-18, when
+    // RULEBOOK_V0_2_DOORS_PER_BAY replaced UNRULED-DOORS-PER-BAY. Exact
+    // equality is kept so the roster cannot grow or shrink silently.
+    expect(unapprovedRuleKeys()).toEqual(["bayCountForWidth", "unevenBayWidthDistribution"]);
   });
 
   it("resolves approved rules to their Rulebook values", () => {

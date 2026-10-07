@@ -13,7 +13,7 @@
  */
 
 import { toDeciMm } from "../furnispec/units.js";
-import { WARDROBE_RULES, resolve, ruleIdOf } from "../rules/wardrobeRuleCatalog.js";
+import { WARDROBE_RULES, resolve, ruleIdOf, doorsForBayWidth } from "../rules/wardrobeRuleCatalog.js";
 import {
   GAP_KIND,
   GAP_SEVERITY,
@@ -54,11 +54,31 @@ export function analyseGaps(interpretation) {
         "It cannot be inferred from the overall width.";
       proposalBasis = WARDROBE_RULES.bayCountForWidth.id;
     } else if (fact.key === "doorCount" && has("bayCount")) {
-      proposal = get("bayCount") * 2;
-      proposalBasis = WARDROBE_RULES.doorsPerBay.id;
-      detail =
-        `No ${fact.label} was supplied. ${WARDROBE_RULES.doorsPerBay.note} ` +
-        `Two doors per bay is offered for confirmation only.`;
+      // RULEBOOK_V0_2_DOORS_PER_BAY now answers this, where the old
+      // UNRULED-DOORS-PER-BAY could only offer 2-per-bay for confirmation. The
+      // proposal is a derivation rather than a guess.
+      //
+      // Still BLOCKING, deliberately: making it non-blocking would require
+      // assembleFurniSpec to derive doorCount itself, and that is the trust
+      // boundary - a change to make on its own, not as a side effect of this
+      // one. Recorded as follow-up rather than half-done here.
+      proposalBasis = WARDROBE_RULES.doorsPerBayThresholdMm.id;
+      const bayCount = get("bayCount");
+      const envelopeWidthMm = get("envelope.widthMm");
+      const panelTMm = WARDROBE_RULES.panelThicknessMm.value;
+      if (Number.isFinite(envelopeWidthMm) && bayCount > 0) {
+        const bayClearWidthMm =
+          (envelopeWidthMm - 2 * panelTMm - (bayCount - 1) * panelTMm) / bayCount;
+        proposal = bayCount * doorsForBayWidth(bayClearWidthMm);
+        detail =
+          `No ${fact.label} was supplied. ${WARDROBE_RULES.doorsPerBayThresholdMm.note} ` +
+          `At about ${Math.round(bayClearWidthMm)}mm per bay that gives ${proposal} in total, ` +
+          `offered for confirmation.`;
+      } else {
+        detail =
+          `No ${fact.label} was supplied, and the door count depends on each bay's clear width, ` +
+          `which is not yet known.`;
+      }
     } else if (fact.key === "bayLayouts" && has("bayCount")) {
       detail = `The interior layout of each of the ${get("bayCount")} bays was not described.`;
     }

@@ -36,6 +36,7 @@ import { QUALIFICATION_STATUS, SPEC_STATUS } from "../furnispec/schema.js";
 import { validateFurniSpec } from "../furnispec/validate.js";
 import { AssemblyBlockedError, assembleFurniSpec } from "./assembleFurniSpec.js";
 import { createProposal, validateApproval } from "./approval.js";
+import { preserveCustomerFinishOnDraft } from "./commitMaterialUpdate.js";
 import { analyseGaps, blockingGaps } from "./gapAnalysis.js";
 import {
   GAP_KIND,
@@ -955,11 +956,14 @@ export function applyConversationalEdit({
         error: draft.partGraphValidation.errors?.join("; ") || "Generated part graph validation failed.",
       };
     }
-    return {
-      ok: true,
-      assistantReply: `Updated wardrobe design (Revision ${revision + 1}).`,
-      ...draft,
-    };
+    return preserveCustomerFinishOnDraft(
+      {
+        ok: true,
+        assistantReply: `Updated wardrobe design (Revision ${revision + 1}).`,
+        ...draft,
+      },
+      currentObservations
+    );
   }
 
   const materialKey = parsed.changes.materialKey;
@@ -998,12 +1002,15 @@ export function applyConversationalEdit({
     };
   }
 
-  return {
-    ok: true,
-    assistantReply: `${parsed.assistantReply} (Revision ${revision + 1})`,
-    materialKey,
-    ...draft,
-  };
+  return preserveCustomerFinishOnDraft(
+    {
+      ok: true,
+      assistantReply: `${parsed.assistantReply} (Revision ${revision + 1})`,
+      materialKey,
+      ...draft,
+    },
+    newObservations
+  );
 }
 
 /**

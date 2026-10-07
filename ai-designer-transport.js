@@ -23,9 +23,11 @@ var AiDesignerTransport = (() => {
     AI_DESIGNER_ENDPOINT: () => AI_DESIGNER_ENDPOINT,
     RESULT_KIND: () => RESULT_KIND,
     RESULT_SOURCE: () => RESULT_SOURCE,
+    invalidLiveStateGuardResult: () => invalidLiveStateGuardResult,
     isStaleAnswer: () => isStaleAnswer,
     isStaleForRevision: () => isStaleForRevision,
-    proposeDesignChange: () => proposeDesignChange
+    proposeDesignChange: () => proposeDesignChange,
+    readLiveStateGuards: () => readLiveStateGuards
   });
 
   // src/lib/furnispec/schema.js
@@ -685,12 +687,13 @@ var AiDesignerTransport = (() => {
     RULEBOOK_V0_1: "RULEBOOK_V0_1",
     GOLDEN_FIXTURE_BEKZOD_APPROVED: "GOLDEN_FIXTURE_BEKZOD_APPROVED",
     BEKZOD_RULING: "BEKZOD_RULING",
-    REQUIRES_BEKZOD_RULING: "REQUIRES_BEKZOD_RULING"
+    REQUIRES_BEKZOD_RULING: "REQUIRES_BEKZOD_RULING",
+    PROVISIONAL_PENDING_BEKZOD: "PROVISIONAL_PENDING_BEKZOD"
   });
   function rule(id, value, provenance, note) {
     return Object.freeze({ id, value, provenance, note });
   }
-  var { RULEBOOK_V0_1, GOLDEN_FIXTURE_BEKZOD_APPROVED, BEKZOD_RULING, REQUIRES_BEKZOD_RULING } = RULE_PROVENANCE;
+  var { RULEBOOK_V0_1, GOLDEN_FIXTURE_BEKZOD_APPROVED, BEKZOD_RULING, REQUIRES_BEKZOD_RULING, PROVISIONAL_PENDING_BEKZOD } = RULE_PROVENANCE;
   var WARDROBE_RULES = Object.freeze({
     constructionStyle: rule("WR-001", "CAP_STYLE", RULEBOOK_V0_1, "Cap Style (Style B): top/bottom cap the outer sides and divider."),
     panelThicknessMm: rule("WR-003", 18, RULEBOOK_V0_1, "Carcass panels, shelves, divider, doors and plinth rails."),
@@ -774,7 +777,13 @@ var AiDesignerTransport = (() => {
     ),
     // --- NOT approved. Reading these through resolve() throws by design.
     bayCountForWidth: rule("UNRULED-BAY-COUNT", null, REQUIRES_BEKZOD_RULING, "No approved rule maps overall width to a bay count. Must be asked."),
-    doorsPerBay: rule("UNRULED-DOORS-PER-BAY", null, REQUIRES_BEKZOD_RULING, "Golden, narrow and wide fixtures all use 2 doors per bay, but no Rulebook rule states it. Must be asked."),
+    // Ruled 2026-09-18 (RULEBOOK_V0_2_DOORS_PER_BAY). Supersedes
+    // UNRULED-DOORS-PER-BAY, which resolve() threw on. Keyed on the BAY's clear
+    // width, not the wardrobe's overall width: two 900mm bays and one 1800mm bay
+    // are different cabinets.
+    doorsPerBayThresholdMm: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 600, PROVISIONAL_PENDING_BEKZOD, "A bay at or above this clear width takes two door leaves; below it, one."),
+    doorsPerBayAtOrAboveThreshold: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 2, PROVISIONAL_PENDING_BEKZOD, "Leaves for a bay whose clear width is >= the threshold."),
+    doorsPerBayBelowThreshold: rule("RULEBOOK_V0_2_DOORS_PER_BAY", 1, PROVISIONAL_PENDING_BEKZOD, "Leaves for a bay whose clear width is < the threshold."),
     unevenBayWidthDistribution: rule("UNRULED-BAY-SPLIT", null, REQUIRES_BEKZOD_RULING, "No approved rule for distributing a non-integral bay-width remainder. Must be asked.")
   });
   var UnapprovedRuleError = class extends Error {
@@ -798,6 +807,16 @@ var AiDesignerTransport = (() => {
     }
     return record.value;
   }
+  function doorsForBayWidth(bayClearWidthMm) {
+    if (!Number.isFinite(bayClearWidthMm) || bayClearWidthMm <= 0) {
+      const err = new Error(
+        `Cannot choose a door count for a bay of "${bayClearWidthMm}"mm. The ruling is keyed on bay clear width, which must be known.`
+      );
+      err.code = "DOORS_PER_BAY_AMBIGUOUS";
+      throw err;
+    }
+    return bayClearWidthMm >= resolve("doorsPerBayThresholdMm") ? resolve("doorsPerBayAtOrAboveThreshold") : resolve("doorsPerBayBelowThreshold");
+  }
   function ruleIdOf(key) {
     const record = WARDROBE_RULES[key];
     if (!record) throw new Error(`Unknown rule key "${key}".`);
@@ -809,6 +828,8 @@ var AiDesignerTransport = (() => {
   var DRAWER_BOX_SIDE_THICKNESS_MM = 15;
   var DRAWER_SIDE_DEPTH_SETBACK_MM = 50;
   var DRAWER_BOTTOM_SIDE_INSET_TOTAL_MM = 10;
+  var DRAWER_BOTTOM_MATERIAL_CODE = "HDF_WHITE_6";
+  var DRAWER_BOTTOM_THICKNESS_MM = 6;
   function emitDrawerBankParts({
     comp,
     bay,
@@ -824,9 +845,19 @@ var AiDesignerTransport = (() => {
     const revealMm = resolve("drawerFrontRevealMm");
     const slideDeductionMm = resolve("drawerSlideWidthDeductionMm");
     const frontThicknessMm = resolve("panelThicknessMm");
-    const bottomThicknessMm = Math.max(6, resolve("backThicknessMm"));
+    const bottomThicknessMm = DRAWER_BOTTOM_THICKNESS_MM;
     const rows = Math.max(1, Number(comp.rows) || 1);
     const bankHeightMm = comp.heightMm != null ? Number(comp.heightMm) : rows * DEFAULT_DRAWER_ROW_HEIGHT_MM;
+    if (comp.heightMm != null) {
+      const bankHeightDmm = Math.round(bankHeightMm * 10);
+      if (Math.abs(bankHeightMm * 10 - bankHeightDmm) > 1e-9 || bankHeightDmm % rows !== 0) {
+        const err = new Error(
+          `Drawer bank "${comp.id || "?"}": ${bankHeightMm}mm over ${rows} rows does not divide to an exact 0.1mm row height.`
+        );
+        err.code = "DEGENERATE_DRAWER_GEOMETRY";
+        throw err;
+      }
+    }
     const drawerHeightMm = bankHeightMm / rows;
     const frontHeightMm = drawerHeightMm - 2 * revealMm;
     const boxHeightMm = frontHeightMm;
@@ -836,6 +867,23 @@ var AiDesignerTransport = (() => {
     const backWidthMm = bayWidthMm - slideDeductionMm - 2 * DRAWER_BOX_SIDE_THICKNESS_MM;
     const bottomWidthMm = bayWidthMm - slideDeductionMm - DRAWER_BOTTOM_SIDE_INSET_TOTAL_MM;
     const bottomDepthMm = sideLengthMm - DRAWER_BOX_SIDE_THICKNESS_MM;
+    const degenerate = [
+      ["front width", frontWidthMm],
+      ["front height", frontHeightMm],
+      ["box height", boxHeightMm],
+      ["side length", sideLengthMm],
+      ["back width", backWidthMm],
+      ["bottom width", bottomWidthMm],
+      ["bottom depth", bottomDepthMm],
+      ["bottom thickness", bottomThicknessMm]
+    ].filter(([, value]) => !(value > 0));
+    if (degenerate.length > 0) {
+      const err = new Error(
+        `Drawer bank "${comp.id}" computes non-positive ${degenerate.map(([what, value]) => `${what} (${value}mm)`).join(", ")}. A ${bayWidthMm}mm bay cannot carry a drawer box: the back is bay - ${slideDeductionMm} - 2 x ${DRAWER_BOX_SIDE_THICKNESS_MM}, so the bay must exceed ${slideDeductionMm + 2 * DRAWER_BOX_SIDE_THICKNESS_MM}mm.`
+      );
+      err.code = "DEGENERATE_DRAWER_GEOMETRY";
+      throw err;
+    }
     const halfDeductionMm = slideDeductionMm / 2;
     const boxMinXMm = bay.minXDmm / 10 + halfDeductionMm;
     const boxMaxXMm = bay.maxXDmm / 10 - halfDeductionMm;
@@ -986,7 +1034,7 @@ var AiDesignerTransport = (() => {
         id: bottomId,
         bayIndex: bay.index,
         role: PART_ROLES.DRAWER_BOTTOM,
-        materialCode: matCarcass,
+        materialCode: DRAWER_BOTTOM_MATERIAL_CODE,
         lengthDmm: bottomWidthDmm,
         widthDmm: bottomDepthDmm,
         thicknessDmm: bottomThickDmm,
@@ -2546,6 +2594,125 @@ var AiDesignerTransport = (() => {
     });
   }
 
+  // src/lib/conversation/commitMaterialUpdate.js
+  function cloneJson(value) {
+    return value == null ? value : JSON.parse(JSON.stringify(value));
+  }
+  function applyCustomerFinishAnnotation({
+    materialKey,
+    spec,
+    partGraph = null,
+    observations = [],
+    origins = {}
+  } = {}) {
+    if (typeof materialKey !== "string" || materialKey.trim() === "") {
+      return { ok: false, error: "materialKey is required to commit a finish change." };
+    }
+    if (!spec || typeof spec !== "object") {
+      return { ok: false, error: "An active FurniSpec is required before a finish can be committed." };
+    }
+    const key = materialKey.trim().toLowerCase();
+    const nextSpec = {
+      ...cloneJson(spec),
+      // Keep manufacturing finishType catalog-backed.
+      finishType: spec.finishType && spec.finishType !== key ? spec.finishType : spec.finishType || "melamine",
+      customerFinishKey: key
+    };
+    if (nextSpec.finishType === key) {
+      nextSpec.finishType = "melamine";
+    }
+    if (nextSpec.materials && typeof nextSpec.materials === "object") {
+      nextSpec.materials = { ...nextSpec.materials, customerFinishKey: key };
+    }
+    const nextProposal = createProposal(nextSpec);
+    let nextPartGraph = cloneJson(partGraph);
+    if (nextPartGraph && typeof nextPartGraph === "object") {
+      nextPartGraph.summary = {
+        ...nextPartGraph.summary || {},
+        customerFinishKey: key,
+        revision: nextSpec.revision
+      };
+      if (Array.isArray(nextPartGraph.parts)) {
+        nextPartGraph.parts = nextPartGraph.parts.map((part) => ({
+          ...part,
+          customerFinishKey: key,
+          finishIntent: key
+        }));
+      }
+    }
+    const nextObservations = [
+      ...observations.filter(
+        (o) => o && o.key !== "customerFinishKey" && o.key !== "materialKey"
+      ),
+      {
+        key: "customerFinishKey",
+        value: key,
+        origin: OBSERVATION_ORIGIN.CUSTOMER_STATED,
+        sourceText: `customer finish ${key}`,
+        sourceSpan: null,
+        ruleIds: []
+      }
+    ];
+    const hasFinish = nextObservations.some((o) => o.key === "finishType");
+    if (!hasFinish) {
+      nextObservations.push({
+        key: "finishType",
+        value: nextSpec.finishType || "melamine",
+        origin: OBSERVATION_ORIGIN.DEFAULTED,
+        sourceText: "catalog manufacturing finish",
+        sourceSpan: null,
+        ruleIds: []
+      });
+    } else {
+      for (let i = 0; i < nextObservations.length; i++) {
+        if (nextObservations[i].key === "finishType" && nextObservations[i].value === key) {
+          nextObservations[i] = {
+            ...nextObservations[i],
+            value: "melamine",
+            origin: OBSERVATION_ORIGIN.DEFAULTED,
+            sourceText: "restored catalog manufacturing finish (swatch is customerFinishKey)"
+          };
+        }
+      }
+    }
+    const nextOrigins = {
+      ...origins,
+      customerFinishKey: OBSERVATION_ORIGIN.CUSTOMER_STATED
+    };
+    return {
+      ok: true,
+      materialKey: key,
+      spec: nextSpec,
+      proposal: nextProposal,
+      partGraph: nextPartGraph,
+      observations: nextObservations,
+      origins: nextOrigins,
+      revision: nextSpec.revision
+    };
+  }
+  function preserveCustomerFinishOnDraft(draft, currentObservations = []) {
+    if (!draft?.ok && !draft?.spec) return draft;
+    const fromObs = currentObservations.find((o) => o?.key === "customerFinishKey")?.value || currentObservations.find((o) => o?.key === "materialKey")?.value || draft.spec?.customerFinishKey;
+    if (!fromObs) return draft;
+    const annotated = applyCustomerFinishAnnotation({
+      materialKey: fromObs,
+      spec: draft.spec,
+      partGraph: draft.partGraph,
+      observations: draft.observations || currentObservations,
+      origins: draft.origins || {}
+    });
+    if (!annotated.ok) return draft;
+    return {
+      ...draft,
+      spec: annotated.spec,
+      proposal: annotated.proposal,
+      partGraph: annotated.partGraph,
+      observations: annotated.observations,
+      origins: annotated.origins,
+      materialKey: annotated.materialKey
+    };
+  }
+
   // src/lib/conversation/gapAnalysis.js
   function analyseGaps(interpretation) {
     const observations = interpretation?.observations ?? [];
@@ -2565,9 +2732,17 @@ var AiDesignerTransport = (() => {
         detail = `No ${fact.label} was supplied. ${WARDROBE_RULES.bayCountForWidth.note} It cannot be inferred from the overall width.`;
         proposalBasis = WARDROBE_RULES.bayCountForWidth.id;
       } else if (fact.key === "doorCount" && has("bayCount")) {
-        proposal = get("bayCount") * 2;
-        proposalBasis = WARDROBE_RULES.doorsPerBay.id;
-        detail = `No ${fact.label} was supplied. ${WARDROBE_RULES.doorsPerBay.note} Two doors per bay is offered for confirmation only.`;
+        proposalBasis = WARDROBE_RULES.doorsPerBayThresholdMm.id;
+        const bayCount = get("bayCount");
+        const envelopeWidthMm = get("envelope.widthMm");
+        const panelTMm = WARDROBE_RULES.panelThicknessMm.value;
+        if (Number.isFinite(envelopeWidthMm) && bayCount > 0) {
+          const bayClearWidthMm = (envelopeWidthMm - 2 * panelTMm - (bayCount - 1) * panelTMm) / bayCount;
+          proposal = bayCount * doorsForBayWidth(bayClearWidthMm);
+          detail = `No ${fact.label} was supplied. ${WARDROBE_RULES.doorsPerBayThresholdMm.note} At about ${Math.round(bayClearWidthMm)}mm per bay that gives ${proposal} in total, offered for confirmation.`;
+        } else {
+          detail = `No ${fact.label} was supplied, and the door count depends on each bay's clear width, which is not yet known.`;
+        }
       } else if (fact.key === "bayLayouts" && has("bayCount")) {
         detail = `The interior layout of each of the ${get("bayCount")} bays was not described.`;
       }
@@ -3625,11 +3800,14 @@ var AiDesignerTransport = (() => {
           error: draft2.partGraphValidation.errors?.join("; ") || "Generated part graph validation failed."
         };
       }
-      return {
-        ok: true,
-        assistantReply: `Updated wardrobe design (Revision ${revision + 1}).`,
-        ...draft2
-      };
+      return preserveCustomerFinishOnDraft(
+        {
+          ok: true,
+          assistantReply: `Updated wardrobe design (Revision ${revision + 1}).`,
+          ...draft2
+        },
+        currentObservations
+      );
     }
     const materialKey = parsed.changes.materialKey;
     const changes = { ...parsed.changes };
@@ -3660,12 +3838,15 @@ var AiDesignerTransport = (() => {
         error: draft.partGraphValidation.errors?.join("; ") || "Generated part graph validation failed."
       };
     }
-    return {
-      ok: true,
-      assistantReply: `${parsed.assistantReply} (Revision ${revision + 1})`,
-      materialKey,
-      ...draft
-    };
+    return preserveCustomerFinishOnDraft(
+      {
+        ok: true,
+        assistantReply: `${parsed.assistantReply} (Revision ${revision + 1})`,
+        materialKey,
+        ...draft
+      },
+      newObservations
+    );
   }
   function draftPreviewSafety(spec, partGraph) {
     const drillingOperations = (partGraph?.operations ?? []).filter((op) => /DRILL|BORE|HINGE_CUP|PIN_HOLE/i.test(op.type));
@@ -3839,7 +4020,7 @@ var AiDesignerTransport = (() => {
     DESIGNER_UNAVAILABLE: "DESIGNER_UNAVAILABLE",
     /**
      * The answer that came back is for a design the customer has already moved
-     * past — they edited again, pressed Undo, or switched designs while it was
+     * past â€” they edited again, pressed Undo, or switched designs while it was
      * in flight. Covers changeToken mismatch and design-id mismatch (not only
      * revision inequality). Kept as STALE_REVISION for Antigravity additive
      * compatibility; see docs/m2/integ/ANTIGRAVITY_STALE_GUARD_HANDOFF.md.
@@ -3851,33 +4032,127 @@ var AiDesignerTransport = (() => {
   }
   function readGetter(maybeGetter) {
     if (typeof maybeGetter !== "function") return void 0;
-    return maybeGetter();
+    try {
+      return maybeGetter();
+    } catch {
+      return void 0;
+    }
+  }
+  function guardRefusal(fields) {
+    return {
+      ok: false,
+      source: RESULT_SOURCE.DETERMINISTIC,
+      kind: RESULT_KIND.STALE_REVISION,
+      ...fields
+    };
+  }
+  function invalidLiveStateGuardResult({
+    currentSessionId,
+    currentDesignId,
+    currentChangeToken,
+    currentRevision,
+    sessionIdAtRequest = void 0,
+    designIdAtRequest = void 0,
+    changeTokenAtRequest = void 0,
+    revisionAtRequest = void 0
+  } = {}) {
+    const checks = [
+      ["currentSessionId", currentSessionId],
+      ["currentDesignId", currentDesignId],
+      ["currentChangeToken", currentChangeToken],
+      ["currentRevision", currentRevision]
+    ];
+    for (const [name, value] of checks) {
+      if (value !== void 0 && typeof value !== "function") {
+        return guardRefusal({
+          error: `Live-state guard "${name}" must be a getter function so changes during the request are detected. The design was not changed.`,
+          guardParameter: name,
+          guardParameterType: value === null ? "null" : typeof value
+        });
+      }
+    }
+    const pairs = [
+      ["currentSessionId", currentSessionId, "sessionId", sessionIdAtRequest != null && sessionIdAtRequest !== ""],
+      ["currentDesignId", currentDesignId, "specId", designIdAtRequest != null && designIdAtRequest !== ""],
+      ["currentChangeToken", currentChangeToken, "changeToken", Number.isFinite(changeTokenAtRequest)]
+    ];
+    if (typeof currentChangeToken !== "function") {
+      pairs.push(["currentRevision", currentRevision, "revision", Number.isFinite(revisionAtRequest)]);
+    }
+    for (const [name, getter, counterpart, counterpartOk] of pairs) {
+      if (typeof getter === "function" && !counterpartOk) {
+        return guardRefusal({
+          error: `Live-state guard "${name}" was supplied without "${counterpart}" at request time, so staleness cannot be decided. The design was not changed.`,
+          guardParameter: counterpart,
+          guardMisconfigured: true
+        });
+      }
+    }
+    return null;
+  }
+  function readLiveStateGuards({
+    currentSessionId,
+    currentDesignId,
+    currentChangeToken,
+    currentRevision
+  } = {}) {
+    const out = {};
+    const slots = [
+      ["currentSessionId", currentSessionId, "liveSessionId"],
+      ["currentDesignId", currentDesignId, "liveDesignId"],
+      ["currentChangeToken", currentChangeToken, "liveChangeToken"],
+      ["currentRevision", currentRevision, "liveRevision"]
+    ];
+    for (const [name, getter, field] of slots) {
+      if (typeof getter !== "function") continue;
+      try {
+        out[field] = getter();
+      } catch (err) {
+        return {
+          failure: guardRefusal({
+            guardParameter: name,
+            guardThrew: true,
+            guardErrorName: typeof err?.name === "string" ? err.name : "Error",
+            error: "That answer could not be checked against your current design, so it was not applied. Your current design is unchanged \u2014 please ask again."
+          })
+        };
+      }
+    }
+    return out;
   }
   function isStaleAnswer({
+    sessionIdAtRequest,
     designIdAtRequest,
     changeTokenAtRequest,
+    currentSessionId,
     currentDesignId,
     currentChangeToken,
     revisionAtRequest,
     currentRevision
   } = {}) {
+    const hasSessionGuard = typeof currentSessionId === "function";
     const hasDesignGuard = typeof currentDesignId === "function";
     const hasTokenGuard = typeof currentChangeToken === "function";
     const hasRevisionGuard = typeof currentRevision === "function";
-    if (!hasDesignGuard && !hasTokenGuard && !hasRevisionGuard) return false;
+    if (!hasSessionGuard && !hasDesignGuard && !hasTokenGuard && !hasRevisionGuard) return false;
+    if (hasSessionGuard) {
+      const nowSession = readGetter(currentSessionId);
+      if (sessionIdAtRequest == null || nowSession == null || nowSession === "") return true;
+      if (String(nowSession) !== String(sessionIdAtRequest)) return true;
+    }
     if (hasDesignGuard) {
       const nowId = readGetter(currentDesignId);
-      if (designIdAtRequest == null || nowId == null || nowId === "") return false;
+      if (designIdAtRequest == null || nowId == null || nowId === "") return true;
       if (String(nowId) !== String(designIdAtRequest)) return true;
     }
     if (hasTokenGuard) {
       const nowToken = readGetter(currentChangeToken);
-      if (!Number.isFinite(nowToken) || !Number.isFinite(changeTokenAtRequest)) return false;
+      if (!Number.isFinite(nowToken) || !Number.isFinite(changeTokenAtRequest)) return true;
       if (nowToken !== changeTokenAtRequest) return true;
     }
     if (hasRevisionGuard && !hasTokenGuard) {
       const now = readGetter(currentRevision);
-      if (!Number.isFinite(now) || !Number.isFinite(revisionAtRequest)) return false;
+      if (!Number.isFinite(now) || !Number.isFinite(revisionAtRequest)) return true;
       if (now !== revisionAtRequest) return true;
     }
     return false;
@@ -3886,6 +4161,8 @@ var AiDesignerTransport = (() => {
     return isStaleAnswer({ revisionAtRequest, currentRevision });
   }
   function staleResult({
+    sessionIdAtRequest,
+    currentSessionId,
     designIdAtRequest,
     changeTokenAtRequest,
     currentDesignId,
@@ -3897,13 +4174,15 @@ var AiDesignerTransport = (() => {
       ok: false,
       source: RESULT_SOURCE.DETERMINISTIC,
       kind: RESULT_KIND.STALE_REVISION,
+      sessionIdAtRequest: sessionIdAtRequest ?? null,
+      currentSessionId: currentSessionId ?? null,
       designIdAtRequest: designIdAtRequest ?? null,
       currentDesignId: currentDesignId ?? null,
       changeTokenAtRequest: Number.isFinite(changeTokenAtRequest) ? changeTokenAtRequest : null,
       currentChangeToken: Number.isFinite(currentChangeToken) ? currentChangeToken : null,
       revisionAtRequest: Number.isFinite(revisionAtRequest) ? revisionAtRequest : null,
       currentRevision: Number.isFinite(currentRevision) ? currentRevision : null,
-      error: "That answer arrived for an older version of your design, so it was not applied. Your current design is unchanged \u2014 please ask again."
+      error: "That answer arrived for an older version of your design, so it was not applied. Your current design is unchanged \xE2\u20AC\u201D please ask again."
     };
   }
   async function proposeDesignChange({
@@ -3912,14 +4191,16 @@ var AiDesignerTransport = (() => {
     specId,
     revision = 1,
     changeToken = void 0,
+    sessionId = void 0,
     endpoint = AI_DESIGNER_ENDPOINT,
     fetchImpl = typeof fetch === "function" ? fetch : null,
     signal = void 0,
+    currentSessionId = void 0,
     currentDesignId = void 0,
     currentChangeToken = void 0,
     /**
      * Legacy: reads the caller's CURRENT revision when the answer lands.
-     * Prefer currentChangeToken — revision rewinds on Undo.
+     * Prefer currentChangeToken â€” revision rewinds on Undo.
      */
     currentRevision = void 0
   }) {
@@ -3942,6 +4223,8 @@ var AiDesignerTransport = (() => {
         return {
           ok: true,
           source: RESULT_SOURCE.DETERMINISTIC,
+          provider: "rules",
+          isMock: false,
           kind: RESULT_KIND.MATERIAL_UPDATED,
           materialKey: parsed.changes.materialKey,
           assistantReply: parsed.assistantReply
@@ -3949,15 +4232,17 @@ var AiDesignerTransport = (() => {
       }
       const applied2 = applyConversationalEdit({ currentObservations, commandText: message, specId, revision });
       if (applied2.ok) {
-        return { ...applied2, source: RESULT_SOURCE.DETERMINISTIC, kind: RESULT_KIND.DESIGN_UPDATED };
+        return { ...applied2, source: RESULT_SOURCE.DETERMINISTIC, provider: "rules", isMock: false, kind: RESULT_KIND.DESIGN_UPDATED };
       }
       const kind = Array.isArray(applied2.unsupported) && applied2.unsupported.length > 0 ? RESULT_KIND.UNSUPPORTED : RESULT_KIND.REJECTED;
-      return { ...applied2, source: RESULT_SOURCE.DETERMINISTIC, kind };
+      return { ...applied2, source: RESULT_SOURCE.DETERMINISTIC, provider: "rules", isMock: false, kind };
     }
     if (typeof fetchImpl !== "function") {
       return {
         ok: false,
         source: RESULT_SOURCE.MODEL,
+        provider: "none",
+        isMock: false,
         kind: RESULT_KIND.DESIGNER_UNAVAILABLE,
         error: "The FurniAI designer is not reachable from this browser. Your design is unchanged."
       };
@@ -3975,18 +4260,34 @@ var AiDesignerTransport = (() => {
         ...signal ? { signal } : {}
       });
       payload = await response.json().catch(() => null);
-      const liveDesignId = readGetter(currentDesignId);
-      const liveChangeToken = readGetter(currentChangeToken);
-      const liveRevision = readGetter(currentRevision);
-      if (isStaleAnswer({
-        designIdAtRequest: specId,
-        changeTokenAtRequest: changeToken,
+      const guardMisuse = invalidLiveStateGuardResult({
+        currentSessionId,
         currentDesignId,
         currentChangeToken,
+        currentRevision,
+        sessionIdAtRequest: sessionId,
+        designIdAtRequest: specId,
+        changeTokenAtRequest: changeToken,
+        revisionAtRequest: revision
+      });
+      if (guardMisuse) return guardMisuse;
+      const guardRead = readLiveStateGuards({ currentSessionId, currentDesignId, currentChangeToken, currentRevision });
+      if (guardRead.failure) return guardRead.failure;
+      const { liveSessionId, liveDesignId, liveChangeToken, liveRevision } = guardRead;
+      const frozen = (value, supplied) => typeof supplied === "function" ? () => value : void 0;
+      if (isStaleAnswer({
+        sessionIdAtRequest: sessionId,
+        designIdAtRequest: specId,
+        changeTokenAtRequest: changeToken,
+        currentSessionId: frozen(liveSessionId, currentSessionId),
+        currentDesignId: frozen(liveDesignId, currentDesignId),
+        currentChangeToken: frozen(liveChangeToken, currentChangeToken),
         revisionAtRequest: revision,
-        currentRevision
+        currentRevision: frozen(liveRevision, currentRevision)
       })) {
         return staleResult({
+          sessionIdAtRequest: sessionId,
+          currentSessionId: liveSessionId,
           designIdAtRequest: specId,
           changeTokenAtRequest: changeToken,
           currentDesignId: liveDesignId,
@@ -3999,6 +4300,8 @@ var AiDesignerTransport = (() => {
         return {
           ok: false,
           source: RESULT_SOURCE.MODEL,
+          provider: payload?.provider ?? "server",
+          isMock: Boolean(payload?.mock || payload?.isMock || payload?.provider === "mock"),
           kind: RESULT_KIND.DESIGNER_UNAVAILABLE,
           code: payload?.code ?? `HTTP_${response.status}`,
           error: payload?.error ?? "The FurniAI designer is not available right now. Your design is unchanged."
@@ -4008,11 +4311,15 @@ var AiDesignerTransport = (() => {
       return {
         ok: false,
         source: RESULT_SOURCE.MODEL,
+        provider: "network",
+        isMock: false,
         kind: RESULT_KIND.DESIGNER_UNAVAILABLE,
         code: err?.name === "AbortError" ? "ABORTED" : "NETWORK_ERROR",
         error: "Could not reach the FurniAI designer. Your design is unchanged."
       };
     }
+    const isMock = Boolean(payload?.mock || payload?.isMock || payload?.provider === "mock" || payload?.provider === "stub");
+    const modelProvider = isMock ? "mock" : typeof payload?.provider === "string" && payload.provider.trim() || "ai";
     const revalidated = validateModelProposal(
       { edits: payload.edits, unsupported: payload.unsupported, reply: payload.reply },
       { currentBayCount: factsFrom(currentObservations).bayCount ?? 2 }
@@ -4024,6 +4331,8 @@ var AiDesignerTransport = (() => {
       return {
         ok: false,
         source: RESULT_SOURCE.MODEL,
+        provider: modelProvider,
+        isMock,
         kind: unsupported.length > 0 ? RESULT_KIND.UNSUPPORTED : clientRejected.length > 0 ? RESULT_KIND.REJECTED : RESULT_KIND.NEEDS_MORE_DETAIL,
         assistantReply: payload.reply || "",
         unsupported,
@@ -4037,6 +4346,8 @@ var AiDesignerTransport = (() => {
       return {
         ok: true,
         source: RESULT_SOURCE.MODEL,
+        provider: modelProvider,
+        isMock,
         kind: RESULT_KIND.MATERIAL_UPDATED,
         materialKey,
         assistantReply: payload.reply || `Changed finish to ${materialKey}.`,
@@ -4049,6 +4360,8 @@ var AiDesignerTransport = (() => {
       return {
         ...applied,
         source: RESULT_SOURCE.MODEL,
+        provider: modelProvider,
+        isMock,
         kind: RESULT_KIND.REJECTED,
         assistantReply: payload.reply || "",
         unsupported
@@ -4057,6 +4370,8 @@ var AiDesignerTransport = (() => {
     return {
       ...applied,
       source: RESULT_SOURCE.MODEL,
+      provider: modelProvider,
+      isMock,
       kind: RESULT_KIND.DESIGN_UPDATED,
       materialKey: materialKey ?? applied.materialKey ?? null,
       assistantReply: payload.reply || applied.assistantReply,

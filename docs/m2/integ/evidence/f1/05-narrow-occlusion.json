@@ -16,17 +16,17 @@
     "top": 844,
     "left": 0,
     "right": 390,
-    "bottom": 1149.25,
+    "bottom": 1157.25,
     "width": 390,
-    "height": 305.25
+    "height": 313.25
   },
   "right": {
     "top": 844,
     "left": 0,
     "right": 390,
-    "bottom": 1232.234375,
+    "bottom": 1282.875,
     "width": 390,
-    "height": 388.234375
+    "height": 438.875
   },
   "mainClasses": [
     "b-main",
@@ -45,17 +45,17 @@
       "top": 844,
       "left": 0,
       "right": 390,
-      "bottom": 1149.25,
+      "bottom": 1157.25,
       "width": 390,
-      "height": 305.25
+      "height": 313.25
     },
     "right": {
       "top": 844,
       "left": 0,
       "right": 390,
-      "bottom": 1232.234375,
+      "bottom": 1282.875,
       "width": 390,
-      "height": 388.234375
+      "height": 438.875
     },
     "leftOverlapPx": 0.5,
     "rightOverlapPx": 0.5,

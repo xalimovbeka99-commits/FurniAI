@@ -59,12 +59,14 @@ describe("clarification gap analysis", () => {
     expect(isReadyForAssembly(gaps)).toBe(false);
   });
 
-  it("offers two doors per bay only as a proposal, citing the unruled rule", () => {
+  it("derives the door count from the 2026-09-18 ruling, still as a proposal", () => {
     const facts = { ...COMPLETE_FACTS };
     delete facts.doorCount;
     const g = analyseGaps(interpretationFrom(facts)).find((x) => x.key === "doorCount");
     expect(g.proposal).toBe(4);
-    expect(g.proposalBasis).toBe("UNRULED-DOORS-PER-BAY");
+    // Was UNRULED-DOORS-PER-BAY: a 2-per-bay offer because no rule existed.
+    // Severity stays BLOCKING - see the note in gapAnalysis.js.
+    expect(g.proposalBasis).toBe("RULEBOOK_V0_2_DOORS_PER_BAY");
     expect(g.severity).toBe(GAP_SEVERITY.BLOCKING);
   });
 
