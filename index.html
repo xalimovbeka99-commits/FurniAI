@@ -315,7 +315,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
 
   /* Mobile Builder Header: clean 2-row wrap so controls and parametric badge never collide */
   .b-top{flex-wrap:wrap;padding:8px 14px;gap:6px 10px}
-  .b-top .left{gap:10px;min-width:0;flex:1 1 auto}
+  .b-top .left, .b-top-left{gap:10px;min-width:0;flex:1 1 auto}
   .b-title{font-size:1.1rem;max-width:140px}
   .b-title .t{font-size:9.5px}
   .b-nav{gap:8px;flex-shrink:0}
@@ -519,6 +519,8 @@ footer ul a:hover{opacity:1;color:var(--brass)}
   #aiConversationalInput { min-height: 44px; font-size: 13px; }
   #aiConversationalSendBtn { min-height: 44px; min-width: 68px; font-size: 12px; }
   .ai-refine-chip { min-height: 36px; padding: 6px 12px; }
+  .studio-mode-pill { max-width: 100%; overflow-x: auto; padding: 2px; }
+  .studio-mode-btn { font-size: 10px; padding: 5px 9px; }
 }
 
 /* ── Redesign: Creation Mode Switcher (Build to Sizes vs. Reference) ── */
@@ -1034,7 +1036,7 @@ footer ul a:hover{opacity:1;color:var(--brass)}
         <div class="item"><span class="n">8</span><span class="l">Type families</span></div>
         <div class="item"><span class="n">480+</span><span class="l">Configurations</span></div>
         <div class="item"><span class="n">±1mm</span><span class="l">Cut tolerance</span></div>
-        <div class="item"><span class="n">CNC</span><span class="l">Production-ready</span></div>
+        <div class="item"><span class="n">DXF · SVG</span><span class="l">Drawings &amp; exports</span></div>
       </div>
     </div>
     <div class="reveal">
@@ -1239,8 +1241,8 @@ footer ul a:hover{opacity:1;color:var(--brass)}
     <div class="b-nav b-top-right">
       <button type="button" class="btn sm ghost" id="btnTopUndo" onclick="var u=document.getElementById('btnUndoEdit');if(u)u.click();" title="Undo last edit">↶ Undo</button>
       <div class="b-export-group">
-        <button class="btn sm ghost" id="btnMfgDropdown" onclick="toggleMfgMenu(event)" title="Manufacturing Blueprints &amp; CNC Export" style="display:inline-flex;align-items:center;gap:6px;">
-          <span>⚡ Download &amp; Blueprints</span>
+        <button class="btn sm ghost" id="btnMfgDropdown" onclick="toggleMfgMenu(event)" title="Drawings &amp; exports" style="display:inline-flex;align-items:center;gap:6px;">
+          <span>⚡ Drawings &amp; exports</span>
           <span style="font-size:9px;opacity:0.7;">▼</span>
         </button>
         <div id="mfgMenuDropdown" class="mfg-menu-dropdown">
@@ -1248,8 +1250,8 @@ footer ul a:hover{opacity:1;color:var(--brass)}
           <button type="button" class="mfg-menu-item" id="btnExportShopDrawings" onclick="handleExportShopDrawings('SVG')">📐 Shop Blueprints (SVG)</button>
           <button type="button" class="mfg-menu-item" id="btnExportShopDrawingsPdf" onclick="handleExportShopDrawings('PDF')" title="Open browser print dialog to print shop drawings">🖨️ Print drawings</button>
           <div class="mfg-menu-divider"></div>
-          <div class="mfg-menu-header">Fabrication &amp; CNC</div>
-          <button type="button" class="mfg-menu-item" id="btnExportCncDxf" onclick="handleExportCncDxfZip()">📦 CNC Package (DXF ZIP)</button>
+          <div class="mfg-menu-header">Fabrication &amp; Exports</div>
+          <button type="button" class="mfg-menu-item" id="btnExportCncDxf" onclick="handleExportCncDxfZip()">📦 Panel DXFs (ZIP)</button>
           <button type="button" class="mfg-menu-item" id="btnExportCutList" onclick="handleExportCutListCsv()">📊 Cut List (CSV)</button>
           <button type="button" class="mfg-menu-item" id="btnShowNestingReport" onclick="handleShowNestingReport()">📋 Nesting Report</button>
         </div>
@@ -4361,7 +4363,7 @@ function openOrderModal(cfg){
     pw.document.write('<section><h2>Hardware List</h2><table><thead><tr><th>Item</th><th>Qty</th><th>Note</th></tr></thead><tbody>');
     hardware.forEach(h=>pw.document.write('<tr><td>'+h.name+'</td><td>\xd7'+h.qty+'</td><td>'+h.note+'</td></tr>'));
     pw.document.write('</tbody></table></section>');
-    pw.document.write('<section><h2>CNC Cutting List</h2><table><thead><tr><th>#</th><th>Part</th><th>W × H (mm)</th><th>Grain</th><th>Edge Banding</th><th>Qty</th></tr></thead><tbody>');
+    pw.document.write('<section><h2>Cutting List</h2><table><thead><tr><th>#</th><th>Part</th><th>W × H (mm)</th><th>Grain</th><th>Edge Banding</th><th>Qty</th></tr></thead><tbody>');
     panels.forEach((p,i)=>pw.document.write('<tr><td>'+(i+1)+'</td><td>'+p.name+'</td><td>'+p.w+' \xd7 '+p.h+'</td><td>'+p.grain+'</td><td>'+p.edge+'</td><td>\xd7'+p.qty+'</td></tr>'));
     pw.document.write('</tbody></table></section>');
     pw.document.write('<section><h2>Assembly Blueprint — Component Key</h2>'+buildAssemblyBlueprint(panels)+'</section>');
