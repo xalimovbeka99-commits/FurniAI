@@ -1,13 +1,13 @@
 /**
- * Constants from docs/creative/SCENARIO_3D_API_CONTRACT.md (status: PROPOSED).
- * Revision 1 was checked against Claude's backend at 7f42f956; revision 2
- * (Claude's 3946b53, not yet merged into integ/scenario-candidate) adds
- * usage.billingOutcome, storage.durableCopy and the provider error codes
- * below. The gallery reads both: a rev 1 server simply has no billingOutcome.
+ * Constants from docs/creative/SCENARIO_3D_API_CONTRACT.md, **revision 2**
+ * (status: PROPOSED), as merged into integ/scenario-candidate at f472aef
+ * (Claude's 3946b53). Rev 2 adds usage.billingOutcome, storage.durableCopy,
+ * PRIOR_SUBMISSION_UNKNOWN / acknowledgeUnknownCharge, 422 INVALID_IMAGE and the
+ * provider error codes below. A rev 1 server simply has no billingOutcome.
  *
  * The gallery only reads what that contract returns. It has no prompt field,
  * no reference image URL, no thumbnail, no dimensions and no designId, so the
- * gallery shows none of them.
+ * gallery shows none of them (a host may inject a reference thumbnail resolver).
  */
 
 /** `status` values. FurniAI owns these; they are the only ones. */
@@ -33,8 +33,16 @@ export const isViewableFormat = (format) => typeof format === "string" && VIEWAB
 /** Contract §2.4 polling window. */
 export const MIN_POLL_MS = 3000;
 export const MAX_POLL_MS = 5000;
-/** Error backoff ceiling (the gallery's choice; the contract only says to keep polling). */
-export const MAX_BACKOFF_MS = 30000;
+/**
+ * Polling is status checking, not a retry: it stays inside the 3–5 s window even after a
+ * failed round, and pauses (with a visible "Check status again") after this many failed
+ * rounds in a row, or at once on 429. Nothing restarts it except the user or a reload.
+ */
+export const POLL_FAILURES_BEFORE_PAUSE = 3;
+/** §2.4: the list returns at most this many jobs, newest first. No pagination exists. */
+export const LIST_LIMIT = 50;
+/** §2.3 request field that makes a second purchase after PRIOR_SUBMISSION_UNKNOWN deliberate. */
+export const ACKNOWLEDGE_UNKNOWN_CHARGE_FIELD = "acknowledgeUnknownCharge";
 
 /**
  * The server sends `concept.notice` on every job and asset. It is shown
@@ -84,6 +92,14 @@ export const CODE = Object.freeze({
   PROVIDER_UNAVAILABLE: "PROVIDER_UNAVAILABLE",
   PROVIDER_UNEXPECTED_RESPONSE: "PROVIDER_UNEXPECTED_RESPONSE",
   PROVIDER_GENERATION_FAILED: "PROVIDER_GENERATION_FAILED",
+  /** Rev 2 §2.3 submit refusals ("No request sent"). The gallery never submits; describeSubmitResponse() words them. */
+  COST_CAP_EXCEEDED: "COST_CAP_EXCEEDED",
+  COST_UNVERIFIED: "COST_UNVERIFIED",
+  CREATIVE_GENERATION_DISABLED: "CREATIVE_GENERATION_DISABLED",
+  DUPLICATE_ACTIVE_JOB: "DUPLICATE_ACTIVE_JOB",
+  IDEMPOTENCY_KEY_REUSED: "IDEMPOTENCY_KEY_REUSED",
+  MISSING_REFERENCE: "MISSING_REFERENCE",
+  INVALID_IMAGE: "INVALID_IMAGE",
   /**
    * 403 is not in the contract (only 401 is auth). The persistence layer can answer
    * 403 UNAUTHORIZED (signed in, not allowed); v2.1's viewer maps it to FORBIDDEN.

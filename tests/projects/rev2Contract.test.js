@@ -211,7 +211,7 @@ describe("rev 2: GET error fixtures", () => {
     ["error.provider-insufficient-credits.402.json", ERROR_KIND.PROVIDER_REFUSED],
     ["error.provider-auth-rejected.502.json", ERROR_KIND.PROVIDER_REFUSED],
     ["error.provider-rejected-request.502.json", ERROR_KIND.PROVIDER_REFUSED],
-    ["error.provider-unavailable.submission-unknown.502.json", ERROR_KIND.SERVER],
+    ["error.provider-unavailable.submission-unknown.502.json", ERROR_KIND.PROVIDER_UNAVAILABLE],
     ["error.cost-unverified.502.json", ERROR_KIND.SERVER],
   ];
   it.each(cases)("%s → %s", (file, kind) => {
@@ -230,8 +230,9 @@ describe("rev 2: GET error fixtures", () => {
     expect(p.getAttribute("data-panel")).toBe(ERROR_KIND.RATE_LIMITED);
     expect(p.getAttribute("data-code")).toBe("PROVIDER_RATE_LIMITED");
     expect(p.textContent).toContain("Try again in a moment.");
-    expect(byTag(p, "p")[0].textContent).toBe(LIST_MESSAGES[ERROR_KIND.RATE_LIMITED]);
-    expect(byTag(p, "p")[0].textContent).not.toBe(LIST_MESSAGES[ERROR_KIND.REQUEST]); // not the bare generic line
+    expect(byTag(p, "p")[0].textContent).toBe("Your concepts couldn't be loaded. This doesn't mean you have none.");
+    expect(byTag(p, "p")[1].textContent).toBe(LIST_MESSAGES[ERROR_KIND.RATE_LIMITED]);
+    expect(byTag(p, "p")[1].textContent).not.toBe(LIST_MESSAGES[ERROR_KIND.REQUEST]); // not the bare generic line
     expect(button(root, "retry")).not.toBeNull();
   });
 
@@ -241,13 +242,15 @@ describe("rev 2: GET error fixtures", () => {
     expect(ASSET_MESSAGES[ERROR_KIND.RATE_LIMITED]).not.toMatch(/download|open|rate-limit/i);
   });
 
-  it("Download: 429 twice → rate-limited message; one fresh re-resolve, no third call", async () => {
+  it("Download 429: rate-limited message after ONE call; no automatic re-resolve; 'Try download again' is the way", async () => {
     const ok = byStatus("succeeded");
     const { root, client, downloads } = setupList([ok], {}, { getAssetUrl: () => { throw fixtureError("error.provider-rate-limited.429.json"); } });
     await flush();
     button(root, "download").click();
     await flush();
-    expect(client.count("getAssetUrl")).toBe(2);
+    await new Promise((r) => setTimeout(r, 1100)); // the old ~1 s auto re-resolve no longer exists
+    expect(client.count("getAssetUrl")).toBe(1);
+    expect(button(root, "retry-asset")).not.toBeNull();
     expect(downloads).toHaveLength(0);
     const msg = byAttr(root, "data-asset-error", "PROVIDER_RATE_LIMITED")[0];
     expect(msg.textContent).toBe(ASSET_MESSAGES[ERROR_KIND.RATE_LIMITED]);
@@ -264,33 +267,35 @@ describe("rev 2: GET error fixtures", () => {
   });
 });
 
-describe("AE answers (Oct 5): Q14 source.isRetryable, 429 retry wait", () => {
+describe("Retry policy (7 Oct) supersedes AE Q14 and the 429 auto-wait", () => {
   afterEach(() => vi.useRealTimers());
   const ok = () => byStatus("succeeded");
 
-  it("Q14: a source with isRetryable(err) decides the Download retry (isRetryableResolveError is the fallback)", async () => {
+  it("source.isRetryable is no longer consulted: the gallery never decides to retry by itself", async () => {
     const job = ok();
     const seen = [];
+    let resolves = 0;
     const source = {
       getJob: () => new Promise(() => {}),
-      resolve: () => Promise.reject(Object.assign(new Error("x"), { status: 404, code: "MISSING_JOB" })),
-      isRetryable: (e) => (seen.push(e.code), true), // a source that says even 404 is retryable
+      resolve: () => (resolves++, Promise.reject(Object.assign(new Error("x"), { status: 503, code: "STORAGE_UNAVAILABLE" }))),
+      isRetryable: (e) => (seen.push(e.code), true),
     };
     const downloads = [];
     const { root } = setup({ listJobs: () => ({ ok: true, jobs: [job] }) }, { noSource: true, creativeSource: source, startDownload: (d) => downloads.push(d) });
     await flush();
     button(root, "download").click();
     await flush();
-    expect(seen).toEqual(["MISSING_JOB"]); // asked once, after the first failure; one retry at most
+    expect(seen).toEqual([]);
+    expect(resolves).toBe(1);
     expect(downloads).toHaveLength(0);
   });
 
-  it("a 429 waits about a second before its one fresh re-resolve; nothing else waits", async () => {
+  it("a 429 never schedules anything: with fake timers, minutes pass and there is still one call until the click", async () => {
     vi.useFakeTimers();
     const job = ok();
     let calls = 0;
     const downloads = [];
-    const { root } = setupList([job], { rateLimitRetryDelayMs: undefined, startDownload: (d) => downloads.push(d) }, {
+    const { root } = setupList([job], { startDownload: (d) => downloads.push(d) }, {
       getAssetUrl: () => {
         calls++;
         if (calls === 1) throw fixtureError("error.provider-rate-limited.429.json");
@@ -300,10 +305,11 @@ describe("AE answers (Oct 5): Q14 source.isRetryable, 429 retry wait", () => {
     await flush();
     button(root, "download").click();
     await flush();
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
     expect(calls).toBe(1);
-    await vi.advanceTimersByTimeAsync(999);
-    expect(calls).toBe(1);
-    await vi.advanceTimersByTimeAsync(1);
+    expect(downloads).toHaveLength(0);
+    button(root, "retry-asset").click();
+    await vi.advanceTimersByTimeAsync(0);
     await flush();
     expect(calls).toBe(2);
     expect(downloads).toHaveLength(1);

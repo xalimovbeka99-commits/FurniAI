@@ -18,6 +18,9 @@ import handler from "../../api/creative.js";
 import { getSharedMemoryCreativeStore } from "../../src/lib/creative/memoryStore.js";
 import { createCreativeAssetSource } from "../../src/lib/assetViewer/index.js";
 import { mountConceptGallery } from "../../src/lib/projects/conceptGallery/index.js";
+import { createCreativeJobsClient } from "../../src/lib/projects/conceptGallery/jobsClient.js";
+import { describeSubmitResponse } from "../../src/lib/projects/conceptGallery/submitOutcome.js";
+import { availabilityFrom } from "../../src/lib/projects/conceptGallery/state.js";
 import * as F from "./fixtures/contractFixtures.js";
 import { byAttr, createFakeDocument } from "./fakeDom.js";
 // Rev 2 validates the whole image (a bare PNG signature is 422 INVALID_IMAGE): Claude's SYNTHETIC 64×48 drawing.
@@ -250,6 +253,40 @@ describe("creative contract, in-process (scoped stubs)", () => {
       expect((await call("GET", "resource=jobs")).body.jobs.find((j) => j.jobId === jobId)).toBeUndefined();
     });
 
+    it("rev 2 (was a rev 1 assertion): a bare PNG signature is 422 INVALID_IMAGE, not 201; a real image is 201", async () => {
+      const magicOnly = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64, 7)]);
+      const bad = await call("POST", "resource=references", { body: { name: "w.png", dataBase64: magicOnly.toString("base64") } });
+      expectErrorBody(bad, 422, "INVALID_IMAGE");
+      expect(provider.calls.upload).toBe(0); // nothing reached the provider
+      const good = await call("POST", "resource=references", { body: { name: "w.png", dataBase64: PNG.toString("base64") } });
+      expect(good.status).toBe(201);
+      expect(good.body.reference).toMatchObject({ validation: "decoded" });
+    });
+
+    it("rev 2: after submission_unknown the same reference answers 409 PRIOR_SUBMISSION_UNKNOWN until acknowledgeUnknownCharge:true", async () => {
+      provider.dropGenerate = true;
+      const first = await newJob();
+      expect(first.body.details).toMatchObject({ jobStatus: "submission_unknown", billingOutcome: "unconfirmed" });
+      expect(describeSubmitResponse(first.status, first.body)).toMatchObject({ outcome: "provider_unavailable", billingOutcome: "unconfirmed", retry: "none" });
+      provider.dropGenerate = false;
+      const generates = provider.calls.generate;
+      const ref = (await call("POST", "resource=references", { body: { name: "w.png", dataBase64: PNG.toString("base64") } })).body.reference.referenceId;
+      const again = await call("POST", "resource=jobs", { body: { referenceId: ref, idempotencyKey: "contract-prior-0001" } });
+      expectErrorBody(again, 409, "PRIOR_SUBMISSION_UNKNOWN");
+      expect(provider.calls.generate).toBe(generates); // no request sent
+      const d = describeSubmitResponse(again.status, again.body);
+      expect(d).toMatchObject({ needsAcknowledgement: true, acknowledgeField: "acknowledgeUnknownCharge", billingOutcome: "not_submitted" });
+      const ack = await call("POST", "resource=jobs", { body: { referenceId: ref, idempotencyKey: "contract-prior-0002", [d.acknowledgeField]: true } });
+      expect(ack.status).toBe(202);
+      expect(provider.calls.generate).toBe(generates + 1);
+    });
+
+    it("GET ?resource=config through the Projects jobs client: availability from the real handler", async () => {
+      const c = createCreativeJobsClient({ fetchImpl: apiFetch });
+      const cfg = await c.getConfig({ accessToken: "test:user-a" });
+      expect(availabilityFrom(cfg)).toEqual({ state: "ready", reasons: [], maxCostPerJob: 20 });
+    });
+
     it("401 MISSING_AUTH and 404 MISSING_JOB", async () => {
       expectErrorBody(await call("GET", "resource=jobs", { auth: false }), 401, "MISSING_AUTH");
       expectErrorBody(await call("GET", "resource=jobs&jobId=00000000-0000-4000-8000-000000000000"), 404, "MISSING_JOB");
@@ -263,16 +300,10 @@ describe("creative contract, in-process (scoped stubs)", () => {
     expect(pred(), `timed out waiting for ${what}`).toBe(true);
   }
 
-  /** Test-only list adapter: the one call createCreativeAssetSource does not cover. */
+  /** The shipped Projects list client (createCreativeJobsClient) on the real handler. omitAuth drops the header in transit. */
   function listClient({ omitAuth = false } = {}) {
-    return {
-      async listJobs({ accessToken }) {
-        const res = await apiFetch("/api/creative?resource=jobs", { headers: omitAuth ? {} : { Authorization: `Bearer ${accessToken}` } });
-        const body = await res.json();
-        if (!res.ok || !body?.ok) throw { status: res.status, code: body?.code, message: body?.error, details: body?.details };
-        return body;
-      },
-    };
+    const fetchImpl = omitAuth ? (u, init) => apiFetch(u, { ...init, headers: {} }) : apiFetch;
+    return createCreativeJobsClient({ fetchImpl });
   }
 
   describe("contract check: the gallery on the real handler with Asset Engineer's real source", () => {

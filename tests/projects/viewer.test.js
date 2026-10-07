@@ -186,7 +186,7 @@ describe("concept gallery: injected asset viewer (v2)", () => {
     expect(byAttr(panelEl, "data-concept-notice")[0].textContent).toBe(FALLBACK_CONCEPT_NOTICE);
   });
 
-  it("v2.1 (V1): Open survives one transient resolve failure; two give the honest server message, 2 resolves, no Download hint", async () => {
+  it("v2.1 (V1, AE's own re-resolve — question AE-1): the gallery adds no call; after failure only 'Try opening again' runs it again", async () => {
     let n = 0;
     const once = viewerSetup(v2Like([]), {
       getAssetUrl: ({ index }) => {
@@ -204,10 +204,18 @@ describe("concept gallery: injected asset viewer (v2)", () => {
     await flush();
     button(twice.root, "open").click();
     await flush();
-    expect(twice.client.count("getAssetUrl")).toBe(2);
+    expect(twice.client.count("getAssetUrl")).toBe(2); // both inside AE's viewer.load (v2.1 V1), none from the gallery
     const status = byAttr(twice.root, "data-viewer-status")[0];
-    expect(status.textContent).toBe(ASSET_MESSAGES[ERROR_KIND.SERVER]);
+    expect(status.textContent).toBe(ASSET_MESSAGES[ERROR_KIND.PROVIDER_UNAVAILABLE]);
     expect(status.textContent).not.toMatch(/download/i);
+    await new Promise((r) => setTimeout(r, 30));
+    await flush();
+    expect(twice.client.count("getAssetUrl")).toBe(2); // nothing by itself
+    const again = button(twice.root, "retry-asset");
+    expect(again.textContent).toBe("Try opening again");
+    again.click();
+    await flush();
+    expect(twice.client.count("getAssetUrl")).toBe(4); // one user click = one more viewer.load
   });
 
   it("v2.1 (V2): a malformed resolve answer on Open is never retried and never suggests Download", async () => {

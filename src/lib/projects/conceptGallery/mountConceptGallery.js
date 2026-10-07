@@ -1,7 +1,14 @@
 /**
  * Concept gallery: the caller's AI visual concepts from
- * GET /api/creative?resource=jobs (contract: SCENARIO_3D_API_CONTRACT.md,
- * PROPOSED). Framework-free; renders into `root` without innerHTML.
+ * GET /api/creative?resource=jobs (contract: docs/creative/SCENARIO_3D_API_CONTRACT.md
+ * revision 2, PROPOSED, at f472aef). Framework-free; renders into `root` without innerHTML.
+ *
+ * Retry policy (Bekzod, 7 Oct): the gallery never repeats a failed request by itself.
+ * Every failed list, Open or Download shows a visible "Try again"; only a click runs it again.
+ * Polling a running job is status checking (3–5 s, stops when terminal or destroyed); after
+ * POLL_FAILURES_BEFORE_PAUSE failed rounds in a row, or one 429, it pauses until the user asks.
+ * Reload: nothing is kept in browser storage; the server's job list rebuilds the gallery and
+ * unfinished jobs resume polling.
  *
  * Everything the gallery needs that Asset Engineer's viewer already does
  * (src/lib/assetViewer, v2.1 at b34e259) is INJECTED, never rebuilt:
@@ -9,11 +16,11 @@
  *       .resolve(jobId, index, { signal }) -> fresh { url, format, filename, concept, ... } per call
  *       .getJob(jobId, { signal })         -> { job, refresh }
  *   - mountAssetViewer(el, { ...viewerOptions, creativeSource, renderConceptNotice: false }) -> handle with
- *       load({ jobId, index, format }) (resolves, one re-resolve on a retryable resolve failure,
- *       one re-resolve + retry on a display failure), getState() and dispose()
- * The one import from their code is the pure rule isRetryableResolveError, so the
- * gallery's Download retries exactly when the viewer would. The only call v2 does
- * not cover is the list, so that is the one thing the gallery asks of `client`.
+ *       load({ jobId, index, format }), getState() and dispose(). NOTE: v2.1's load() itself
+ *       re-resolves once on a retryable resolve failure and retries a display failure once.
+ *       That is Asset Engineer's code (question AE-1 in CONCEPT_GALLERY.md); the gallery adds none.
+ * The gallery imports nothing from their code. The only call v2 does not cover is the
+ * list, so that is the one thing the gallery asks of `client` (createCreativeJobsClient).
  * The gallery always renders concept.notice itself (card and viewer panel).
  *
  * @typedef {object} CreativeJobsListClient
@@ -49,14 +56,14 @@
  *   formatDate?: (iso: string) => string,
  *   startDownload?: (args: { url: string, filename: string, jobId: string, index: number, format: string|null }) => void,
  *   title?: string,
+ *   resolveReferenceThumbnail?: (args: { referenceId: string, jobId: string, signal?: AbortSignal }) => Promise<string|null>,
  * }} options
  * @returns {{ refresh: () => Promise<void>, destroy: () => void, getState: () => object }}
  */
-import { CODE, FALLBACK_CONCEPT_NOTICE, MAX_BACKOFF_MS, MAX_POLL_MS, MIN_POLL_MS, isViewableFormat } from "./contract.js";
-import { isRetryableResolveError } from "../../assetViewer/creativeAsset.js";
+import { CODE, FALLBACK_CONCEPT_NOTICE, MAX_POLL_MS, MIN_POLL_MS, POLL_FAILURES_BEFORE_PAUSE, isViewableFormat } from "./contract.js";
 import { ASSET_MESSAGES, ConceptAssetError, DISPLAY_FAILED_MESSAGE, DISPLAY_FAILURE_CODES, ERROR_KIND, classifyError, isAbortError } from "./errors.js";
 import { defaultFormatDate, el, pollingText, renderBody } from "./render.js";
-import { LIST_STATUS, assetKey, hasPollableJobs, initialState, reduce, snapshot } from "./state.js";
+import { LIST_STATUS, assetKey, availabilityFrom, hasPollableJobs, initialState, reduce, snapshot } from "./state.js";
 import { CONCEPT_GALLERY_CSS, CONCEPT_GALLERY_STYLE_ID } from "./styles.js";
 
 let mountCount = 0;
@@ -75,8 +82,6 @@ export function clampPollInterval(ms) {
  */
 const JOB_LEVEL_KINDS = new Set([ERROR_KIND.INTEGRITY, ERROR_KIND.NOT_FOUND]);
 const PAGE_WIDE_KINDS = new Set([ERROR_KIND.SIGNED_OUT, ERROR_KIND.FORBIDDEN]);
-/** AE: a 429 re-resolve waits about a second (the one retry, never more). */
-export const RATE_LIMIT_RETRY_DELAY_MS = 1000;
 
 function signedOutError() {
   return { status: null, code: CODE.SIGNED_OUT };
@@ -117,9 +122,9 @@ export function mountConceptGallery(root, options = {}) {
   const mountViewer = source && typeof options.mountAssetViewer === "function" ? options.mountAssetViewer : null;
   const viewerOptions = options.viewerOptions && typeof options.viewerOptions === "object" ? options.viewerOptions : {};
   const startDownload = typeof options.startDownload === "function" ? options.startDownload : defaultStartDownload;
-  const rateLimitRetryDelayMs = Number.isFinite(options.rateLimitRetryDelayMs) && options.rateLimitRetryDelayMs >= 0 ? options.rateLimitRetryDelayMs : RATE_LIMIT_RETRY_DELAY_MS;
-  // AE Q14: prefer the source's own rule when it has one; isRetryableResolveError until then.
-  const isRetryable = (err) => (source && typeof source.isRetryable === "function" ? Boolean(source.isRetryable(err)) : isRetryableResolveError(err));
+  const resolveThumb = typeof options.resolveReferenceThumbnail === "function" ? options.resolveReferenceThumbnail : null;
+  /** jobId -> thumbnail address. Kept here, never in state or storage; dropped on every list load. */
+  const thumbUrls = new Map();
   const setT = (fn, ms) => globalThis.setTimeout(fn, ms);
   const clearT = (id) => globalThis.clearTimeout(id);
   const idPrefix = `fcg${++mountCount}`;
@@ -147,6 +152,7 @@ export function mountConceptGallery(root, options = {}) {
     "section",
     { class: "fcg", "aria-labelledby": titleId, "data-concept-gallery": "" },
     el(doc, "div", { class: "fcg-head" }, el(doc, "h2", { class: "fcg-title", id: titleId, text: options.title || "3D concepts" }), refreshBtn),
+    el(doc, "p", { class: "fcg-sub", "data-concept-intro": "", text: "AI visual concepts made from your reference images. They are not dimensioned designs: they have no measurements and can't be opened in the Studio." }),
     live,
     announcer,
     viewerSlot,
@@ -165,6 +171,18 @@ export function mountConceptGallery(root, options = {}) {
     onOpen: (jobId, index) => openConcept(jobId, index),
     onDownload: (jobId, index) => {
       download(jobId, index).catch(() => {});
+    },
+    /** The visible "Try again" on a failed Open/Download: the ONLY way that request runs again. */
+    onRetryAsset: (jobId, index, action) => {
+      if (action === "open") openConcept(jobId, index);
+      else download(jobId, index).catch(() => {});
+    },
+    /** The visible "Check status again" after polling paused. */
+    onResumePolling: () => resumePolling(),
+    thumbFor: (jobId) => thumbUrls.get(jobId) || null,
+    onThumbError: (jobId) => {
+      thumbUrls.delete(jobId);
+      dispatch({ type: "THUMB", jobId, phase: "none" });
     },
   };
 
@@ -228,8 +246,11 @@ export function mountConceptGallery(root, options = {}) {
       const accessToken = await token();
       const res = await client.listJobs({ accessToken, signal: t.signal });
       if (destroyed || seq !== listSeq) return;
+      thumbUrls.clear();
       dispatch({ type: "LIST_OK", jobs: res && res.jobs });
       schedulePoll(interval, true);
+      loadAvailability(accessToken, seq);
+      loadThumbs(seq);
     } catch (err) {
       if (destroyed || seq !== listSeq || isAbortError(err)) return;
       const c = classifyError(err);
@@ -237,6 +258,44 @@ export function mountConceptGallery(root, options = {}) {
       else dispatch({ type: "LIST_ERR", error: c });
     } finally {
       t.done();
+    }
+  }
+
+  /** GET ?resource=config once per list load, if the client has it. Never retried; a failure says "unknown". */
+  async function loadAvailability(accessToken, seq) {
+    if (typeof client.getConfig !== "function") return;
+    const t = track();
+    try {
+      const cfg = await client.getConfig({ accessToken, signal: t.signal });
+      if (!destroyed && seq === listSeq) dispatch({ type: "AVAILABILITY", availability: availabilityFrom(cfg) });
+    } catch (err) {
+      if (!destroyed && seq === listSeq && !isAbortError(err)) dispatch({ type: "AVAILABILITY", availability: availabilityFrom(null) });
+    } finally {
+      t.done();
+    }
+  }
+
+  /** Reference thumbnails through the host's resolver (the contract has no field). One try each. */
+  function loadThumbs(seq) {
+    if (!resolveThumb || state.list !== LIST_STATUS.READY) return;
+    for (const job of state.jobs) {
+      if (!job.sourceReferenceId) continue;
+      dispatch({ type: "THUMB", jobId: job.jobId, phase: "loading" });
+      const t = track();
+      Promise.resolve()
+        .then(() => resolveThumb({ referenceId: job.sourceReferenceId, jobId: job.jobId, signal: t.signal }))
+        .then(
+          (u) => {
+            if (destroyed || seq !== listSeq) return;
+            const ok = typeof u === "string" && /^(https?:|blob:|data:image\/)/i.test(u);
+            if (ok) thumbUrls.set(job.jobId, u);
+            dispatch({ type: "THUMB", jobId: job.jobId, phase: ok ? "ready" : "none" });
+          },
+          () => {
+            if (!destroyed && seq === listSeq) dispatch({ type: "THUMB", jobId: job.jobId, phase: "none" });
+          },
+        )
+        .finally(() => t.done());
     }
   }
 
@@ -254,7 +313,7 @@ export function mountConceptGallery(root, options = {}) {
     if (destroyed) return;
     if (timer !== null) clearT(timer);
     timer = null;
-    if (isHidden() || state.list !== LIST_STATUS.READY || !hasPollableJobs(state)) {
+    if (isHidden() || state.list !== LIST_STATUS.READY || state.pollPaused || !hasPollableJobs(state)) {
       if (state.polling) dispatch({ type: "POLLING", polling: false, failures: 0 });
       return;
     }
@@ -291,30 +350,51 @@ export function mountConceptGallery(root, options = {}) {
     );
     t.done();
     if (destroyed || gen !== pollGen || seq !== listSeq) return; // stale round
-    let failed = false;
+    let failed = null;
     for (const r of results) {
       if (r.res) {
         if (r.res.job) dispatch({ type: "JOB_OK", job: r.res.job, refresh: r.res.refresh });
-        else failed = true;
+        else failed = failed || { kind: ERROR_KIND.MALFORMED, code: CODE.INVALID_RESPONSE };
         continue;
       }
       if (isAbortError(r.err)) return;
       const c = classifyError(r.err);
       if (PAGE_WIDE_KINDS.has(c.kind)) return goPageWide(c);
       if (JOB_LEVEL_KINDS.has(c.kind)) dispatch({ type: "JOB_ERR", jobId: r.jobId, error: c });
-      else failed = true;
+      else if (!failed || c.kind === ERROR_KIND.RATE_LIMITED) failed = c;
     }
     const failures = failed ? state.pollFailures + 1 : 0;
-    const delay = failed ? Math.min(MAX_BACKOFF_MS, interval * 2 ** failures) : interval;
+    // A 429 means "ask less": status checks pause at once. Other failures pause after a few rounds.
+    // Nothing restarts them but the user ("Check status again"), Refresh or a reload.
+    if (failed && (failed.kind === ERROR_KIND.RATE_LIMITED || failures >= POLL_FAILURES_BEFORE_PAUSE)) {
+      pausePolling(failed);
+      return;
+    }
+    // Still status checking, still inside the contract's 3–5 s window (no exponential backoff).
+    const delay = failed ? MAX_POLL_MS : interval;
     nextDelay = delay;
     dispatch({ type: "POLLING", polling: true, failures });
     schedulePoll(delay);
   }
 
+  function pausePolling(error) {
+    pollGen++;
+    if (timer !== null) clearT(timer);
+    timer = null;
+    dispatch({ type: "POLL_PAUSED", error: { kind: error.kind, code: error.code } });
+    announce("Status checks are paused. Use Check status again when you're ready.");
+  }
+
+  function resumePolling() {
+    if (destroyed || !state.pollPaused) return;
+    dispatch({ type: "POLL_RESUMED" });
+    schedulePoll(0, true);
+  }
+
   function onVisibility() {
     if (destroyed) return;
     if (isHidden()) stopPolling();
-    else if (state.list === LIST_STATUS.READY && hasPollableJobs(state)) schedulePoll(0, true);
+    else if (state.list === LIST_STATUS.READY && !state.pollPaused && hasPollableJobs(state)) schedulePoll(0, true);
   }
   if (typeof doc.addEventListener === "function") doc.addEventListener("visibilitychange", onVisibility);
 
@@ -331,7 +411,7 @@ export function mountConceptGallery(root, options = {}) {
       const res = await fetchJob(jobId, hasSourceJob ? null : await token(), t.signal);
       if (!destroyed && seq === listSeq && res?.job) {
         dispatch({ type: "JOB_OK", job: res.job, refresh: res.refresh });
-        if (!state.polling) schedulePoll(interval, true);
+        if (!state.polling && !state.pollPaused) schedulePoll(interval, true);
       }
     } catch (err) {
       if (destroyed || isAbortError(err)) return;
@@ -356,22 +436,16 @@ export function mountConceptGallery(root, options = {}) {
     }
   }
 
+  /**
+   * One resolve per user action, never more. The earlier one-shot automatic re-resolve (and its
+   * ~1 s 429 wait) is gone: a failure shows "Try again" and only a click resolves again.
+   */
   async function resolveAsset(jobId, index) {
     try {
       return await resolveAssetOnce(jobId, index);
-    } catch (first) {
-      // Asset Engineer's rule (v2.1), so Download retries exactly when the viewer's load
-      // would: network, 5xx, 429. Never a malformed body, 401/403/404/409/410 or *_NOT_CONFIGURED.
-      if (!isRetryable(first)) throw new ConceptAssetError(classifyError(first), first);
-      if (first && first.status === 429 && rateLimitRetryDelayMs > 0) {
-        await new Promise((r) => setT(r, rateLimitRetryDelayMs));
-        if (destroyed) throw new ConceptAssetError(classifyError(first), first);
-      }
-      try {
-        return await resolveAssetOnce(jobId, index); // one retry at most, with a fresh resolve
-      } catch (second) {
-        throw new ConceptAssetError(classifyError(second), second);
-      }
+    } catch (err) {
+      if (isAbortError(err)) throw err;
+      throw new ConceptAssetError(classifyError(err), err);
     }
   }
 
@@ -384,6 +458,7 @@ export function mountConceptGallery(root, options = {}) {
       dispatch({ type: "ASSET_OK", key });
       return asset;
     } catch (err) {
+      if (destroyed || isAbortError(err)) throw err;
       const e = err instanceof ConceptAssetError ? err : new ConceptAssetError(classifyError(err), err);
       dispatch({ type: "ASSET_ERR", key, action, error: { kind: e.kind, code: e.code } });
       announce(ASSET_MESSAGES[e.kind] || ASSET_MESSAGES[ERROR_KIND.REQUEST]);

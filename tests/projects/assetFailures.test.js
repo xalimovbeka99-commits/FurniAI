@@ -202,7 +202,7 @@ describe("concept gallery: honest server-side messages (G2)", () => {
   };
 
   it.each([
-    ["502 PROVIDER_UNAVAILABLE", () => errorFor("PROVIDER_UNAVAILABLE"), ERROR_KIND.SERVER],
+    ["502 PROVIDER_UNAVAILABLE", () => errorFor("PROVIDER_UNAVAILABLE"), ERROR_KIND.PROVIDER_UNAVAILABLE],
     ["500 INTERNAL", () => errorFor("INTERNAL"), ERROR_KIND.SERVER],
     ["a network failure", () => networkError(), ERROR_KIND.NETWORK],
     ["503 CREATIVE_STORE_NOT_CONFIGURED", () => errorFor("CREATIVE_STORE_NOT_CONFIGURED"), ERROR_KIND.NOT_CONFIGURED],
@@ -236,12 +236,12 @@ describe("concept gallery: honest server-side messages (G2)", () => {
     expect(byAttr(root, "data-viewer-status")[0].textContent).toBe(DISPLAY_FAILED_MESSAGE);
   });
 
-  it("Download 5xx (after its one retry): the server message, no mention of Open or Download, no third call", async () => {
+  it("Download 5xx: ONE call (no automatic retry), the server message, no mention of Open or Download", async () => {
     const { root, client, downloads } = gallerySetup(() => errorFor("INTERNAL"));
     await flush();
     button(root, "download").click();
     await flush();
-    expect(client.count("getAssetUrl")).toBe(2);
+    expect(client.count("getAssetUrl")).toBe(1);
     expect(downloads).toHaveLength(0);
     const msg = byAttr(root, "data-asset-error", "INTERNAL")[0].textContent;
     expect(msg).toBe(ASSET_MESSAGES[ERROR_KIND.SERVER]);
@@ -249,7 +249,7 @@ describe("concept gallery: honest server-side messages (G2)", () => {
   });
 
   it("no server, network or configuration message points at the other button", () => {
-    for (const kind of [ERROR_KIND.SERVER, ERROR_KIND.NETWORK, ERROR_KIND.NOT_CONFIGURED, ERROR_KIND.REQUEST]) {
+    for (const kind of [ERROR_KIND.SERVER, ERROR_KIND.NETWORK, ERROR_KIND.NOT_CONFIGURED, ERROR_KIND.REQUEST, ERROR_KIND.PROVIDER_UNAVAILABLE, ERROR_KIND.RATE_LIMITED]) {
       expect(ASSET_MESSAGES[kind]).not.toMatch(/download|open/i);
     }
     expect(ASSET_MESSAGES[ERROR_KIND.SERVER]).toMatch(/right now/);

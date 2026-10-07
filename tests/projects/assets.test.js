@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { byAttr, byClass, deferred, flush } from "./fakeDom.js";
 import { setup, card, button, announcer } from "./helpers.js";
-import { isRetryableResolveError } from "../../src/lib/assetViewer/creativeAsset.js";
 import { ASSET_MESSAGES, ERROR_KIND, JOB_MESSAGES } from "../../src/lib/projects/conceptGallery/errors.js";
 import { assetBody, errorFor, jobBody, listBody, networkError, succeededJob, CONCEPT, jobView } from "./fixtures/contractFixtures.js";
 
@@ -53,7 +52,7 @@ describe("concept gallery: asset URLs", () => {
     expect(attrs).toHaveLength(0);
   });
 
-  it("retries once on a transient failure, then succeeds", async () => {
+  it("no automatic retry: a transient failure makes ONE call and shows 'Try download again'; only the click resolves again", async () => {
     let n = 0;
     const { root, client, downloads } = succeededSetup((j) => ({ index }) => {
       if (n++ === 0) throw networkError();
@@ -62,121 +61,30 @@ describe("concept gallery: asset URLs", () => {
     await flush();
     button(root, "download").click();
     await flush();
+    await new Promise((r) => setTimeout(r, 30)); // nothing fires by itself
+    expect(client.count("getAssetUrl")).toBe(1);
+    expect(downloads).toHaveLength(0);
+    const again = button(root, "retry-asset");
+    expect(again.textContent).toBe("Try download again");
+    expect(again.getAttribute("data-retry-for")).toBe("download");
+    again.click();
+    await flush();
     expect(client.count("getAssetUrl")).toBe(2);
     expect(downloads).toHaveLength(1);
     expect(byAttr(root, "data-asset-error")).toHaveLength(0);
   });
 
-  it("retries only once: two transient failures show an error", async () => {
+  it("502 PROVIDER_UNAVAILABLE on Download: one call, the provider-unavailable wording, a visible Try again", async () => {
     const { root, client, downloads } = succeededSetup(() => () => {
       throw errorFor("PROVIDER_UNAVAILABLE");
     });
     await flush();
     button(root, "download").click();
     await flush();
-    expect(client.count("getAssetUrl")).toBe(2);
+    expect(client.count("getAssetUrl")).toBe(1);
     expect(downloads).toHaveLength(0);
-    expect(byAttr(root, "data-asset-error", "PROVIDER_UNAVAILABLE")[0].textContent).toMatch(/couldn't get this file right now/);
-  });
-
-  it("410 ASSET_UNAVAILABLE: clear message, announced, no retry", async () => {
-    const { root, client } = succeededSetup(() => () => {
-      throw errorFor("ASSET_UNAVAILABLE");
-    });
-    await flush();
-    button(root, "download").click();
-    await flush();
-    expect(client.count("getAssetUrl")).toBe(1);
-    const msg = byAttr(root, "data-asset-error", "ASSET_UNAVAILABLE")[0].textContent;
-    expect(msg).toMatch(/no longer available/);
-    expect(msg).toMatch(/no stored copy/);
-    expect(announcer(root).textContent).toBe(msg);
-  });
-
-  it("409 RECORD_INTEGRITY_FAILED on the asset: integrity message, no retry", async () => {
-    const { root, client, opened } = succeededSetup(() => () => {
-      throw errorFor("RECORD_INTEGRITY_FAILED");
-    });
-    await flush();
-    button(root, "open").click();
-    await expect(opened[0].resolveUrl()).rejects.toMatchObject({ name: "ConceptAssetError", code: "RECORD_INTEGRITY_FAILED", kind: "integrity" });
-    await flush();
-    expect(client.count("getAssetUrl")).toBe(1);
-    // The record is refused, so the card becomes job-errored (no Open/Download); see assetFailures.test.js.
-    expect(byAttr(root, "data-job-error", "RECORD_INTEGRITY_FAILED")[0].textContent).toMatch(/integrity check/);
-    expect(button(root, "open")).toBeNull();
-  });
-
-  it("409 ASSET_NOT_READY: message, no retry, and the job's status is re-checked once", async () => {
-    const job = succeededJob();
-    const { root, client } = setup(
-      {
-        listJobs: () => listBody([job]),
-        getJob: () => jobBody(jobView({ jobId: job.jobId, status: "processing", updatedAt: "2026-10-04T08:00:00.000Z" })),
-        getAssetUrl: () => {
-          throw errorFor("ASSET_NOT_READY");
-        },
-      },
-      { startDownload: () => {} },
-    );
-    await flush();
-    button(root, "download").click();
-    await flush();
-    expect(client.count("getAssetUrl")).toBe(1);
-    expect(client.count("getJob")).toBe(1);
-    expect(card(root, job.jobId).getAttribute("data-status")).toBe("processing");
-  });
-
-  it("buttons are busy (disabled, aria-busy, text) while the address is being fetched", async () => {
-    const d = deferred();
-    const { root } = succeededSetup(() => () => d.promise);
-    await flush();
-    button(root, "download").click();
-    await flush();
-    const b = button(root, "download");
-    expect(b.disabled).toBe(true);
-    expect(b.getAttribute("aria-busy")).toBe("true");
-    expect(b.textContent).toBe("Getting file…");
-    expect(button(root, "open").disabled).toBe(true);
-    d.resolve(assetBody(succeededJob(), 0));
-    await flush();
-    expect(button(root, "download").disabled).toBe(false);
-  });
-
-  it("assetResolver is an alias for the injected creative source; its resolve() is called every time", async () => {
-    const job = succeededJob();
-    let calls = 0;
-    const downloads = [];
-    const { root } = setup(
-      { listJobs: () => listBody([job]), getJob: () => jobBody(job) },
-      {
-        noSource: true,
-        assetResolver: {
-          resolve: async (jobId, index) => {
-            calls++;
-            return { jobId, index, url: `https://cdn.fixture.invalid/${jobId}/${index}/${calls}.glb`, format: "glb", filename: `furniai-concept-${jobId}-${index}.glb` };
-          },
-        },
-        startDownload: (d) => downloads.push(d.url),
-      },
-    );
-    await flush();
-    button(root, "download").click();
-    await flush();
-    button(root, "download").click();
-    await flush();
-    expect(calls).toBe(2);
-    expect(new Set(downloads).size).toBe(2);
-  });
-
-  it("without a creative source there is no Open or Download (no second URL resolver is built)", async () => {
-    const job = succeededJob();
-    const { root, client } = setup({ listJobs: () => listBody([job]), getJob: () => jobBody(job) }, { noSource: true, onOpenConcept: () => {} });
-    await flush();
-    expect(button(root, "open")).toBeNull();
-    expect(button(root, "download")).toBeNull();
-    expect(byAttr(root, "data-no-source")).toHaveLength(1);
-    expect(client.count("getAssetUrl")).toBe(0);
+    expect(byAttr(root, "data-asset-error", "PROVIDER_UNAVAILABLE")[0].textContent).toBe(ASSET_MESSAGES[ERROR_KIND.PROVIDER_UNAVAILABLE]);
+    expect(button(root, "retry-asset")).not.toBeNull();
   });
 
   it("an asset body without a url is never downloaded and never retried (v2.1 RESOLVE_MALFORMED)", async () => {
@@ -185,33 +93,32 @@ describe("concept gallery: asset URLs", () => {
     button(root, "download").click();
     await flush();
     expect(downloads).toHaveLength(0);
-    // v2.1 answers RESOLVE_MALFORMED (details.cause "malformed", retryable false), so the
-    // gallery's retry (isRetryableResolveError) doesn't fire. Before v2.1 this made 2 calls.
+    // One call: the gallery never retries by itself (v2.1 answers RESOLVE_MALFORMED).
     expect(client.count("getAssetUrl")).toBe(1);
     const msg = byAttr(root, "data-asset-error", "RESOLVE_MALFORMED")[0].textContent;
     expect(msg).toMatch(/couldn't read/);
     expect(msg).not.toMatch(/try again/i);
   });
 
-  // ---- v2.1 (b34e259): Download retries exactly when the viewer would ---------
+  // ---- Retry policy (7 Oct): ONE call per click, "Try again" only where trying again can help ----
   const RETRY_TABLE = [
-    ["a network failure", () => networkError(), 2],
-    ["500 INTERNAL", () => errorFor("INTERNAL"), 2],
-    ["502 PROVIDER_UNAVAILABLE", () => errorFor("PROVIDER_UNAVAILABLE"), 2],
-    ["429 PROVIDER_RATE_LIMITED", () => ({ status: 429, code: "PROVIDER_RATE_LIMITED" }), 2],
-    ["503 STORAGE_UNAVAILABLE", () => ({ status: 503, code: "STORAGE_UNAVAILABLE" }), 2],
-    ["503 CREATIVE_STORE_NOT_CONFIGURED", () => errorFor("CREATIVE_STORE_NOT_CONFIGURED"), 1],
-    ["401 MISSING_AUTH", () => errorFor("MISSING_AUTH"), 1],
-    ["403 UNAUTHORIZED", () => ({ status: 403, code: "UNAUTHORIZED" }), 1],
-    ["404 MISSING_JOB", () => errorFor("MISSING_JOB"), 1],
-    ["409 ASSET_NOT_READY", () => errorFor("ASSET_NOT_READY"), 1],
-    ["409 RECORD_INTEGRITY_FAILED", () => errorFor("RECORD_INTEGRITY_FAILED"), 1],
-    ["410 ASSET_UNAVAILABLE", () => errorFor("ASSET_UNAVAILABLE"), 1],
-    ["400 BAD_REQUEST", () => ({ status: 400, code: "BAD_REQUEST" }), 1],
-    ["a malformed body", (j) => ({ ok: true, asset: { jobId: j.jobId, index: 0 } }), 1],
+    ["a network failure", () => networkError(), true],
+    ["500 INTERNAL", () => errorFor("INTERNAL"), true],
+    ["502 PROVIDER_UNAVAILABLE", () => errorFor("PROVIDER_UNAVAILABLE"), true],
+    ["429 PROVIDER_RATE_LIMITED", () => ({ status: 429, code: "PROVIDER_RATE_LIMITED" }), true],
+    ["503 STORAGE_UNAVAILABLE", () => ({ status: 503, code: "STORAGE_UNAVAILABLE" }), true],
+    ["400 BAD_REQUEST", () => ({ status: 400, code: "BAD_REQUEST" }), true],
+    ["a malformed body", (j) => ({ ok: true, asset: { jobId: j.jobId, index: 0 } }), true],
+    ["503 CREATIVE_STORE_NOT_CONFIGURED", () => errorFor("CREATIVE_STORE_NOT_CONFIGURED"), false],
+    ["401 MISSING_AUTH", () => errorFor("MISSING_AUTH"), false],
+    ["403 UNAUTHORIZED", () => ({ status: 403, code: "UNAUTHORIZED" }), false],
+    ["404 MISSING_JOB", () => errorFor("MISSING_JOB"), false],
+    ["409 ASSET_NOT_READY", () => errorFor("ASSET_NOT_READY"), false],
+    ["409 RECORD_INTEGRITY_FAILED", () => errorFor("RECORD_INTEGRITY_FAILED"), false],
+    ["410 ASSET_UNAVAILABLE", () => errorFor("ASSET_UNAVAILABLE"), false],
   ];
 
-  it.each(RETRY_TABLE)("v2.1: Download after %s makes %i asset call(s), the same as isRetryableResolveError says", async (_, failure, calls) => {
+  it.each(RETRY_TABLE)("Download after %s: exactly 1 asset call, nothing automatic; 'Try again' offered = %s", async (_, failure, offered) => {
     const job = succeededJob();
     const answer = () => {
       const r = failure(job);
@@ -219,22 +126,26 @@ describe("concept gallery: asset URLs", () => {
       return r;
     };
     const downloads = [];
-    const { root, client, creativeSource } = setup(
+    const { root, client } = setup(
       { listJobs: () => listBody([job]), getJob: () => jobBody(job), getAssetUrl: answer },
       { startDownload: (d) => downloads.push(d) },
     );
     await flush();
     button(root, "download").click();
     await flush();
-    expect(client.count("getAssetUrl")).toBe(calls);
-    expect(downloads).toHaveLength(0); // every attempt failed: nothing is downloaded
-    // Cross-check against Asset Engineer's own rule on the real source's error.
-    const err = await creativeSource.resolve(job.jobId, 0).catch((e) => e);
-    expect(isRetryableResolveError(err)).toBe(calls === 2);
-    expect(err.details).toMatchObject({ retryable: calls === 2 });
+    await new Promise((r) => setTimeout(r, 30));
+    await flush();
+    expect(client.count("getAssetUrl")).toBe(1);
+    expect(downloads).toHaveLength(0);
+    expect(button(root, "retry-asset") !== null).toBe(offered);
+    if (offered) {
+      button(root, "retry-asset").click();
+      await flush();
+      expect(client.count("getAssetUrl")).toBe(2); // one more call per click, never more
+    }
   });
 
-  it("v2.1: at most one retry, and each attempt is a fresh resolve that is never stored", async () => {
+  it("each click is one fresh resolve that is never stored", async () => {
     let n = 0;
     const urls = [];
     const { root, client, downloads, gallery } = succeededSetup((j) => ({ index }) => {
@@ -244,9 +155,13 @@ describe("concept gallery: asset URLs", () => {
       return b;
     });
     await flush();
-    button(root, "download").click();
+    button(root, "download").click(); // fails
     await flush();
-    button(root, "download").click();
+    button(root, "retry-asset").click(); // user asks again: works
+    await flush();
+    button(root, "download").click(); // fails
+    await flush();
+    button(root, "retry-asset").click(); // works
     await flush();
     expect(client.count("getAssetUrl")).toBe(4);
     expect(downloads.map((d) => d.url)).toEqual(urls);

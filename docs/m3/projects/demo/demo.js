@@ -1,13 +1,14 @@
 /**
- * FIXTURE DATA demo for the concept gallery, contract revision 2.
+ * SYNTHETIC/MOCKED demo for the concept gallery, contract revision 2.
  *
  * Jobs and errors are Claude's own SIMULATED fixture pack (3946b53, copied
  * unmodified to tests/projects/fixtures/rev2/). The 3D file is the SYNTHETIC
- * grey box from that pack, served by serve.mjs. Nothing here talks to
- * /api/creative or Scenario; no paid call is possible.
+ * grey box from that pack, served by serve.mjs. Nothing here talks to the real
+ * /api/creative or Scenario; no paid call is possible. The "reload" state talks to
+ * serve.mjs's MOCKED /__mock-api/creative so a real page reload can be exercised.
  *   node docs/m3/projects/demo/serve.mjs  ->  http://127.0.0.1:5178/docs/m3/projects/demo/
  */
-import { mountConceptGallery } from "../../../../src/lib/projects/conceptGallery/index.js";
+import { mountConceptGallery, createCreativeJobsClient } from "../../../../src/lib/projects/conceptGallery/index.js";
 import { createFakeCreativeJobsClient } from "../../../../tests/projects/fixtures/fakeCreativeJobsClient.js";
 import { createFixtureFetch } from "../../../../tests/projects/fixtures/fixtureFetch.js";
 // Asset Engineer's real source and viewer, used by the DEMO (the gallery module never imports them).
@@ -20,6 +21,7 @@ const names = [
   "jobs.list.200.json", "asset.200.json", "error.missing-auth.401.json", "error.not-configured.503.json",
   "error.provider-rate-limited.429.json", "error.provider-insufficient-credits.402.json", "error.asset-not-ready.409.json",
   "error.asset-unavailable.410.json", "error.provider-unavailable.submission-unknown.502.json",
+  "config.ready.200.json", "config.not-ready.200.json",
 ];
 const P = Object.fromEntries(await Promise.all(names.map(async (n) => [n, await load(n)])));
 const LIST = P["jobs.list.200.json"].response.jobs;
@@ -60,17 +62,31 @@ const okAsset = ({ jobId, index }) => {
   const a = P["asset.200.json"].response.asset;
   return { ok: true, asset: { ...a, jobId, index, url: `${location.origin}${GLB}?resolve=${++n}`, resolvedAt: new Date().toISOString() } };
 };
-let tooBusy = 0;
+const REF_PNG = `${location.origin}/tests/projects/fixtures/rev2/SYNTHETIC-reference-drawing.png`;
 
 export const SCENARIOS = {
   loading: { label: "Loading", listJobs: never },
   empty: { label: "Empty", listJobs: () => ({ ok: true, jobs: [] }) },
-  list: { label: "List: Claude's rev 2 fixture (7 jobs)", listJobs: () => ({ ok: true, jobs: [proc, ok, unk, ...failed] }), getJob: never, getAssetUrl: okAsset },
+  list: { label: "List: Claude's rev 2 fixture (7 jobs)", listJobs: () => ({ ok: true, jobs: [proc, ok, unk, ...failed] }), getJob: never, getAssetUrl: okAsset, getConfig: () => P["config.ready.200.json"].response },
+  thumbnails: {
+    label: "Reference thumbnails (host resolver, SYNTHETIC drawing)",
+    listJobs: () => ({ ok: true, jobs: [ok, proc, failed[0]] }),
+    getJob: never,
+    getAssetUrl: okAsset,
+    thumb: ({ jobId }) => (jobId === failed[0].jobId ? null : REF_PNG),
+  },
+  unavailable: { label: "Generation unavailable (config: no budget cap, switched off)", listJobs: () => ({ ok: true, jobs: [ok, unk] }), getJob: never, getAssetUrl: okAsset, getConfig: () => P["config.not-ready.200.json"].response },
   billing: { label: "Billing outcomes (not_submitted / unconfirmed / reported / rev 1)", listJobs: () => ({ ok: true, jobs: [subm, proc, ok, rev1] }), getJob: never, getAssetUrl: okAsset },
   polling: {
     label: "Polling (submitting + processing)",
     listJobs: () => ({ ok: true, jobs: [subm, proc] }),
     getJob: ({ jobId }) => ({ ok: true, job: { ...(jobId === proc.jobId ? proc : subm), updatedAt: new Date().toISOString() }, refresh: { ok: true } }),
+  },
+  poll_paused: {
+    label: "Polling paused (429 on a status check)",
+    listJobs: () => ({ ok: true, jobs: [proc] }),
+    getJob: throwing(fxErr("error.provider-rate-limited.429.json")),
+    pollIntervalMs: 3000,
   },
   failed: { label: "Failed (rev 2 provider codes)", listJobs: () => ({ ok: true, jobs: failed }) },
   submission_unknown: { label: "Submission unknown (may have been charged)", listJobs: () => ({ ok: true, jobs: [unk] }) },
@@ -81,11 +97,13 @@ export const SCENARIOS = {
   server_5xx: { label: "Server error (5xx)", listJobs: throwing(F.errorFor("INTERNAL")) },
   rate_limited: { label: "Busy (429 PROVIDER_RATE_LIMITED)", listJobs: throwing(fxErr("error.provider-rate-limited.429.json")) },
   provider_refused: { label: "Provider refused (402 PROVIDER_INSUFFICIENT_CREDITS)", listJobs: throwing(fxErr("error.provider-insufficient-credits.402.json")) },
+  provider_unavailable: { label: "Provider unavailable (502 PROVIDER_UNAVAILABLE)", listJobs: throwing(fxErr("error.provider-unavailable.submission-unknown.502.json")) },
   not_configured: { label: "Unavailable (503 not configured)", listJobs: throwing(fxErr("error.not-configured.503.json")) },
   malformed: { label: "Malformed list answer", listJobs: () => ({ ok: true }) },
   asset_not_ready: { label: "Download: 409 ASSET_NOT_READY", listJobs: () => ({ ok: true, jobs: [ok] }), getJob: () => ({ ok: true, job: ok, refresh: { ok: true } }), getAssetUrl: throwing(fxErr("error.asset-not-ready.409.json")), click: "download" },
   asset_unavailable: { label: "Download: 410 ASSET_UNAVAILABLE (expired link)", listJobs: () => ({ ok: true, jobs: [ok] }), getAssetUrl: throwing(fxErr("error.asset-unavailable.410.json")), click: "download" },
-  asset_rate_limited: { label: "Download: 429 twice (one ~1 s retry)", listJobs: () => ({ ok: true, jobs: [ok] }), getAssetUrl: () => { tooBusy++; throw fxErr("error.provider-rate-limited.429.json"); }, click: "download" },
+  asset_rate_limited: { label: "Download: 429 (no automatic retry; Try download again)", listJobs: () => ({ ok: true, jobs: [ok] }), getAssetUrl: throwing(fxErr("error.provider-rate-limited.429.json")), click: "download" },
+  asset_provider_unavailable: { label: "Download: 502 PROVIDER_UNAVAILABLE (Try download again)", listJobs: () => ({ ok: true, jobs: [ok] }), getAssetUrl: throwing(fxErr("error.provider-unavailable.submission-unknown.502.json")), click: "download" },
   integrity: {
     label: "Integrity: 409 RECORD_INTEGRITY_FAILED",
     listJobs: () => ({ ok: true, jobs: [ok, proc] }),
@@ -97,6 +115,8 @@ export const SCENARIOS = {
   open: { label: "Open: 3D view of the SYNTHETIC box", listJobs: () => ({ ok: true, jobs: [ok] }), getJob: never, getAssetUrl: okAsset, click: "open" },
   download: { label: "Download: fresh address, real file", listJobs: () => ({ ok: true, jobs: [ok] }), getJob: never, getAssetUrl: okAsset, click: "download" },
   long: { label: "Long content (60+ chars)", listJobs: () => ({ ok: true, jobs: [long, longFail] }), getJob: never, getAssetUrl: okAsset },
+  // A real page reload: the record lives in serve.mjs (MOCKED /__mock-api/creative), not in the browser.
+  reload: { label: "Reload restore (MOCKED server-side job; reload the page)", mockApi: true, pollIntervalMs: 3000 },
 };
 
 async function viewerEnv() {
@@ -115,19 +135,34 @@ let gallery = null;
 async function mount(id) {
   if (gallery) gallery.destroy();
   log.textContent = "";
-  tooBusy = 0;
   const s = SCENARIOS[id] || SCENARIOS.list;
-  const client = createFakeCreativeJobsClient({ listJobs: s.listJobs });
-  const creativeSource = createCreativeAssetSource({
-    fetchImpl: createFixtureFetch({ getJob: s.getJob || never, getAssetUrl: s.getAssetUrl || never }, client.calls),
-    getAuthToken: () => "fixture-token",
-  });
+  let client;
+  let creativeSource;
+  let token = "fixture-token";
+  if (s.mockApi) {
+    // The shipped Projects client + AE's real source, both against the MOCKED server routes.
+    token = "mock-token";
+    const counted = [];
+    const fetchImpl = (u, init) => (counted.push(String(u)), fetch(u, init));
+    const sid = (new URLSearchParams(location.search).get("sid") || "demo").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64) || "demo";
+    const base = `/__mock-api/${sid}/creative`;
+    const real = createCreativeJobsClient({ fetchImpl, baseUrl: base });
+    client = { ...real, calls: counted, count: () => counted.length };
+    creativeSource = createCreativeAssetSource({ fetchImpl, getAuthToken: () => token, baseUrl: base });
+  } else {
+    client = createFakeCreativeJobsClient({ listJobs: s.listJobs, getConfig: s.getConfig });
+    creativeSource = createCreativeAssetSource({
+      fetchImpl: createFixtureFetch({ getJob: s.getJob || never, getAssetUrl: s.getAssetUrl || never }, client.calls),
+      getAuthToken: () => token,
+    });
+  }
   const env = await viewerEnv(); // AE's real viewer in every state (three from node_modules)
   gallery = mountConceptGallery(document.getElementById("gallery"), {
     client,
-    getAccessToken: () => "fixture-token",
+    getAccessToken: () => token,
     creativeSource,
     pollIntervalMs: s.pollIntervalMs || 4000,
+    ...(s.thumb ? { resolveReferenceThumbnail: async (a) => s.thumb(a) } : {}),
     mountAssetViewer,
     viewerOptions: { three: env.three, deps: env.deps },
     // A real download of the freshly resolved (local, SYNTHETIC) file; the address is used once and dropped.
@@ -138,11 +173,11 @@ async function mount(id) {
       document.body.appendChild(a);
       a.click();
       a.remove();
-      log.textContent = `FIXTURE: downloaded ${filename} (the SYNTHETIC box, not a Scenario output) from a freshly resolved local address. getAssetUrl calls: ${client.count("getAssetUrl")}.`;
+      log.textContent = `SYNTHETIC/MOCKED: downloaded ${filename} (the SYNTHETIC box, not a Scenario output) from a freshly resolved local address. getAssetUrl calls: ${client.count("getAssetUrl")}.`;
     },
   });
   window.__gallery = gallery;
-  window.__calls = () => client.calls.map((c) => c.method);
+  window.__calls = () => client.calls.map((c) => (typeof c === "string" ? c : c.method));
   if (s.click) {
     const t = setInterval(() => {
       const b = document.querySelector(`[data-action="${s.click}"]`);
@@ -157,7 +192,8 @@ async function mount(id) {
 const initial = new URLSearchParams(location.search).get("state") || "list";
 select.value = SCENARIOS[initial] ? initial : "list";
 select.addEventListener("change", () => {
-  history.replaceState(null, "", `?state=${select.value}`);
+  const sid = new URLSearchParams(location.search).get("sid");
+  history.replaceState(null, "", `?state=${select.value}${sid ? `&sid=${encodeURIComponent(sid)}` : ""}`);
   mount(select.value);
 });
 mount(select.value);

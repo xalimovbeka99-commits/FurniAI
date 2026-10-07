@@ -1,5 +1,6 @@
 // Concept gallery e2e, contract rev 2 (replica-test plan: docs/m3/projects/rev2/TEST_PLAN.md).
-// FIXTURE DATA: Claude's SIMULATED pack + a SYNTHETIC GLB. Role/label selectors first.
+// Evidence label: SYNTHETIC/MOCKED. Claude's SIMULATED pack + a SYNTHETIC GLB + serve.mjs's MOCKED
+// /__mock-api/creative for the reload case. Not LIVE: no real backend, no Scenario. Role/label selectors first.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -24,6 +25,8 @@ test.beforeEach(async ({ page, baseURL }) => {
 });
 test.afterEach(async ({ page }) => {
   expect(page.__problems, "console errors / 5xx / external requests").toEqual([]);
+  // Browser storage is never used as persistence (or at all) by the gallery.
+  expect(await page.evaluate(() => [localStorage.length, sessionStorage.length])).toEqual([0, 0]);
 });
 
 async function go(page, state) {
@@ -45,7 +48,9 @@ test("F01-H1 list: Claude's rev 2 fixture renders 7 cards; Open/Download only on
   await expect(page.getByRole("button", { name: "Download GLB" })).toHaveCount(1);
   const ready = cards(page).filter({ has: page.getByText("Ready", { exact: true }) });
   await expect(ready.getByRole("button")).toHaveCount(2);
-  await expect(page.getByRole("img")).toHaveCount(0); // no thumbnail exists in the contract
+  await expect(ready.locator('[data-result="available"]')).toHaveText("Available (GLB)");
+  await expect(page.locator('[data-result="available"]')).toHaveCount(1);
+  await expect(page.getByRole("img")).toHaveCount(0); // no thumbnail resolver in this state (the contract has no field)
   await expect(cards(page).first().getByRole("heading", { level: 3 })).toHaveText(/^3D concept · \d{1,2} Oct 2026, \d{2}:\d{2}$/);
   expect(await noOverflow(page)).toBe(0);
 });
@@ -76,6 +81,7 @@ const PANELS = [
   ["server_5xx", "server", /Try again in a moment\.$/, true],
   ["rate_limited", "rate_limited", /busy.*Try again in a moment\.$/, true],
   ["provider_refused", "provider_refused", /Try again later\.$/, true],
+  ["provider_unavailable", "provider_unavailable", /isn't responding right now/, true],
   ["not_configured", "not_configured", /aren't available on this deployment/, true],
   ["malformed", "malformed", /couldn't read/, true],
 ];
@@ -84,7 +90,7 @@ for (const [state, kind, text, retry] of PANELS) {
     await go(page, state);
     const p = page.locator(`[data-panel="${kind}"]`);
     await expect(p).toHaveAttribute("role", "alert");
-    await expect(p.locator("p")).toHaveText(text);
+    await expect(p.locator("p").last()).toHaveText(text);
     await expect(p.getByRole("button", { name: "Try again" })).toHaveCount(retry ? 1 : 0);
     await expect(cards(page)).toHaveCount(0);
   });
@@ -115,12 +121,106 @@ test("F02-E1 Download 410: expired link said honestly, card stays Ready, nothing
   expect(await page.evaluate(() => window.__calls().filter((m) => m === "getAssetUrl").length)).toBe(1);
 });
 
-test("F02-E2 Download 429 twice: one retry after ~1 s, then 'try again in a moment'", async ({ page }) => {
-  const t0 = Date.now();
+test("F02-E2 Download 429: ONE request, no automatic retry; only 'Try download again' sends another", async ({ page }) => {
   await go(page, "asset_rate_limited");
   await expect(page.locator('[data-asset-error="PROVIDER_RATE_LIMITED"]')).toHaveText("FurniAI couldn't get this file right now because the service is busy. Try again in a moment.");
-  expect(Date.now() - t0).toBeGreaterThanOrEqual(1000);
-  expect(await page.evaluate(() => window.__calls().filter((m) => m === "getAssetUrl").length)).toBe(2);
+  const count = () => page.evaluate(() => window.__calls().filter((m) => m === "getAssetUrl").length);
+  await page.waitForTimeout(2500); // the old ~1 s auto re-resolve would have fired by now
+  expect(await count()).toBe(1);
+  await page.getByRole("button", { name: "Try download again" }).click();
+  await expect.poll(count).toBe(2);
+  await page.waitForTimeout(1500);
+  expect(await count()).toBe(2);
+});
+
+test("F02-E4 Download 502 PROVIDER_UNAVAILABLE: provider wording, one request, visible Try again", async ({ page }) => {
+  await go(page, "asset_provider_unavailable");
+  await expect(page.locator('[data-asset-error="PROVIDER_UNAVAILABLE"]')).toHaveText(/3D generation service isn't responding/);
+  await expect(page.getByRole("button", { name: "Try download again" })).toBeVisible();
+  expect(await page.evaluate(() => window.__calls().filter((m) => m === "getAssetUrl").length)).toBe(1);
+});
+
+test("F05-H1 reload: the server's job list restores the card, unfinished job resumes polling, then Ready (MOCKED server)", async ({ page, request }, info) => {
+  const sid = `e2e-${info.project.name}`;
+  const stats = async () => (await (await request.get(`/__mock-api/${sid}/stats`)).json());
+  await request.post(`/__mock-api/${sid}/reset?after=3`);
+  await go(page, `reload&sid=${sid}`);
+  const c = cards(page);
+  await expect(c).toHaveCount(1);
+  await expect(c.getByText("Generating", { exact: true })).toBeVisible();
+  await expect.poll(async () => (await stats()).getJob, { timeout: 8000 }).toBeGreaterThanOrEqual(1); // polling ran
+  await page.reload();
+  await page.waitForFunction(() => window.__gallery && window.__gallery.getState().list !== "loading");
+  expect((await stats()).list).toBe(2); // the reload re-read GET ?resource=jobs: that is the only source
+  await expect(c).toHaveCount(1);
+  await expect(c.getByText("Generating", { exact: true })).toBeVisible(); // restored, not lost and not invented
+  expect(await page.evaluate(() => window.__gallery.getState().polling)).toBe(true); // resumed
+  await expect(c.getByText("Ready", { exact: true })).toBeVisible({ timeout: 10000 });
+  expect(await page.evaluate(() => window.__gallery.getState().polling)).toBe(false); // terminal: stops
+  await expect(page.getByRole("button", { name: "Download GLB" })).toBeVisible();
+  const [d] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Download GLB" }).click()]);
+  expect(sha(readFileSync(await d.path()))).toBe(sha(readFileSync(GLB)));
+});
+
+test("F06-E1 error vs empty: a failed request looks and reads differently from an empty gallery", async ({ page }) => {
+  await go(page, "empty");
+  const empty = page.locator('[data-panel="empty"]');
+  await expect(empty).not.toHaveAttribute("role", "alert");
+  await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(0);
+  const emptyStyle = await empty.evaluate((n) => [getComputedStyle(n).borderTopStyle, getComputedStyle(n).backgroundColor]);
+  await go(page, "server_5xx");
+  const err = page.getByRole("alert").filter({ hasText: "couldn't be loaded" });
+  await expect(err).toContainText("This doesn't mean you have none.");
+  await expect(err.getByRole("button", { name: "Try again" })).toBeVisible();
+  const errStyle = await err.evaluate((n) => [getComputedStyle(n).borderTopStyle, getComputedStyle(n).backgroundColor]);
+  expect(errStyle).not.toEqual(emptyStyle);
+});
+
+test("F06-E2 list failure: one request, nothing automatic; Try again sends exactly one more", async ({ page }) => {
+  await go(page, "server_5xx");
+  const n = () => page.evaluate(() => window.__calls().filter((m) => m === "listJobs").length);
+  await page.waitForTimeout(2000);
+  expect(await n()).toBe(1);
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect.poll(n).toBe(2);
+});
+
+test("F07-E1 polling: a 429 status check pauses polling with a visible 'Check status again'", async ({ page }) => {
+  await go(page, "poll_paused");
+  await expect(page.locator("[data-poll-paused]")).toContainText("paused because FurniAI is busy", { timeout: 8000 });
+  const n = () => page.evaluate(() => window.__calls().filter((m) => m === "getJob").length);
+  const before = await n();
+  await page.waitForTimeout(4000);
+  expect(await n()).toBe(before);
+  await page.getByRole("button", { name: "Check status again" }).click();
+  await expect.poll(n).toBe(before + 1);
+});
+
+test("F08-H1 budget / availability from GET ?resource=config: unavailable says why; the list still shows", async ({ page }) => {
+  await go(page, "unavailable");
+  await expect(page.locator('[data-availability="off"]')).toHaveText(/no per-concept budget is set/);
+  await expect(cards(page)).toHaveCount(2);
+  await go(page, "list");
+  await expect(page.locator('[data-availability="ready"]')).toHaveText(/Budget limit per concept: 20 provider units \(unit unverified\)/);
+});
+
+test("F09-H1 concept vs design: every card has a visible Concept label and the notice; no dimensions or Studio links", async ({ page }) => {
+  await go(page, "list");
+  const all = cards(page);
+  const n = await all.count();
+  for (let i = 0; i < n; i++) {
+    await expect(all.nth(i).locator('[data-kind-label="concept"]')).toHaveText("Concept");
+    await expect(all.nth(i).locator('[data-kind-label="concept"]')).toBeVisible();
+    await expect(all.nth(i).locator("[data-concept-notice]")).toContainText("AI-generated visual concept");
+    expect(await all.nth(i).innerText()).not.toMatch(/\bmm\b|width|height|depth/i);
+  }
+  await expect(page.locator("[data-concept-gallery] a")).toHaveCount(0);
+});
+
+test("F10-H1 reference thumbnails: the reference image where the host has one, a placeholder otherwise", async ({ page }) => {
+  await go(page, "thumbnails");
+  await expect(page.getByRole("img", { name: "Reference image this concept was made from" })).toHaveCount(2);
+  await expect(page.locator('[data-thumbnail="none"]')).toHaveCount(1);
 });
 
 test("F02-E3 integrity: both cards lock, no Open/Download", async ({ page }) => {
@@ -154,10 +254,12 @@ test("F04-N1 keyboard: Tab reaches Download and Enter starts it", async ({ page,
   expect(d.suggestedFilename()).toMatch(/^furniai-concept-.*\.glb$/);
 });
 
-for (const state of ["list", "billing", "failed", "submission_unknown", "signed_out", "rate_limited", "asset_unavailable", "long"]) {
+for (const state of ["list", "empty", "billing", "failed", "submission_unknown", "signed_out", "forbidden", "rate_limited", "provider_unavailable", "not_configured", "asset_unavailable", "asset_rate_limited", "poll_paused", "unavailable", "thumbnails", "long"]) {
   test(`A11Y axe (serious/critical) and no horizontal overflow: ${state}`, async ({ page }) => {
     await go(page, state);
-    if (state === "asset_unavailable") await page.locator("[data-asset-error]").waitFor();
+    if (state.startsWith("asset_")) await page.locator("[data-asset-error]").waitFor();
+    if (state === "poll_paused") await page.locator("[data-poll-paused]").waitFor({ timeout: 8000 });
+    if (state === "thumbnails") await page.locator("img").first().waitFor();
     expect(await axe(page)).toEqual([]);
     expect(await noOverflow(page)).toBe(0);
   });

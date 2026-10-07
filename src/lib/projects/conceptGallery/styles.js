@@ -17,6 +17,7 @@ export const CONCEPT_GALLERY_STYLE_ID = "fcg-styles";
 
 export const CONCEPT_GALLERY_TOKENS = Object.freeze([
   "--paper", "--paper-2", "--paper-3", "--ink", "--ink-soft", "--ink-faint", "--brass", "--brass-bright",
+  "--bek-green-light", "--bek-green-border", "--font-serif",
   "--line", "--line-soft", "--r", "--r-sm", "--r-pill", "--font-sans", "--font-mono",
   "--space-xs", "--space-sm", "--space-md", "--space-lg", "--space-xl",
   "--status-saved-bg", "--status-saved-text", "--status-saved-border",
@@ -85,6 +86,16 @@ export const CONCEPT_GALLERY_CSS = `
 .fcg-skeletons{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--space-md,14px)}
 .fcg-skeleton{height:280px;border-radius:var(--r,14px);background:linear-gradient(90deg,var(--paper-3,#EAE5D9),var(--paper-2,#F4F2EB),var(--paper-3,#EAE5D9));background-size:200% 100%;animation:fcg-shimmer 1.2s linear infinite}
 @keyframes fcg-shimmer{to{background-position:-200% 0}}
+.fcg-sub{margin:0 0 var(--space-sm,8px);font-size:13px;color:var(--ink-soft,#5C626E);max-width:70ch}
+.fcg-kind{align-self:flex-start;margin:0;font-family:var(--font-mono,'Space Mono',monospace);font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border-radius:var(--r-pill,100px);background:var(--bek-green-light,#EBF3EF);color:var(--brass,#1B4D3E);border:1px solid var(--bek-green-border,#9DC3B1)}
+.fcg-tile-ref{margin:0;position:relative;padding:0;overflow:hidden}
+.fcg-thumb-img{display:block;width:100%;height:100%;object-fit:cover}
+.fcg-tile-cap{position:absolute;left:var(--space-sm,8px);bottom:var(--space-sm,8px);padding:2px 6px;border-radius:4px;background:var(--paper-translucent,rgba(250,249,245,.88));color:var(--ink,#1C1E21)}
+.fcg-panel-title{font-weight:700}
+.fcg-panel[data-panel="empty"]{border-style:dashed;color:var(--ink-soft,#5C626E)}
+.fcg-paused{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--space-sm,8px);margin:0 0 var(--space-md,14px)}
+.fcg-paused p{margin:0}
+.fcg-content>[data-availability],.fcg-content>[data-truncated]{margin:0 0 var(--space-md,14px)}
 @media (max-width:480px){.fcg-list,.fcg-skeletons{grid-template-columns:1fr}.fcg-head{flex-wrap:wrap}}
 @media (prefers-reduced-motion:reduce){.fcg-skeleton,.fcg-spinner{animation:none}}
 `;

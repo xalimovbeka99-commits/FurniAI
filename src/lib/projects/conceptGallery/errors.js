@@ -29,10 +29,23 @@ export const ERROR_KIND = Object.freeze({
   RATE_LIMITED: "rate_limited",
   /** Rev 2 §4 refusals that a retry in a moment won't fix (402 credits, provider auth, rejected request). */
   PROVIDER_REFUSED: "provider_refused",
+  /** Rev 2 §4 PROVIDER_UNAVAILABLE / PROVIDER_UNEXPECTED_RESPONSE: the generation service didn't answer usably. */
+  PROVIDER_UNAVAILABLE: "provider_unavailable",
   REQUEST: "request",
 });
 
+/**
+ * Failures a person may sensibly try again. The gallery NEVER retries them by itself: it shows a
+ * visible "Try again" action and the request runs again only when that is clicked.
+ * Not here: 401/403 (page-wide sign-in / permission), 404/409 integrity (the record), 410 (gone),
+ * *_NOT_CONFIGURED (deployment) and ASSET_NOT_READY (the job status is re-checked instead).
+ */
+export const USER_RETRY_KINDS = Object.freeze(
+  new Set(["network", "server", "rate_limited", "provider_unavailable", "provider_refused", "malformed", "request"]),
+);
+
 const PROVIDER_REFUSED = new Set([CODE.PROVIDER_INSUFFICIENT_CREDITS, CODE.PROVIDER_AUTH_REJECTED, CODE.PROVIDER_REJECTED_REQUEST]);
+const PROVIDER_DOWN = new Set([CODE.PROVIDER_UNAVAILABLE, CODE.PROVIDER_UNEXPECTED_RESPONSE]);
 
 const NOT_CONFIGURED = new Set([
   CODE.CREATIVE_NOT_CONFIGURED,
@@ -59,7 +72,7 @@ const VIEWER_CODE_KIND = Object.freeze({
   SIGN_IN_UNAVAILABLE: "server",
   CONCEPTS_NOT_CONFIGURED: "not_configured",
   SERVICE_UNAVAILABLE: "server",
-  PROVIDER_UNAVAILABLE: "server",
+  PROVIDER_UNAVAILABLE: "provider_unavailable",
   CONCEPT_NOT_FOUND: "not_found",
   ASSET_NOT_READY: "asset_not_ready",
   ASSET_UNAVAILABLE: "asset_unavailable",
@@ -106,6 +119,7 @@ export function classifyError(err) {
   if (code === CODE.INVALID_RESPONSE) return { kind: ERROR_KIND.MALFORMED, code, status };
   if (status === 403) return { kind: ERROR_KIND.FORBIDDEN, code: code || CODE.FORBIDDEN, status };
   if (code === CODE.PROVIDER_RATE_LIMITED || status === 429) return { kind: ERROR_KIND.RATE_LIMITED, code: code || "HTTP_429", status };
+  if (code && PROVIDER_DOWN.has(code)) return { kind: ERROR_KIND.PROVIDER_UNAVAILABLE, code, status };
   if ((code && PROVIDER_REFUSED.has(code)) || status === 402) return { kind: ERROR_KIND.PROVIDER_REFUSED, code: code || "HTTP_402", status };
   if (status === null && (code === null || code === CODE.NETWORK)) {
     return { kind: ERROR_KIND.NETWORK, code: CODE.NETWORK, status: null };
@@ -126,6 +140,7 @@ export const LIST_MESSAGES = Object.freeze({
   [ERROR_KIND.MALFORMED]: "FurniAI sent a reply this page couldn't read, so your 3D concepts can't be shown right now.",
   [ERROR_KIND.RATE_LIMITED]: "FurniAI is busy and couldn't load your 3D concepts right now. Try again in a moment.",
   [ERROR_KIND.PROVIDER_REFUSED]: "The 3D generation service isn't accepting requests from FurniAI right now, so your 3D concepts can't be shown. Try again later.",
+  [ERROR_KIND.PROVIDER_UNAVAILABLE]: "The 3D generation service isn't responding right now, so your 3D concepts can't be shown. Try again in a moment.",
   [ERROR_KIND.REQUEST]: "FurniAI couldn't load your 3D concepts.",
 });
 
@@ -145,6 +160,7 @@ export const ASSET_MESSAGES = Object.freeze({
   // Starts like the 5xx text on purpose (QE nit, acceptance pins the prefix): busy, so try again shortly.
   [ERROR_KIND.RATE_LIMITED]: "FurniAI couldn't get this file right now because the service is busy. Try again in a moment.",
   [ERROR_KIND.PROVIDER_REFUSED]: "FurniAI couldn't get this file: the 3D generation service refused the request. Try again later.",
+  [ERROR_KIND.PROVIDER_UNAVAILABLE]: "FurniAI couldn't get this file because the 3D generation service isn't responding. Try again in a moment.",
   [ERROR_KIND.REQUEST]: "FurniAI couldn't get this file.",
 });
 
@@ -165,6 +181,10 @@ export const JOB_MESSAGES = Object.freeze({
  * Rev 2 §2.3 `409 PRIOR_SUBMISSION_UNKNOWN` (POST only). The gallery never submits;
  * this is the wording a host's Generate flow should reuse. It never says "no charge".
  */
+/** On a submission_unknown card: what happens if the person generates again from the same reference. */
+export const PRIOR_SUBMISSION_UNKNOWN_CARD_NOTE =
+  "Generating again from this reference will ask you to confirm first, because this attempt may have been charged.";
+
 export const PRIOR_SUBMISSION_UNKNOWN_MESSAGE =
   "The last 3D concept requested from this reference never got an answer from the generation service. It may have run and may have been charged. Generating again could be charged a second time, so only continue if you mean to.";
 

@@ -57,7 +57,7 @@ describe("concept gallery: list states", () => {
     expect(byTag(root, "img")).toHaveLength(0);
     const tile = byClass(root, "fcg-tile")[0];
     expect(tile.getAttribute("aria-hidden")).toBe("true");
-    const text = root.textContent;
+    const text = card(root, a.jobId).textContent;
     expect(text).not.toMatch(/design-123|900|mm\b|dimension/i);
     expect(allAttributeValues(root).join(" ")).not.toMatch(/design-123|t\.png|designId/);
     expect(byTag(root, "a")).toHaveLength(0);

@@ -66,7 +66,7 @@ describe("concept gallery state", () => {
     expect(classifyError({ status: 401 }).kind).toBe(ERROR_KIND.SIGNED_OUT);
     expect(classifyError(networkError()).kind).toBe(ERROR_KIND.NETWORK);
     expect(classifyError(errorFor("INTERNAL")).kind).toBe(ERROR_KIND.SERVER);
-    expect(classifyError(errorFor("PROVIDER_UNAVAILABLE")).kind).toBe(ERROR_KIND.SERVER);
+    expect(classifyError(errorFor("PROVIDER_UNAVAILABLE")).kind).toBe(ERROR_KIND.PROVIDER_UNAVAILABLE);
     expect(classifyError(errorFor("CREATIVE_STORE_NOT_CONFIGURED")).kind).toBe(ERROR_KIND.NOT_CONFIGURED);
     expect(classifyError({ status: 503, code: "AUTH_UNAVAILABLE" }).kind).toBe(ERROR_KIND.SERVER);
     expect(classifyError(errorFor("MISSING_JOB")).kind).toBe(ERROR_KIND.NOT_FOUND);

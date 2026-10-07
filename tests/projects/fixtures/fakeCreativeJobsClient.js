@@ -3,7 +3,7 @@
  * calls. Each handler is a function (args) => body | Promise<body>, or throws
  * / rejects with a client error from contractFixtures.js.
  */
-export function createFakeCreativeJobsClient({ listJobs, getJob, getAssetUrl } = {}) {
+export function createFakeCreativeJobsClient({ listJobs, getJob, getAssetUrl, getConfig } = {}) {
   const calls = [];
   const call = (method, handler, args) => {
     calls.push({ method, args: { ...args, signal: undefined } });
@@ -16,5 +16,7 @@ export function createFakeCreativeJobsClient({ listJobs, getJob, getAssetUrl } =
     listJobs: (args) => call("listJobs", listJobs, args),
     getJob: (args) => call("getJob", getJob, args),
     getAssetUrl: (args) => call("getAssetUrl", getAssetUrl, args),
+    // Only present when scripted, so "no config call" stays the default (nothing is guessed).
+    ...(typeof getConfig === "function" ? { getConfig: (args) => call("getConfig", getConfig, args) } : {}),
   };
 }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flush } from "./fakeDom.js";
-import { setup, card, live } from "./helpers.js";
+import { setup, card, live, button } from "./helpers.js";
 import { byClass, byAttr } from "./fakeDom.js";
 import { errorFor, jobBody, jobView, listBody, networkError, succeededJob, failedJob, unknownJob } from "./fixtures/contractFixtures.js";
 
@@ -103,7 +103,7 @@ describe("concept gallery: polling", () => {
     expect(gallery.getState().polling).toBe(true);
   });
 
-  it("backs off on errors (network / 5xx) and recovers to the normal interval", async () => {
+  it("failed status checks stay inside 3–5 s (no backoff), pause after 3 in a row, and only 'Check status again' resumes", async () => {
     const p = jobView();
     let fail = 3;
     const { root, client, gallery } = setup({
@@ -114,19 +114,38 @@ describe("concept gallery: polling", () => {
       },
     });
     await flush();
-    await tick(4000); // fail 1 -> 8 s
-    expect(gallery.getState()).toMatchObject({ pollFailures: 1, nextPollDelayMs: 8000 });
-    expect(live(root).textContent).toBe("Having trouble checking for updates. Trying again in 8 s.");
-    await tick(7999);
+    await tick(4000); // fail 1 -> next check at 5 s (the window's top), not a growing backoff
+    expect(gallery.getState()).toMatchObject({ pollFailures: 1, nextPollDelayMs: 5000, pollPaused: null });
+    expect(live(root).textContent).toBe("The last status check didn't go through. Checking again in 5 s.");
+    await tick(4999);
     expect(client.count("getJob")).toBe(1);
-    await tick(1); // fail 2 -> 16 s
-    expect(gallery.getState().nextPollDelayMs).toBe(16000);
-    await tick(16000); // fail 3 -> 30 s cap
-    expect(gallery.getState().nextPollDelayMs).toBe(30000);
-    await tick(30000); // ok -> back to 4 s
-    expect(gallery.getState()).toMatchObject({ pollFailures: 0, nextPollDelayMs: 4000 });
+    await tick(1); // fail 2
+    expect(gallery.getState()).toMatchObject({ pollFailures: 2, nextPollDelayMs: 5000 });
+    await tick(5000); // fail 3 -> paused
+    expect(client.count("getJob")).toBe(3);
+    expect(gallery.getState()).toMatchObject({ polling: false, pollPaused: { kind: "network" } }); // the last failed round decides the wording
+    expect(byAttr(root, "data-poll-paused")[0].textContent).toMatch(/paused after 3 failed attempts/);
+    expect(live(root).textContent).toBe("Status checks paused.");
+    await tick(120000); // nothing by itself, however long
+    expect(client.count("getJob")).toBe(3);
+    button(root, "resume-polling").click(); // the user asks
+    await tick(0);
     expect(client.count("getJob")).toBe(4);
+    expect(gallery.getState()).toMatchObject({ pollFailures: 0, pollPaused: null, nextPollDelayMs: 4000 });
     expect(byClass(card(root, p.jobId), "fcg-badge-text")[0].textContent).toBe("Generating");
+  });
+
+  it("429 on a status check pauses polling at once (busy means ask less), with a visible 'Check status again'", async () => {
+    const p = jobView();
+    const { root, client, gallery } = setup({ listJobs: () => listBody([p]), getJob: () => Promise.reject({ status: 429, code: "PROVIDER_RATE_LIMITED" }) });
+    await flush();
+    await tick(4000);
+    expect(client.count("getJob")).toBe(1);
+    expect(gallery.getState().pollPaused).toEqual({ kind: "rate_limited", code: "PROVIDER_RATE_LIMITED" });
+    expect(byAttr(root, "data-poll-paused")[0].textContent).toMatch(/paused because FurniAI is busy/);
+    await tick(60000);
+    expect(client.count("getJob")).toBe(1);
+    expect(button(root, "resume-polling")).not.toBeNull();
   });
 
   it("refresh:{ok:false} keeps polling at the normal interval and says the check is delayed", async () => {

@@ -10,11 +10,16 @@
  *     checkDelayed: { [jobId]: code },                 // last refresh:{ok:false}; still polling
  *     assets:  { ["jobId:index"]: { phase: "resolving"|"error", action, kind?, code? } },
  *     polling: boolean,                                // a poll is scheduled or in flight
- *     pollFailures: number,                            // consecutive failed poll rounds (backoff)
+ *     pollFailures: number,                            // consecutive failed poll rounds
+ *     pollPaused: null | { kind, code },               // status checks stopped; only the user resumes them
+ *     availability: null | { state: "ready"|"off"|"unknown", reasons: string[], maxCostPerJob: number|null },
+ *     thumbs: { [jobId]: "loading"|"ready"|"none" },   // reference thumbnail phase (the URL is never kept here)
+ *     truncated: boolean,                              // the server returned its maximum (50); older jobs aren't listed
  *   }
- * URLs are NEVER part of this state (contract §2.5).
+ * URLs are NEVER part of this state (contract §2.5). Nothing here is written to browser storage:
+ * after a reload the server's job list is the only source (see CONCEPT_GALLERY.md §Reload).
  */
-import { CODE, isBillingOutcome, isNonTerminal } from "./contract.js";
+import { CODE, LIST_LIMIT, isBillingOutcome, isNonTerminal } from "./contract.js";
 import { ERROR_KIND } from "./errors.js";
 
 export const LIST_STATUS = Object.freeze({ LOADING: "loading", READY: "ready", ERROR: "error" });
@@ -29,7 +34,22 @@ export function initialState() {
     assets: {},
     polling: false,
     pollFailures: 0,
+    pollPaused: null,
+    availability: null,
+    thumbs: {},
+    truncated: false,
   };
+}
+
+/** GET ?resource=config -> whether NEW concepts can be generated (§2.1). Never affects the list. */
+export function availabilityFrom(config) {
+  if (!config || typeof config !== "object" || config.ok !== true) return { state: "unknown", reasons: [], maxCostPerJob: null };
+  const reasons = [];
+  if (config.configured !== true) reasons.push("not_configured");
+  if (config.liveGenerationEnabled !== true) reasons.push("disabled");
+  const cap = typeof config.maxCostPerJob === "number" && Number.isFinite(config.maxCostPerJob) ? config.maxCostPerJob : null;
+  if (cap === null) reasons.push("no_budget");
+  return { state: reasons.length ? "off" : "ready", reasons, maxCostPerJob: cap };
 }
 
 export const assetKey = (jobId, index) => `${jobId}:${index}`;
@@ -143,6 +163,10 @@ export function reduce(state, action) {
         jobErrors: Object.fromEntries(Object.entries(keepIds(state.jobErrors)).filter(([, e]) => e.kind !== ERROR_KIND.FORBIDDEN)),
         checkDelayed: keepIds(state.checkDelayed),
         assets: Object.fromEntries(Object.entries(state.assets).filter(([k]) => ids.has(k.slice(0, k.lastIndexOf(":"))))),
+        thumbs: keepIds(state.thumbs),
+        pollPaused: null, // a list load is a fresh start: polling may run again
+        pollFailures: 0,
+        truncated: action.jobs.length >= LIST_LIMIT,
       };
     }
     case "LIST_ERR":
@@ -164,6 +188,14 @@ export function reduce(state, action) {
       return { ...state, jobErrors: { ...state.jobErrors, [action.jobId]: { kind: action.error.kind, code: action.error.code } } };
     case "POLLING":
       return { ...state, polling: action.polling, pollFailures: action.failures ?? state.pollFailures };
+    case "POLL_PAUSED":
+      return { ...state, polling: false, pollPaused: { kind: action.error.kind, code: action.error.code } };
+    case "POLL_RESUMED":
+      return { ...state, pollPaused: null, pollFailures: 0 };
+    case "AVAILABILITY":
+      return { ...state, availability: action.availability };
+    case "THUMB":
+      return { ...state, thumbs: { ...state.thumbs, [action.jobId]: action.phase } };
     case "ASSET_START":
       return { ...state, assets: { ...state.assets, [action.key]: { phase: "resolving", action: action.action } } };
     case "ASSET_OK":
