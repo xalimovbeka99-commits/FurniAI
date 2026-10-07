@@ -34,7 +34,7 @@ describe("concept gallery state", () => {
   it("an invalid list body is a list error, not an empty gallery", () => {
     const s = reduce(initialState(), { type: "LIST_OK", jobs: undefined });
     expect(s.list).toBe("error");
-    expect(s.error.code).toBe("INVALID_RESPONSE");
+    expect(s.error).toMatchObject({ kind: "malformed", code: "INVALID_RESPONSE" }); // its own wording, not the generic line
   });
 
   it("refresh:{ok:false} marks the check delayed and keeps the job pollable", () => {

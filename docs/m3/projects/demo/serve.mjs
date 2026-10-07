@@ -6,7 +6,10 @@ import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(fileURLToPath(new URL("../../../../", import.meta.url)));
-const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css" };
+const types = {
+  ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css",
+  ".json": "application/json", ".glb": "model/gltf-binary", ".png": "image/png",
+};
 
 export function startServer(port = 0) {
   const server = http.createServer(async (req, res) => {

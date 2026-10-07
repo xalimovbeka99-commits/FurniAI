@@ -236,4 +236,15 @@ describe("concept gallery: injected asset viewer (v2)", () => {
     expect(byAttr(root, "data-action", "open")).toHaveLength(0);
     expect(root.textContent).not.toMatch(/Sign in/);
   });
+
+  it("replica-test BUG-003: Close 3D view hands focus back to the Open button that opened it", async () => {
+    const { root, doc } = viewerSetup(v2Like([]));
+    await flush();
+    button(root, "open").click();
+    await flush();
+    button(root, "close-viewer").click();
+    await flush();
+    expect(byAttr(root, "data-viewer-panel")).toHaveLength(0);
+    expect(doc.activeElement).toBe(button(root, "open"));
+  });
 });

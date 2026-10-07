@@ -121,7 +121,7 @@ export function reduce(state, action) {
       return { ...state, list: LIST_STATUS.LOADING, error: null };
     case "LIST_OK": {
       if (!Array.isArray(action.jobs)) {
-        return { ...state, list: LIST_STATUS.ERROR, error: { kind: ERROR_KIND.REQUEST, code: CODE.INVALID_RESPONSE, status: null } };
+        return { ...state, list: LIST_STATUS.ERROR, error: { kind: ERROR_KIND.MALFORMED, code: CODE.INVALID_RESPONSE, status: null } };
       }
       const seen = new Set();
       const jobs = [];

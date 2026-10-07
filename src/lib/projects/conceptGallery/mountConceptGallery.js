@@ -410,7 +410,10 @@ export function mountConceptGallery(root, options = {}) {
       notice: hit.job.notice || FALLBACK_CONCEPT_NOTICE,
       resolveUrl: () => runAsset(jobId, index, "open").then((asset) => asset.url),
     });
-    if (mountViewer) openInViewer(request, hit.job.concept);
+    if (mountViewer) {
+      openerKey = `open:${assetKey(jobId, index)}`;
+      openInViewer(request, hit.job.concept);
+    }
     if (onOpenConcept) {
       try {
         onOpenConcept(request);
@@ -427,6 +430,8 @@ export function mountConceptGallery(root, options = {}) {
   let viewerHost = null;
   let viewerNotice = null;
   let openSeq = 0;
+  /** data-focus-key of the Open button that opened the panel, so Close can hand focus back. */
+  let openerKey = null;
 
   function closeViewer() {
     openSeq++;
@@ -448,7 +453,14 @@ export function mountConceptGallery(root, options = {}) {
   function ensureViewer(request) {
     const heading = el(doc, "h3", { class: "fcg-viewer-title", id: `${idPrefix}-viewer-title`, tabindex: "-1" }, "3D view: concept ", el(doc, "code", { class: "fcg-id", text: request.jobId }));
     const close = el(doc, "button", { type: "button", class: "fcg-btn", "data-action": "close-viewer", text: "Close 3D view" });
-    close.addEventListener("click", () => closeViewer());
+    close.addEventListener("click", () => {
+      const key = openerKey;
+      closeViewer();
+      // Focus goes back to the Open button that opened the panel (it may be gone after a refresh).
+      const target = key ? findByAttr(body, "data-focus-key", key) : null;
+      if (target && typeof target.focus === "function") target.focus();
+      else if (typeof refreshBtn.focus === "function") refreshBtn.focus();
+    });
     if (!viewerPanel) {
       viewerHost = el(doc, "div", { class: "fcg-viewer-host" });
       viewerStatus = el(doc, "p", { class: "fcg-hint", "data-viewer-status": "" });

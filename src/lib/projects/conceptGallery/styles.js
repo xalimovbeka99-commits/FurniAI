@@ -51,10 +51,10 @@ export const CONCEPT_GALLERY_CSS = `
 .fcg-card{display:flex;flex-direction:column;height:100%;background:#fff;border:1px solid var(--line,#DFD9CC);border-radius:var(--r,14px);overflow:hidden}
 .fcg-card[data-status="failed"]{border-color:var(--status-error-border,#fecaca)}
 .fcg-card[data-status="submission_unknown"]{border-color:var(--status-unsaved-border,#fde68a)}
-.fcg-tile{aspect-ratio:16/9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--space-sm,8px);background:var(--paper-2,#F4F2EB);border-bottom:1px solid var(--line-soft,#EDE8DC);color:var(--ink-faint,#9EA3AE)}
+.fcg-tile{aspect-ratio:16/9;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--space-sm,8px);background:var(--paper-2,#F4F2EB);border-bottom:1px solid var(--line-soft,#EDE8DC);color:var(--ink-soft,#5C626E)}
 .fcg-tile-cube{width:34px;height:34px;border:2px solid currentColor;border-radius:4px;transform:rotate(45deg) skew(-8deg,-8deg)}
 .fcg-tile-label{font-family:var(--font-mono,'Space Mono',monospace);font-size:11px;letter-spacing:.06em;text-transform:uppercase}
-.fcg-tile-sub{font-size:11px;color:var(--ink-faint,#9EA3AE)}
+.fcg-tile-sub{font-size:11px;color:var(--ink-soft,#5C626E)}
 .fcg-card[data-status="succeeded"] .fcg-tile{color:var(--brass,#1B4D3E)}
 .fcg-card[data-status="failed"] .fcg-tile,.fcg-card[data-status="submission_unknown"] .fcg-tile{color:var(--ink-soft,#5C626E)}
 [data-billing]{overflow-wrap:anywhere}

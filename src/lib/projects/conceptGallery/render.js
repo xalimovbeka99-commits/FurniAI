@@ -114,10 +114,14 @@ export function failedText(error) {
   return own || jobErrorText(error?.message) || "The generation service reported a failure.";
 }
 
-/** Card title: the contract has no name field, so "3D concept" plus the created date. */
-function titleText(job, formatDate) {
+/**
+ * Card title: the contract has no name field, so "3D concept" plus the created date
+ * (a <time> element; this is the card's only "created" line).
+ */
+function titleEl(doc, job, id, formatDate) {
   const d = job.createdAt ? formatDate(job.createdAt) : "—";
-  return d === "—" ? "3D concept" : `3D concept · ${d}`;
+  if (d === "—") return el(doc, "h3", { class: "fcg-card-title", id, text: "3D concept" });
+  return el(doc, "h3", { class: "fcg-card-title", id }, "3D concept · ", el(doc, "time", { datetime: job.createdAt, "data-created": "", text: d }));
 }
 
 function outputActions(doc, job, output, state, ctx, multiple) {
@@ -185,7 +189,7 @@ export function renderCard(doc, job, state, ctx, n) {
   });
   card.appendChild(placeholderTile(doc, job));
   const body = el(doc, "div", { class: "fcg-body" });
-  body.appendChild(el(doc, "h3", { class: "fcg-card-title", id: titleId, text: titleText(job, ctx.formatDate) }));
+  body.appendChild(titleEl(doc, job, titleId, ctx.formatDate));
   const badge = el(
     doc,
     "p",
@@ -196,7 +200,6 @@ export function renderCard(doc, job, state, ctx, n) {
   body.appendChild(badge);
 
   const meta = el(doc, "dl", { class: "fcg-meta" });
-  meta.appendChild(metaRow(doc, "Created", timeEl(doc, job.createdAt, ctx.formatDate)));
   meta.appendChild(metaRow(doc, "Updated", timeEl(doc, job.updatedAt, ctx.formatDate)));
   meta.appendChild(metaRow(doc, "Job ID", el(doc, "code", { class: "fcg-id", text: job.jobId })));
   if (job.sourceReferenceId) {
