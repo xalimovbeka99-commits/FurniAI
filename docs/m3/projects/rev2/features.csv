@@ -7,7 +7,7 @@ Card: visible Concept label + badge; no dimensions; no designId link; concept.no
 Card: reference thumbnail when one exists,card,should,yes,partial,host hook resolveReferenceThumbnail; contract rev 2 has no thumbnail field (Claude request C-2); placeholder otherwise
 State: loading,states,must,yes,yes,
 State: 401 signed out,states,must,yes,yes,
-State: page-wide 403,states,must,yes,yes,contract silent on 403 (Claude request C-5)
+State: page-wide 403,states,must,yes,yes,AE confirmed page-wide; no sign-in prompt (AE-2 resolved); contract silent on 403 (Claude request C-5)
 State: empty (distinct from failure),states,must,yes,yes,failed loads say "This doesn't mean you have none"
 State: network / 5xx / malformed error,states,must,yes,yes,
 State: unavailable (503 not configured / generation disabled / no budget),states,must,yes,yes,availability from GET ?resource=config
@@ -20,7 +20,7 @@ billingOutcome not_submitted / unconfirmed / reported shown truthfully,billing,m
 PRIOR_SUBMISSION_UNKNOWN + acknowledgeUnknownCharge,billing,must,yes,yes,submitOutcome.describeSubmitResponse; card note on submission_unknown
 Budget (COST_CAP_EXCEEDED 402 / COST_UNVERIFIED 502),billing,must,yes,yes,
 User-initiated retries only (resolve + download),retry,must,yes,yes,Try opening again / Try download again / Check status again / Try again
-No auto retry inside AE viewer,retry,should,yes,partial,AE viewer v2.1 re-resolves once internally; question AE-1
+No auto retry inside AE viewer,retry,should,yes,yes,AE viewer v3 1bb8b59 autoRetry default off; gallery passes autoRetry:false at mount and per load() (AE-1 resolved)
 Polling 3-5 s; stops when terminal or destroyed,polling,must,yes,yes,pauses after 3 failed rounds or one 429
 Reuse AG token helper / no fork of DesignsApiClient,integration,must,yes,yes,studioAccessToken() delegates to getStudioAccessToken
 Reuse AG generic authed request,integration,should,yes,no,not exported by designsApiClient (AG request AG-1)

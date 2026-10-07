@@ -43,7 +43,7 @@ Never shown: dimensions, a `designId` or Studio link, `providerProgress`, `provi
 | AG My Projects (`#view-projects`, `#projectsGrid`, `.project-card`) | **reused as the host page**, not as markup | `.project-card` is clickable and means a dimensioned design; concepts are a separate section (MOUNT_PROPOSAL.md) |
 | AG design tokens `src/styles/design-tokens.css` | **reused** with the same values as `var()` fallbacks | |
 | `src/lib/designs/myDesigns` | not used | not AG's, not mounted |
-| AE viewer v2.1 (`mountAssetViewer`, `createCreativeAssetSource`) | **injected**, not imported | the gallery bundle now imports nothing from `src/lib/assetViewer/` (rev 1 imported `isRetryableResolveError`; removed with auto retry). IIFE bundle 84.5 KB unminified, 0 assetViewer modules |
+| AE viewer v2.1 / v3 (`mountAssetViewer`, `createCreativeAssetSource`) | **injected**, not imported; mounted and loaded with `autoRetry: false` | the gallery bundle now imports nothing from `src/lib/assetViewer/` (rev 1 imported `isRetryableResolveError`; removed with auto retry). IIFE bundle 84.5 KB unminified, 0 assetViewer modules |
 | `jobsClient.js` `createCreativeJobsClient` | **new**, thin | `listJobs`, `getJob`, `getConfig`: one fetch per call, Bearer header, `cache:"no-store"`, typed `{status, code, message}` rejections, no retry |
 | `submitOutcome.js` | **new** | billing / budget / 429 / unknown-charge wording for POST jobs answers |
 
@@ -71,9 +71,14 @@ Never shown: dimensions, a `designId` or Studio link, `providerProgress`, `provi
   It **pauses** after 3 failed rounds in a row or on any 429, and says so, with "Check status
   again". It stops when no job is unfinished, on `destroy()`, while the tab is hidden, on
   signed-out and on a list error.
-- **Known gap (AE-1):** AE's viewer v2.1 still re-resolves once by itself inside `load()` on a
-  retryable resolve failure and retries the display once; `download()` also re-resolves once.
-  The gallery doesn't use `viewer.download()`, but Open goes through `load()`. Needs an AE option.
+- **Viewer retries (AE-1, RESOLVED):** AE's viewer v3 (`1bb8b59`, local) adds `autoRetry`,
+  **default off**, at mount and per call on `load()`/`download()`; when off, the viewer shows a
+  focusable Try again that re-resolves fresh. The gallery passes `autoRetry: false`
+  **explicitly** in the mount options (set after `viewerOptions`, so a host can't turn it on) and
+  on every `load()` (`tests/projects/viewerV3.test.js`). Older viewers (v2.1) ignore the unknown
+  option and still work, but keep their own single re-resolve/display retry.
+- **409 `ASSET_NOT_READY`:** the one status refresh of that job after a not-ready answer was
+  **accepted by CraZy as not a retry** (it re-reads the job, it doesn't repeat the asset call).
 - Contract §2.5 says "if a load fails, call it again once"; that conflicts with the 7 Oct policy.
   The gallery follows the policy (Claude request C-4).
 
@@ -111,7 +116,7 @@ All at desktop-1440 and mobile-390, screenshots in `artifacts/rev2/{desktop,mobi
 | 07 | failed (provider codes) | safe one-line reason |
 | 08 | submission_unknown | may have been charged; confirm-first note |
 | 09 | 401 signed out | sign-in prompt, polling stops |
-| 10 | 403 page-wide | permission message, no sign-in prompt |
+| 10 | 403 page-wide | "This account doesn't have permission to see these 3D concepts." Like signed-out (page-wide, polling stops) but **no sign-in button, link or text** and no Try again; re-shot 8 Oct after the wording change (AE-2) |
 | 11–15 | network / 5xx / 429 / provider refused / provider unavailable | lead line "Your concepts couldn't be loaded. This doesn't mean you have none." + Try again |
 | 16 | not configured 503 | |
 | 17 | generation unavailable / budget | availability note from config; list still shown |
@@ -153,9 +158,9 @@ Tokens from `src/styles/design-tokens.css` (AG `8744d07`), each with its value a
 ## 10. Tests (box, 7 Oct 2026)
 
 ```
-npx vitest run --config tests/projects/vitest.config.js      # 10 files, 216 passed (SIMULATED fixtures)
+npx vitest run --config tests/projects/vitest.config.js      # 11 files, 222 passed (SIMULATED fixtures)
 npx vitest run                                               # root: tests/projects all pass; see below
-npx playwright test -c tests/projects/e2e/playwright.config.mjs  # 86 passed, desktop-1440 + mobile-390, axe (SYNTHETIC/MOCKED)
+npx playwright test -c tests/projects/e2e/playwright.config.mjs  # 88 passed, desktop-1440 + mobile-390, axe (SYNTHETIC/MOCKED)
 npx eslint src/lib/projects tests/projects docs/m3/projects/demo # clean
 node docs/m3/projects/demo/capture.mjs                       # 56 SYNTHETIC screenshots
 ```
@@ -185,9 +190,14 @@ designs client · AG-2 expose the token helper under a stable name (e.g.
 `window.FurniAuth.getAccessToken`) · AG-3 agree the mount point (MOUNT_PROPOSAL.md) · AG-4 link
 `design-tokens.css` on the page; are `--status-*` right for job status?
 
-**Asset Engineer:** AE-1 can `load()` / `download()` take an option (e.g. `autoRetry:false`) that
-turns off the internal re-resolve and display retry, so retries stay user-initiated? AE-2 (from
-rev 1 Q15) should hosts treat `FORBIDDEN` as page-wide?
+**Asset Engineer:**
+- AE-1 (`autoRetry` opt-out): **RESOLVED** by AE viewer v3 `1bb8b59`. `autoRetry` defaults to
+  off, and the gallery passes `autoRetry: false` explicitly at mount and on each `load()`.
+- AE-2 (`FORBIDDEN` page-wide): **RESOLVED**, confirmed by AE. Rev 2 never returns a per-job
+  403; it comes from infrastructure. The gallery treats it like signed-out without a sign-in
+  prompt. Note for AE: the viewer's own `FORBIDDEN` text in `src/lib/assetViewer/errors.js` still
+  says "Signing in again won't change that."; the gallery never shows it (it closes into the
+  page-wide panel).
 
 ## 12. Replica skills used
 
@@ -197,5 +207,5 @@ followed. The Windows PC went offline mid-task, so they were read from a byte co
 replica-diff tools were **copied to a temp dir** (`/tmp/replica-diff.z8ay/`) and **run directly**:
 `imgdiff.py` (layout mode, 11 rev-1 → rev-2 screens, `rev2/diffs/*.json|.layout.png`) and
 `parity.py rev2/features.csv --visual rev2/diffs/*.json --markdown > rev2/parity.md` (features
-93.1, must-haves 25/26). replica-test gave [rev2/TEST_PLAN.md](rev2/TEST_PLAN.md) (case IDs F01–F10)
+94.3, must-haves 25/26). replica-test gave [rev2/TEST_PLAN.md](rev2/TEST_PLAN.md) (case IDs F01–F10)
 and [rev2/BUGS.md](rev2/BUGS.md); replica-build gave the state list, 390/1440 and the token rules.

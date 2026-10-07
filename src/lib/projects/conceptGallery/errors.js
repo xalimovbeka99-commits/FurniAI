@@ -136,7 +136,7 @@ export const LIST_MESSAGES = Object.freeze({
   [ERROR_KIND.NOT_CONFIGURED]: "3D concepts aren't available on this deployment yet.",
   [ERROR_KIND.INTEGRITY]: "Your concept list failed an integrity check, so it isn't shown.",
   [ERROR_KIND.NOT_FOUND]: "Your concept list couldn't be found.",
-  [ERROR_KIND.FORBIDDEN]: "This account doesn't have permission to see these 3D concepts. Signing in again won't change that.",
+  [ERROR_KIND.FORBIDDEN]: "This account doesn't have permission to see these 3D concepts.",
   [ERROR_KIND.MALFORMED]: "FurniAI sent a reply this page couldn't read, so your 3D concepts can't be shown right now.",
   [ERROR_KIND.RATE_LIMITED]: "FurniAI is busy and couldn't load your 3D concepts right now. Try again in a moment.",
   [ERROR_KIND.PROVIDER_REFUSED]: "The 3D generation service isn't accepting requests from FurniAI right now, so your 3D concepts can't be shown. Try again later.",
@@ -155,7 +155,7 @@ export const ASSET_MESSAGES = Object.freeze({
   [ERROR_KIND.NETWORK]: "We couldn't reach FurniAI to get this file. Check your connection and try again.",
   [ERROR_KIND.SERVER]: "FurniAI couldn't get this file right now. Try again in a moment.",
   [ERROR_KIND.NOT_CONFIGURED]: "3D concept files aren't available on this deployment yet.",
-  [ERROR_KIND.FORBIDDEN]: "This account doesn't have permission to get this file. Signing in again won't change that.",
+  [ERROR_KIND.FORBIDDEN]: "This account doesn't have permission to get this file.",
   [ERROR_KIND.MALFORMED]: "FurniAI sent a reply this page couldn't read, so this file can't be opened or downloaded right now.",
   // Starts like the 5xx text on purpose (QE nit, acceptance pins the prefix): busy, so try again shortly.
   [ERROR_KIND.RATE_LIMITED]: "FurniAI couldn't get this file right now because the service is busy. Try again in a moment.",
@@ -174,7 +174,7 @@ export const DISPLAY_FAILED_MESSAGE = "The 3D view couldn't show this file. Down
 export const JOB_MESSAGES = Object.freeze({
   [ERROR_KIND.INTEGRITY]: "This concept's record failed an integrity check. It is not used and is no longer updated.",
   [ERROR_KIND.NOT_FOUND]: "This concept no longer exists.",
-  [ERROR_KIND.FORBIDDEN]: "This account doesn't have permission to open this concept. Signing in again won't change that.",
+  [ERROR_KIND.FORBIDDEN]: "This account doesn't have permission to open this concept.",
 });
 
 /**

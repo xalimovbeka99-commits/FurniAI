@@ -51,4 +51,4 @@ Expected (policy): one resolve, then "Try opening again".
 Actual: AE's `load()` re-resolves once by itself (and retries the display once) before reporting.
 Evidence: `tests/projects/viewer.test.js` notes the internal re-resolve; "Try opening again" adds exactly the user's calls.
 Suspected cause: `src/lib/assetViewer` v2.1 V1 behaviour (not owned here).
-Status: open, question AE-1 (option such as `autoRetry:false`)
+Status: fixed: AE viewer v3 1bb8b59 adds `autoRetry` (default off); the gallery passes `autoRetry: false` at mount and on every load() (viewerV3.test.js). Older viewers keep their own retry.

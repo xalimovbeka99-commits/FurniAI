@@ -11,14 +11,17 @@
  * unfinished jobs resume polling.
  *
  * Everything the gallery needs that Asset Engineer's viewer already does
- * (src/lib/assetViewer, v2.1 at b34e259) is INJECTED, never rebuilt:
+ * (src/lib/assetViewer; v2.1 at b34e259, v3 at 1bb8b59) is INJECTED, never rebuilt:
  *   - creativeSource = createCreativeAssetSource({ fetchImpl, getAuthToken })
  *       .resolve(jobId, index, { signal }) -> fresh { url, format, filename, concept, ... } per call
  *       .getJob(jobId, { signal })         -> { job, refresh }
- *   - mountAssetViewer(el, { ...viewerOptions, creativeSource, renderConceptNotice: false }) -> handle with
- *       load({ jobId, index, format }), getState() and dispose(). NOTE: v2.1's load() itself
- *       re-resolves once on a retryable resolve failure and retries a display failure once.
- *       That is Asset Engineer's code (question AE-1 in CONCEPT_GALLERY.md); the gallery adds none.
+ *   - mountAssetViewer(el, { ...viewerOptions, creativeSource, renderConceptNotice: false, autoRetry: false })
+ *       -> handle with load({ jobId, index, format, autoRetry: false }), getState() and dispose().
+ *       Retries are user-initiated only, so the gallery passes autoRetry:false EXPLICITLY at mount
+ *       and on every load(). Viewer v3 (1bb8b59) defaults autoRetry to false and, when it is off,
+ *       shows its own focusable Try again that re-resolves fresh (AE-1, resolved). Older viewers
+ *       (v2.1) ignore the unknown option and still work, but they re-resolve once and retry a
+ *       display failure once by themselves; that is Asset Engineer's code, the gallery adds none.
  * The gallery imports nothing from their code. The only call v2 does not cover is the
  * list, so that is the one thing the gallery asks of `client` (createCreativeJobsClient).
  * The gallery always renders concept.notice itself (card and viewer panel).
@@ -543,8 +546,10 @@ export function mountConceptGallery(root, options = {}) {
       viewerSlot.appendChild(viewerPanel);
       // The viewer resolves the address itself through the same injected source.
       // renderConceptNotice:false: the panel shows the notice itself (always), so the
-      // viewer's overlay must not show it a second time. Set last so it can't be overridden.
-      viewer = mountViewer(viewerHost, { ...viewerOptions, creativeSource: source, renderConceptNotice: false });
+      // viewer's overlay must not show it a second time. autoRetry:false: retries are
+      // user-initiated only (viewer v3; older viewers ignore it). Both set last so
+      // viewerOptions can't override them.
+      viewer = mountViewer(viewerHost, { ...viewerOptions, creativeSource: source, renderConceptNotice: false, autoRetry: false });
     }
     viewerPanel.textContent = "";
     viewerPanel.appendChild(el(doc, "div", { class: "fcg-viewer-head" }, heading, close));
@@ -576,8 +581,9 @@ export function mountConceptGallery(root, options = {}) {
     dispatch({ type: "ASSET_START", key, action: "open" });
     let result;
     try {
-      // A job-output reference, never a URL: v2 resolves fresh and retries display once itself.
-      result = await viewer.load({ jobId: request.jobId, index: request.index, format: request.format, mimeType: request.mimeType, concept });
+      // A job-output reference, never a URL; the viewer resolves fresh. autoRetry:false per call
+      // (viewer v3): no automatic re-resolve or display retry. Older viewers ignore the option.
+      result = await viewer.load({ jobId: request.jobId, index: request.index, format: request.format, mimeType: request.mimeType, concept, autoRetry: false });
     } catch (err) {
       result = { ok: false, error: { code: err?.code || "VIEWER_ERROR", serverCode: err?.serverCode, status: err?.status } };
     }

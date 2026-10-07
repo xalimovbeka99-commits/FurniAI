@@ -76,7 +76,7 @@ test("F01-H3 submission_unknown: 'May have been charged', no action but Refresh"
 
 const PANELS = [
   ["signed_out", "signed_out", /^Sign in to see your 3D concepts\.$/, false],
-  ["forbidden", "forbidden", /permission/, false],
+  ["forbidden", "forbidden", /^This account doesn't have permission to see these 3D concepts\.$/, false],
   ["network", "network", /Check your connection/, true],
   ["server_5xx", "server", /Try again in a moment\.$/, true],
   ["rate_limited", "rate_limited", /busy.*Try again in a moment\.$/, true],
@@ -85,6 +85,17 @@ const PANELS = [
   ["not_configured", "not_configured", /aren't available on this deployment/, true],
   ["malformed", "malformed", /couldn't read/, true],
 ];
+test("F06-N2 403 is page-wide with NO sign-in prompt (AE confirmed); 401 keeps it", async ({ page }) => {
+  await go(page, "forbidden");
+  const gallery = page.locator(".fcg");
+  await expect(page.locator('[data-panel="forbidden"]')).toBeVisible();
+  await expect(gallery.getByRole("button", { name: /sign\s*-?\s*in/i })).toHaveCount(0);
+  await expect(gallery.getByRole("link", { name: /sign\s*-?\s*in/i })).toHaveCount(0);
+  await expect(gallery).not.toContainText(/sign(ing)?[\s-]*in/i);
+  await go(page, "signed_out");
+  await expect(page.locator('[data-panel="signed_out"]')).toContainText("Sign in to see your 3D concepts.");
+});
+
 for (const [state, kind, text, retry] of PANELS) {
   test(`F01-E ${state}: one page-wide panel, honest text, Try again ${retry ? "offered" : "not offered"}`, async ({ page }) => {
     await go(page, state);

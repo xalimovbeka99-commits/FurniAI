@@ -18,12 +18,14 @@ Playwright with role/label selectors, console errors and 5xx responses fail the 
 | F02-E3 | download | edge: integrity 409 | click | card locks, no Open/Download | e2e + unit | pass |
 | F02-E4 | download | edge: 502 PROVIDER_UNAVAILABLE | click | provider wording, one request, visible Try again | e2e + unit | pass |
 | F03-H1 | open | happy | click Open 3D view, Close | AE viewer with notice; focus returns to Open (BUG-003) | e2e + unit | pass |
+| F03-E1 | open | edge: viewer v3 autoRetry | open, fail once, Try opening again; older viewer | mount and every load() get `autoRetry:false`; a viewer that ignores it still opens | unit | pass |
 | F04-N1 | keyboard | negative | Tab to Download, Enter | download starts | e2e | pass |
 | F05-H1 | reload | happy | processing job on MOCKED route; reload page | card restored from GET jobs, polling resumes, turns Ready; no browser storage | e2e + unit | pass |
 | F05-E1 | reload | edge: storage | spy on localStorage/sessionStorage | zero reads/writes | e2e + unit | pass |
 | F06-E1 | error vs empty | edge | load 5xx, network, empty | failures say "doesn't mean you have none" + Try again; empty differs | e2e + unit | pass |
 | F06-E2 | list retry | edge | list fails; wait; click Try again | nothing automatic; exactly one more request | e2e + unit | pass |
 | F06-N1 | auth | negative: 401 / 403 | load | sign-in prompt / page-wide permission message, no Try again for 403 | e2e + unit | pass |
+| F06-N2 | auth | negative: 403 page-wide | list / Open / Download answer 403 | permission panel; no sign-in button, link or text; 401 keeps "Sign in to see your 3D concepts." | e2e + unit | pass |
 | F07-E1 | polling | edge: 429 | status check answers 429 | polling pauses, "Check status again" resumes | e2e + unit | pass |
 | F07-E2 | polling | edge: 3 failures | 3 failed rounds | pause after 3; interval stays 3–5 s, no backoff | unit | pass |
 | F07-E3 | polling | edge: terminal / destroy / hidden | | polling stops | unit | pass |
@@ -35,6 +37,6 @@ Playwright with role/label selectors, console errors and 5xx responses fail the 
 | C-01 | contract | SIMULATED | real api/creative.js + stand-in | rev-2 shapes, INVALID_IMAGE 422, PRIOR_SUBMISSION_UNKNOWN → 202 with ack, config ready | contract (vitest) | pass |
 | A11Y | all | axe | 16 states × 2 viewports | 0 violations | e2e | pass |
 
-Totals (7 Oct 2026, box): module vitest 216/216; Playwright 86/86 (43 per viewport); ESLint clean;
+Totals (8 Oct 2026, box, after the viewer-v3 follow-up): module vitest 222/222 (SIMULATED); Playwright 88/88 (44 per viewport, SYNTHETIC/MOCKED); ESLint clean;
 root vitest: all `tests/projects` pass, 129 pre-existing failures in `tests/acceptance/scenario/**`
 (same on clean `f472aef`).
