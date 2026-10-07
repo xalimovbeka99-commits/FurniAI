@@ -11,6 +11,16 @@ the notice fallback, `download(ref)` and `renderConceptNotice`. See the
 [changelog](#changelog) at the end. All evidence is still **SIMULATED** (fixtures and a
 local stand-in). No Scenario request of any kind has been made.
 
+**v3 (this revision)** builds on `f472aef` (Claude contract **rev 2** merged by
+Integration). It adds the interim host interface `FurniAssetViewer.mount(containerEl,
+{ THREE, ...opts })` ([§13](#13-mounting-in-a-host-page)), the v3 states (invalid / unavailable /
+WebGL failure with honest sub-messages), textures with an honest note when one can't be
+loaded, view controls (orbit, zoom, fit, reset, keyboard, touch), navigation-safe disposal,
+**`autoRetry` (default `false`: retries happen only when the user starts them)**, and the rev 2
+fields (`billingOutcome`, `PRIOR_SUBMISSION_UNKNOWN`, one active job per reference). See
+[§14–§19](#14-v3-states-textures-view-controls) and the [v3 changelog](#v3). Every evidence item is
+labelled **SYNTHETIC/MOCKED** or **SIMULATED**; nothing is **LIVE** and no provider was called.
+
 **The viewer is NOT attached to any page.** Mounting waits for Antigravity to
 confirm the runtime. Their redesign tip `8744d07` is not available here, so mount point and
 runtime compatibility are unverified.
@@ -496,7 +506,7 @@ and a test enforces that.
 | backend `code` (HTTP) | viewer `code` | customer message (abridged) |
 |---|---|---|
 | `MISSING_AUTH` (401); a 401 without a code; no token (no request is sent) | `SIGN_IN_REQUIRED` | Please sign in to view this 3D concept. |
-| `UNAUTHORIZED` (403, persistence: signed in but not allowed), `FORBIDDEN`; a 403 without a code | `FORBIDDEN` (v2.1) | This account doesn't have permission to open this 3D concept. Signing in again won't change that. |
+| `UNAUTHORIZED` (403, persistence: signed in but not allowed), `FORBIDDEN`; a 403 without a code | `FORBIDDEN` (v2.1) | This account doesn't have permission to open this 3D concept. Signing in again won't change that. **v3: rev 2 never sends a 403 from `/api/creative` code; treat it as page-wide, see [§16](#16-forbidden-403-when-and-is-it-ever-per-job).** |
 | `AUTH_UNAVAILABLE` (503) | `SIGN_IN_UNAVAILABLE` | Sign-in is temporarily unavailable… |
 | `PERSISTENCE_NOT_CONFIGURED`, `CREATIVE_NOT_CONFIGURED`, `CREATIVE_STORE_NOT_CONFIGURED`, `CREATIVE_GENERATION_DISABLED` (503) | `CONCEPTS_NOT_CONFIGURED` | 3D concepts aren't available on this site yet. |
 | `STORAGE_UNAVAILABLE` (503); a 5xx without a code | `SERVICE_UNAVAILABLE` | temporarily unavailable |
@@ -506,7 +516,8 @@ and a test enforces that.
 | `ASSET_UNAVAILABLE` (410) | `ASSET_UNAVAILABLE` | no longer available… no copy was kept |
 | `RECORD_INTEGRITY_FAILED` (409) | `RECORD_INTEGRITY_FAILED` | failed a safety check |
 | `BAD_REQUEST` (400) | `INVALID_ASSET` | |
-| network or transport errors (`details.cause:"network"`); `INTERNAL` (500) and unknown codes (`"http"`) | `RESOLVE_FAILED` | couldn't be opened. Please try again. |
+| network or transport errors (`details.cause:"network"`) **only** (v3) | `RESOLVE_FAILED` | couldn't be opened. Please try again. |
+| v3: `INTERNAL` (500), unknown codes, and any status without a usable code (`details.cause:"http"`, `retryable` true on 5xx) | `RESOLVE_SERVER_ERROR` | The 3D concept service had a problem opening this concept. Please try again later. |
 | a 2xx whose body is not usable: not JSON, `ok !== true`, no or non-http(s) `url`, another job or index, a jobs answer without `job` (`details.cause:"malformed"`) | `RESOLVE_MALFORMED` (v2.1) | The 3D concept service sent a reply that couldn't be read… |
 
 Every resolve error from `createCreativeAssetSource` carries
@@ -539,21 +550,32 @@ The backend's message text is never used: the auth messages mention "design", an
      most **3 resolves and 2 mesh fetches**. The re-resolve in step 4 is not retried again.
      See the retry policy below.
 
-  **Retry policy (viewer default, v2.1).** Contract §2.5 says only "if a load fails, call it
-  again once". It does not say whether a failed *resolve* counts as a failed load (§12.7 item 11).
-  The viewer treats a transient resolve failure as one, and nothing else:
+  **Retry policy (v3: `autoRetry`, default `false`).** Rule from Bekzod via the integration
+  lead (2026-10-07): **retries happen only when the user starts them.** With the default the
+  viewer makes **no silent retry of any kind**: one resolve, one mesh fetch, then the error state
+  with a focusable **Try again** (where a retry can help). A click on Try again re-runs the same
+  `load` / `showJob` / `watchJob` with a **fresh resolve**; a click on Download always resolves
+  fresh. `autoRetry:true` (mount option, or per call `load(ref, { autoRetry })`,
+  `showJob(job, { autoRetry })`, `watchJob(id, { autoRetry })`, `download({ ..., autoRetry })`;
+  the gallery's Open goes through `load`) restores the v2.1 single retry.
 
-  | failure | load / open | download | why |
-  |---|---|---|---|
-  | network or transport error (`RESOLVE_FAILED`, `cause:"network"`) | re-resolve **once** | re-resolve **once** | transient |
-  | any 5xx: `PROVIDER_UNAVAILABLE`, `PROVIDER_AUTH_REJECTED`, `PROVIDER_REJECTED_REQUEST`, `PROVIDER_UNEXPECTED_RESPONSE` (502), `AUTH_UNAVAILABLE`, `STORAGE_UNAVAILABLE` (503), `INTERNAL` (500), a 5xx without a code | re-resolve **once** | re-resolve **once** | may be transient. A resolve is a GET and is never billed |
-  | 429 `PROVIDER_RATE_LIMITED`, or a 429 without a code | re-resolve **once** (no back-off) | re-resolve **once** | may be transient |
-  | 503 `PERSISTENCE_NOT_CONFIGURED` / `CREATIVE_*_NOT_CONFIGURED` / `CREATIVE_GENERATION_DISABLED` | no | no | deployment state; a retry cannot change it |
-  | 401 / no token, 403, 404, 409 `ASSET_NOT_READY`, 409 `RECORD_INTEGRITY_FAILED`, 410, 400, 402 | no | no | permanent for this request |
-  | malformed 2xx body (`RESOLVE_MALFORMED`) | no | no | the same server would send the same body |
-  | mesh `FETCH_FAILED` / `PARSE_FAILED` / `UNSUPPORTED_FORMAT` after a good resolve | fresh resolve **+** refetch, **once** | n/a (download does not fetch bytes) | expired address, CORS, truncation (unchanged) |
-  | `EMPTY_SCENE`, `FILE_TOO_LARGE` | no | n/a | the file itself |
-  | abort / superseded | no (`superseded:true`) | n/a | |
+  | failure | default (`autoRetry:false`), load / open | default, download | `autoRetry:true` (v2.1), load / open and download | Try again offered |
+  |---|---|---|---|---|
+  | network or transport error (`RESOLVE_FAILED`, `cause:"network"`) | error after **1** resolve | `{ok:false}` after **1** resolve | re-resolve **once** | yes |
+  | any 5xx: `PROVIDER_UNAVAILABLE`, `PROVIDER_AUTH_REJECTED`, `PROVIDER_REJECTED_REQUEST`, `PROVIDER_UNEXPECTED_RESPONSE` (502), `AUTH_UNAVAILABLE`, `STORAGE_UNAVAILABLE` (503), `RESOLVE_SERVER_ERROR` (500 / no code) | error after **1** resolve | `{ok:false}` after 1 | re-resolve **once** | yes |
+  | 429 `PROVIDER_RATE_LIMITED`, or a 429 without a code | error after **1** resolve, **no pause** | `{ok:false}` after 1 | wait `rateLimitRetryDelayMs` (default **1000 ms**, injectable), then re-resolve **once** | yes |
+  | 503 `PERSISTENCE_NOT_CONFIGURED` / `CREATIVE_*_NOT_CONFIGURED` / `CREATIVE_GENERATION_DISABLED` | error | `{ok:false}` | no retry | no |
+  | 401 / no token, 403, 404, 409 `ASSET_NOT_READY` / `RECORD_INTEGRITY_FAILED` / `PRIOR_SUBMISSION_UNKNOWN` / `DUPLICATE_ACTIVE_JOB`, 410, 400, 402 | error | `{ok:false}` | no retry | no |
+  | malformed 2xx body (`RESOLVE_MALFORMED`) | error | `{ok:false}` | no retry | no |
+  | mesh `FETCH_FAILED` / `PARSE_FAILED` / `UNSUPPORTED_FORMAT` after a good resolve (expired address, CORS, cut-off body) | that error after **1** resolve + **1** fetch (`attempts {resolve:1, display:1}`); Download stays offered unless the bytes were malformed | n/a (download does not fetch bytes) | fresh resolve **+** refetch **once**, then `ASSET_DISPLAY_FAILED` | **yes** (a fresh resolve may fix it) |
+  | `EMPTY_SCENE`, `FILE_TOO_LARGE` | error | n/a | no retry | no |
+  | job `submission_unknown` / 409 `PRIOR_SUBMISSION_UNKNOWN` | never retried, never resubmitted, never sends `acknowledgeUnknownCharge` | n/a | same | no |
+  | abort / superseded | no (`superseded:true`) | n/a | no | n/a |
+
+  Tested in `tests/assetViewer/autoRetry.test.js` (default: exactly 1 resolve and 0 retries on
+  network / 5xx / 429 / expired display; Try again = fresh resolve; per-call overrides; download).
+  Turning the default to `true` fails 12 tests (mutation check). `creativeRetry.test.js`,
+  `creativeViewer.test.js` and the rev 2 429 block pin the opt-in `autoRetry:true` behaviour.
 
   Hosts that call `source.resolve()` themselves, such as the gallery's download button,
   should use `isRetryableResolveError(err)` (exported from `index.js` and the browser entry)
@@ -574,8 +596,8 @@ The backend's message text is never used: the auth messages mention "design", an
   no percentage exists for job phases. `refresh.ok:false` is ignored, as the contract says.
   `progress` is `null` in job phases. A percentage appears only for the **byte download**
   of the mesh, which is measured locally.
-- **Download** always re-resolves (§7) and retries once by the same policy. `download({ jobId, index })`
-  targets any item.
+- **Download** always re-resolves (§7). It retries only with `autoRetry:true` (same table).
+  `download({ jobId, index })` targets any item.
 
 ### 12.5 Concept honesty in state and overlay
 
@@ -679,6 +701,196 @@ The 87 new tests cover:
 
 ---
 
+## 13. Mounting in a host page
+
+Interim host interface decided by the integration lead (2026-10-07), until Antigravity
+ships the real container. `mount()` is a thin wrapper over `mountAssetViewer()` exported from
+the public entry (`src/lib/assetViewer/entry.js` → IIFE global `window.FurniAssetViewer`, and
+`index.js` for module users). The host passes its **global r128 THREE**; the viewer never
+imports, bundles or reads a THREE global itself (static test in `noBundledThree.test.js`).
+
+```html
+<!-- Container sizing: the viewer fills 100% x 100% of the element you give it.
+     Give it a real width AND height (it has a 320px min-height of its own). -->
+<div id="concept-viewer" style="width:100%;height:clamp(320px,62vh,620px)"></div>
+
+<script src="/vendor-three-r128.min.js"></script>        <!-- window.THREE, r128 (already on the site) -->
+<script src="/path/to/GLTFLoader.js"></script>            <!-- r128 examples/js: sets THREE.GLTFLoader -->
+<script src="/path/to/OrbitControls.js"></script>         <!-- r128 examples/js: sets THREE.OrbitControls -->
+<script src="/path/to/asset-viewer.js"></script>          <!-- IIFE of entry.js: window.FurniAssetViewer (no three inside) -->
+<!-- optional, only for /api/creative (Scenario) concepts: -->
+<script src="/path/to/asset-viewer-creative.js"></script> <!-- IIFE of entry.creative.js: window.FurniAssetViewerCreative -->
+<script>
+  const el = document.getElementById("concept-viewer");
+  const handle = FurniAssetViewer.mount(el, {
+    THREE: window.THREE,                       // required; mapped to the core's `three`
+    asset: { url: "/models/chair.glb" },       // a plain URL works: no Scenario needed
+    // creativeSource: FurniAssetViewerCreative.createCreativeAssetSource({ getAuthToken }),
+    // autoRetry: false,                       // default: retries only when the user clicks Try again
+    onError: (err) => console.info("viewer", err.code),
+  });
+  // Later: handle.load({ url }) replaces the model (old GPU resources are disposed first).
+
+  // Navigation / unmount: the host calls dispose(). It is idempotent.
+  function leave() { handle.dispose(); }
+  // SPA example: router.beforeEach(leave); or in a component's unmount hook.
+  // Safety nets (stay on even when you call dispose yourself):
+  //   - window "pagehide" disposes (opt out: disposeOnPageHide:false)
+  //   - pass { signal } (an AbortSignal) and abort it to dispose
+  //   - if the host removes the element without dispose(), rendering stops (no frames are drawn)
+</script>
+```
+
+| rule | detail |
+|---|---|
+| `THREE` | **required**, a three.js namespace (`THREE.Scene` must be a function). Missing or wrong → `TypeError` with `code:"MISSING_DEPENDENCY"`, thrown synchronously, nothing mounted: "FurniAssetViewer.mount(containerEl, { THREE }): THREE is missing or is not a three.js namespace. Pass the page's global three.js (window.THREE, r128); the viewer never imports or bundles three." |
+| loaders | `GLTFLoader`, `OrbitControls`, `RoomEnvironment` are taken from `deps.X`, then a top-level option `X`, then `THREE.X` (the r128 examples/js globals). Without a GLTFLoader the viewer still mounts and a load reports `MISSING_DEPENDENCY` honestly |
+| defaults that differ from `mountAssetViewer` | `downloadButton:"always"` (the viewer's own **Download file** button whenever a valid asset is held). `mountAssetViewer` keeps `"auto"` because the concept gallery renders its own button |
+| everything else | passed through unchanged: `asset`, `creativeSource`, `fetch`, `signal`, `disposeOnPageHide`, `autoRetry`, `rateLimitRetryDelayMs`, `renderConceptNotice`, `onError`, `ui`, … |
+| returned handle | the full viewer handle: `load`, `showJob`, `watchJob`, `download`, `retry`, `orbit`, `zoom`, `resetView`, `fitToView`, `getView`, `getState`, `on`, `clear`, **`dispose`** |
+| sizing | the root is `position:relative; width:100%; height:100%; min-height:320px; overflow:hidden`. A resize of the container (ResizeObserver, window `resize` fallback), including a phone orientation change, re-fits and keeps the view direction and zoom ratio |
+| what `dispose()` releases | geometries, materials, textures (every slot), the PMREM render target + generator, lights, OrbitControls, ResizeObserver, every DOM/window/signal listener, the pending animation frame, `renderer.dispose()` + `forceContextLoss()`, the canvas and the overlay DOM. Counted against allocations in `dispose.test.js` and `mount.test.js` (ledger across load → replace → replace → pagehide) |
+
+Tests: `tests/assetViewer/mount.test.js` (THREE mapping, explicit deps win, missing THREE error,
+missing GLTFLoader, `downloadButton:"always"`, plain URL without any creative source, double
+dispose, dispose then pagehide/abort, pagehide, already-aborted signal, abort mid-load, detached
+root stops rendering, allocation ledger). Browser: `tests/assetViewer/e2e/f06-replace-navigate.spec.mjs`
+(draw-call counter proves no frame is drawn after dispose or after the host removes the node).
+
+**Demo host used.** `docs/m3/asset-viewer/demo/host.html` is a classic-script page served by
+`serve.mjs` that mounts exactly like the snippet: `/vendor-three-r128.min.js` (the repo's r128,
+loaded as a global), then `/__demo/r128-globals.js`, then `/__demo/asset-viewer.js` (esbuild
+IIFE of the current source, built per request) and the optional creative IIFE. **The repo has no
+three@0.128 `examples/js` loader files** (node_modules has three 0.166 only), so
+`r128-globals.js` stands in for them: three-stdlib 2.36.1's GLTFLoader / OrbitControls /
+RoomEnvironment, rewired to `window.THREE`, with two r128 shims (`LoaderUtils.resolveURL`,
+`Texture.userData`) and hung on `window.THREE` the way the examples/js scripts do. The real page
+should load loaders built **for** r128 (open question 3).
+
+    node docs/m3/asset-viewer/demo/serve.mjs 4318
+    open http://127.0.0.1:4318/docs/m3/asset-viewer/demo/host.html?state=loaded
+
+States: `loaded`, `textured`, `texture-missing`, `loading`, `invalid&file=bad-magic|html-as|truncated|no-mesh`,
+`unavailable&http=404|410|403|cors`, `webgl&webgl=none|throw|lost`, `replace`,
+`job&job=succeeded|submission-unknown`, `forbidden`, `idle`. Every page shows the banner
+**"SIMULATED, demonstration asset, not a Scenario result"** plus its evidence class.
+
+## 14. v3 states, textures, view controls
+
+| state | how it shows | Try again | Download |
+|---|---|---|---|
+| idle | `role=status` "No model loaded" | no | no |
+| loading | `role=status` "Loading model… N%" (bytes measured locally) or the job phase text | no | **hidden** |
+| ready | model, **Visual concept** chip, "Relative scale, not measured · W:H:D a : b : c", view controls; the demonstration label for synthetic files | n/a | offered with `downloadButton:"always"` (mount default) |
+| ready, texture failed | as ready plus `role=note` "Some textures in this file couldn't be loaded, so the model is shown without them." (`model.warnings: ["TEXTURES_NOT_LOADED"]`, `model.textures {declared, loaded}`) | n/a | offered |
+| invalid: bad magic / HTML-as-GLB / truncated / no mesh | `role=alert` with a specific message (`error.reason` `bad-magic` / `html` / `truncated` / `no-mesh`; `INVALID_FILE_MESSAGE`) | no | **hidden** (not a valid asset) |
+| unavailable: 404 / 410 | `FETCH_FAILED` reason `gone`: "This model's link no longer works…" | no | hidden |
+| unavailable: 403 expired link | `FETCH_FAILED` reason `denied`: "This model's link has expired or isn't allowed from this page." | no for a plain URL; **yes** for a creative concept (a fresh resolve may fix it) | hidden (plain URL); creative: offered (download resolves fresh) |
+| unavailable: network / CORS / offline / 5xx | `FETCH_FAILED` reason `network` (same origin) / `cross-origin` ("…the connection failed, or the file's server doesn't allow this page to load it") / `offline` / `server` | **yes** | hidden |
+| WebGL: no context, context creation throws | `WEBGL_UNAVAILABLE`; the file is still fetched and validated | no | **offered if the file is valid** (actual bytes) |
+| WebGL: context lost mid-session | `WEBGL_CONTEXT_LOST` (restored → the model comes back) | **yes** | offered (the held file is valid) |
+| FORBIDDEN (403 from `/api/creative`) | `role=alert`; page-wide, see §16 | no | hidden |
+| job submission_unknown | "…It may have been charged. It will not be retried automatically." | no | hidden |
+| disposed | nothing (root removed) | n/a | n/a |
+
+All texts are `role=status` (polite) or `role=alert` (assertive); Try again and Download are real
+`<button type=button>` with 44 px targets and a visible `:focus-visible` ring; the canvas is
+`role=img`, focusable, described by the keyboard help (arrows rotate, + / − zoom, 0 resets, F
+fits). Touch: one finger orbits, two fingers pinch-zoom (OrbitControls; e2e via CDP touch
+events). `getView()` → `{ distance, fitDistance, zoomRatio, azimuth, polar }`.
+
+**Textures.** Embedded and external images go through the injected GLTFLoader; colour maps are
+forced to sRGB. A texture whose image is absent (`missing-texture.glb`: a texture pointing at an
+image that doesn't exist) used to make GLTFLoader throw and lose the whole model (BUG-001, S2);
+a GLTFLoader plugin in `adapters/gltf.js` now resolves it to "no texture" so the mesh still shows
+with the note. An undecodable image (`corrupt-texture.glb`) degrades the same way.
+
+## 15. Contract rev 2 (`docs/creative/SCENARIO_3D_API_CONTRACT.md`, read-only)
+
+| rev 2 item | viewer behaviour |
+|---|---|
+| `usage.billingOutcome` on every job (`not_submitted` / `reported` / `unconfirmed`) | `getState().job.billing = { outcome, source:"server" }`; a rev 1 record without it is derived conservatively (`source:"derived"`); anything unknown reads as `unconfirmed`, never free (`describeBillingOutcome`) |
+| one active job per **reference** (`409 DUPLICATE_ACTIVE_JOB` with `details.jobId`) | `DUPLICATE_ACTIVE_JOB`, `relatedJobId`, never retried; `job.referenceId` reported |
+| `409 PRIOR_SUBMISSION_UNKNOWN` + `acknowledgeUnknownCharge` | `PRIOR_SUBMISSION_UNKNOWN`, `requiresAcknowledgement:true`, `relatedJobId`. The viewer **never** POSTs, resubmits or sets `acknowledgeUnknownCharge`; never auto-retried (with any `autoRetry`) |
+| job `submission_unknown` | `SUBMISSION_UNKNOWN`, `chargeMayHaveOccurred:true`, billing `unconfirmed`, no resolve, no fetch, no Try again |
+| `422 INVALID_IMAGE`, `reference.width/height/validation` (`decoded` / `structure`) | mapped error; `describeReferenceValidation()` for hosts |
+| asset route | unchanged between `b7e4fb8` and `f472aef` (`api/creative.js` not in the diff); the URL is resolved fresh on every display and download and never cached (single-use signed addresses in the stand-in prove it) |
+| `concept.notice` | shown verbatim unless `renderConceptNotice:false` (then the host must show it) |
+| fixture pack `docs/creative/fixtures` | drives `rev2.test.js` and the demo's `/__rev2/api/creative` (SIMULATED). `SYNTHETIC-box-not-scenario-generated.glb` (1828 bytes, sha256 `e2bec10b7995124700de3c8d73b9219671f6e9ebd90c124aa18f482636403b71`) is loaded read-only (its mtime is checked after every test); it labels itself `extras.synthetic:true, generatedByScenario:false`, so the viewer shows the demonstration label |
+
+`RESOLVE_FAILED` is narrowed to network/transport; server answers without a known code are
+`RESOLVE_SERVER_ERROR` (`cause:"http"`, retryable on 5xx). The QE acceptance tests that pin
+500 `INTERNAL` → `RESOLVE_FAILED` (`tests/acceptance/scenario/viewerV21.acceptance.test.js`) already
+fail at `f472aef` for a rev 2 upload-helper reason, so no new failure; QE should update them.
+
+## 16. FORBIDDEN (403): when, and is it ever per job?
+
+Answer from the rev 2 backend code at `f472aef` (`api/creative.js`, `src/lib/creative/**`,
+and the shared `src/lib/persistence/auth.js` / `errors.js` it uses), read-only:
+
+- **`/api/creative` never answers 403 from its own code.** `withCreative()` sends
+  `CreativeError.status` (table in `src/lib/creative/errors.js`: 400/402/404/409/410/413/415/422/
+  429/502/503, no 403) or `PersistenceError.status`.
+- Caller resolution (`resolveCaller`): no or empty bearer → **401** `MISSING_AUTH`; a token Supabase
+  rejects → **401** `MISSING_AUTH`; Supabase auth 5xx or unreachable → **503** `AUTH_UNAVAILABLE`;
+  not configured → **503**.
+- `PERSISTENCE_ERROR.UNAUTHORIZED` maps to 403 in `persistence/errors.js`, but **nothing on the
+  creative path (or anywhere in `src`/`api`) throws it**.
+- The creative Supabase store maps **any** PostgREST non-ok answer (including an RLS 401/403) to
+  **503** `STORAGE_UNAVAILABLE`.
+- A provider (Scenario) 401/403 becomes **502** `PROVIDER_AUTH_REJECTED`: deployment credentials,
+  the same for every user and job.
+- **Another user's job is 404 `MISSING_JOB`**, identical to a job that doesn't exist (every store
+  query filters on `owner_user_id`). Ownership is never revealed as 403.
+
+So **no 403 is per job** in rev 2. A 403 can only come from something in front of the function
+(hosting/deployment protection, a WAF or proxy), which applies to every request from that page.
+**Recommendation: hosts treat FORBIDDEN as page-wide**, like signed-out in scope (one page-level
+message; stop opening other tiles; don't offer per-tile retry), but unlike signed-out, signing in
+again won't fix it, so don't send the user to sign in. The viewer still shows it locally (no Try
+again, no Download) for hosts that don't elevate it. The message says "this 3D concept"; a
+page-wide wording would be more accurate, but it matches the gallery's copy and is pinned there,
+so it is left for the copy owner (open question 16).
+
+## 17. Evidence labels (integration lead taxonomy)
+
+Every evidence item is exactly one of:
+
+| label | meaning here |
+|---|---|
+| **SYNTHETIC/MOCKED** | a synthetic fixture file loaded as-is: the rev 2 SYNTHETIC box, QE's `tests/fixtures/scenario/*.glb` |
+| **SIMULATED** | a staged environment: slow / 404 / 410 / 403 / no-CORS routes, stubbed WebGL, the fixture-backed `/api/creative` stand-ins |
+| **LIVE** | real provider output. **Nothing is LIVE.** No Scenario request of any kind was made |
+
+The label is in each page's banner, in every evidence filename
+(`docs/m3/asset-viewer/evidence/v3/<NN>-<state>-<LABEL>-<desktop|mobile>.png`), in the evidence
+README and in `replica/features.csv`. Scenario stays an **optional adapter**: the core bundle
+works with a plain URL or asset descriptor and no creative source (tested in `mount.test.js`).
+
+## 18. Method: replica skills
+
+The replica skills were applied by **reading the skill folders directly (read-only)**, not via
+catalog discovery: `/workspace/scenario-review/skills/replica-build/SKILL.md`,
+`replica-test/` (`SKILL.md`, `test-plan.md`, `bug-report.md`, `e2e.example.spec.ts`) and
+`replica-diff/` (`SKILL.md`, `imgdiff.py`, `parity.py`). Outputs: `replica/build-log.md`,
+`replica/features.csv`, `replica/test-plan.md`, `replica/bugs.md`, `replica/mutate.py`, the Playwright specs in
+`tests/assetViewer/e2e/` (one per flow F01–F07, own config, role/label selectors, fail on console
+errors and 5xx, axe on every state with `@axe-core/playwright` from `/workspace/asset-viewer/tools`)
+and `evidence/v3/imgdiff-desktop-vs-mobile.json`.
+
+    npx playwright test -c tests/assetViewer/e2e/playwright.config.mjs
+
+## 19. Bundles: the creative adapter is optional
+
+| bundle | entry | global | contents |
+|---|---|---|---|
+| core | `entry.js` | `FurniAssetViewer` | `mount`, `mountAssetViewer`, adapters, errors, labels, `isRetryableResolveError`, `normalizeConcept` (`version: asset-viewer-module/3`) |
+| creative (optional) | `entry.creative.js` | `FurniAssetViewerCreative` | `createCreativeAssetSource`, retry helpers, `mapCreativeError`, `normalizeBilling`, `describeBillingOutcome`, `describeReferenceValidation`, … (`version: asset-viewer-creative/3`) |
+
+Errors cross the two bundles by duck typing (`isViewerError`: `name === "AssetViewerError"` and a
+known code), not `instanceof`. `index.js` still exports everything for module users. Sizes are in
+the [v3 changelog](#v3).
+
 ## OPEN QUESTIONS for Integration
 
 ### Answered by the PROPOSED contract (round 2)
@@ -729,6 +941,23 @@ The 87 new tests cover:
     `getState().concept.notice` (or a download result's `concept.notice`) itself. Who checks
     that it is always visible?
 
+14. **Interim host interface (v3).** `mount(containerEl, { THREE, ...opts })` is interim until
+    Antigravity's container exists. Does the final container keep `{ THREE }` injection and the
+    host-calls-`dispose()` rule?
+15. **Gallery Download still retries silently (v3, not in this module's paths).**
+    `src/lib/projects/conceptGallery/mountConceptGallery.js` (~L352–354) does its own single
+    re-resolve on a retryable Download failure, and its header still describes the viewer's old
+    default. Under the "retries only when the user starts them" rule its owner should drop that
+    retry (or pass `autoRetry:true` deliberately).
+16. **FORBIDDEN copy.** The message says "this 3D concept"; rev 2 can only produce a 403 from
+    infrastructure, so it is page-wide (§16). Copy owner to decide on a page-wide wording (the
+    gallery has the same text).
+17. **CORS vs offline.** A browser reports a CORS block and a dropped connection the same way
+    (`TypeError`). v3 says both on a cross-origin link (reason `cross-origin`, BUG-002 fixed), but
+    only a FurniAI copy/proxy (U6/U7) removes the ambiguity.
+18. **QE acceptance follow-ups (not edited: `tests/acceptance/**` is QE's).** See the v3
+    changelog: tests pinning `RESOLVE_FAILED` for 500 and the old default single retry.
+
 ## Known limitations
 
 - Animations are counted but not played.
@@ -736,8 +965,65 @@ The 87 new tests cover:
 - No KTX2, Draco or meshopt support (would be added by injection once confirmed).
 - The built-in overlay is minimal. A host can pass `ui:false` and render its own from events.
 - r128 residual PMREM geometry (§8).
+- A browser can't tell a CORS block from a dropped connection; on a cross-origin link the message names both (BUG-002).
+- Core bundle headroom is small (minified 48,884 of 49,152 bytes); the creative adapter was split
+  out for that reason and because Scenario is optional.
 
 ## Changelog
+
+### v3
+
+Builds on `f472aef` (contract rev 2). Only module-owned paths changed (`src/lib/assetViewer/**`,
+`tests/assetViewer/**`, `docs/m3/asset-viewer/**`). Evidence: SYNTHETIC/MOCKED and SIMULATED only;
+**no real Scenario run, nothing LIVE.**
+
+- **Host interface:** `mount(containerEl, { THREE, ...opts })` in the public entry (§13).
+- **autoRetry (default `false`)**: no silent retry of any kind; Try again = user-started fresh
+  resolve; `autoRetry:true` (mount or per call) = v2.1 behaviour incl. the 1 s 429 pause (§12.4).
+- **States:** reason-specific honest messages: `FETCH_FAILED_MESSAGE` (`network`, `cross-origin`, `offline`,
+  `gone` 404/410, `denied` 403, `server` 5xx, `http`) and `INVALID_FILE_MESSAGE` (`html`,
+  `bad-magic`, `truncated`, `no-mesh`), `error.reason`; WebGL no-context / throws / lost with
+  download of a valid file; FORBIDDEN documented page-wide (§16).
+- **Textures:** `model.textures {declared, loaded}`, `TEXTURES_NOT_LOADED` note; missing image no
+  longer loses the model (BUG-001).
+- **View:** orbit / zoom / reset / fit buttons, keyboard, touch, `getView()`, resize re-fit keeps
+  direction and zoom ratio.
+- **Navigation:** `signal` (AbortSignal) and window `pagehide` dispose; no frames while the root is
+  detached; `dispose()` idempotent.
+- **Download:** the viewer's own button (`downloadButton:"always"`, mount default) gives the
+  actual stored bytes and format; hidden in loading / invalid / unavailable / failed-job states.
+- **Resolve errors:** `RESOLVE_FAILED` = network only; new `RESOLVE_SERVER_ERROR` (`cause:"http"`,
+  retryable on 5xx). `source.isRetryable(err)` / `source.retryDelayMs(err)` on the instance (free
+  export kept).
+- **Rev 2:** billing outcome, `PRIOR_SUBMISSION_UNKNOWN`, `DUPLICATE_ACTIVE_JOB`, reference
+  validation (§15).
+- **Bundles:** creative adapter moved to `entry.creative.js` (`FurniAssetViewerCreative`).
+  Core `entry.js`: unminified 88,448 bytes (limit 98,304), minified 48,884 (limit 49,152);
+  creative: 18,102 / 11,400 (limit 16 KiB minified). `version`: `asset-viewer-module/3`, `asset-viewer-creative/3`.
+- **Scale honesty:** a new test proves claimed real-world dimensions never change the mesh, its
+  bounds, the fit or the proportions (no silent rescale).
+- **Tests:** asset-viewer suite 194 → 274 (19 files); root `npx vitest run` 2098 → 2178 tests,
+  1940 → 2020 passed, the same 134 pre-existing failures as `f472aef` (none new, none fixed),
+  4 skipped, 20 todo; `npx vitest run src/lib/creative` 77/77. Playwright e2e (own config,
+  desktop-1440 + mobile-390): 55 passed, 1 skipped (touch on the desktop project, by design), axe
+  clean on every checked state.
+- **Mutation checks** (`replica/mutate.py`, all KILLED): caching the resolved URL (10 failing),
+  removing model dispose (8), removing renderer dispose (5), skipping the pagehide dispose (5),
+  Download in an error state (14), rescaling to claimed dimensions (1), autoRetry default → true (12).
+- **QE follow-ups (tests/acceptance/** not edited; all of these already fail at `f472aef` because the
+  rev 2 upload helper reads `body.reference.referenceId`, so v3 adds no new failure, but they will
+  fail for the v3 reasons once that helper is fixed):**
+  - `viewerV21.acceptance.test.js` "V1 load(): exactly ONE fresh re-resolve…" (5 cases) asserts
+    `expect(s1.attempts).toEqual({ resolve: 2, display: 1 })`, `expect(a.t.states.some((s) => s.phase === "retrying")).toBe(true)`,
+    `expect(s2.attempts.resolve).toBe(2)` → needs `autoRetry: true` (or the new default).
+  - `viewerV21.acceptance.test.js` "V5 download(): exactly ONE fresh re-resolve…" (5 cases) asserts
+    `toMatchObject({ ok: true, …, attempts: { resolve: 2 } })` and `expect(d2.attempts).toEqual({ resolve: 2 })` → same.
+  - `viewerV21.acceptance.test.js` "V2 … FINDING: an unknown server code (500 INTERNAL) is also
+    RESOLVE_FAILED" → now `RESOLVE_SERVER_ERROR`.
+  - `galleryViewer.acceptance.test.js` "one retry on a failed load: a dead first address is re-resolved ONCE…"
+    asserts `expect(s1.attempts).toEqual({ resolve: 2, display: 2 })` → the gallery's Open goes through
+    `load`, so it needs `autoRetry:true` from the gallery or a new expectation. Its Download retry cases
+    exercise the gallery's own retry (open question 15).
 
 ### v2.1 hardening (V1–V6)
 

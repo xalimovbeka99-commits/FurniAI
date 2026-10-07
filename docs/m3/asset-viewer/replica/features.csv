@@ -1,0 +1,31 @@
+feature,area,priority,original,clone,criterion,evidence_label,tests,evidence,notes
+Load GLB/glTF with the injected GLTFLoader (r128 global or 0.166),F01 open/view,must,yes,yes,1,SYNTHETIC/MOCKED,state.test.js; r128.test.js; e2e f01,01-loaded-*; 02-textured-*,real GLTFLoader in vitest; r128 global in the browser
+Embedded textures decoded and applied (sRGB colour maps),F01 open/view,must,yes,yes,1,SYNTHETIC/MOCKED,textures.test.js; e2e f01 F01-H2,02-textured-*,screenshot colour check in e2e
+Missing or corrupt texture degrades with an honest note,F01 open/view,must,yes,yes,1,SYNTHETIC/MOCKED,textures.test.js; e2e f01 F01-E1,03-texture-missing-*,BUG-001 fixed (missing image used to lose the model)
+Orbit / zoom / fit / reset buttons,F02 view,must,yes,yes,2,SYNTHETIC/MOCKED,v3States.test.js; e2e f02 F02-H1,01-loaded-*,
+Keyboard: canvas focus + arrows + / - 0 F; visible focus,F02 view,must,yes,yes,2;6,SYNTHETIC/MOCKED,v3States.test.js; e2e f02 F02-E1,,
+Touch orbit and pinch zoom,F02 view,must,yes,yes,2,SIMULATED,e2e f02 F02-E3 (CDP touch on 390 px),,emulated touch only; real device in the to-check list
+Resize / orientation change re-fits keeping direction and zoom ratio,F02 view,must,yes,yes,2,SYNTHETIC/MOCKED,v3States.test.js; e2e f02 F02-E2,,
+Loading state (role=status; no download),F01 open/view,must,yes,yes,3;5,SIMULATED,e2e f01 F01-E2,04-loading-*,slow route
+Invalid: bad magic / HTML-as-GLB / truncated / no mesh with specific messages,F03 invalid,must,yes,yes,3,SYNTHETIC/MOCKED,v3States.test.js; errors.test.js; e2e f03,05..08-invalid-*,
+Unavailable: 404 / 410 / expired 403 / network / CORS / offline,F04 unavailable,must,yes,yes,3,SIMULATED,errors.test.js; autoRetry.test.js; e2e f04,09..11b-unavailable-*,cross-origin transport error names both causes (BUG-002 fixed)
+WebGL failure: no context / throws / lost mid-session; download valid file,F05 webgl,must,yes,yes,3;5,SIMULATED,v3States.test.js; e2e f05,12..14-webgl-*,
+Idle and FORBIDDEN states,F07 jobs,must,yes,yes,3,SIMULATED,creativeViewer.test.js; e2e f07 F07-N2; f01 F01-E3,18-forbidden-*; 19-idle-*,FORBIDDEN page-wide (ASSET_VIEWER.md s16)
+Accessible states: role status/alert; focusable Try again,F04 unavailable,must,yes,yes,3;6,SIMULATED,autoRetry.test.js; e2e f04 F04-E1; axe every state,11b-unavailable-cors-*; 14-webgl-context-lost-*,
+Dispose everything on replace and on close (allocation ledger),F06 replace/navigate,must,yes,yes,4,SYNTHETIC/MOCKED,dispose.test.js; mount.test.js; e2e f06,15-after-replace-*,
+Navigation safety nets: pagehide / AbortSignal / detached root stops rendering,F06 replace/navigate,must,yes,yes,4,SYNTHETIC/MOCKED,mount.test.js; e2e f06 F06-H2 F06-E1 F06-E2,,
+Download actual stored bytes and format; hidden when no valid asset,F07 download,must,yes,yes,5,SYNTHETIC/MOCKED,download.test.js; mount.test.js; e2e f05 f07,01-loaded-*; 12-webgl-*,sha256 compared in e2e
+Fresh resolve on every display and download; never cached,F07 download,must,yes,yes,5,SIMULATED,creativeViewer.test.js; autoRetry.test.js; e2e f07 F07-H2,16-job-succeeded-*,single-use signed addresses
+No horizontal overflow at 1440x900 and 390x844; controls reachable,F02 view,must,yes,yes,6,SIMULATED,e2e (every spec) + capture-results.json overflowX=0,all evidence,
+autoRetry option (default false; user-started retries only),F04 unavailable,must,yes,yes,follow-up,SIMULATED,autoRetry.test.js (+ mutation check),11b-unavailable-cors-*,
+429: fixed ~1 s injectable delay before the single retry (autoRetry:true),F04 unavailable,should,yes,yes,follow-up,SIMULATED,rev2.test.js; autoRetry.test.js,,
+RESOLVE_FAILED network only + RESOLVE_SERVER_ERROR,F04 unavailable,should,yes,yes,follow-up,SIMULATED,creativeSource.test.js,,QE acceptance follow-up listed
+source.isRetryable(err) on the instance; free export kept,F07 jobs,should,yes,yes,follow-up,SIMULATED,rev2.test.js; creativeSource.test.js,,
+Rev 2: billingOutcome / PRIOR_SUBMISSION_UNKNOWN / one active job per reference / validation,F07 jobs,must,yes,yes,contract,SIMULATED,rev2.test.js; e2e f07 F07-N1,17-job-submission-unknown-*,never auto-submits or acknowledges
+concept.notice verbatim unless renderConceptNotice:false,F07 jobs,must,yes,yes,contract,SIMULATED,creativeRetry.test.js V6; e2e f07 F07-H2,16-job-succeeded-*,
+Visual concept + relative scale only; no mm; no silent rescaling,F01 open/view,must,yes,yes,rules,SYNTHETIC/MOCKED,scale.test.js; e2e f01 F01-H1,01-loaded-*,
+Demonstration label for synthetic assets,F01 open/view,must,yes,yes,rules,SYNTHETIC/MOCKED,rev2.test.js; e2e f01 F01-H1,all fixture evidence,
+mount(containerEl {THREE ...opts}) host interface,F06 replace/navigate,must,yes,yes,steering,SYNTHETIC/MOCKED,mount.test.js; e2e (host.html),host.html,
+Scenario optional: core works with a plain URL; creative adapter split,F01 open/view,must,yes,yes,steering,SYNTHETIC/MOCKED,mount.test.js; noBundledThree.test.js,,
+three injected; no second copy; bundle limits,build,must,yes,yes,rules,SYNTHETIC/MOCKED,noBundledThree.test.js,,48587 of 49152 bytes minified
+Standalone demo host page,build,must,yes,yes,mount point,SIMULATED,e2e (all),host.html,

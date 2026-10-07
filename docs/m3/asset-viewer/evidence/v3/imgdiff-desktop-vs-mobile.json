@@ -1,0 +1,798 @@
+{
+  "tool": "replica-diff/imgdiff.py (read directly from /workspace/scenario-review/skills/replica-diff, unmodified)",
+  "note": "desktop 1440x900 vs mobile 390x844 of the SAME state; low layout scores are expected: the host page reflows to one column at 390 px. Not a parity claim.",
+  "results": {
+    "01-loaded-SYNTHETIC-MOCKED": {
+      "mode": "layout",
+      "original": {
+        "width": 1440,
+        "height": 900
+      },
+      "clone": {
+        "width": 390,
+        "height": 844
+      },
+      "compared_at": {
+        "width": 390,
+        "height": 244
+      },
+      "height_delta_pct": 245.9,
+      "score": 20.3,
+      "verdict": "different",
+      "regions": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1417,
+          "h": 827,
+          "cells": 65,
+          "where": "middle centre"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 118,
+          "h": 118,
+          "cells": 1,
+          "where": "top left"
+        }
+      ],
+      "files": {
+        "original": "01-loaded-SYNTHETIC-MOCKED-desktop.png",
+        "clone": "01-loaded-SYNTHETIC-MOCKED-mobile.png"
+      }
+    },
+    "02-textured-SYNTHETIC-MOCKED": {
+      "mode": "layout",
+      "original": {
+        "width": 1440,
+        "height": 900
+      },
+      "clone": {
+        "width": 390,
+        "height": 844
+      },
+      "compared_at": {
+        "width": 390,
+        "height": 244
+      },
+      "height_delta_pct": 245.9,
+      "score": 27.1,
+      "verdict": "different",
+      "regions": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1417,
+          "h": 900,
+          "cells": 65,
+          "where": "middle centre"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 118,
+          "h": 118,
+          "cells": 1,
+          "where": "top left"
+        }
+      ],
+      "files": {
+        "original": "02-textured-SYNTHETIC-MOCKED-desktop.png",
+        "clone": "02-textured-SYNTHETIC-MOCKED-mobile.png"
+      }
+    },
+    "03-texture-missing-SYNTHETIC-MOCKED": {
+      "mode": "layout",
+      "original": {
+        "width": 1440,
+        "height": 900
+      },
+      "clone": {
+        "width": 390,
+        "height": 844
+      },
+      "compared_at": {
+        "width": 390,
+        "height": 244
+      },
+      "height_delta_pct": 245.9,
+      "score": 21.4,
+      "verdict": "different",
+      "regions": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1417,
+          "h": 900,
+          "cells": 69,
+          "where": "middle centre"
+        },
+        {
+          "x": 1299,
+          "y": 590,
+          "w": 118,
+          "h": 236,
+          "cells": 2,
+          "where": "bottom right"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 118,
+          "h": 118,
+          "cells": 1,
+          "where": "top left"
+        }
+      ],
+      "files": {
+        "original": "03-texture-missing-SYNTHETIC-MOCKED-desktop.png",
+        "clone": "03-texture-missing-SYNTHETIC-MOCKED-mobile.png"
+      }
+    },
+    "04-loading-SIMULATED": {
+      "mode": "layout",
+      "original": {
+        "width": 1440,
+        "height": 900
+      },
+      "clone": {
+        "width": 390,
+        "height": 844
+      },
+      "compared_at": {
+        "width": 390,
+        "height": 244
+      },
+      "height_delta_pct": 245.9,
+      "score": 16.9,
+      "verdict": "different",
+      "regions": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1417,
+          "h": 827,
+          "cells": 66,
+          "where": "middle centre"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 118,
+          "h": 118,
+          "cells": 1,
+          "where": "top left"
+        }
+      ],
+      "files": {
+        "original": "04-loading-SIMULATED-desktop.png",
+        "clone": "04-loading-SIMULATED-mobile.png"
+      }
+    },
+    "05-invalid-bad-magic-SYNTHETIC-MOCKED": {
+      "mode": "layout",
+      "original": {
+        "width": 1440,
+        "height": 900
+      },
+      "clone": {
+        "width": 390,
+        "height": 844
+      },
+      "compared_at": {
+        "width": 390,
+        "height": 244
+      },
+      "height_delta_pct": 245.9,
+      "score": 18.2,
+      "verdict": "different",
+      "regions": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1417,
+          "h": 827,
+          "cells": 64,
+          "where": "middle centre"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 118,
+          "h": 118,
+          "cells": 1,
+          "where": "top left"
+        }
+      ],
+      "files": {
+        "original": "05-invalid-bad-magic-SYNTHETIC-MOCKED-desktop.png",
+        "clone": "05-invalid-bad-magic-SYNTHETIC-MOCKED-mobile.png"
+      }
+    },
+    "06-invalid-html-as-glb-SYNTHETIC-MOCKED": {
+      "mode": "layout",
+      "original": {
+        "width": 1440,
+        "height": 900
+      },
+      "clone": {
+        "width": 390,
+        "height": 844
+      },
+      "compared_at": {
+        "width": 390,
+        "height": 244
+      },
+      "height_delta_pct": 245.9,
+      "score": 18.8,
+      "verdict": "different",
+      "regions": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1417,
+          "h": 827,
+          "cells": 64,
+          "where": "middle centre"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 118,
+          "h": 118,
+          "cells": 1,
+          "where": "top left"
+        }
+      ],
+      "files": {
+        "original": "06-invalid-html-as-glb-SYNTHETIC-MOCKED-desktop.png",
+        "clone": "06-invalid-html-as-glb-SYNTHETIC-MOCKED-mobile.png"
+      }
+    },
+    "07-invalid-truncated-SYNTHETIC-MOCKED": {
+      "mode": "layout",
+      "original": {
+        "width": 1440,
+        "height": 900
+      },
+      "clone": {
+        "width": 390,
+        "height": 844
+      },
+      "compared_at": {
+        "width": 390,
+        "height": 244
+      },
+      "height_delta_pct": 245.9,
+      "score": 18.6,
+      "verdict": "different",
+      "regions": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1417,
+          "h": 827,
+          "cells": 68,
+          "where": "middle centre"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 118,
+          "h": 118,
+          "cells": 1,
+          "where": "top left"
+        }
+      ],
+      "files": {
+        "original": "07-invalid-truncated-SYNTHETIC-MOCKED-desktop.png",
+        "clone": "07-invalid-truncated-SYNTHETIC-MOCKED-mobile.png"
+      }
+    },
+    "08-invalid-no-mesh-SYNTHETIC-MOCKED": {
+      "mode": "layout",
+      "original": {
+        "width": 1440,
+        "height": 900
+      },
+      "clone": {
+        "width": 390,
+        "height": 844
+      },
+      "compared_at": {
+        "width": 390,
+        "height": 244
+      },
+      "height_delta_pct": 245.9,
+      "score": 18.1,
+      "verdict": "different",
+      "regions": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1417,
+          "h": 827,
+          "cells": 68,
+          "where": "middle centre"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 118,
+          "h": 118,
+          "cells": 1,
+          "where": "top left"
+        }
+      ],
+      "files": {
+        "original": "08-invalid-no-mesh-SYNTHETIC-MOCKED-desktop.png",
+        "clone": "08-invalid-no-mesh-SYNTHETIC-MOCKED-mobile.png"
+      }
+    },
+    "09-unavailable-404-SIMULATED": {
+      "mode": "layout",
+      "original": {
+        "width": 1440,
+        "height": 900
+      },
+      "clone": {
+        "width": 390,
+        "height": 844
+      },
+      "compared_at": {
+        "width": 390,
+        "height": 244
+      },
+      "height_delta_pct": 245.9,
+      "score": 16.7,
+      "verdict": "different",
+      "regions": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1417,
+          "h": 827,
+          "cells": 74,
+          "where": "middle centre"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 118,
+          "h": 118,
+          "cells": 1,
+          "where": "top left"
+        }
+      ],
+      "files": {
+        "original": "09-unavailable-404-SIMULATED-desktop.png",
+        "clone": "09-unavailable-404-SIMULATED-mobile.png"
+      }
+    },
+    "10-unavailable-410-SIMULATED": {
+      "mode": "layout",
+      "original": {
+        "width": 1440,
+        "height": 900
+      },
+      "clone": {
+        "width": 390,
+        "height": 844
+      },
+      "compared_at": {
+        "width": 390,
+        "height": 244
+      },
+      "height_delta_pct": 245.9,
+      "score": 16.8,
+      "verdict": "different",
+      "regions": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1417,
+          "h": 827,
+          "cells": 73,
+          "where": "middle centre"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 118,
+          "h": 118,
+          "cells": 1,
+          "where": "top left"
+        }
+      ],
+      "files": {
+        "original": "10-unavailable-410-SIMULATED-desktop.png",
+        "clone": "10-unavailable-410-SIMULATED-mobile.png"
+      }
+    },
+    "11-unavailable-403-expired-SIMULATED": {
+      "mode": "layout",
+      "original": {
+        "width": 1440,
+        "height": 900
+      },
+      "clone": {
+        "width": 390,
+        "height": 844
+      },
+      "compared_at": {
+        "width": 390,
+        "height": 244
+      },
+      "height_delta_pct": 245.9,
+      "score": 17.5,
+      "verdict": "different",
+      "regions": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1417,
+          "h": 827,
+          "cells": 69,
+          "where": "middle centre"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 118,
+          "h": 118,
+          "cells": 1,
+          "where": "top left"
+        }
+      ],
+      "files": {
+        "original": "11-unavailable-403-expired-SIMULATED-desktop.png",
+        "clone": "11-unavailable-403-expired-SIMULATED-mobile.png"
+      }
+    },
+    "11b-unavailable-cors-blocked-SIMULATED": {
+      "mode": "layout",
+      "original": {
+        "width": 1440,
+        "height": 900
+      },
+      "clone": {
+        "width": 390,
+        "height": 844
+      },
+      "compared_at": {
+        "width": 390,
+        "height": 244
+      },
+      "height_delta_pct": 245.9,
+      "score": 18.0,
+      "verdict": "different",
+      "regions": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1417,
+          "h": 900,
+          "cells": 74,
+          "where": "middle centre"
+        },
+        {
+          "x": 1299,
+          "y": 590,
+          "w": 118,
+          "h": 236,
+          "cells": 2,
+          "where": "bottom right"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 118,
+          "h": 118,
+          "cells": 1,
+          "where": "top left"
+        }
+      ],
+      "files": {
+        "original": "11b-unavailable-cors-blocked-SIMULATED-desktop.png",
+        "clone": "11b-unavailable-cors-blocked-SIMULATED-mobile.png"
+      }
+    },
+    "12-webgl-no-context-SIMULATED": {
+      "mode": "layout",
+      "original": {
+        "width": 1440,
+        "height": 900
+      },
+      "clone": {
+        "width": 390,
+        "height": 844
+      },
+      "compared_at": {
+        "width": 390,
+        "height": 244
+      },
+      "height_delta_pct": 245.9,
+      "score": 17.0,
+      "verdict": "different",
+      "regions": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1417,
+          "h": 900,
+          "cells": 70,
+          "where": "middle centre"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 118,
+          "h": 118,
+          "cells": 1,
+          "where": "top left"
+        }
+      ],
+      "files": {
+        "original": "12-webgl-no-context-SIMULATED-desktop.png",
+        "clone": "12-webgl-no-context-SIMULATED-mobile.png"
+      }
+    },
+    "13-webgl-throws-SIMULATED": {
+      "mode": "layout",
+      "original": {
+        "width": 1440,
+        "height": 900
+      },
+      "clone": {
+        "width": 390,
+        "height": 844
+      },
+      "compared_at": {
+        "width": 390,
+        "height": 244
+      },
+      "height_delta_pct": 245.9,
+      "score": 17.0,
+      "verdict": "different",
+      "regions": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1417,
+          "h": 900,
+          "cells": 70,
+          "where": "middle centre"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 118,
+          "h": 118,
+          "cells": 1,
+          "where": "top left"
+        }
+      ],
+      "files": {
+        "original": "13-webgl-throws-SIMULATED-desktop.png",
+        "clone": "13-webgl-throws-SIMULATED-mobile.png"
+      }
+    },
+    "14-webgl-context-lost-SIMULATED": {
+      "mode": "layout",
+      "original": {
+        "width": 1440,
+        "height": 900
+      },
+      "clone": {
+        "width": 390,
+        "height": 844
+      },
+      "compared_at": {
+        "width": 390,
+        "height": 244
+      },
+      "height_delta_pct": 245.9,
+      "score": 16.3,
+      "verdict": "different",
+      "regions": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1417,
+          "h": 900,
+          "cells": 76,
+          "where": "middle centre"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 118,
+          "h": 118,
+          "cells": 1,
+          "where": "top left"
+        }
+      ],
+      "files": {
+        "original": "14-webgl-context-lost-SIMULATED-desktop.png",
+        "clone": "14-webgl-context-lost-SIMULATED-mobile.png"
+      }
+    },
+    "15-after-replace-SYNTHETIC-MOCKED": {
+      "mode": "layout",
+      "original": {
+        "width": 1440,
+        "height": 900
+      },
+      "clone": {
+        "width": 390,
+        "height": 844
+      },
+      "compared_at": {
+        "width": 390,
+        "height": 244
+      },
+      "height_delta_pct": 245.9,
+      "score": 20.5,
+      "verdict": "different",
+      "regions": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1417,
+          "h": 827,
+          "cells": 65,
+          "where": "middle centre"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 118,
+          "h": 118,
+          "cells": 1,
+          "where": "top left"
+        }
+      ],
+      "files": {
+        "original": "15-after-replace-SYNTHETIC-MOCKED-desktop.png",
+        "clone": "15-after-replace-SYNTHETIC-MOCKED-mobile.png"
+      }
+    },
+    "16-job-succeeded-SIMULATED": {
+      "mode": "layout",
+      "original": {
+        "width": 1440,
+        "height": 900
+      },
+      "clone": {
+        "width": 390,
+        "height": 844
+      },
+      "compared_at": {
+        "width": 390,
+        "height": 244
+      },
+      "height_delta_pct": 245.9,
+      "score": 20.3,
+      "verdict": "different",
+      "regions": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1417,
+          "h": 900,
+          "cells": 79,
+          "where": "middle centre"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "w": 118,
+          "h": 118,
+          "cells": 1,
+          "where": "top left"
+        }
+      ],
+      "files": {
+        "original": "16-job-succeeded-SIMULATED-desktop.png",
+        "clone": "16-job-succeeded-SIMULATED-mobile.png"
+      }
+    },
+    "17-job-submission-unknown-SIMULATED": {
+      "mode": "layout",
+      "original": {
+        "width": 1440,
+        "height": 900
+      },
+      "clone": {
+        "width": 390,
+        "height": 844
+      },
+      "compared_at": {
+        "width": 390,
+        "height": 244
+      },
+      "height_delta_pct": 245.9,
+      "score": 20.2,
+      "verdict": "different",
+      "regions": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1417,
+          "h": 900,
+          "cells": 84,
+          "where": "middle centre"
+        }
+      ],
+      "files": {
+        "original": "17-job-submission-unknown-SIMULATED-desktop.png",
+        "clone": "17-job-submission-unknown-SIMULATED-mobile.png"
+      }
+    },
+    "18-forbidden-SIMULATED": {
+      "mode": "layout",
+      "original": {
+        "width": 1440,
+        "height": 900
+      },
+      "clone": {
+        "width": 390,
+        "height": 844
+      },
+      "compared_at": {
+        "width": 390,
+        "height": 244
+      },
+      "height_delta_pct": 245.9,
+      "score": 20.8,
+      "verdict": "different",
+      "regions": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1417,
+          "h": 827,
+          "cells": 76,
+          "where": "middle centre"
+        }
+      ],
+      "files": {
+        "original": "18-forbidden-SIMULATED-desktop.png",
+        "clone": "18-forbidden-SIMULATED-mobile.png"
+      }
+    },
+    "19-idle-SIMULATED": {
+      "mode": "layout",
+      "original": {
+        "width": 1440,
+        "height": 900
+      },
+      "clone": {
+        "width": 390,
+        "height": 844
+      },
+      "compared_at": {
+        "width": 390,
+        "height": 244
+      },
+      "height_delta_pct": 245.9,
+      "score": 11.0,
+      "verdict": "different",
+      "regions": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 1417,
+          "h": 827,
+          "cells": 56,
+          "where": "middle centre"
+        }
+      ],
+      "files": {
+        "original": "19-idle-SIMULATED-desktop.png",
+        "clone": "19-idle-SIMULATED-mobile.png"
+      }
+    }
+  }
+}

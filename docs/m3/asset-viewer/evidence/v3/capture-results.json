@@ -1,0 +1,666 @@
+[
+  {
+    "file": "01-loaded-SYNTHETIC-MOCKED-desktop.png",
+    "state": "loaded",
+    "class": "SYNTHETIC-MOCKED",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "status": "ready",
+    "error": null,
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SYNTHETIC/MOCKED",
+    "overflowX": 0,
+    "download": true
+  },
+  {
+    "file": "01-loaded-SYNTHETIC-MOCKED-mobile.png",
+    "state": "loaded",
+    "class": "SYNTHETIC-MOCKED",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "status": "ready",
+    "error": null,
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SYNTHETIC/MOCKED",
+    "overflowX": 0,
+    "download": true
+  },
+  {
+    "file": "02-textured-SYNTHETIC-MOCKED-desktop.png",
+    "state": "textured",
+    "class": "SYNTHETIC-MOCKED",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "status": "ready",
+    "error": null,
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SYNTHETIC/MOCKED",
+    "overflowX": 0,
+    "download": true
+  },
+  {
+    "file": "02-textured-SYNTHETIC-MOCKED-mobile.png",
+    "state": "textured",
+    "class": "SYNTHETIC-MOCKED",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "status": "ready",
+    "error": null,
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SYNTHETIC/MOCKED",
+    "overflowX": 0,
+    "download": true
+  },
+  {
+    "file": "03-texture-missing-SYNTHETIC-MOCKED-desktop.png",
+    "state": "texture-missing",
+    "class": "SYNTHETIC-MOCKED",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "status": "ready",
+    "error": null,
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SYNTHETIC/MOCKED",
+    "overflowX": 0,
+    "download": true
+  },
+  {
+    "file": "03-texture-missing-SYNTHETIC-MOCKED-mobile.png",
+    "state": "texture-missing",
+    "class": "SYNTHETIC-MOCKED",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "status": "ready",
+    "error": null,
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SYNTHETIC/MOCKED",
+    "overflowX": 0,
+    "download": true
+  },
+  {
+    "file": "04-loading-SIMULATED-desktop.png",
+    "state": "loading",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "status": "loading",
+    "error": null,
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "04-loading-SIMULATED-mobile.png",
+    "state": "loading",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "status": "loading",
+    "error": null,
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "05-invalid-bad-magic-SYNTHETIC-MOCKED-desktop.png",
+    "state": "invalid&file=bad-magic",
+    "class": "SYNTHETIC-MOCKED",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "status": "error",
+    "error": {
+      "code": "PARSE_FAILED",
+      "reason": "bad-magic",
+      "message": "This file isn't a valid 3D model file."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SYNTHETIC/MOCKED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "05-invalid-bad-magic-SYNTHETIC-MOCKED-mobile.png",
+    "state": "invalid&file=bad-magic",
+    "class": "SYNTHETIC-MOCKED",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "status": "error",
+    "error": {
+      "code": "PARSE_FAILED",
+      "reason": "bad-magic",
+      "message": "This file isn't a valid 3D model file."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SYNTHETIC/MOCKED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "06-invalid-html-as-glb-SYNTHETIC-MOCKED-desktop.png",
+    "state": "invalid&file=html-as",
+    "class": "SYNTHETIC-MOCKED",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "status": "error",
+    "error": {
+      "code": "PARSE_FAILED",
+      "reason": "html",
+      "message": "The link returned a web page instead of a 3D model file."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SYNTHETIC/MOCKED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "06-invalid-html-as-glb-SYNTHETIC-MOCKED-mobile.png",
+    "state": "invalid&file=html-as",
+    "class": "SYNTHETIC-MOCKED",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "status": "error",
+    "error": {
+      "code": "PARSE_FAILED",
+      "reason": "html",
+      "message": "The link returned a web page instead of a 3D model file."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SYNTHETIC/MOCKED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "07-invalid-truncated-SYNTHETIC-MOCKED-desktop.png",
+    "state": "invalid&file=truncated",
+    "class": "SYNTHETIC-MOCKED",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "status": "error",
+    "error": {
+      "code": "PARSE_FAILED",
+      "reason": "truncated",
+      "message": "The model file is incomplete. It may have been cut off while downloading."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SYNTHETIC/MOCKED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "07-invalid-truncated-SYNTHETIC-MOCKED-mobile.png",
+    "state": "invalid&file=truncated",
+    "class": "SYNTHETIC-MOCKED",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "status": "error",
+    "error": {
+      "code": "PARSE_FAILED",
+      "reason": "truncated",
+      "message": "The model file is incomplete. It may have been cut off while downloading."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SYNTHETIC/MOCKED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "08-invalid-no-mesh-SYNTHETIC-MOCKED-desktop.png",
+    "state": "invalid&file=no-mesh",
+    "class": "SYNTHETIC-MOCKED",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "status": "error",
+    "error": {
+      "code": "EMPTY_SCENE",
+      "reason": "no-mesh",
+      "message": "The model file opened, but it doesn't contain anything to show."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SYNTHETIC/MOCKED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "08-invalid-no-mesh-SYNTHETIC-MOCKED-mobile.png",
+    "state": "invalid&file=no-mesh",
+    "class": "SYNTHETIC-MOCKED",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "status": "error",
+    "error": {
+      "code": "EMPTY_SCENE",
+      "reason": "no-mesh",
+      "message": "The model file opened, but it doesn't contain anything to show."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SYNTHETIC/MOCKED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "09-unavailable-404-SIMULATED-desktop.png",
+    "state": "unavailable&http=404",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "status": "error",
+    "error": {
+      "code": "FETCH_FAILED",
+      "reason": "gone",
+      "message": "This model's link no longer works: the file wasn't found or has been removed."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "09-unavailable-404-SIMULATED-mobile.png",
+    "state": "unavailable&http=404",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "status": "error",
+    "error": {
+      "code": "FETCH_FAILED",
+      "reason": "gone",
+      "message": "This model's link no longer works: the file wasn't found or has been removed."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "10-unavailable-410-SIMULATED-desktop.png",
+    "state": "unavailable&http=410",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "status": "error",
+    "error": {
+      "code": "FETCH_FAILED",
+      "reason": "gone",
+      "message": "This model's link no longer works: the file wasn't found or has been removed."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "10-unavailable-410-SIMULATED-mobile.png",
+    "state": "unavailable&http=410",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "status": "error",
+    "error": {
+      "code": "FETCH_FAILED",
+      "reason": "gone",
+      "message": "This model's link no longer works: the file wasn't found or has been removed."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "11-unavailable-403-expired-SIMULATED-desktop.png",
+    "state": "unavailable&http=403",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "status": "error",
+    "error": {
+      "code": "FETCH_FAILED",
+      "reason": "denied",
+      "message": "This model's link has expired or isn't allowed from this page."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "11-unavailable-403-expired-SIMULATED-mobile.png",
+    "state": "unavailable&http=403",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "status": "error",
+    "error": {
+      "code": "FETCH_FAILED",
+      "reason": "denied",
+      "message": "This model's link has expired or isn't allowed from this page."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "11b-unavailable-cors-blocked-SIMULATED-desktop.png",
+    "state": "unavailable&http=cors",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "status": "error",
+    "error": {
+      "code": "FETCH_FAILED",
+      "reason": "cross-origin",
+      "message": "The model couldn't be downloaded: the connection failed, or the file's server doesn't allow this page to load it. Try again."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "11b-unavailable-cors-blocked-SIMULATED-mobile.png",
+    "state": "unavailable&http=cors",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "status": "error",
+    "error": {
+      "code": "FETCH_FAILED",
+      "reason": "cross-origin",
+      "message": "The model couldn't be downloaded: the connection failed, or the file's server doesn't allow this page to load it. Try again."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "12-webgl-no-context-SIMULATED-desktop.png",
+    "state": "webgl&webgl=none",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "status": "error",
+    "error": {
+      "code": "WEBGL_UNAVAILABLE",
+      "reason": null,
+      "message": "3D preview isn't available in this browser (WebGL is disabled or unsupported)."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": true
+  },
+  {
+    "file": "12-webgl-no-context-SIMULATED-mobile.png",
+    "state": "webgl&webgl=none",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "status": "error",
+    "error": {
+      "code": "WEBGL_UNAVAILABLE",
+      "reason": null,
+      "message": "3D preview isn't available in this browser (WebGL is disabled or unsupported)."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": true
+  },
+  {
+    "file": "13-webgl-throws-SIMULATED-desktop.png",
+    "state": "webgl&webgl=throw",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "status": "error",
+    "error": {
+      "code": "WEBGL_UNAVAILABLE",
+      "reason": null,
+      "message": "3D preview isn't available in this browser (WebGL is disabled or unsupported)."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": true
+  },
+  {
+    "file": "13-webgl-throws-SIMULATED-mobile.png",
+    "state": "webgl&webgl=throw",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "status": "error",
+    "error": {
+      "code": "WEBGL_UNAVAILABLE",
+      "reason": null,
+      "message": "3D preview isn't available in this browser (WebGL is disabled or unsupported)."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": true
+  },
+  {
+    "file": "14-webgl-context-lost-SIMULATED-desktop.png",
+    "state": "webgl&webgl=lost",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "status": "error",
+    "error": {
+      "code": "WEBGL_CONTEXT_LOST",
+      "reason": null,
+      "message": "The 3D preview stopped: the browser's graphics context was lost."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": true
+  },
+  {
+    "file": "14-webgl-context-lost-SIMULATED-mobile.png",
+    "state": "webgl&webgl=lost",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "status": "error",
+    "error": {
+      "code": "WEBGL_CONTEXT_LOST",
+      "reason": null,
+      "message": "The 3D preview stopped: the browser's graphics context was lost."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": true
+  },
+  {
+    "file": "15-after-replace-SYNTHETIC-MOCKED-desktop.png",
+    "state": "replace",
+    "class": "SYNTHETIC-MOCKED",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "status": "ready",
+    "error": null,
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SYNTHETIC/MOCKED",
+    "overflowX": 0,
+    "download": true
+  },
+  {
+    "file": "15-after-replace-SYNTHETIC-MOCKED-mobile.png",
+    "state": "replace",
+    "class": "SYNTHETIC-MOCKED",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "status": "ready",
+    "error": null,
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SYNTHETIC/MOCKED",
+    "overflowX": 0,
+    "download": true
+  },
+  {
+    "file": "16-job-succeeded-SIMULATED-desktop.png",
+    "state": "job&job=succeeded",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "status": "ready",
+    "error": null,
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": true
+  },
+  {
+    "file": "16-job-succeeded-SIMULATED-mobile.png",
+    "state": "job&job=succeeded",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "status": "ready",
+    "error": null,
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": true
+  },
+  {
+    "file": "17-job-submission-unknown-SIMULATED-desktop.png",
+    "state": "job&job=submission-unknown",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "status": "error",
+    "error": {
+      "code": "SUBMISSION_UNKNOWN",
+      "reason": null,
+      "message": "The request was sent but no answer came back, so it isn't known whether a 3D concept was started. It may have been charged. It will not be retried automatically."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "17-job-submission-unknown-SIMULATED-mobile.png",
+    "state": "job&job=submission-unknown",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "status": "error",
+    "error": {
+      "code": "SUBMISSION_UNKNOWN",
+      "reason": null,
+      "message": "The request was sent but no answer came back, so it isn't known whether a 3D concept was started. It may have been charged. It will not be retried automatically."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "18-forbidden-SIMULATED-desktop.png",
+    "state": "forbidden",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "status": "error",
+    "error": {
+      "code": "FORBIDDEN",
+      "reason": null,
+      "message": "This account doesn't have permission to open this 3D concept. Signing in again won't change that."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "18-forbidden-SIMULATED-mobile.png",
+    "state": "forbidden",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "status": "error",
+    "error": {
+      "code": "FORBIDDEN",
+      "reason": null,
+      "message": "This account doesn't have permission to open this 3D concept. Signing in again won't change that."
+    },
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "19-idle-SIMULATED-desktop.png",
+    "state": "idle",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "status": "idle",
+    "error": null,
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": false
+  },
+  {
+    "file": "19-idle-SIMULATED-mobile.png",
+    "state": "idle",
+    "class": "SIMULATED",
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "status": "idle",
+    "error": null,
+    "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
+    "overflowX": 0,
+    "download": false
+  }
+]
