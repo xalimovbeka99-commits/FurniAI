@@ -20,6 +20,17 @@ export function isGltfJsonBytes(bytes) {
   return /"asset"\s*:/.test(head);
 }
 
+function skipMissingImages(parser) {
+  return {
+    name: "FURNI_skip_missing_images",
+    loadTexture(i) {
+      const j = parser.json;
+      const t = j.textures && j.textures[i];
+      return t && !t.extensions && !(j.images && j.images[t.source]) ? Promise.resolve(null) : null;
+    },
+  };
+}
+
 function parseWithGltfLoader(arrayBuffer, { deps, resourcePath }) {
   const Loader = deps && deps.GLTFLoader;
   return new Promise((resolve, reject) => {
@@ -30,12 +41,18 @@ function parseWithGltfLoader(arrayBuffer, { deps, resourcePath }) {
       reject(e);
       return;
     }
+    // A texture whose image is absent (dangling "source") would make GLTFLoader throw
+    // and lose the whole model; resolve it to "no texture" so the mesh still shows
+    // and the viewer's TEXTURES_NOT_LOADED note tells the user honestly.
+    if (loader.register) loader.register(skipMissingImages);
     try {
       loader.parse(
         arrayBuffer,
         resourcePath || "",
         (gltf) => {
           const root = (gltf && (gltf.scene || (gltf.scenes && gltf.scenes[0]))) || null;
+          const extras = (gltf && gltf.userData) || {};
+          const generator = (gltf && gltf.asset && gltf.asset.generator) || "";
           resolve({
             root,
             info: {
@@ -43,6 +60,9 @@ function parseWithGltfLoader(arrayBuffer, { deps, resourcePath }) {
               // GLTFLoader only console.errors a texture it cannot decode and returns
               // the model without it; the viewer turns this into a visible warning.
               declaredTextures: (gltf && gltf.parser && gltf.parser.json && gltf.parser.json.textures && gltf.parser.json.textures.length) || 0,
+              // A file that labels itself synthetic (root extras.synthetic or asset.generator),
+              // e.g. docs/creative/fixtures/SYNTHETIC-box-not-scenario-generated.glb.
+              synthetic: extras.synthetic === true || /\bsynthetic\b/i.test(String(generator)),
             },
           });
         },
@@ -54,7 +74,7 @@ function parseWithGltfLoader(arrayBuffer, { deps, resourcePath }) {
   });
 }
 
-export const glbAdapter = Object.freeze({
+export const glbAdapter = /* @__PURE__ */ Object.freeze({
   id: "glb",
   label: "glTF 2.0 binary (GLB)",
   mime: "model/gltf-binary",
@@ -65,7 +85,7 @@ export const glbAdapter = Object.freeze({
   load: parseWithGltfLoader,
 });
 
-export const gltfJsonAdapter = Object.freeze({
+export const gltfJsonAdapter = /* @__PURE__ */ Object.freeze({
   id: "gltf",
   label: "glTF 2.0 JSON",
   mime: "model/gltf+json",
@@ -76,4 +96,4 @@ export const gltfJsonAdapter = Object.freeze({
   load: parseWithGltfLoader,
 });
 
-export const DEFAULT_ADAPTERS = Object.freeze([glbAdapter, gltfJsonAdapter]);
+export const DEFAULT_ADAPTERS = /* @__PURE__ */ Object.freeze([glbAdapter, gltfJsonAdapter]);

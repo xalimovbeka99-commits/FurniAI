@@ -55,6 +55,15 @@ export class FakeElement {
   click() {
     this.clicks++;
   }
+  /** test helper: run this element's listeners for `type` (as a real dispatchEvent would). */
+  dispatch(type, ev = {}) {
+    const e = { type, target: this, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, ...ev };
+    for (const fn of [...(this.listeners[type] || [])]) fn(e);
+    return e;
+  }
+  focus() {
+    this.ownerDocument.activeElement = this;
+  }
   /** depth-first search by attribute name */
   find(attr) {
     if (attr in this.attributes) return this;
@@ -86,11 +95,24 @@ export class FakeResizeObserver {
   }
 }
 
-export function createFakeDocument({ width = 640, height = 480, raf = null } = {}) {
+export function createFakeDocument({ width = 640, height = 480, raf = null, resizeObserver = true } = {}) {
   const created = [];
+  const winListeners = {};
   const win = {
     devicePixelRatio: 1,
-    ResizeObserver: FakeResizeObserver,
+    ResizeObserver: resizeObserver ? FakeResizeObserver : undefined,
+    addEventListener(t, fn) {
+      (winListeners[t] ||= new Set()).add(fn);
+    },
+    removeEventListener(t, fn) {
+      winListeners[t] && winListeners[t].delete(fn);
+    },
+    get listenerCount() {
+      return Object.values(winListeners).reduce((n, set) => n + set.size, 0);
+    },
+    dispatch(t) {
+      for (const fn of [...(winListeners[t] || [])]) fn({ type: t });
+    },
     URL: {
       created: [],
       revoked: [],

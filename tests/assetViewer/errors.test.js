@@ -1,24 +1,28 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { mountForTest, THREE } from "./helpers/mountHarness.js";
 import { createFakeFetch, fixtureArrayBuffer, installImageBitmapShim } from "./helpers/fixtures.js";
-import { ERROR_CODE, ERROR_MESSAGE, mountAssetViewer } from "../../src/lib/assetViewer/index.js";
+import { ERROR_CODE, ERROR_MESSAGE, FETCH_FAILED_MESSAGE, INVALID_FILE_MESSAGE, mountAssetViewer } from "../../src/lib/assetViewer/index.js";
 import { createFakeDocument } from "./helpers/fakeDom.js";
 
 let shim;
 beforeAll(() => (shim = installImageBitmapShim()));
 afterAll(() => shim.restore());
 
-async function expectError(t, asset, code) {
+/** v3: `reason` picks the honest sub-message (FETCH_FAILED_MESSAGE / INVALID_FILE_MESSAGE); none = the code's own. */
+async function expectError(t, asset, code, reason) {
   const res = await t.viewer.load(asset);
   expect(res.ok).toBe(false);
   expect(res.error.code).toBe(code);
   const s = t.viewer.getState();
   expect(s.status).toBe("error");
   expect(s.error.code).toBe(code);
-  expect(s.error.message).toBe(ERROR_MESSAGE[code]);
+  const msg = reason ? (code === "FETCH_FAILED" ? FETCH_FAILED_MESSAGE : INVALID_FILE_MESSAGE)[reason] : ERROR_MESSAGE[code];
+  expect(msg).toBeTruthy();
+  if (reason) expect(s.error.reason).toBe(reason);
+  expect(s.error.message).toBe(msg);
   expect(s.model).toBeNull();
-  expect(t.errors.at(-1)).toMatchObject({ code, message: ERROR_MESSAGE[code] });
-  expect(t.container.find("data-av-status").textContent).toBe(ERROR_MESSAGE[code]);
+  expect(t.errors.at(-1)).toMatchObject({ code, message: msg });
+  expect(t.container.find("data-av-status").textContent).toBe(msg);
   return s.error;
 }
 
@@ -33,14 +37,14 @@ describe("error codes", () => {
 
   it("corrupt GLB -> PARSE_FAILED (with developer detail)", async () => {
     const t = mountForTest();
-    const err = await expectError(t, { arrayBuffer: fixtureArrayBuffer("corrupt.glb"), filename: "corrupt.glb" }, "PARSE_FAILED");
+    const err = await expectError(t, { arrayBuffer: fixtureArrayBuffer("corrupt.glb"), filename: "corrupt.glb" }, "PARSE_FAILED", "truncated");
     expect(err.detail).toBeTruthy();
     t.viewer.dispose();
   });
 
   it("garbage bytes named .glb -> PARSE_FAILED (hint says glb, content is not)", async () => {
     const t = mountForTest();
-    await expectError(t, { arrayBuffer: new TextEncoder().encode("not a model at all").buffer, filename: "x.glb" }, "PARSE_FAILED");
+    await expectError(t, { arrayBuffer: new TextEncoder().encode("not a model at all").buffer, filename: "x.glb" }, "PARSE_FAILED", "bad-magic");
     t.viewer.dispose();
   });
 
@@ -80,13 +84,43 @@ describe("error codes", () => {
     t.viewer.dispose();
   });
 
-  it("HTTP failure and network failure -> FETCH_FAILED (status kept for logs)", async () => {
-    const fetch = createFakeFetch({ "https://cdn.example/expired.glb": { status: 403, statusText: "Forbidden" }, "https://cdn.example/down.glb": { networkError: true } });
+  it("HTTP failure and network failure -> FETCH_FAILED (status kept for logs; v3: an honest reason, never 'check your connection' for a dead link)", async () => {
+    const fetch = createFakeFetch({
+      "https://cdn.example/expired.glb": { status: 403, statusText: "Forbidden" },
+      "https://cdn.example/down.glb": { networkError: true },
+      "https://cdn.example/gone.glb": { status: 410 },
+      "https://cdn.example/boom.glb": { status: 503 },
+    });
     const t = mountForTest({ options: { fetch } });
-    const e1 = await expectError(t, { url: "https://cdn.example/expired.glb?X-Amz-Expires=1" }, "FETCH_FAILED");
+    const e1 = await expectError(t, { url: "https://cdn.example/expired.glb?X-Amz-Expires=1" }, "FETCH_FAILED", "denied");
     expect(e1.status).toBe(403);
-    await expectError(t, { url: "https://cdn.example/down.glb" }, "FETCH_FAILED");
-    await expectError(t, { url: "https://cdn.example/missing.glb" }, "FETCH_FAILED");
+    await expectError(t, { url: "https://cdn.example/down.glb" }, "FETCH_FAILED", "network");
+    expect(FETCH_FAILED_MESSAGE.network).toBe(ERROR_MESSAGE.FETCH_FAILED);
+    await expectError(t, { url: "https://cdn.example/missing.glb" }, "FETCH_FAILED", "gone");
+    await expectError(t, { url: "https://cdn.example/gone.glb" }, "FETCH_FAILED", "gone");
+    await expectError(t, { url: "https://cdn.example/boom.glb" }, "FETCH_FAILED", "server");
+    for (const m of [FETCH_FAILED_MESSAGE.gone, FETCH_FAILED_MESSAGE.denied]) expect(m).not.toMatch(/connection/i);
+    t.viewer.dispose();
+  });
+
+  it("BUG-002: a transport error on a CROSS-ORIGIN link may be a CORS refusal -> reason 'cross-origin', never just 'check your connection'", async () => {
+    const fetch = createFakeFetch({ "https://cdn.example/blocked.glb": { networkError: true }, "https://app.example/models/down.glb": { networkError: true } });
+    const t = mountForTest({ options: { fetch } });
+    t.win.location = { href: "https://app.example/studio/", origin: "https://app.example" };
+    await expectError(t, { url: "https://cdn.example/blocked.glb" }, "FETCH_FAILED", "cross-origin");
+    expect(FETCH_FAILED_MESSAGE["cross-origin"]).toMatch(/doesn't allow this page/);
+    expect(t.viewer.getState().canRetry).toBe(true);
+    // same origin: a transport error is a connection problem
+    await expectError(t, { url: "/models/down.glb".replace(/^/, "https://app.example") }, "FETCH_FAILED", "network");
+    t.viewer.dispose();
+  });
+
+  it("offline (navigator.onLine === false) + transport error -> FETCH_FAILED reason 'offline'", async () => {
+    const fetch = createFakeFetch({ "https://cdn.example/down.glb": { networkError: true } });
+    const t = mountForTest({ options: { fetch } });
+    t.win.navigator = { onLine: false };
+    await expectError(t, { url: "https://cdn.example/down.glb" }, "FETCH_FAILED", "offline");
+    expect(t.viewer.getState().canRetry).toBe(true);
     t.viewer.dispose();
   });
 
@@ -113,7 +147,7 @@ describe("error codes", () => {
     const t = mountForTest();
     await t.viewer.load({ arrayBuffer: fixtureArrayBuffer("chair-textured.glb") });
     expect(t.render().geometries).toBe(1);
-    await expectError(t, { arrayBuffer: fixtureArrayBuffer("corrupt.glb") }, "PARSE_FAILED");
+    await expectError(t, { arrayBuffer: fixtureArrayBuffer("corrupt.glb") }, "PARSE_FAILED", "truncated");
     expect(t.render()).toEqual({ geometries: 0, textures: 0 });
     expect(t.viewer.download()).toBeNull();
     // and the viewer recovers on the next good load

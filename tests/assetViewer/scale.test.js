@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { mountForTest } from "./helpers/mountHarness.js";
+import { THREE, mountForTest } from "./helpers/mountHarness.js";
 import { fixtureArrayBuffer, installImageBitmapShim } from "./helpers/fixtures.js";
 import { describeScale, relativeProportions, RELATIVE_SCALE_LABEL } from "../../src/lib/assetViewer/index.js";
 
@@ -61,13 +61,42 @@ describe("scale honesty", () => {
     t.viewer.dispose();
   });
 
-  it("the viewer renders no dimension labels: the only overlay text nodes are status + scale badge", async () => {
+  it("no SILENT rescaling: claimed real-world dimensions never change the mesh, its bounds, the fit or the proportions", async () => {
+    const plain = mountForTest();
+    await plain.viewer.load({ arrayBuffer: fixtureArrayBuffer("chair-textured.glb") });
+    const claimed = mountForTest();
+    await claimed.viewer.load({
+      arrayBuffer: fixtureArrayBuffer("chair-textured.glb"),
+      scale: { units: "mm", width: 460, height: 1010, depth: 460, verified: true, source: "provider" },
+    });
+    const box = (t) => {
+      const m = t.viewer._debug().model;
+      m.updateMatrixWorld(true);
+      const s = new THREE.Box3().setFromObject(m).getSize(new THREE.Vector3());
+      return [s.x, s.y, s.z].map((v) => Math.round(v * 1e6) / 1e6);
+    };
+    expect(box(claimed)).toEqual(box(plain));
+    const ws = claimed.viewer._debug().model.getWorldScale(new THREE.Vector3());
+    expect([ws.x, ws.y, ws.z]).toEqual([1, 1, 1]);
+    expect(claimed.viewer.getState().model.proportions).toEqual(plain.viewer.getState().model.proportions);
+    expect(claimed.viewer.getView().fitDistance).toBeCloseTo(plain.viewer.getView().fitDistance, 9);
+    plain.viewer.dispose();
+    claimed.viewer.dispose();
+  });
+
+  it("the viewer renders no dimension labels: visible text is the kind label, the relative-scale badge and the view-control glyphs", async () => {
     const t = mountForTest();
     await t.viewer.load({ arrayBuffer: fixtureArrayBuffer("table-untextured.glb") });
     const root = t.container.children[0];
-    const texts = root.children.filter((c) => c.tagName === "DIV").map((c) => c.textContent);
-    expect(texts).toHaveLength(2);
-    texts.forEach((x) => expect(x).not.toMatch(UNIT_RE));
+    const visible = [];
+    const walk = (el) => {
+      if (el.tagName === "STYLE" || el.hidden || el.style.display === "none") return;
+      if (el.textContent && el.children.length === 0) visible.push(el.textContent);
+      el.children.forEach(walk);
+    };
+    walk(root);
+    expect(visible).toEqual(["Visual concept", expect.stringMatching(/^Relative scale, not measured/), "◀", "▶", "+", "−", "Reset", "Fit"]);
+    visible.forEach((x) => expect(x).not.toMatch(UNIT_RE));
     // nothing but lights and the model in the scene (no sprites/text meshes for labels)
     const extra = t.viewer._debug().scene.children.filter((c) => !c.isLight && c !== t.viewer._debug().model);
     expect(extra).toEqual([]);

@@ -4,7 +4,7 @@
  * is visible in BOTH the vertical and horizontal field of view, plus
  * near/far planes and orbit distance limits scaled to the model.
  */
-export const DEFAULT_VIEW_DIRECTION = Object.freeze([0.9, 0.55, 1.25]);
+export const DEFAULT_VIEW_DIRECTION = /* @__PURE__ */ Object.freeze([0.9, 0.55, 1.25]);
 
 export function computeFit({ center, radius, fovDeg, aspect, direction = DEFAULT_VIEW_DIRECTION, margin = 1.15 }) {
   if (!(radius > 0) || !Number.isFinite(radius)) throw new RangeError("computeFit: radius must be a positive finite number");

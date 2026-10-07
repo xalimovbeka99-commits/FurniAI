@@ -54,6 +54,41 @@ describe("no bundled three.js", () => {
     const fn = new Function(`${code}; return FurniAssetViewer;`);
     const api = fn();
     expect(typeof api.mountAssetViewer).toBe("function");
-    expect(api.version).toBe("asset-viewer-module/2");
+    // v3: the interim host interface is on the global; the /api/creative (Scenario) adapter
+    // is NOT in the core bundle any more (optional, see entry.creative.js)
+    expect(typeof api.mount).toBe("function");
+    expect(api.createCreativeAssetSource).toBeUndefined();
+    expect(api.version).toBe("asset-viewer-module/3");
+  });
+
+  it("the optional creative adapter bundle (entry.creative.js) is three-free, small, and only the adapter", async () => {
+    const { build } = await import("esbuild");
+    const opts = { entryPoints: [join(SRC, "entry.creative.js")], bundle: true, format: "iife", globalName: "FurniAssetViewerCreative", write: false, logLevel: "silent" };
+    const out = await build({ ...opts, metafile: true });
+    expect(Object.keys(out.metafile.inputs).every((i) => i.startsWith("src/lib/assetViewer/"))).toBe(true);
+    const code = out.outputFiles[0].text;
+    expect(code).not.toMatch(/class\s+WebGLRenderer|REVISION\s*=\s*["']\d+/);
+    const min = await build({ ...opts, minify: true });
+    expect(min.outputFiles[0].text.length).toBeLessThan(16 * 1024);
+    const api = new Function(`${code}; return FurniAssetViewerCreative;`)();
+    expect(typeof api.createCreativeAssetSource).toBe("function");
+    expect(api.mountAssetViewer).toBeUndefined();
+    expect(api.version).toBe("asset-viewer-creative/3");
+  });
+
+  it("no source file reads a THREE global (window.THREE / globalThis.THREE / bare THREE); mount.js only uses the THREE option", () => {
+    const offenders = [];
+    for (const f of walk(SRC).filter((p) => p.endsWith(".js"))) {
+      const code = readFileSync(f, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/(^|[^:"'`])\/\/.*$/gm, "$1")
+        .replace(/(["'`])(?:\\.|(?!\1)[^\\\n])*\1/g, '""');
+      const rel = relative(ROOT, f);
+      if (/\b(?:window|globalThis|self)\s*\.\s*THREE\b/.test(code)) offenders.push(`${rel}: global THREE`);
+      if (rel.endsWith("/mount.js")) {
+        expect(code).toMatch(/const\s*\{\s*THREE\s*,[^}]*\}\s*=\s*options/);
+      } else if (/\bTHREE\b/.test(code)) offenders.push(`${rel}: bare THREE`);
+    }
+    expect(offenders).toEqual([]);
   });
 });

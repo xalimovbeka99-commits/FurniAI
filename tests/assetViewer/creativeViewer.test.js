@@ -7,9 +7,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DEFAULT_CONCEPT_NOTICE, ERROR_MESSAGE, RELATIVE_SCALE_LABEL } from "../../src/lib/assetViewer/index.js";
+import { DEFAULT_CONCEPT_NOTICE, ERROR_MESSAGE, INVALID_FILE_MESSAGE, RELATIVE_SCALE_LABEL } from "../../src/lib/assetViewer/index.js";
 import { SIM_CONCEPT } from "./helpers/creativeStandIn.js";
-import { clickedAnchors, mountCreative } from "./helpers/creativeHarness.js";
+import { clickedAnchors, mountCreative as mountCreativeDefault } from "./helpers/creativeHarness.js";
 import { fixtureArrayBuffer, installImageBitmapShim } from "./helpers/fixtures.js";
 
 let shim;
@@ -33,6 +33,9 @@ afterAll(() => {
 });
 afterEach(() => expect(storageWrites).toEqual([]));
 
+// v3: retries are opt-in (autoRetry, default false). This file pins the v2.1 flows, i.e. the
+// autoRetry:true behaviour; the no-retry default is pinned in autoRetry.test.js.
+const mountCreative = (o = {}) => mountCreativeDefault({ ...o, options: { autoRetry: true, ...(o.options || {}) } });
 const urlsIn = (calls) => calls.map((c) => c.url);
 const overlayText = (t) => ({
   concept: t.container.find("data-av-concept"),
@@ -71,7 +74,7 @@ describe("load({ jobId, index, format }) -> resolve -> load GLB", () => {
     expect(s.model.scale.label).toBe(RELATIVE_SCALE_LABEL);
     const o = overlayText(t);
     expect(o.concept.textContent).toBe(SIM_CONCEPT.notice);
-    expect(o.concept.style.display).toBe("block");
+    expect(o.concept.style.display).toBe("");
     expect(o.scale.textContent).toContain(RELATIVE_SCALE_LABEL);
     expect(o.button.style.display).toBe("none");
     expectNoUrlAnywhere(t, urlsIn(t.cdnCalls));
@@ -126,7 +129,7 @@ describe("failure after resolve: ONE fresh resolve + ONE retry, then an honest e
     t.viewer.dispose();
   });
 
-  it("damaged mesh -> retry once -> ASSET_DISPLAY_FAILED, download still offered", async () => {
+  it("damaged mesh -> retry once -> PARSE_FAILED (v3: a malformed file is never offered for download)", async () => {
     const t = mountCreative();
     const r = await t.viewer.load({ jobId: "sim-corrupt", index: 0, format: "glb" });
     expect(r.ok).toBe(false);
@@ -135,15 +138,20 @@ describe("failure after resolve: ONE fresh resolve + ONE retry, then an honest e
     const s = t.viewer.getState();
     expect(s).toMatchObject({
       status: "error",
-      error: { code: "ASSET_DISPLAY_FAILED", message: ERROR_MESSAGE.ASSET_DISPLAY_FAILED, downloadAvailable: true, attempts: { resolve: 2, display: 2 } },
-      actions: { download: true, view: false, openInBuilder: false },
+      error: { code: "PARSE_FAILED", attempts: { resolve: 2, display: 2 } },
+      actions: { download: false, view: false, openInBuilder: false },
       concept: { notice: SIM_CONCEPT.notice },
+      canRetry: false,
     });
-    expect(s.error.message).toMatch(/couldn't be displayed here\. Downloading it may still work\./);
+    expect(s.error.downloadAvailable).toBeUndefined();
+    // the fixture is cut off, so the honest sub-reason is used when the bytes show it
+    expect([ERROR_MESSAGE.PARSE_FAILED, ...Object.values(INVALID_FILE_MESSAGE)]).toContain(s.error.message);
     expect(t.errors).toHaveLength(1);
     const o = overlayText(t);
     expect(o.concept.textContent).toBe(SIM_CONCEPT.notice);
-    expect(o.button.style.display).toBe("inline-block");
+    expect(o.button.style.display).toBe("none");
+    // nothing kept for download: the local download() refuses too
+    expect(t.viewer.download()).toBeNull();
     t.viewer.dispose();
   });
 
@@ -176,7 +184,7 @@ describe("failure after resolve: ONE fresh resolve + ONE retry, then an honest e
     };
     const { mountForTest } = await import("./helpers/mountHarness.js");
     const cdn = [];
-    const u = mountForTest({ options: { fetch: (url, i) => (cdn.push(url), t.sim.fetch(url, i)), creativeSource: src } });
+    const u = mountForTest({ options: { autoRetry: true, fetch: (url, i) => (cdn.push(url), t.sim.fetch(url, i)), creativeSource: src } });
     await u.viewer.load({ jobId: "sim-corrupt", index: 0 });
     expect(u.viewer.getState().error).toMatchObject({ code: "ASSET_UNAVAILABLE", serverCode: "ASSET_UNAVAILABLE", status: 410 });
     expect(n).toBe(2);
@@ -267,7 +275,7 @@ describe("download-only: anything but glb/gltf", () => {
     const o = overlayText(t);
     expect(o.concept.textContent.length).toBeGreaterThan(20);
     expect(o.status.textContent).toMatch(/Preview isn't available for (\w+ files|this file type)\. You can still download the file\./);
-    expect(o.button.style.display).toBe("inline-block");
+    expect(o.button.style.display).toBe("");
     t.viewer.dispose();
   });
 

@@ -1,8 +1,10 @@
 /**
- * Adapter for the PROPOSED /api/creative contract
- * (docs/creative/SCENARIO_3D_API_CONTRACT.md on the Claude backend bundle,
- * tip 7f42f95). The viewer only consumes the HTTP contract; no backend code
- * is imported.
+ * Adapter for the PROPOSED /api/creative contract, REVISION 2
+ * (docs/creative/SCENARIO_3D_API_CONTRACT.md, Claude 3946b53, merged into the
+ * candidate as b1f4f3a). Revision 1 responses (no usage.billingOutcome) still
+ * work: the outcome is derived with the server's own rule and marked
+ * `source: "derived"`. The viewer only consumes the HTTP contract; no backend
+ * code is imported.
  *
  *   const source = createCreativeAssetSource({
  *     fetchImpl: window.fetch.bind(window),
@@ -24,17 +26,26 @@
  *   ONCE on a retryable failure; hosts calling resolve() themselves should
  *   use the same predicate.
  * - Only glb/gltf are viewable; every other format (or null) is download-only.
+ * - v3 (team follow-up, narrowed): RESOLVE_FAILED means network/transport
+ *   ONLY (details.cause "network"). An error answer whose code the viewer
+ *   does not know (e.g. 500 INTERNAL), or a non-2xx with no code that no
+ *   status rule covers, is RESOLVE_SERVER_ERROR (cause "http"; retryable on
+ *   5xx). The QE assertions that pinned 500 INTERNAL -> RESOLVE_FAILED
+ *   (tests/acceptance/scenario/viewerV21) already fail at f472aef for an
+ *   unrelated rev 2 reason, so narrowing adds no failure (ASSET_VIEWER.md §12.3).
+ * - A 429 is retried after a short fixed delay (RATE_LIMIT_RETRY_DELAY_MS,
+ *   injectable); see retryDelayForResolveError().
  */
 import { AssetViewerError } from "./errors.js";
 
 export const DEFAULT_CREATIVE_BASE_URL = "/api/creative";
 
 /** Formats the backend can report (FORMAT_BY_EXT in creativeService.js). Anything else -> null. */
-export const CREATIVE_FORMATS = Object.freeze(["glb", "gltf", "fbx", "obj", "usdz", "stl", "ply", "zip"]);
+export const CREATIVE_FORMATS = /* @__PURE__ */ Object.freeze(["glb", "gltf", "fbx", "obj", "usdz", "stl", "ply", "zip"]);
 /** Formats the viewer will try to display. Everything else is offered as download-only. */
-export const VIEWABLE_FORMATS = Object.freeze(["glb", "gltf"]);
+export const VIEWABLE_FORMATS = /* @__PURE__ */ Object.freeze(["glb", "gltf"]);
 
-export const MIME_BY_FORMAT = Object.freeze({
+export const MIME_BY_FORMAT = /* @__PURE__ */ Object.freeze({
   glb: "model/gltf-binary",
   gltf: "model/gltf+json",
   fbx: "application/octet-stream",
@@ -53,6 +64,47 @@ export const MIME_BY_FORMAT = Object.freeze({
  */
 export const DEFAULT_CONCEPT_NOTICE =
   "AI-generated visual concept. Not a FurniAI design: it has no verified measurements, no separately editable doors or panels, and cannot be manufactured from.";
+
+/**
+ * usage.billingOutcome (rev 2 §2.4). `unconfirmed` is NOT "free": nothing in
+ * this module, its state or its UI ever says a provider request cost nothing.
+ */
+export const BILLING_OUTCOMES = /* @__PURE__ */ Object.freeze(["not_submitted", "reported", "unconfirmed"]);
+
+const BILLING_TEXT = {
+  not_submitted: "The paid generation request was not sent for this job.",
+  reported: "The 3D generation service reported a cost for this job.",
+  unconfirmed: "Charge not confirmed: the paid request was or may have been sent and no cost has been reported. This does not mean it was free.",
+};
+
+/** Customer-safe line for a billing outcome; anything unknown is treated as unconfirmed. */
+export function describeBillingOutcome(outcome) {
+  return BILLING_TEXT[outcome] || BILLING_TEXT.unconfirmed;
+}
+
+/**
+ * { outcome, source } from a job view. rev 2: `usage.billingOutcome`
+ * (source "server"). rev 1 (field absent): derived with the backend's own
+ * rule (reported cost -> reported; submitting -> not_submitted; otherwise
+ * unconfirmed), source "derived". An unrecognised value becomes
+ * "unconfirmed", never "free". Costs stay on the job (`usage`).
+ */
+export function normalizeBilling(job) {
+  const u = (job && job.usage) || {};
+  const o = u.billingOutcome;
+  if (typeof o === "string") return { outcome: BILLING_OUTCOMES.includes(o) ? o : "unconfirmed", source: "server" };
+  return { outcome: typeof u.reportedCost === "number" ? "reported" : job && job.status === "submitting" ? "not_submitted" : "unconfirmed", source: "derived" };
+}
+
+/**
+ * reference.validation (rev 2 §2.2), for hosts that show an uploaded
+ * reference. `structure` does NOT prove the pixel data decodes.
+ */
+export function describeReferenceValidation(level) {
+  if (level === "decoded") return "Image fully decoded and checked.";
+  if (level === "structure") return "File structure checked; the image data itself was not decoded here.";
+  return "Validation level not reported.";
+}
 
 const CONCEPT_FLAGS = ["editable", "dimensionsVerified", "partsSeparable", "manufacturable"];
 const MAX_JOB_MESSAGE_CHARS = 300;
@@ -105,29 +157,31 @@ export function redactUrls(text) {
   return typeof text === "string" ? text.replace(/\bhttps?:\/\/[^\s"'<>)]+/gi, "[url]") : text;
 }
 
-const CODE_MAP = Object.freeze({
+const CODE_MAP = /* @__PURE__ */ Object.freeze({
   MISSING_AUTH: "SIGN_IN_REQUIRED",
   // persistence/errors.js answers UNAUTHORIZED with 403: signed in, not allowed. Not "please sign in".
   UNAUTHORIZED: "FORBIDDEN",
   FORBIDDEN: "FORBIDDEN",
   AUTH_UNAVAILABLE: "SIGN_IN_UNAVAILABLE",
   PERSISTENCE_NOT_CONFIGURED: "CONCEPTS_NOT_CONFIGURED",
-  CREATIVE_NOT_CONFIGURED: "CONCEPTS_NOT_CONFIGURED",
-  CREATIVE_STORE_NOT_CONFIGURED: "CONCEPTS_NOT_CONFIGURED",
-  CREATIVE_GENERATION_DISABLED: "CONCEPTS_NOT_CONFIGURED",
   STORAGE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
   MISSING_JOB: "CONCEPT_NOT_FOUND",
   ASSET_NOT_READY: "ASSET_NOT_READY",
   ASSET_UNAVAILABLE: "ASSET_UNAVAILABLE",
   RECORD_INTEGRITY_FAILED: "RECORD_INTEGRITY_FAILED",
   BAD_REQUEST: "INVALID_ASSET",
-  PROVIDER_AUTH_REJECTED: "PROVIDER_UNAVAILABLE",
-  PROVIDER_REJECTED_REQUEST: "PROVIDER_UNAVAILABLE",
-  PROVIDER_UNAVAILABLE: "PROVIDER_UNAVAILABLE",
-  PROVIDER_UNEXPECTED_RESPONSE: "PROVIDER_UNAVAILABLE",
-  PROVIDER_RATE_LIMITED: "PROVIDER_UNAVAILABLE",
-  PROVIDER_INSUFFICIENT_CREDITS: "PROVIDER_UNAVAILABLE",
+  // CREATIVE_*_NOT_CONFIGURED / CREATIVE_GENERATION_DISABLED -> CONCEPTS_NOT_CONFIGURED and
+  // PROVIDER_* -> PROVIDER_UNAVAILABLE are prefix rules in viewerCodeFor().
+  // rev 2, POST ?resource=jobs answers a host may hand to viewer.showSubmitResponse():
+  PRIOR_SUBMISSION_UNKNOWN: "PRIOR_SUBMISSION_UNKNOWN",
+  DUPLICATE_ACTIVE_JOB: "DUPLICATE_ACTIVE_JOB",
 });
+
+function viewerCodeFor(c) {
+  if (Object.hasOwn(CODE_MAP, c)) return CODE_MAP[c];
+  if (/^CREATIVE_\w*(NOT_CONFIGURED|DISABLED)$/.test(c)) return "CONCEPTS_NOT_CONFIGURED";
+  return c.startsWith("PROVIDER_") ? "PROVIDER_UNAVAILABLE" : "RESOLVE_SERVER_ERROR";
+}
 
 /** Fallback when a response carries no `code` at all (e.g. a proxy error page). Only 401 means signed out. */
 function codeForStatus(status) {
@@ -136,7 +190,7 @@ function codeForStatus(status) {
   if (status === 404) return "CONCEPT_NOT_FOUND";
   if (status === 410) return "ASSET_UNAVAILABLE";
   if (status >= 500) return "SERVICE_UNAVAILABLE";
-  return "RESOLVE_FAILED";
+  return "RESOLVE_SERVER_ERROR";
 }
 
 /**
@@ -144,7 +198,7 @@ function codeForStatus(status) {
  * status says: auth/permission, not-found/gone/not-ready, integrity, a bad
  * request, and a deployment that is not set up (503 *_NOT_CONFIGURED).
  */
-const NEVER_RETRY_CODES = new Set([
+const NEVER_RETRY_CODES = /* @__PURE__ */ new Set([
   "SIGN_IN_REQUIRED",
   "FORBIDDEN",
   "CONCEPT_NOT_FOUND",
@@ -154,6 +208,8 @@ const NEVER_RETRY_CODES = new Set([
   "INVALID_ASSET",
   "CONCEPTS_NOT_CONFIGURED",
   "RESOLVE_MALFORMED",
+  "PRIOR_SUBMISSION_UNKNOWN",
+  "DUPLICATE_ACTIVE_JOB",
 ]);
 
 /**
@@ -177,6 +233,14 @@ export function isRetryableResolveError(err) {
   return Number.isInteger(s) && (s === 429 || (s >= 500 && s <= 599));
 }
 
+/** Fixed pause before the single retry of a 429 (team follow-up, 2026-10-05). */
+export const RATE_LIMIT_RETRY_DELAY_MS = 1000;
+
+/** How long to wait before the ONE retry of a retryable resolve failure: `rateLimitMs` for a 429, else 0. */
+export function retryDelayForResolveError(err, rateLimitMs = RATE_LIMIT_RETRY_DELAY_MS) {
+  return err && err.status === 429 && rateLimitMs > 0 ? rateLimitMs : 0;
+}
+
 function withCause(err, cause) {
   err.details = { cause };
   err.details.retryable = isRetryableResolveError(err);
@@ -190,15 +254,20 @@ function malformed(detail, extra) {
 /**
  * Maps an /api/creative error response to an AssetViewerError. Switches on
  * `body.code`; HTTP status is only consulted when there is no code. Unknown
- * codes (incl. INTERNAL) become RESOLVE_FAILED. `details.cause` is "http".
+ * codes (incl. INTERNAL) become RESOLVE_SERVER_ERROR (v3; was RESOLVE_FAILED).
+ * `details.cause` is "http".
  * The server's own `details` are not copied (only `jobStatus` is kept).
  */
 export function mapCreativeError(status, body) {
   const serverCode = body && typeof body.code === "string" && body.code ? body.code : null;
-  const viewerCode = serverCode ? CODE_MAP[serverCode] || "RESOLVE_FAILED" : codeForStatus(status);
+  const viewerCode = serverCode ? viewerCodeFor(serverCode) : codeForStatus(status);
   const extra = { status, serverCode };
   const details = body && body.details && typeof body.details === "object" ? body.details : null;
   if (details && typeof details.jobStatus === "string") extra.jobStatus = details.jobStatus;
+  // rev 2: provider errors carry billingOutcome; 409s name the related job.
+  if (details && typeof details.billingOutcome === "string") extra.billingOutcome = BILLING_OUTCOMES.includes(details.billingOutcome) ? details.billingOutcome : "unconfirmed";
+  if (details && typeof details.jobId === "string") extra.relatedJobId = details.jobId;
+  if (serverCode === "PRIOR_SUBMISSION_UNKNOWN") Object.assign(extra, { chargeMayHaveOccurred: true, autoRetry: false, requiresAcknowledgement: true });
   return withCause(new AssetViewerError(viewerCode, `/api/creative HTTP ${status} ${serverCode || "(no code)"}`, extra), "http");
 }
 
@@ -291,5 +360,14 @@ export function createCreativeAssetSource({ fetchImpl, getAuthToken, baseUrl = D
     return { job: body.job, refresh: body.refresh && typeof body.refresh === "object" ? body.refresh : null };
   }
 
-  return Object.freeze({ resolve, getJob, kind: "creative-api", baseUrl });
+  return Object.freeze({
+    resolve,
+    getJob,
+    /** Same rule as the exported isRetryableResolveError, so a host needs no second import. */
+    isRetryable: isRetryableResolveError,
+    /** Pause before that one retry: 1 s for a 429, else 0. */
+    retryDelayMs: (err) => retryDelayForResolveError(err),
+    kind: "creative-api",
+    baseUrl,
+  });
 }

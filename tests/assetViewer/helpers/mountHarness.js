@@ -12,7 +12,7 @@ import { createFakeOrbitControlsClass, createFakeRenderer } from "./fakeRenderer
 export { THREE, GLTFLoader };
 
 export function mountForTest(opts = {}) {
-  const { doc, win, container } = createFakeDocument({ width: opts.width, height: opts.height, raf: opts.raf });
+  const { doc, win, container } = createFakeDocument({ width: opts.width, height: opts.height, raf: opts.raf, resizeObserver: opts.resizeObserver });
   const OrbitControls = createFakeOrbitControlsClass(THREE);
   let renderer = null;
   const errors = [];

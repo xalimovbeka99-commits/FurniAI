@@ -18,8 +18,13 @@
  *   await viewer.download({ save: true });                  // re-resolves a FRESH url first
  *   await viewer.download({ jobId, index: 1, save: true });  // any item, not just the one on screen
  * The resolved url is never kept in state, in `current`, or in storage.
- * A retryable resolve failure (network, 5xx, 429; isRetryableResolveError)
- * is re-resolved ONCE, on load and on download alike.
+ * Retries happen only when the user starts them: `autoRetry` (mount option,
+ * per call load(ref, { autoRetry }) / download({ ..., autoRetry })) defaults
+ * to FALSE, so a failure is shown at once with a focusable Try again, whose
+ * click re-runs the load with a fresh resolve. autoRetry:true restores v2.1:
+ * a retryable resolve failure (network, 5xx, 429) is re-resolved ONCE (429
+ * after `rateLimitRetryDelayMs`, default 1000) and a display failure gets one
+ * fresh resolve + retry, on load and download alike.
  * `renderConceptNotice: false` hides the overlay's concept notice for a host
  * that renders it itself; getState().concept.notice still carries the text
  * and the host must then ALWAYS show it.
@@ -34,12 +39,31 @@
  *                   [-> retrying -> fetching -> parsing])
  *                   -> ready | download-only | error
  *                 any  -> idle (clear)      any -> disposed (dispose)
+ * v3 (contract rev 2 + brief criteria 1-6):
+ *   viewer.orbit(dAzimuthRad, dPolarRad) / zoom(factor) / resetView() / fitToView()
+ *     (also on-screen controls and canvas keys: arrows, + / -, 0, F);
+ *     a container resize (incl. phone orientation change) re-fits, keeping the view direction and zoom ratio.
+ *   viewer.retry()   re-runs the last load/showJob/watchJob (offered only for transient failures).
+ *   The viewer never POSTs, never resubmits and never sets acknowledgeUnknownCharge: after a
+ *     409 PRIOR_SUBMISSION_UNKNOWN the host may showJob()/watchJob() error.relatedJobId, which
+ *     renders SUBMISSION_UNKNOWN ("may have been charged; not retried automatically").
+ *   No WebGL (no context, context creation throws) or context lost: an honest message; the file is
+ *     still fetched and validated, and Download is offered only if it is a valid, supported asset.
+ *   autoRetry:true only: a 429 resolve failure is retried once after `rateLimitRetryDelayMs` (default 1000).
+ *   `asset.demonstration: true | "label"` (or a GLB that labels itself synthetic) shows a
+ *     demonstration-asset label.
+ *   Navigation / unmount: the host calls dispose() (idempotent). Safety nets: `signal`
+ *     (AbortSignal: aborting it disposes), `disposeOnPageHide` (default true: window
+ *     "pagehide" disposes), and the frame loop stops while the viewer's root is not
+ *     connected to the document (isConnected checked once per frame; resumes on re-attach).
+ *   viewer.getView() -> { distance, fitDistance, zoomRatio, azimuth, polar } | null (JSON-safe).
  * A newer load()/clear()/dispose() supersedes an in-flight load: its fetch
  * is aborted and, if parsing already produced a scene, that scene is
  * disposed and never shown. Superseded loads resolve { ok:false, superseded:true }
  * and never trigger onError.
  */
-import { AssetViewerError, ERROR_CODE, toErrorRecord } from "./errors.js";
+import { AssetViewerError, ERROR_CODE, INVALID_FILE_MESSAGE, isViewerError, toErrorRecord } from "./errors.js";
+import { invalidFileReason } from "./validate.js";
 import { downloadFilename, extensionOf, normalizeAsset } from "./descriptor.js";
 import { createAdapterRegistry } from "./adapters/registry.js";
 import { DEFAULT_ADAPTERS } from "./adapters/gltf.js";
@@ -54,19 +78,23 @@ import { collectResources, disposeObject3D } from "./dispose.js";
 import { computeFit, DEFAULT_VIEW_DIRECTION } from "./fit.js";
 import { describeScale, relativeProportions } from "./scale.js";
 import { DEFAULT_MAX_BYTES, fetchBytes, isAbortError, readBlob } from "./fetchBytes.js";
-import { createOverlay } from "./overlay.js";
+import { createOverlay, DEMO_ASSET_LABEL } from "./overlay.js";
+import { SCENE, token } from "./tokens.js";
 import {
   creativeFilename,
   isRetryableResolveError,
   isViewableFormat,
   MIME_BY_FORMAT,
+  normalizeBilling,
   normalizeConcept,
   normalizeCreativeFormat,
+  RATE_LIMIT_RETRY_DELAY_MS,
   redactUrls,
+  retryDelayForResolveError,
   safeJobMessage,
 } from "./creativeAsset.js";
 
-export const STATUS = Object.freeze({
+export const STATUS = /* @__PURE__ */ Object.freeze({
   IDLE: "idle",
   LOADING: "loading",
   READY: "ready",
@@ -76,10 +104,10 @@ export const STATUS = Object.freeze({
   DOWNLOAD_ONLY: "download-only",
 });
 
-export const EVENTS = Object.freeze(["statechange", "progress", "ready", "error", "dispose"]);
+export const EVENTS = /* @__PURE__ */ Object.freeze(["statechange", "progress", "ready", "error", "dispose"]);
 
 /** Extensions we know about but deliberately do not load yet (fail before fetching). */
-export const KNOWN_UNSUPPORTED_EXTENSIONS = Object.freeze([
+export const KNOWN_UNSUPPORTED_EXTENSIONS = /* @__PURE__ */ Object.freeze([
   "obj", "fbx", "usdz", "usd", "usda", "usdc", "stl", "3mf", "ply", "dae", "blend", "step", "stp", "3ds", "max",
 ]);
 
@@ -88,7 +116,24 @@ const DEP_KEYS = ["GLTFLoader", "OrbitControls", "RoomEnvironment"];
 /** Display failures after a successful resolve that justify ONE fresh resolve + retry (expired url, CORS, truncated body). */
 const RETRYABLE_DISPLAY_CODES = new Set(["FETCH_FAILED", "PARSE_FAILED", "UNSUPPORTED_FORMAT"]);
 
-const NO_CREATIVE = Object.freeze({ concept: null, job: null, actions: null, attempts: null });
+/** Malformed content: retrying the same bytes cannot help and the file is not offered for download. */
+const MALFORMED_CODES = new Set(["PARSE_FAILED", "EMPTY_SCENE", "UNSUPPORTED_FORMAT"]);
+
+const NO_CREATIVE = /* @__PURE__ */ Object.freeze({ concept: null, job: null, actions: null, attempts: null });
+
+/** Canvas keys -> view actions (only while a model is shown). */
+const KEYS = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down", "+": "in", "=": "in", "-": "out", 0: "reset", f: "fit" };
+const STEP = Math.PI / 12; // 15 degrees per click / key press
+/** action -> [azimuth steps, polar steps, distance factor] */
+const ACTIONS = { left: [-1, 0, 1], right: [1, 0, 1], up: [0, -1, 1], down: [0, 1, 1], in: [0, 0, 0.8], out: [0, 0, 1.25] };
+
+/** A failure a user-initiated retry can plausibly fix (transport, 5xx, 429, CORS, a lost context). */
+function canRetryError(rec) {
+  const { code, status } = rec;
+  if (code === "WEBGL_CONTEXT_LOST" || code === "ASSET_DISPLAY_FAILED") return true;
+  if (code === "FETCH_FAILED") return !status || status === 408 || status === 429 || status >= 500;
+  return isRetryableResolveError(rec);
+}
 
 /** What a host may offer for a concept. Builder/export/production are never allowed (contract §1 UI rule). */
 function creativeActions({ view = false, download = false } = {}) {
@@ -100,12 +145,19 @@ function isJobOutputRef(a) {
   return Boolean(a && typeof a === "object" && typeof a.jobId === "string" && a.url === undefined && a.arrayBuffer == null && a.blob == null);
 }
 
-function defaultCreateRenderer(three) {
-  const renderer = new three.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
-  if (typeof renderer.getContext === "function" && !renderer.getContext()) {
-    throw new Error("WebGL context unavailable");
-  }
-  return renderer;
+/**
+ * Creates the WebGL context ITSELF before handing it to three, so a browser
+ * without WebGL gets a clean WEBGL_UNAVAILABLE (and no console error from
+ * three's constructor). r163+ needs WebGL 2; older revisions may fall back
+ * to WebGL 1. `webglReason`: "no-context" | "renderer-threw" (getContext or the WebGLRenderer constructor threw).
+ */
+export function defaultCreateRenderer(three, doc) {
+  const canvas = doc.createElement("canvas");
+  const attrs = { alpha: true, antialias: true, powerPreference: "high-performance" };
+  // three r163+ is WebGL2-only; older builds (the r128 path) can fall back to WebGL1.
+  const context = canvas.getContext("webgl2", attrs) || (threeRevision(three) < 163 ? canvas.getContext("webgl", attrs) : null);
+  if (!context) throw new AssetViewerError("WEBGL_UNAVAILABLE", "no WebGL context", { webglReason: "no-context" });
+  return new three.WebGLRenderer({ ...attrs, canvas, context }); // a throw here (or in getContext) -> "renderer-threw"
 }
 
 function withTimeout(promise, ms) {
@@ -140,6 +192,9 @@ export function mountAssetViewer(el, options = {}) {
   const clearTimer = options.clearTimeout || ((t) => clearTimeout(t));
   // A host that renders concept.notice itself turns the overlay's copy off; state still carries the text.
   const renderConceptNotice = options.renderConceptNotice !== false;
+  const rateLimitDelay = options.rateLimitRetryDelayMs === undefined ? RATE_LIMIT_RETRY_DELAY_MS : options.rateLimitRetryDelayMs;
+  // Retries happen only when the USER starts them (Try again) unless the host opts in.
+  const autoFor = (o) => (o && typeof o.autoRetry === "boolean" ? o.autoRetry : options.autoRetry === true);
 
   const listeners = new Map(EVENTS.map((e) => [e, new Set()]));
   let state = {
@@ -152,12 +207,20 @@ export function mountAssetViewer(el, options = {}) {
     error: null,
     capabilities: null,
     source: null, // "local" | "creative"
+    canRetry: false,
+    demo: null, // { label, source: "host" | "file" } when the asset is a demonstration / synthetic fixture
+    webgl: { available: true, reason: null },
     ...NO_CREATIVE,
   };
   let seq = 0;
   let pending = null; // { id, abort }
   let disposed = false;
-  let fatal = null;
+  let fatal = null; // no usable three: nothing can be done
+  let webglError = null; // no WebGL: files are still fetched + validated, Download offered when valid
+  let contextLost = false;
+  let lastRequest = null; // () => Promise, for retry()
+  let lastFit = null;
+  let detachSafetyNets = null; // removes the signal / pagehide hooks
 
   let renderer = null;
   let scene = null;
@@ -172,24 +235,33 @@ export function mountAssetViewer(el, options = {}) {
   let current = null;
   let rafId = null;
   let resizeObserver = null;
-  let resizeListener = null;
-  let controlsListener = null;
+  let domListeners = []; // [target, type, fn]: canvas / window / controls, removed together
 
   // ---- DOM root (we never restyle the host element) ----
   const root = doc.createElement("div");
   root.setAttribute("data-asset-viewer", "");
+  root.setAttribute("role", "region");
   root.setAttribute("aria-label", "3D model preview");
-  root.style.cssText = "position:relative;width:100%;height:100%;min-height:160px;overflow:hidden;";
+  root.style.cssText = `position:relative;width:100%;height:100%;min-height:${token("viewer-min-height")};overflow:hidden;`;
   el.appendChild(root);
   const overlay =
     options.ui === false
       ? null
       : createOverlay(doc, root, {
           renderConceptNotice,
+          // true/"auto" (default): only where the model can't be shown but the file is valid
+          // (download-only, no WebGL, context lost). "always": also while a model is shown.
+          downloadButton: options.downloadButton === false ? false : options.downloadButton === "always" ? "always" : "auto",
           onDownload: () => {
             const p = download({ save: true });
             if (p && typeof p.then === "function") p.catch(() => {});
+            return p;
           },
+          onRetry: () => {
+            const p = retry();
+            if (p && typeof p.then === "function") p.catch(() => {});
+          },
+          onControl: (a) => control(a),
         });
 
   function emit(event, payload) {
@@ -208,6 +280,7 @@ export function mountAssetViewer(el, options = {}) {
 
   function setState(patch) {
     state = { ...state, ...patch };
+    if (state.status !== STATUS.ERROR) state.canRetry = false;
     if (overlay) overlay.update(state);
     emit("statechange", snapshot());
   }
@@ -228,17 +301,26 @@ export function mountAssetViewer(el, options = {}) {
     fatal = new AssetViewerError("MISSING_DEPENDENCY", "options.three (the THREE namespace) is required");
   } else {
     try {
-      renderer = (options.createRenderer || defaultCreateRenderer)(three);
+      renderer = (options.createRenderer || defaultCreateRenderer)(three, doc);
+      if (!renderer) throw new Error("createRenderer returned nothing");
     } catch (e) {
-      fatal = new AssetViewerError("WEBGL_UNAVAILABLE", e && e.message ? e.message : String(e));
+      webglError = isViewerError(e) ? e : new AssetViewerError("WEBGL_UNAVAILABLE", e && e.message ? e.message : String(e), { webglReason: "renderer-threw" });
     }
   }
-  if (!fatal) {
+  if (!fatal && !webglError) {
     try {
       setupScene();
     } catch (e) {
-      fatal = new AssetViewerError("WEBGL_UNAVAILABLE", `scene setup failed: ${e && e.message ? e.message : e}`);
+      webglError = new AssetViewerError("WEBGL_UNAVAILABLE", `scene setup failed: ${e && e.message ? e.message : e}`, { webglReason: "renderer-threw" });
+      releaseGpu();
     }
+  }
+  if (webglError) state.webgl = { available: false, reason: webglError.webglReason };
+
+  function listen(target, type, fn) {
+    if (typeof target.addEventListener !== "function") return;
+    target.addEventListener(type, fn);
+    domListeners.push([target, type, fn]);
   }
 
   function setupScene() {
@@ -248,11 +330,26 @@ export function mountAssetViewer(el, options = {}) {
     configureRendererOutput(three, renderer);
     if (typeof renderer.setPixelRatio === "function") renderer.setPixelRatio(Math.min(win.devicePixelRatio || 1, 2));
     const canvas = renderer.domElement;
-    if (canvas && canvas.style) canvas.style.cssText = "display:block;width:100%;height:100%;outline:none;";
-    if (canvas) root.insertBefore ? root.insertBefore(canvas, root.firstChild || null) : root.appendChild(canvas);
+    if (canvas) {
+      if (canvas.style) canvas.style.cssText = "display:block;width:100%;height:100%;touch-action:none;";
+      root.insertBefore ? root.insertBefore(canvas, root.firstChild || null) : root.appendChild(canvas);
+      canvas.setAttribute("tabindex", "0");
+      canvas.setAttribute("role", "img");
+      canvas.setAttribute("aria-label", "Interactive 3D preview");
+      if (overlay) canvas.setAttribute("aria-describedby", overlay.helpId);
+      listen(canvas, "keydown", (e) => {
+        const a = KEYS[e.key];
+        if (!a || e.altKey || e.ctrlKey || e.metaKey || state.status !== STATUS.READY) return;
+        e.preventDefault();
+        control(a);
+      });
+      // three's own handler preventDefault()s, so the browser may restore the context later.
+      listen(canvas, "webglcontextlost", onContextLost);
+      listen(canvas, "webglcontextrestored", onContextRestored);
+    }
 
     if (options.background !== null) {
-      scene.background = new three.Color(options.background === undefined ? 0xf3f1ed : options.background);
+      scene.background = new three.Color(options.background === undefined ? SCENE.background : options.background);
     }
 
     // Neutral lighting: hemisphere + key directional. Optional RoomEnvironment PMREM
@@ -281,8 +378,8 @@ export function mountAssetViewer(el, options = {}) {
       }
     }
     const envDim = envKind === "room-pmrem" ? 0.5 : 1;
-    const hemi = new three.HemisphereLight(0xffffff, 0x8a8278, 0.65 * k * envDim);
-    const key = new three.DirectionalLight(0xffffff, 0.9 * k * envDim);
+    const hemi = new three.HemisphereLight(SCENE.sky, SCENE.ground, 0.65 * k * envDim);
+    const key = new three.DirectionalLight(SCENE.key, 0.9 * k * envDim);
     key.position.set(3, 5, 4);
     lights = [hemi, key];
     lights.forEach((l) => scene.add(l));
@@ -292,18 +389,14 @@ export function mountAssetViewer(el, options = {}) {
       controls.enableDamping = true;
       controls.dampingFactor = 0.08;
       controls.screenSpacePanning = true;
-      controlsListener = () => requestRender();
-      if (typeof controls.addEventListener === "function") controls.addEventListener("change", controlsListener);
+      listen(controls, "change", () => requestRender());
     }
 
     resize();
     if (typeof win.ResizeObserver === "function") {
       resizeObserver = new win.ResizeObserver(() => resize());
       resizeObserver.observe(root);
-    } else if (typeof win.addEventListener === "function") {
-      resizeListener = () => resize();
-      win.addEventListener("resize", resizeListener);
-    }
+    } else listen(win, "resize", resize); // either one also fires on a phone orientation change
 
     state.capabilities = {
       threeRevision: threeRevision(three),
@@ -314,6 +407,7 @@ export function mountAssetViewer(el, options = {}) {
     };
   }
 
+  /** Container resized / orientation changed: new aspect, then re-fit keeping the view direction and zoom ratio. */
   function resize() {
     if (!renderer || disposed) return;
     const w = root.clientWidth || el.clientWidth || 300;
@@ -321,18 +415,93 @@ export function mountAssetViewer(el, options = {}) {
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
+    if (model && bounds && lastFit) {
+      const off = camera.position.clone().sub(target());
+      applyFit(off.toArray(), off.length() / lastFit.distance);
+    }
     requestRender();
+  }
+
+  function target() {
+    return controls && controls.target ? controls.target : new three.Vector3(...bounds.center);
+  }
+
+  /**
+   * Orbit by azimuth / polar angle (radians) and dolly by `factor` (< 1 in, > 1 out) around the
+   * model centre. Distance is clamped to the fit's limits (never inside the model).
+   */
+  function move(dTheta, dPhi, factor) {
+    if (disposed || !model || !bounds || !camera) return null;
+    const t = target();
+    const off = camera.position.clone().sub(t);
+    const sph = new three.Spherical().setFromVector3(off);
+    sph.theta += dTheta;
+    sph.phi = Math.min(Math.PI - 0.05, Math.max(0.05, sph.phi + dPhi));
+    sph.radius = Math.min(lastFit.maxDistance, Math.max(lastFit.minDistance, sph.radius * factor));
+    camera.position.copy(t).add(off.setFromSpherical(sph));
+    controls ? controls.update() : camera.lookAt(t);
+    requestRender();
+    return { distance: sph.radius };
+  }
+  const orbit = (dTheta = 0, dPhi = 0) => move(dTheta, dPhi, 1);
+  const zoom = (factor) => (factor > 0 ? move(0, 0, factor) : null);
+
+  function resetView() {
+    if (disposed || !model || !bounds) return null;
+    return applyFit(DEFAULT_VIEW_DIRECTION);
+  }
+
+  function control(action) {
+    if (state.status !== STATUS.READY) return null;
+    if (action === "reset") return resetView();
+    if (action === "fit") return fitToView();
+    const v = Object.hasOwn(ACTIONS, action) && ACTIONS[action];
+    return v ? move(v[0] * STEP, v[1] * STEP, v[2]) : null;
+  }
+
+  /**
+   * Context lost (GPU reset, too many contexts): the shown model's GPU
+   * resources are released, the ORIGINAL item stays downloadable, and Retry
+   * re-runs the load (it shows the model again once the browser restores the
+   * context; three's own handler preventDefault()s so a restore can happen).
+   */
+  function onContextLost() {
+    if (disposed || contextLost) return;
+    contextLost = true;
+    state.webgl = { available: false, reason: "context-lost" };
+    if (rafId != null && caf) caf(rafId);
+    rafId = null;
+    // A load in flight ends in present()'s honest error instead.
+    if (state.status === STATUS.READY) failNoGpu(current);
+  }
+
+  function onContextRestored() {
+    contextLost = false;
+    state.webgl = { available: true, reason: null };
+  }
+
+  /** Removed from the document (host navigated without dispose): stop drawing; ResizeObserver resumes on re-attach. */
+  function crossOrigin(u) {
+    try {
+      return Boolean(win.location) && new URL(u, win.location.href).origin !== win.location.origin;
+    } catch {
+      return false;
+    }
+  }
+
+  function detached() {
+    return root.isConnected === false;
   }
 
   function renderFrame() {
     rafId = null;
-    if (disposed || !renderer) return;
+    if (disposed || !renderer || contextLost || detached()) return;
     if (controls && typeof controls.update === "function") controls.update();
     renderer.render(scene, camera);
   }
 
   function requestRender() {
-    if (disposed || !renderer) return;
+    if (disposed || !renderer || contextLost || detached()) return;
     if (!raf) {
       renderFrame();
       return;
@@ -347,6 +516,7 @@ export function mountAssetViewer(el, options = {}) {
       model = null;
     }
     bounds = null;
+    lastFit = null;
     current = null;
   }
 
@@ -377,9 +547,13 @@ export function mountAssetViewer(el, options = {}) {
     return { meshCount, triangleCount, materialCount: res.materials.size, textureCount: res.textures.size };
   }
 
-  function applyFit(direction) {
+  /** `ratio` keeps a user's zoom (current distance / fit distance) across a re-fit; 1 = fit exactly. */
+  function applyFit(direction, ratio = 1) {
     const f = computeFit({ center: bounds.center, radius: bounds.radius, fovDeg: camera.fov, aspect: camera.aspect, direction });
-    camera.position.set(...f.position);
+    const k = Math.min(f.maxDistance, Math.max(f.minDistance, f.distance * (ratio > 0 && Number.isFinite(ratio) ? ratio : 1))) / f.distance;
+    const c = bounds.center;
+    camera.position.set(...f.position.map((p, i) => c[i] + (p - c[i]) * k));
+    lastFit = f;
     camera.near = f.near;
     camera.far = f.far;
     camera.updateProjectionMatrix();
@@ -449,7 +623,7 @@ export function mountAssetViewer(el, options = {}) {
       if (desc.format) {
         explicit = registry.get(desc.format);
         if (!explicit) {
-          throw new AssetViewerError("UNSUPPORTED_FORMAT", `format "${desc.format}" is not registered (have: ${registry.list().map((a) => a.id).join(", ")})`);
+          throw new AssetViewerError("UNSUPPORTED_FORMAT", `format "${desc.format}" is not registered`);
         }
       }
       const ext = extensionOf(desc.filename);
@@ -472,6 +646,9 @@ export function mountAssetViewer(el, options = {}) {
           signal: run.signal(),
           maxBytes,
           credentials: options.fetchCredentials || "omit",
+          // A browser reports a CORS refusal exactly like a dropped connection: on a
+          // cross-origin link say both (BUG-002) instead of only "check your connection".
+          isOffline: () => (win.navigator && win.navigator.onLine === false) || (crossOrigin(desc.url) && "cross-origin"),
           onProgress: (p) => {
             if (run.stale()) return;
             setState({ progress: p });
@@ -489,7 +666,7 @@ export function mountAssetViewer(el, options = {}) {
       }
       const missing = (adapter.requires || []).filter((k) => !deps[k]);
       if (missing.length) {
-        throw new AssetViewerError("MISSING_DEPENDENCY", `the ${adapter.id} adapter needs deps.${missing.join(", deps.")}`);
+        throw new AssetViewerError("MISSING_DEPENDENCY", `needs deps.${missing.join(", deps.")}`);
       }
       setState({
         phase: "parsing",
@@ -508,7 +685,10 @@ export function mountAssetViewer(el, options = {}) {
         parsed = await withTimeout(adapter.load(bytes, { three, deps, resourcePath }), parseTimeoutMs);
       } catch (e) {
         if (run.stale()) return null;
-        throw e instanceof AssetViewerError ? e : new AssetViewerError("PARSE_FAILED", e && e.message ? e.message : String(e));
+        if (isViewerError(e) && e.code !== "PARSE_FAILED") throw e;
+        // v3: say why (web page instead of a model, wrong magic, cut off) when the bytes show it.
+        const reason = invalidFileReason(bytes, adapter.id);
+        throw new AssetViewerError("PARSE_FAILED", e && (e.detail || e.message) ? e.detail || e.message : String(e), reason ? { reason, message: INVALID_FILE_MESSAGE[reason] } : {});
       }
       parsedRoot = (parsed && parsed.root) || null;
       if (run.stale()) {
@@ -519,7 +699,7 @@ export function mountAssetViewer(el, options = {}) {
         throw new AssetViewerError("EMPTY_SCENE", "adapter returned no scene");
       }
       const stats = inspect(parsedRoot);
-      if (stats.meshCount === 0) throw new AssetViewerError("EMPTY_SCENE", "scene contains no renderable geometry");
+      if (stats.meshCount === 0) throw new AssetViewerError("EMPTY_SCENE", "scene contains no renderable geometry", { reason: "no-mesh" });
       parsedRoot.updateMatrixWorld(true);
       const box = new three.Box3().setFromObject(parsedRoot);
       const size = box.getSize(new three.Vector3());
@@ -528,6 +708,7 @@ export function mountAssetViewer(el, options = {}) {
         throw new AssetViewerError("EMPTY_SCENE", "scene bounds are empty or degenerate");
       }
       const color = enforceColorTexturesSRGB(three, parsedRoot);
+      if (parsed && parsed.info && parsed.info.synthetic && !state.demo && !run.stale()) setState({ demo: { label: DEMO_ASSET_LABEL, source: "file" } });
       const out = { root: parsedRoot, stats, color, size, sphere, info: (parsed && parsed.info) || {}, adapter, bytes, desc };
       parsedRoot = null;
       return out;
@@ -539,6 +720,20 @@ export function mountAssetViewer(el, options = {}) {
   }
 
   /** Swap the prepared scene in (the previous model's GPU resources are released here). */
+  /** Valid, parsed asset: show it, or (no WebGL / context lost) say so honestly and keep it downloadable. */
+  function present(prep, info, extraState = {}) {
+    if (renderer && !contextLost) return commitMesh(prep, info, extraState);
+    disposeObject3D(prep.root);
+    return failNoGpu(info, extraState);
+  }
+
+  /** No usable GPU (never had WebGL, or the context was lost): honest error, download stays offered. */
+  function failNoGpu(info, extraState) {
+    const w = webglError || { code: "WEBGL_CONTEXT_LOST", detail: "webglcontextlost", webglReason: "context-lost" };
+    const e = new AssetViewerError(w.code, w.detail, { webglReason: w.webglReason, downloadAvailable: true });
+    return fail(e, { ...extraState, actions: creativeActions({ download: true }) }, { keep: info });
+  }
+
   function commitMesh(prep, currentInfo, extraState = {}) {
     removeModel();
     model = prep.root;
@@ -558,7 +753,9 @@ export function mountAssetViewer(el, options = {}) {
         ...prep.stats,
         ...prep.color,
         animations: prep.info.animations ? prep.info.animations : 0,
-        warnings: prep.stats.textureCount === 0 && prep.info.declaredTextures > 0 ? ["TEXTURES_NOT_LOADED"] : [],
+        // GLTFLoader drops a missing / undecodable image and still resolves: say so (overlay note), never crash.
+        textures: { declared: prep.info.declaredTextures || 0, loaded: prep.stats.textureCount },
+        warnings: prep.stats.textureCount < (prep.info.declaredTextures || 0) ? ["TEXTURES_NOT_LOADED"] : [],
         proportions: relativeProportions(size),
         // Always relative: a concept's dimensionsVerified flag is never used to claim real size.
         scale: describeScale({ hasScaleMetadata: Boolean(prep.desc && prep.desc.hasScaleMetadata) }),
@@ -573,11 +770,17 @@ export function mountAssetViewer(el, options = {}) {
     const rec = toErrorRecord(err);
     if (redact) rec.detail = redactUrls(rec.detail);
     removeModel(); // never leave a stale model on screen under an error
-    if (keep) current = keep; // creative item that can still be downloaded
+    if (keep) current = keep; // item that can still be downloaded
     requestRender();
-    setState({ status: STATUS.ERROR, phase: null, progress: null, model: null, error: rec, ...extraState });
+    setState({ status: STATUS.ERROR, phase: null, progress: null, model: null, error: rec, canRetry: Boolean(lastRequest) && canRetryError(rec), ...extraState });
     reportError(rec);
     return { ok: false, error: rec, state: snapshot() };
+  }
+
+  /** A run starts: forget the demonstration label of the previous asset; set the host's own label if given. */
+  function demoFor(a) {
+    const d = a && typeof a === "object" ? a.demonstration : null;
+    return d ? { label: typeof d === "string" && d.trim() ? d : DEMO_ASSET_LABEL, source: "host" } : null;
   }
 
   function guard() {
@@ -591,19 +794,20 @@ export function mountAssetViewer(el, options = {}) {
    * load({ jobId, index, format? })  /api/creative job-output reference (needs options.creativeSource)
    * load({ job, index? })       a job object from GET ?resource=jobs&jobId=
    */
-  async function load(asset) {
+  async function load(asset, opts) {
     const blocked = guard();
     if (blocked) return blocked;
-    if (asset && typeof asset === "object" && asset.job && typeof asset.job === "object") return showJob(asset.job, { index: asset.index });
-    if (isJobOutputRef(asset)) return loadCreativeRef(asset);
+    if (asset && typeof asset === "object" && asset.job && typeof asset.job === "object") return showJob(asset.job, { index: asset.index, autoRetry: autoFor(opts) });
+    lastRequest = () => load(asset, opts);
+    if (isJobOutputRef(asset)) return loadCreativeRef(asset, autoFor(opts));
 
     const run = beginRun();
     const concept = asset && typeof asset === "object" && asset.concept ? normalizeConcept(asset.concept) : null;
-    setState({ status: STATUS.LOADING, loadId: run.id, phase: "fetching", progress: null, error: null, source: "local", ...NO_CREATIVE, concept });
+    setState({ status: STATUS.LOADING, loadId: run.id, phase: "fetching", progress: null, error: null, source: "local", demo: demoFor(asset), ...NO_CREATIVE, concept });
     try {
       const prep = await prepareMesh(asset, run);
       if (!prep) return superseded();
-      return commitMesh(prep, { kind: "local", adapter: prep.adapter, bytes: prep.bytes, desc: prep.desc });
+      return present(prep, { kind: "local", adapter: prep.adapter, bytes: prep.bytes, desc: prep.desc });
     } catch (err) {
       if (run.stale() || isAbortError(err)) return superseded();
       return fail(err);
@@ -635,7 +839,7 @@ export function mountAssetViewer(el, options = {}) {
   }
 
   function missingSource(run) {
-    return fail(new AssetViewerError("MISSING_DEPENDENCY", "options.creativeSource (createCreativeAssetSource(...)) is required for job references"), {
+    return fail(new AssetViewerError("MISSING_DEPENDENCY", "options.creativeSource is required"), {
       loadId: run.id,
       source: "creative",
       ...NO_CREATIVE,
@@ -643,30 +847,33 @@ export function mountAssetViewer(el, options = {}) {
     });
   }
 
-  async function loadCreativeRef(ref) {
+  async function loadCreativeRef(ref, auto) {
     const run = beginRun();
     if (!creative || typeof creative.resolve !== "function") return missingSource(run);
     const index = ref.index === undefined || ref.index === null ? 0 : ref.index;
     const jobInfo = { jobId: ref.jobId, index, status: null, outputCount: null };
-    return creativeFlow(run, { jobId: ref.jobId, index, format: ref.format, mimeType: ref.mimeType, concept: ref.concept }, jobInfo);
+    state.demo = demoFor(ref);
+    return creativeFlow(run, { jobId: ref.jobId, index, format: ref.format, mimeType: ref.mimeType, concept: ref.concept }, jobInfo, auto);
   }
 
   /**
-   * resolve [-> one more resolve on a retryable resolve failure]
-   * -> (non glb/gltf: download-only) -> load mesh; on a fetch/parse failure
-   * re-resolve ONCE and retry ONCE, then ASSET_DISPLAY_FAILED. The two retry
+   * resolve -> (non glb/gltf: download-only) -> load mesh. With auto=false (the
+   * default) that is ALL: any failure is shown with Try again where a fresh
+   * resolve could help. With auto=true: one more resolve on a retryable resolve
+   * failure (429 after a pause), and on a fetch/parse failure re-resolve ONCE
+   * and retry ONCE, then ASSET_DISPLAY_FAILED. The two retry
    * budgets are independent: at most 3 resolves and 2 mesh fetches per load.
    * The re-resolve of the display retry is not itself retried. The resolved
    * url lives only in local variables of this function.
    */
-  async function creativeFlow(run, ref, jobInfo) {
+  async function creativeFlow(run, ref, jobInfo, auto) {
     const { jobId, index } = ref;
     const attempts = { resolve: 0, display: 0 };
     let concept = normalizeConcept(ref.concept);
     const base = () => ({ loadId: run.id, source: "creative", job: { ...jobInfo }, concept, attempts: { ...attempts } });
-    const failC = (err, downloadable, info) => {
-      if (downloadable && err instanceof AssetViewerError) err.downloadAvailable = true;
-      return fail(err, { ...base(), actions: creativeActions({ download: downloadable }) }, { keep: downloadable ? info : null, redact: true });
+    const failC = (err, downloadable, info, extra) => {
+      if (downloadable && isViewerError(err)) err.downloadAvailable = true;
+      return fail(err, { ...base(), actions: creativeActions({ download: downloadable }), ...extra }, { keep: downloadable ? info : null, redact: true });
     };
 
     // The job already told us the format: anything but glb/gltf (incl. null = unrecognised)
@@ -692,12 +899,15 @@ export function mountAssetViewer(el, options = {}) {
       try {
         return await resolveFresh();
       } catch (e) {
-        if (run.stale() || isAbortError(e) || !isRetryableResolveError(e)) throw e;
+        if (!auto || run.stale() || isAbortError(e) || !isRetryableResolveError(e)) throw e;
         setState({ phase: "retrying", progress: null, ...base() });
+        const wait = retryDelayForResolveError(e, rateLimitDelay); // 429: short fixed pause first
+        if (wait) await run.sleep(wait);
+        if (run.stale()) throw e;
         try {
           return await resolveFresh();
         } catch (e2) {
-          if (e2 instanceof AssetViewerError) e2.attempts = { ...attempts };
+          if (isViewerError(e2)) e2.attempts = { ...attempts };
           throw e2;
         }
       }
@@ -729,7 +939,10 @@ export function mountAssetViewer(el, options = {}) {
     let info = creativeInfo(jobId, index, d.format, d.mimeType, concept);
     d = null; // drop the address as soon as it has been used once
     if (firstErr) {
-      if (!RETRYABLE_DISPLAY_CODES.has(firstErr.code)) return failC(firstErr, true, info);
+      const dl = !MALFORMED_CODES.has(firstErr.code);
+      if (!RETRYABLE_DISPLAY_CODES.has(firstErr.code)) return failC(firstErr, dl, info);
+      // No silent retry: Try again (a fresh resolve) may fix an expired/blocked address or a cut-off body.
+      if (!auto) return failC(firstErr, dl, info, { canRetry: true });
       setState({ phase: "retrying", progress: null, ...base() });
       let d2;
       try {
@@ -745,33 +958,48 @@ export function mountAssetViewer(el, options = {}) {
         prep = await display(d2);
       } catch (e2) {
         if (run.stale() || isAbortError(e2)) return superseded();
+        // Malformed twice (bad magic, truncated, HTML, no mesh): not a valid asset, so no Download.
+        if (MALFORMED_CODES.has(firstErr.code) && MALFORMED_CODES.has(e2.code)) {
+          e2.attempts = { ...attempts };
+          return failC(e2, false);
+        }
         const why = `first attempt ${firstErr.code}: ${firstErr.detail || ""}; retry after fresh resolve ${e2.code || "PARSE_FAILED"}: ${e2.detail || e2.message || ""}`;
         return failC(new AssetViewerError("ASSET_DISPLAY_FAILED", why, { attempts: { ...attempts } }), true, info);
       }
       d2 = null;
     }
     if (!prep) return superseded();
-    return commitMesh(prep, info, { ...base(), actions: creativeActions({ view: true, download: true }) });
+    return present(prep, info, { ...base(), actions: creativeActions({ view: true, download: true }) });
   }
 
   /** Render a job object from GET ?resource=jobs&jobId=. Never branches on providerStatus/providerProgress. */
-  function showJob(job, { index } = {}) {
+  function showJob(job, { index, autoRetry } = {}) {
     const blocked = guard();
     if (blocked) return Promise.resolve(blocked);
+    lastRequest = () => showJob(job, { index, autoRetry });
     const run = beginRun();
-    return applyJob(run, job, { index });
+    state.demo = null;
+    return applyJob(run, job, { index, autoRetry });
   }
 
-  async function applyJob(run, job, { index } = {}) {
+  async function applyJob(run, job, { index, autoRetry } = {}) {
     if (!job || typeof job !== "object" || typeof job.jobId !== "string" || !job.jobId) {
       return fail(new AssetViewerError("INVALID_ASSET", "job object needs a jobId"), { loadId: run.id, source: "creative", ...NO_CREATIVE });
     }
     const outputs = Array.isArray(job.outputs) ? job.outputs.filter((o) => o && typeof o === "object") : [];
     const status = typeof job.status === "string" ? job.status : null;
     const concept = normalizeConcept(job.concept);
-    const jobInfo = { jobId: job.jobId, index: null, status, outputCount: outputs.length };
+    // rev 2: billingOutcome (rev 1: derived); one active job per REFERENCE, so the reference is reported too.
+    const jobInfo = {
+      jobId: job.jobId,
+      index: null,
+      status,
+      outputCount: outputs.length,
+      referenceId: typeof job.sourceReferenceId === "string" ? job.sourceReferenceId : null,
+      billing: normalizeBilling(job),
+    };
     const base = { loadId: run.id, source: "creative", job: jobInfo, concept, attempts: null, actions: creativeActions({}) };
-    const errExtra = { serverCode: job.error && typeof job.error.code === "string" ? job.error.code : null, jobStatus: status };
+    const errExtra = { serverCode: job.error && typeof job.error.code === "string" ? job.error.code : null, jobStatus: status, billingOutcome: jobInfo.billing.outcome };
 
     if (status === "submitting" || status === "processing") {
       removeModel();
@@ -788,7 +1016,7 @@ export function mountAssetViewer(el, options = {}) {
       }
       jobInfo.index = Number.isInteger(out.index) && out.index >= 0 ? out.index : want === null ? 0 : want;
       const ref = { jobId: job.jobId, index: jobInfo.index, format: "format" in out ? out.format : undefined, mimeType: out.mimeType, concept: job.concept };
-      return creativeFlow(run, ref, jobInfo);
+      return creativeFlow(run, ref, jobInfo, autoFor({ autoRetry }));
     }
     if (status === "failed") {
       const msg = safeJobMessage(job.error && job.error.message);
@@ -809,10 +1037,12 @@ export function mountAssetViewer(el, options = {}) {
    * later load/showJob/watchJob/clear/dispose. Never auto-retries a
    * generation; refresh.ok:false only means the status check failed.
    */
-  async function watchJob(jobId, { index, intervalMs = 4000 } = {}) {
+  async function watchJob(jobId, { index, intervalMs = 4000, autoRetry } = {}) {
     const blocked = guard();
     if (blocked) return blocked;
+    lastRequest = () => watchJob(jobId, { index, intervalMs, autoRetry });
     const run = beginRun();
+    state.demo = null;
     if (!creative || typeof creative.getJob !== "function") return missingSource(run);
     const wait = Math.min(5000, Math.max(3000, Number(intervalMs) || 4000));
     removeModel();
@@ -842,12 +1072,12 @@ export function mountAssetViewer(el, options = {}) {
       if (run.stale()) return superseded();
       const job = res && res.job;
       if (job && (job.status === "submitting" || job.status === "processing")) {
-        await applyJob(run, job, { index });
+        await applyJob(run, job, { index, autoRetry });
         await run.sleep(wait);
         if (run.stale()) return superseded();
         continue;
       }
-      return applyJob(run, job, { index });
+      return applyJob(run, job, { index, autoRetry });
     }
   }
 
@@ -855,19 +1085,28 @@ export function mountAssetViewer(el, options = {}) {
     if (disposed) return;
     supersede();
     removeModel();
+    lastRequest = null;
     requestRender();
     if (fatal) return;
-    setState({ status: STATUS.IDLE, loadId: seq, phase: null, progress: null, asset: null, model: null, error: null, source: null, ...NO_CREATIVE });
+    setState({ status: STATUS.IDLE, loadId: seq, phase: null, progress: null, asset: null, model: null, error: null, source: null, demo: null, ...NO_CREATIVE });
   }
 
   function fitToView() {
     if (disposed || !model || !bounds) return null;
-    const dir = [
-      camera.position.x - (controls && controls.target ? controls.target.x : bounds.center[0]),
-      camera.position.y - (controls && controls.target ? controls.target.y : bounds.center[1]),
-      camera.position.z - (controls && controls.target ? controls.target.z : bounds.center[2]),
-    ];
-    return applyFit(dir);
+    return applyFit(camera.position.clone().sub(target()).toArray());
+  }
+
+  /** Camera relative to the fitted view (for hosts, analytics and e2e checks). Angles in radians. */
+  function getView() {
+    if (disposed || !model || !bounds || !camera || !lastFit) return null;
+    const off = camera.position.clone().sub(target());
+    const sph = new three.Spherical().setFromVector3(off);
+    return { distance: sph.radius, fitDistance: lastFit.distance, zoomRatio: sph.radius / lastFit.distance, azimuth: sph.theta, polar: sph.phi };
+  }
+
+  /** Re-runs the last load/showJob/watchJob (user-initiated; offered for transient failures only). */
+  function retry() {
+    return !disposed && lastRequest ? lastRequest() : null;
   }
 
   function on(event, cb) {
@@ -891,8 +1130,9 @@ export function mountAssetViewer(el, options = {}) {
    * Creative item (ready, download-only, or a display error that still
    * allows download) or explicit reference: returns a Promise. It ALWAYS
    * re-resolves a fresh url first (never reuses the one the mesh was loaded
-   * from, nor one from an earlier download) and, on a retryable resolve
-   * failure, re-resolves ONCE more. Resolves to
+   * from, nor one from an earlier download); only with autoRetry (option or
+   * { autoRetry:true } here) a retryable resolve failure re-resolves ONCE more.
+   * The viewer's Download button re-runs this on every click. Resolves to
    * { ok:true, url, filename, mime, format, jobId, index, resolvedAt, concept, attempts }
    * or { ok:false, error, attempts }. Viewer state is not changed by a download.
    */
@@ -900,14 +1140,16 @@ export function mountAssetViewer(el, options = {}) {
     const o = opts && typeof opts === "object" ? opts : {};
     const save = o.save === true;
     if (disposed) return null;
-    if (o.jobId !== undefined) return downloadRef(o, save);
+    const auto = autoFor(o);
+    if (o.jobId !== undefined) return downloadRef(o, save, auto);
     if (!current) return null;
     if (current.kind === "creative") {
       const allowed =
         state.status === STATUS.READY || state.status === STATUS.DOWNLOAD_ONLY || (state.status === STATUS.ERROR && state.actions && state.actions.download);
-      return allowed ? downloadCreative(current, save) : null;
+      return allowed ? downloadCreative(current, save, auto) : null;
     }
-    if (state.status !== STATUS.READY) return null;
+    // Ready, or an error that still holds a VALID file (no WebGL / context lost): never malformed, unavailable or loading.
+    if (state.status !== STATUS.READY && !(state.status === STATUS.ERROR && state.actions && state.actions.download)) return null;
     const { adapter, bytes, desc } = current;
     const payload = {
       format: adapter.id,
@@ -920,29 +1162,22 @@ export function mountAssetViewer(el, options = {}) {
     };
     if (save && payload.blob && win.URL && typeof win.URL.createObjectURL === "function") {
       const href = win.URL.createObjectURL(payload.blob);
-      const a = doc.createElement("a");
-      a.href = href;
-      a.download = payload.filename;
-      a.rel = "noopener";
-      a.style.display = "none";
-      root.appendChild(a);
-      a.click();
-      root.removeChild(a);
+      clickLink({ href, download: payload.filename, rel: "noopener" });
       setTimeout(() => win.URL.revokeObjectURL(href), 0);
     }
     return payload;
   }
 
-  function downloadRef(ref, save) {
+  function downloadRef(ref, save, auto) {
     if (!creative || typeof creative.resolve !== "function") {
-      const e = new AssetViewerError("MISSING_DEPENDENCY", "options.creativeSource (createCreativeAssetSource(...)) is required to download a job reference");
+      const e = new AssetViewerError("MISSING_DEPENDENCY", "options.creativeSource is required");
       return Promise.resolve({ ok: false, error: toErrorRecord(e), attempts: { resolve: 0 } });
     }
     const index = ref.index === undefined || ref.index === null ? 0 : ref.index;
-    return downloadCreative({ jobId: ref.jobId, index }, save);
+    return downloadCreative({ jobId: ref.jobId, index }, save, auto);
   }
 
-  async function downloadCreative(info, save) {
+  async function downloadCreative(info, save, auto) {
     const attempts = { resolve: 0 };
     const resolveOnce = () => {
       attempts.resolve++;
@@ -953,8 +1188,11 @@ export function mountAssetViewer(el, options = {}) {
       try {
         d = await resolveOnce();
       } catch (e) {
-        // V5: same rule as load(): ONE fresh re-resolve on a retryable failure, never a cached url.
-        if (disposed || !isRetryableResolveError(e)) throw e;
+        // V5: same rule as load(): with autoRetry only, ONE fresh re-resolve on a retryable failure, never a cached url.
+        if (!auto || disposed || !isRetryableResolveError(e)) throw e;
+        const wait = retryDelayForResolveError(e, rateLimitDelay); // 429: short fixed pause first
+        if (wait) await new Promise((r) => setTimer(r, wait));
+        if (disposed) throw e;
         d = await resolveOnce();
       }
     } catch (e) {
@@ -982,32 +1220,30 @@ export function mountAssetViewer(el, options = {}) {
     if (save) {
       // Navigation is not subject to CORS, so this can work even when display failed (U7).
       // Cross-origin addresses ignore `download`, so the provider may choose the file name.
-      const a = doc.createElement("a");
-      a.href = d.url;
-      a.download = d.filename;
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-      a.style.display = "none";
-      root.appendChild(a);
-      a.click();
-      root.removeChild(a);
+      clickLink({ href: d.url, download: d.filename, target: "_blank", rel: "noopener noreferrer" });
     }
     return payload;
   }
 
-  function dispose() {
-    if (disposed) return;
-    supersede();
-    removeModel();
-    disposed = true;
+  function clickLink(props) {
+    const a = Object.assign(doc.createElement("a"), props);
+    a.style.display = "none";
+    root.appendChild(a);
+    a.click();
+    root.removeChild(a);
+  }
+
+  /** Every GPU / DOM / listener resource the renderer side holds (also used when scene setup fails half-way). */
+  function releaseGpu() {
     if (rafId != null && caf) caf(rafId);
     rafId = null;
     if (resizeObserver) resizeObserver.disconnect();
-    if (resizeListener && typeof win.removeEventListener === "function") win.removeEventListener("resize", resizeListener);
     resizeObserver = null;
-    resizeListener = null;
+    const canvas = renderer && renderer.domElement;
+    // Listeners go BEFORE forceContextLoss(), whose webglcontextlost must not reach onContextLost.
+    for (const [t, type, fn] of domListeners) t.removeEventListener(type, fn);
+    domListeners = [];
     if (controls) {
-      if (controlsListener && typeof controls.removeEventListener === "function") controls.removeEventListener("change", controlsListener);
       if (typeof controls.dispose === "function") controls.dispose();
       controls = null;
     }
@@ -1033,10 +1269,20 @@ export function mountAssetViewer(el, options = {}) {
           /* context already gone */
         }
       }
-      const canvas = renderer.domElement;
       if (canvas && canvas.parentNode) canvas.parentNode.removeChild(canvas);
       renderer = null;
     }
+  }
+
+  function dispose() {
+    if (disposed) return;
+    supersede();
+    removeModel();
+    disposed = true;
+    lastRequest = null;
+    if (detachSafetyNets) detachSafetyNets();
+    detachSafetyNets = null;
+    releaseGpu();
     if (overlay) overlay.dispose();
     if (root.parentNode) root.parentNode.removeChild(root);
     state = { ...state, status: STATUS.DISPOSED, phase: null, progress: null, model: null, loadId: seq };
@@ -1051,20 +1297,41 @@ export function mountAssetViewer(el, options = {}) {
     watchJob,
     clear,
     fitToView,
+    resetView,
+    orbit,
+    zoom,
+    retry,
     getState: snapshot,
+    getView,
     on,
     download,
     dispose,
     /** Test/diagnostic hook: live renderer + scene graph handles. Not part of the contract. */
-    _debug: () => ({ renderer, scene, camera, controls, model, envTarget }),
+    _debug: () => ({ renderer, scene, camera, controls, model, envTarget, lastFit }),
   };
 
-  if (fatal) {
-    const rec = toErrorRecord(fatal);
+  // ---- navigation safety nets (the host's own dispose() call is the primary path) ----
+  // An already-aborted `signal` disposes right after mount returns (the handle is still returned).
+  const offs = [];
+  const hook = (t, type) => {
+    const fn = () => dispose();
+    t.addEventListener(type, fn);
+    offs.push(() => t.removeEventListener(type, fn));
+  };
+  const sig = options.signal;
+  if (sig && sig.aborted) Promise.resolve().then(dispose);
+  else if (sig && sig.addEventListener) hook(sig, "abort");
+  if (options.disposeOnPageHide !== false && win.addEventListener) hook(win, "pagehide");
+  detachSafetyNets = () => offs.splice(0).forEach((f) => f());
+
+  if (fatal || webglError) {
+    const rec = toErrorRecord(fatal || webglError);
     setState({ status: STATUS.ERROR, error: rec });
     const fire = () => !disposed && reportError(rec);
     if (typeof queueMicrotask === "function") queueMicrotask(fire);
     else Promise.resolve().then(fire);
+    // No WebGL: the file is still fetched + validated so a VALID one can be downloaded.
+    if (!fatal && options.asset) Promise.resolve().then(() => !disposed && load(options.asset));
   } else {
     if (overlay) overlay.update(state);
     if (options.asset) load(options.asset);

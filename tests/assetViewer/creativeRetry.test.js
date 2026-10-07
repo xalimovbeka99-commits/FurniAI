@@ -7,17 +7,25 @@
  *     never on 401/403/404/409/410, ASSET_NOT_READY, integrity, malformed, *_NOT_CONFIGURED.
  * V5  download(): the same rule, a fresh url every time, and download({ jobId, index }).
  * V6  renderConceptNotice:false hides only the overlay's notice; state still carries it.
+ *
+ * v3: retries are OPT-IN (autoRetry, default false; Bekzod's rule: retries only when the
+ * user starts them). This file pins the opt-in autoRetry:true behaviour (= v2.1), so every
+ * viewer here is mounted with autoRetry:true. The default is pinned in autoRetry.test.js.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createCreativeAssetSource, DEFAULT_CONCEPT_NOTICE, ERROR_MESSAGE } from "../../src/lib/assetViewer/index.js";
 import { SIM_CONCEPT, SIM_TOKEN } from "./helpers/creativeStandIn.js";
-import { clickedAnchors, mountCreative } from "./helpers/creativeHarness.js";
-import { mountForTest } from "./helpers/mountHarness.js";
+import { clickedAnchors, mountCreative as mountCreativeDefault } from "./helpers/creativeHarness.js";
+import { mountForTest as mountForTestDefault } from "./helpers/mountHarness.js";
 import { installImageBitmapShim } from "./helpers/fixtures.js";
 
 let shim;
 beforeAll(() => (shim = installImageBitmapShim()));
 afterAll(() => shim.restore());
+
+const optIn = (o = {}) => ({ ...o, options: { autoRetry: true, ...(o.options || {}) } });
+const mountCreative = (o) => mountCreativeDefault(optIn(o));
+const mountForTest = (o) => mountForTestDefault(optIn(o));
 
 const assetCalls = (t) => t.sim.count("api", "asset");
 
@@ -335,7 +343,7 @@ describe("V6: renderConceptNotice:false (host renders the notice)", () => {
       const nodes = t.doc.created.filter((e) => e.attributes && "data-av-concept" in e.attributes);
       expect(nodes).toHaveLength(1);
       expect(nodes[0].textContent).toBe(SIM_CONCEPT.notice);
-      expect(nodes[0].style.display).toBe("block");
+      expect(nodes[0].style.display).toBe("");
       t.viewer.dispose();
     }
   });

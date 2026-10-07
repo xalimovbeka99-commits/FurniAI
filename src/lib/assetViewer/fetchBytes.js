@@ -2,7 +2,7 @@
  * Byte acquisition with progress, size limit and abort. The viewer keeps
  * these ORIGINAL bytes for download(); nothing is re-encoded.
  */
-import { AssetViewerError } from "./errors.js";
+import { AssetViewerError, FETCH_FAILED_MESSAGE, isViewerError } from "./errors.js";
 
 /** Placeholder ceiling until Integration agrees a max file size. */
 export const DEFAULT_MAX_BYTES = 100 * 1024 * 1024;
@@ -11,7 +11,21 @@ export function isAbortError(e) {
   return Boolean(e && (e.name === "AbortError" || e.code === 20));
 }
 
-export async function fetchBytes(url, { fetchImpl, signal, maxBytes, onProgress, credentials = "omit" } = {}) {
+/** v3: why a link failed, from the HTTP status (0/none = transport; `offline` true or a transport reason such as "cross-origin"). */
+export function fetchFailureReason(status, offline = false) {
+  if (!status) return offline === true ? "offline" : offline || "network";
+  if (status === 404 || status === 410) return "gone";
+  if (status === 401 || status === 403) return "denied";
+  if (status >= 500 || status === 408 || status === 429) return "server";
+  return "http";
+}
+
+function fetchFailed(detail, status, offline) {
+  const reason = fetchFailureReason(status, offline);
+  return new AssetViewerError("FETCH_FAILED", detail, { reason, message: FETCH_FAILED_MESSAGE[reason], ...(status ? { status } : {}) });
+}
+
+export async function fetchBytes(url, { fetchImpl, signal, maxBytes, onProgress, credentials = "omit", isOffline = () => false } = {}) {
   if (typeof fetchImpl !== "function") {
     throw new AssetViewerError("MISSING_DEPENDENCY", "no fetch implementation available");
   }
@@ -20,11 +34,11 @@ export async function fetchBytes(url, { fetchImpl, signal, maxBytes, onProgress,
     res = await fetchImpl(url, { signal, credentials });
   } catch (e) {
     if (isAbortError(e)) throw e;
-    throw new AssetViewerError("FETCH_FAILED", `network error: ${e && e.message ? e.message : e}`);
+    throw fetchFailed(`network error: ${e && e.message ? e.message : e}`, 0, isOffline());
   }
   if (!res || !res.ok) {
     const status = res ? res.status : 0;
-    throw new AssetViewerError("FETCH_FAILED", `HTTP ${status}${res && res.statusText ? " " + res.statusText : ""}`, { status });
+    throw fetchFailed(`HTTP ${status}${res && res.statusText ? " " + res.statusText : ""}`, status, false);
   }
   const lenHeader = res.headers && typeof res.headers.get === "function" ? res.headers.get("content-length") : null;
   let total = lenHeader != null && /^\d+$/.test(String(lenHeader)) ? Number(lenHeader) : null;
@@ -73,8 +87,8 @@ export async function fetchBytes(url, { fetchImpl, signal, maxBytes, onProgress,
     report(buf.byteLength);
     return buf;
   } catch (e) {
-    if (e instanceof AssetViewerError || isAbortError(e)) throw e;
-    throw new AssetViewerError("FETCH_FAILED", `body read failed: ${e && e.message ? e.message : e}`);
+    if (isViewerError(e) || isAbortError(e)) throw e;
+    throw fetchFailed(`body read failed: ${e && e.message ? e.message : e}`, 0, isOffline());
   }
 }
 

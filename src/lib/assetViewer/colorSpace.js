@@ -7,7 +7,7 @@
  * Only colour-data slots are sRGB. Normal/roughness/metalness/AO/etc. stay
  * linear and are never touched.
  */
-export const SRGB_TEXTURE_SLOTS = Object.freeze(["map", "emissiveMap", "sheenColorMap", "specularColorMap"]);
+export const SRGB_TEXTURE_SLOTS = /* @__PURE__ */ Object.freeze(["map", "emissiveMap", "sheenColorMap", "specularColorMap"]);
 
 export function threeRevision(three) {
   const r = parseInt(String((three && three.REVISION) || "0"), 10);

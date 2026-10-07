@@ -65,7 +65,7 @@ describe("createCreativeAssetSource.resolve", () => {
       concept: { ...SIM_CONCEPT, noticeSource: "server" },
     });
     expect(Object.isFrozen(src)).toBe(true);
-    expect(Object.keys(src).sort()).toEqual(["baseUrl", "getJob", "kind", "resolve"]);
+    expect(Object.keys(src).sort()).toEqual(["baseUrl", "getJob", "isRetryable", "kind", "resolve", "retryDelayMs"]);
   });
 
   it("no token -> SIGN_IN_REQUIRED without sending a request; a throwing getAuthToken too", async () => {
@@ -153,8 +153,9 @@ describe("error mapping switches on `code`, not message text or bare status", ()
     [502, "PROVIDER_REJECTED_REQUEST", "PROVIDER_UNAVAILABLE"],
     [429, "PROVIDER_RATE_LIMITED", "PROVIDER_UNAVAILABLE"],
     [402, "PROVIDER_INSUFFICIENT_CREDITS", "PROVIDER_UNAVAILABLE"],
-    [500, "INTERNAL", "RESOLVE_FAILED"],
-    [418, "SOMETHING_NEW", "RESOLVE_FAILED"],
+    // v3 (narrowed): an unknown server code is RESOLVE_SERVER_ERROR, never the network code.
+    [500, "INTERNAL", "RESOLVE_SERVER_ERROR"],
+    [418, "SOMETHING_NEW", "RESOLVE_SERVER_ERROR"],
   ];
   it.each(cases)("HTTP %i %s -> %s, customer-safe message, server code kept for logs", async (status, code, viewerCode) => {
     // Message text deliberately misleading: mapping must not read it.
@@ -221,7 +222,9 @@ describe("error mapping switches on `code`, not message text or bare status", ()
     expect(mapCreativeError(410, {}).code).toBe("ASSET_UNAVAILABLE");
     expect(mapCreativeError(503, null).code).toBe("SERVICE_UNAVAILABLE");
     expect(mapCreativeError(502, null).code).toBe("SERVICE_UNAVAILABLE");
-    expect(mapCreativeError(409, null).code).toBe("RESOLVE_FAILED");
+    expect(mapCreativeError(409, null).code).toBe("RESOLVE_SERVER_ERROR");
+    expect(mapCreativeError(409, null).details).toEqual({ cause: "http", retryable: false });
+    expect(mapCreativeError(500, { ok: false, code: "INTERNAL" }).details).toEqual({ cause: "http", retryable: true });
   });
 
   it("against the stand-in: unknown job, wrong token, integrity, gone, not ready, out-of-range index", async () => {

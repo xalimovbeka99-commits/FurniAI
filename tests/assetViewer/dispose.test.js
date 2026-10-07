@@ -129,9 +129,10 @@ describe("GPU disposal (renderer.info.memory semantics)", () => {
       deps: { GLTFLoader, OrbitControls: createFakeOrbitControlsClass(THREE) },
       createRenderer: () => createFakeRenderer(doc),
     });
-    expect(added.map((a) => a[0])).toEqual(["resize"]);
+    // v3: "pagehide" (navigation safety net) is the only other window listener
+    expect(added.map((a) => a[0]).sort()).toEqual(["pagehide", "resize"]);
     viewer.dispose();
-    expect(removed).toEqual(added);
+    expect(removed.sort()).toEqual(added.sort());
   });
 
   it("disposeObject3D reaches every texture slot, multi-materials, ShaderMaterial uniforms and skeletons", () => {
