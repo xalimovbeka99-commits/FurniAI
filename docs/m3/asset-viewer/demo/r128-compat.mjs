@@ -16,16 +16,37 @@ import { build } from "esbuild";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+const STDLIB = {
+  GLTFLoader: "./node_modules/three-stdlib/loaders/GLTFLoader.js",
+  OrbitControls: "./node_modules/three-stdlib/controls/OrbitControls.js",
+  RoomEnvironment: "./node_modules/three-stdlib/environments/RoomEnvironment.js",
+};
+
 export async function buildR128Compat() {
-  const entry = `
-    export { GLTFLoader } from "./node_modules/three-stdlib/loaders/GLTFLoader.js";
-    export { OrbitControls } from "./node_modules/three-stdlib/controls/OrbitControls.js";
-    export { RoomEnvironment } from "./node_modules/three-stdlib/environments/RoomEnvironment.js";
-  `;
+  const entry = Object.entries(STDLIB).map(([k, p]) => `export { ${k} } from "${p}";`).join("\n");
+  return bundle(entry, "esm");
+}
+
+/**
+ * DEMO-ONLY classic script for the host page (host.html): hangs the same
+ * loaders on window.THREE as THREE.GLTFLoader / THREE.OrbitControls /
+ * THREE.RoomEnvironment, i.e. the shape the r128 examples/js scripts give a
+ * static page. The repo has no three@0.128 examples/js files (node_modules has
+ * three 0.166 only), so this stands in for them; see ASSET_VIEWER.md.
+ */
+export async function buildR128Globals() {
+  const entry =
+    Object.entries(STDLIB).map(([k, p]) => `import { ${k} } from "${p}";`).join("\n") +
+    `\nif (!window.THREE) throw new Error("load vendor-three-r128.min.js first");\n` +
+    Object.keys(STDLIB).map((k) => `window.THREE.${k} = window.THREE.${k} || ${k};`).join("\n");
+  return bundle(entry, "iife");
+}
+
+async function bundle(entry, format) {
   const out = await build({
     stdin: { contents: entry, resolveDir: process.cwd(), loader: "js" },
     bundle: true,
-    format: "esm",
+    format,
     write: false,
     logLevel: "silent",
     plugins: [
