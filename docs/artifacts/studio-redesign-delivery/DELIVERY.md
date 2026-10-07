@@ -19,7 +19,7 @@ All unit tests, validator tests, golden wardrobe demos, and Playwright browser s
 
 ## 2. Visual System & Token System Handoff (For Grok's Website Engineer)
 
-A unified design tokens module is established in [`src/styles/design-tokens.css`](file:///c:/Users/xalim/OneDrive/Documents/FUrniai%20new/src/styles/design-tokens.css):
+A unified design tokens module is established in [`src/styles/design-tokens.css`](../../../src/styles/design-tokens.css):
 
 ### Color Palette (Warm Mediterranean Architectural Paper & Modern Cyan)
 | Token | Value | Role |
@@ -56,7 +56,7 @@ A unified design tokens module is established in [`src/styles/design-tokens.css`
 ## 3. Retained Changes & Handoff for CraZy and Grok's Teams
 
 ### A. Reusable Designs API Client (Handoff to Grok's Designs Engineer)
-Located at [`src/lib/persistence/designsApiClient.js`](file:///c:/Users/xalim/OneDrive/Documents/FUrniai%20new/src/lib/persistence/designsApiClient.js) and tested in [`src/lib/persistence/designsApiClient.test.js`](file:///c:/Users/xalim/OneDrive/Documents/FUrniai%20new/src/lib/persistence/designsApiClient.test.js):
+Located at [`src/lib/persistence/designsApiClient.js`](../../../src/lib/persistence/designsApiClient.js) and tested in [`src/lib/persistence/designsApiClient.test.js`](../../../src/lib/persistence/designsApiClient.test.js):
 - **Universal compatibility:** Exported as an ES Module for Node / Next.js / Vitest and bundled as an IIFE global (`window.DesignsApiClient`) via `scripts/build-static.mjs` for the browser.
 - **Fail-closed error mapping:** Full error mapping (`mapDesignsApiError`, `DesignsApiError`) covering all server codes from Claude's contract (`MISSING_AUTH`, `MISSING_DESIGN`, `STALE_REVISION`, `CONFLICT_REVISION`, `FINGERPRINT_MISMATCH`, etc.).
 - **Reusable methods:**
