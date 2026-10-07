@@ -2569,7 +2569,7 @@ const Builder={
       document.getElementById('bName').textContent='Golden Wardrobe';
       document.getElementById('bType').textContent='parametric';
       document.getElementById('bPos').textContent='ORACLE';
-      document.getElementById('bDimsTag').innerHTML='1800 × 2400 × 600 <b>mm</b>';
+      renderStudioDimsTag(globalThis.PartGraphBridge && globalThis.PartGraphBridge.goldenSpec);
       if(bm){
         bm.classList.add('custom-type');
         bm.classList.remove('ai-wardrobe-mode');
@@ -2598,7 +2598,7 @@ const Builder={
       document.getElementById('bName').textContent='AI Parametric Wardrobe';
       document.getElementById('bType').textContent='conversation-to-3d';
       document.getElementById('bPos').textContent='AI';
-      document.getElementById('bDimsTag').innerHTML='1800 × 2400 × 600 <b>mm</b>';
+      renderStudioDimsTag(aiWardrobeState && aiWardrobeState.spec);
       const tL=document.getElementById('tab-left');
       const tR=document.getElementById('tab-right');
       if(tL) tL.textContent = 'Design & AI';
@@ -2730,7 +2730,15 @@ const Builder={
     document.getElementById('led').addEventListener('change',e=>{self.cfg.led=e.target.value;self.build()});
     document.getElementById('toggle-doors').addEventListener('click',e=>{self.doorsOpen=!self.doorsOpen;self.doorObjs.forEach(p=>p.userData.base=self.doorsOpen?1:0);e.currentTarget.classList.toggle('on',self.doorsOpen)});
     document.getElementById('toggle-drawers').addEventListener('click',e=>{self.drawersOpen=!self.drawersOpen;self.drawerObjs.forEach(p=>p.userData.base=self.drawersOpen?1:0);e.currentTarget.classList.toggle('on',self.drawersOpen)});
-    document.getElementById('bFinish').addEventListener('click',()=>openOrderModal(self.cfg));
+    document.getElementById('bFinish').addEventListener('click',()=>{
+      if(self.isParametric||!self.cfg){
+        // D-P1: the factory order form is built from a catalogue configuration; a parametric/AI wardrobe has none.
+        const note=document.getElementById('aiDurablePersistNote');
+        if(note){note.hidden=false;note.textContent='Production documents for this wardrobe come from "Drawings & exports" (shop drawings, panel DXFs, cut list). The factory order form is available for catalogue designs only.';}
+        return;
+      }
+      openOrderModal(self.cfg);
+    });
     
     // mobile tabs switcher: tapping the open panel's tab again closes the sheet,
     // so the full-screen 3D stage is reachable without it being hidden behind an open sheet
@@ -3345,6 +3353,16 @@ function parseAndValidateClarifyInput(gapKey, rawVal, currentBayCount) {
     return true;
   }
 
+// D-P2: the Studio dimension tag is rendered from the current spec, never a literal.
+function renderStudioDimsTag(spec) {
+  const el = document.getElementById('bDimsTag');
+  if (!el) return;
+  const env = spec && spec.envelope;
+  el.innerHTML = env && env.widthMm && env.heightMm && env.depthMm
+    ? `${env.widthMm} × ${env.heightMm} × ${env.depthMm} <b>mm</b>`
+    : '— × — × — <b>mm</b>';
+}
+
 function updateAiWardrobeSummaryUI(res) {
   if (res.partGraph) globalThis.currentPartGraph = res.partGraph;
   else if (window.aiWardrobeState && window.aiWardrobeState.partGraph) globalThis.currentPartGraph = window.aiWardrobeState.partGraph;
@@ -3355,6 +3373,7 @@ function updateAiWardrobeSummaryUI(res) {
   const prop = res.proposal || {};
   const origins = res.origins || {};
   const env = spec.envelope || {};
+  renderStudioDimsTag(spec);
   const plinth = spec.plinth || {};
   const baysCount = (spec.bays && spec.bays.length) || spec.bayCount || 2;
   const doorsCount = (spec.doors && spec.doors.count) || spec.doorCount || 4;
@@ -4523,7 +4542,7 @@ const CONCEPT_PALETTES = [
   {
     title: 'Japandi Natural Oak & Slat Wardrobe',
     desc: 'Warm vertical-grain natural oak carcass with rhythmic vertical slats, integrated 2700K indirect shelf lighting, and bronze flush accents.',
-    thumb: 'images/oak-wardrobe.jpg',
+    thumb: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'%3E%3Crect width='400' height='300' fill='%23efe9df'/%3E%3Ctext x='200' y='145' text-anchor='middle' font-family='sans-serif' font-size='18' fill='%236b6259'%3ENo photo for this concept%3C/text%3E%3Ctext x='200' y='172' text-anchor='middle' font-family='sans-serif' font-size='13' fill='%238a8178'%3EPlaceholder %E2%80%94 not an image of the design%3C/text%3E%3C/svg%3E", // D-P3: no oak-wardrobe photo exists
     style: 'Japandi Warm Wood',
     material: 'oak',
     doorType: 'solid',
