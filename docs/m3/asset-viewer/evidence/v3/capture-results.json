@@ -23,6 +23,7 @@
     },
     "status": "ready",
     "error": null,
+    "alerts": 0,
     "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SYNTHETIC/MOCKED",
     "overflowX": 0,
     "download": true
@@ -611,8 +612,10 @@
     "error": {
       "code": "FORBIDDEN",
       "reason": null,
-      "message": "This account doesn't have permission to open this 3D concept. Signing in again won't change that."
+      "message": "This account doesn't have permission to open this 3D concept.",
+      "pageWide": true
     },
+    "alerts": 1,
     "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
     "overflowX": 0,
     "download": false
@@ -629,8 +632,10 @@
     "error": {
       "code": "FORBIDDEN",
       "reason": null,
-      "message": "This account doesn't have permission to open this 3D concept. Signing in again won't change that."
+      "message": "This account doesn't have permission to open this 3D concept.",
+      "pageWide": true
     },
+    "alerts": 1,
     "banner": "SIMULATED, demonstration asset, not a Scenario result Evidence: SIMULATED",
     "overflowX": 0,
     "download": false

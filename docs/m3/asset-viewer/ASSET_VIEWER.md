@@ -123,10 +123,11 @@ The **contract** is `load`, `dispose` and `onError`. These extras are also avail
 | `fitToView()` | re-frames the model and keeps the current orbit direction. Returns the fit numbers, or `null` when no model is loaded |
 | `getState()` | JSON-safe snapshot (§4) |
 | `on(event, cb)` | `statechange`, `progress`, `ready`, `error`, `dispose`. Returns an unsubscribe function. Unknown event names throw |
-| `download({ save? })` | local item: original bytes plus filename and mime, synchronously (§7). Concept: a **Promise**. It re-resolves a fresh url (and once more on a retryable failure, §12.4) and returns `{ ok, url, filename, …, attempts }`. Returns `null` when nothing can be downloaded or the viewer is disposed |
-| `download({ jobId, index = 0, save? })` | v2.1: an explicit `/api/creative` reference. Downloads **any** item, not just the one on screen, in any viewer state (idle, ready, error…). Same fresh-resolve and retry rule. It never changes the displayed item or state. Needs `creativeSource`; without one it gives `{ ok:false, error:{ code:"MISSING_DEPENDENCY" } }`. With no `jobId`, the current item is the target, as before |
+| `download({ save? })` | local item: original bytes plus filename and mime, synchronously (§7). Concept: a **Promise**. It re-resolves a fresh url on **every** call (no silent retry: `autoRetry` defaults to `false`; only with `autoRetry:true` does a retryable failure get one more fresh resolve, §12.4) and returns `{ ok, url, filename, …, attempts }`. Returns `null` when nothing can be downloaded or the viewer is disposed |
+| `download({ jobId, index = 0, save? })` | v2.1: an explicit `/api/creative` reference. Downloads **any** item, not just the one on screen, in any viewer state (idle, ready, error…). Same fresh-resolve rule (no automatic retry unless `autoRetry:true`). It never changes the displayed item or state. Needs `creativeSource`; without one it gives `{ ok:false, error:{ code:"MISSING_DEPENDENCY" } }`. With no `jobId`, the current item is the target, as before |
 | `showJob(job, { index? })` | renders a job object (§12.4). Same as `load({ job, index })` |
 | `watchJob(jobId, { index?, intervalMs=4000 })` | polls `getJob`. The interval is clamped to 3–5 s. Polling is superseded by any later load, clear or dispose |
+| `retry()` | v3 round 5: re-runs the last `load` / `showJob` / `watchJob` (with a fresh resolve) **only when `getState().canRetry` is `true`**, i.e. the state offers Try again. Otherwise (idle, loading, ready, download-only, an error with no retry such as 403/404/410/malformed, or after `dispose()`) it is a **no-op** that resolves `{ ok:false, retried:false, state }`: nothing is fetched, no state change, no event, no new announcement. Always returns a Promise |
 
 `load()` **never rejects**. A programmer error (no element) throws a
 `TypeError` from `mountAssetViewer`. Everything else becomes an error state.
@@ -184,10 +185,13 @@ idle ──load()──▶ loading{phase: fetching ─▶ parsing} ──▶ rea
 any ── dispose() ──▶ disposed (terminal; load() → VIEWER_DISPOSED)
 
 concept: loading{job-checking | job-submitting | job-processing}      (no %)
-         ─▶ loading{resolving [─▶ retrying (resolve, v2.1)] ─▶ fetching ─▶ parsing
-                    [─▶ retrying ─▶ fetching ─▶ parsing]}
+         ─▶ loading{resolving [─▶ retrying (resolve; autoRetry:true only)] ─▶ fetching ─▶ parsing
+                    [─▶ retrying ─▶ fetching ─▶ parsing (autoRetry:true only)]}
          ─▶ ready | download-only | error
 ```
+
+`autoRetry` defaults to **`false`**: with the default the bracketed `retrying` phases never
+happen (no silent retries); a retry only happens when the user clicks **Try again**.
 
 - **Progress:** while fetching, `progress = { loaded, total|null, ratio|null }` is
   streamed from `res.body`. `ratio` is `null` when `content-length` is
@@ -327,8 +331,10 @@ These are the **original bytes**. Nothing is re-exported or converted.
   avoids this, which is one more reason to prefer it.
 
 - **Concepts** never keep bytes or the url. `download()` calls `?resource=asset`
-  again and gets a fresh address. On a retryable failure (§12.4) it calls once more,
-  again for a **fresh** address; it never falls back to an earlier url. The result carries
+  again and gets a fresh address. By default (`autoRetry:false`) a failed download is reported
+  at once (`{ ok:false }` after **one** resolve) and the user's next click resolves again. Only
+  with `autoRetry:true` does a retryable failure (§12.4) call once more, again for a **fresh**
+  address. It never falls back to an earlier url. The result carries
   `attempts: { resolve }`. `download({ jobId, index })` (v2.1) does the same for any item and
   leaves the displayed item and state untouched. With `save:true` it clicks a temporary
   `<a href download target=_blank rel="noopener noreferrer">`. A navigation is not
@@ -433,7 +439,7 @@ await build({
     onError: (e) => studioToast(e.message),                        // e.code / e.serverCode for analytics
   });
   viewer.watchJob(jobIdFromPostJobs);       // or viewer.load({ jobId, index: 0, format })
-  // download button (host-owned): await viewer.download({ save: true });   // fresh url each time, one retry
+  // download button (host-owned): await viewer.download({ save: true });   // fresh url each time; no automatic retry (autoRetry defaults to false)
   // another tile:                    await viewer.download({ jobId, index, save: true });
   // host shows concept.notice itself? mount with renderConceptNotice:false and ALWAYS render
   //   viewer.getState().concept.notice (or the download result's concept.notice) yourself
@@ -506,7 +512,7 @@ and a test enforces that.
 | backend `code` (HTTP) | viewer `code` | customer message (abridged) |
 |---|---|---|
 | `MISSING_AUTH` (401); a 401 without a code; no token (no request is sent) | `SIGN_IN_REQUIRED` | Please sign in to view this 3D concept. |
-| `UNAUTHORIZED` (403, persistence: signed in but not allowed), `FORBIDDEN`; a 403 without a code | `FORBIDDEN` (v2.1) | This account doesn't have permission to open this 3D concept. Signing in again won't change that. **v3: rev 2 never sends a 403 from `/api/creative` code; treat it as page-wide, see [§16](#16-forbidden-403-when-and-is-it-ever-per-job).** |
+| `UNAUTHORIZED` (403, persistence: signed in but not allowed), `FORBIDDEN`; a 403 without a code | `FORBIDDEN` (v2.1) | This account doesn't have permission to open this 3D concept. (Round 5: no sign-in wording at all; the 401 row keeps its sign-in prompt.) Record carries `pageWide:true`. **v3: rev 2 never sends a 403 from `/api/creative` code; treat it as page-wide, see [§16](#16-forbidden-403-when-and-is-it-ever-per-job).** |
 | `AUTH_UNAVAILABLE` (503) | `SIGN_IN_UNAVAILABLE` | Sign-in is temporarily unavailable… |
 | `PERSISTENCE_NOT_CONFIGURED`, `CREATIVE_NOT_CONFIGURED`, `CREATIVE_STORE_NOT_CONFIGURED`, `CREATIVE_GENERATION_DISABLED` (503) | `CONCEPTS_NOT_CONFIGURED` | 3D concepts aren't available on this site yet. |
 | `STORAGE_UNAVAILABLE` (503); a 5xx without a code | `SERVICE_UNAVAILABLE` | temporarily unavailable |
@@ -539,16 +545,37 @@ The backend's message text is never used: the auth messages mention "design", an
   2. Otherwise, resolve. A non-viewable resolved format → `download-only`.
   3. Otherwise fetch and parse the mesh.
   4. If that fails with `FETCH_FAILED`, `PARSE_FAILED` or `UNSUPPORTED_FORMAT` (an expired address,
-     CORS, a truncated body), **re-resolve once and retry once**. A second failure gives
+     CORS, a truncated body): **by default (`autoRetry:false`) the error is shown at once** after
+     1 resolve + 1 fetch, with **Try again** (a user-started fresh resolve). **Only with
+     `autoRetry:true`** does the viewer re-resolve once and retry once; a second failure then gives
      `ASSET_DISPLAY_FAILED`: "This 3D concept couldn't be displayed here. Downloading it may still work."
-     The error carries `downloadAvailable:true` and `attempts:{resolve:2, display:2}`, and download stays offered.
-  5. If the re-resolve itself fails, its mapped error is reported (for example a 410).
-  6. `EMPTY_SCENE` and `FILE_TOO_LARGE` are not retried.
-  7. **v2.1 (V1):** if the **first resolve** (step 2) fails retryably, the viewer resolves
-     **once more** (phase `retrying`) before giving up, then reports that second error with
-     `attempts`. This budget is separate from the display retry in step 4, so one load makes at
-     most **3 resolves and 2 mesh fetches**. The re-resolve in step 4 is not retried again.
-     See the retry policy below.
+     with `downloadAvailable:true`, `attempts:{resolve:2, display:2}` and download offered, **unless
+     both attempts were malformed** (see the Download rule below).
+  5. (`autoRetry:true`) If the re-resolve itself fails, its mapped error is reported (for example a 410).
+  6. `EMPTY_SCENE` and `FILE_TOO_LARGE` are never retried.
+  7. **`autoRetry:true` only (the v2.1 behaviour, V1):** if the **first resolve** (step 2) fails
+     retryably, the viewer resolves **once more** (phase `retrying`) before giving up, then reports
+     that second error with `attempts`. This budget is separate from the display retry in step 4,
+     so one load makes at most **3 resolves and 2 mesh fetches**. The re-resolve in step 4 is not
+     retried again. With the default (`autoRetry:false`) a load makes exactly **1 resolve and at
+     most 1 mesh fetch**. See the retry policy below.
+
+  **Download rule for a file broken on both attempts (AV3-D2, round 5).** Download appears only
+  when a **valid, supported asset** is available. With `autoRetry:true`, a file that is malformed
+  on **both** attempts (bad magic, HTML instead of a model, truncated, no mesh: `PARSE_FAILED` /
+  `EMPTY_SCENE` / `UNSUPPORTED_FORMAT` twice) ends as **that code** (for example `PARSE_FAILED`
+  with `attempts:{resolve:2, display:2}`), **not** `ASSET_DISPLAY_FAILED`, with **no Download**
+  (`actions.download:false`, no `downloadAvailable`, `download()` of the current item returns
+  `null`) and **no Try again** (`canRetry:false`: two fresh copies were both broken). This is
+  consistent with the rule: a file that fails to parse is not a valid asset, so offering it would
+  hand the user a broken file. `ASSET_DISPLAY_FAILED` **with** Download is used only when at least
+  one attempt failed for a **non-malformed** reason (transport, CORS, expired address), because
+  then the stored file itself may still be valid and a browser navigation can still fetch it (U7).
+  With the default (`autoRetry:false`) a malformed first attempt is shown as that code with Try
+  again and no Download. Tests: `tests/assetViewer/reviewRound5.test.js` ("finding 3"),
+  `v3States.test.js` ("creative path: malformed twice"), `creativeViewer.test.js` ("damaged mesh →
+  retry once → PARSE_FAILED"); the contrast case (`sim-cors` twice → `ASSET_DISPLAY_FAILED` with
+  Download) is pinned next to it.
 
   **Retry policy (v3: `autoRetry`, default `false`).** Rule from Bekzod via the integration
   lead (2026-10-07): **retries happen only when the user starts them.** With the default the
@@ -567,7 +594,7 @@ The backend's message text is never used: the auth messages mention "design", an
   | 503 `PERSISTENCE_NOT_CONFIGURED` / `CREATIVE_*_NOT_CONFIGURED` / `CREATIVE_GENERATION_DISABLED` | error | `{ok:false}` | no retry | no |
   | 401 / no token, 403, 404, 409 `ASSET_NOT_READY` / `RECORD_INTEGRITY_FAILED` / `PRIOR_SUBMISSION_UNKNOWN` / `DUPLICATE_ACTIVE_JOB`, 410, 400, 402 | error | `{ok:false}` | no retry | no |
   | malformed 2xx body (`RESOLVE_MALFORMED`) | error | `{ok:false}` | no retry | no |
-  | mesh `FETCH_FAILED` / `PARSE_FAILED` / `UNSUPPORTED_FORMAT` after a good resolve (expired address, CORS, cut-off body) | that error after **1** resolve + **1** fetch (`attempts {resolve:1, display:1}`); Download stays offered unless the bytes were malformed | n/a (download does not fetch bytes) | fresh resolve **+** refetch **once**, then `ASSET_DISPLAY_FAILED` | **yes** (a fresh resolve may fix it) |
+  | mesh `FETCH_FAILED` / `PARSE_FAILED` / `UNSUPPORTED_FORMAT` after a good resolve (expired address, CORS, cut-off body) | that error after **1** resolve + **1** fetch (`attempts {resolve:1, display:1}`); Download stays offered unless the bytes were malformed | n/a (download does not fetch bytes) | fresh resolve **+** refetch **once**, then `ASSET_DISPLAY_FAILED` with Download; malformed on both attempts → that code, **no** Download, no Try again (AV3-D2) | **yes** with the default (a fresh resolve may fix it) |
   | `EMPTY_SCENE`, `FILE_TOO_LARGE` | error | n/a | no retry | no |
   | job `submission_unknown` / 409 `PRIOR_SUBMISSION_UNKNOWN` | never retried, never resubmitted, never sends `acknowledgeUnknownCharge` | n/a | same | no |
   | abort / superseded | no (`superseded:true`) | n/a | no | n/a |
@@ -626,7 +653,7 @@ The backend's message text is never used: the auth messages mention "design", an
 fixtures only and is not Scenario. It returns the backend's response shapes, its
 verbatim `CONCEPT_NOTICE` and its error messages. Its signed addresses are **single use**: a second GET
 returns 403, so any url reuse fails the tests. A mutation that cached the url failed 6 tests.
-Re-checked in v2.1 (suite of 194):
+Re-checked in v2.1 (suite of 194; at that time the single retry was the default, in v3 it is opt-in `autoRetry:true` and these files pin it with that option):
 
 - adapter `resolve()` memoised per job/index: **13 tests fail**
 - viewer `download()` reusing a cached descriptor: **3 fail**
@@ -641,7 +668,7 @@ The 87 new tests cover:
 
 - a fresh resolve and Bearer token on every load and every download (call counts, distinct urls)
 - no url in state, events, errors or storage
-- one re-resolve and retry, then `ASSET_DISPLAY_FAILED`
+- with `autoRetry:true` (opt-in; the v3 default is `false`): one re-resolve and retry, then `ASSET_DISPLAY_FAILED`
 - the no-CORS case, simulated
 - every code mapping, including 409 vs 409
 - download-only for `fbx obj usdz stl ply zip null` and unknown formats
@@ -690,8 +717,10 @@ The 87 new tests cover:
     misread this as a transient provider outage. The viewer switches on `status`.
 11. **§2.5 "if a load fails, call it again once" is ambiguous** (v2.1). It doesn't say
     whether a failed *resolve* (5xx, network) counts, or whether the "once" is shared with the
-    display retry. The viewer's default is in the §12.4 retry policy: one resolve retry for
-    network/5xx/429 only, with a separate budget from the display retry.
+    display retry. v3 answer (§12.4 retry policy): the viewer's default is **`autoRetry:false`, no
+    silent retry at all**; retries are user-initiated (Try again). `autoRetry:true` restores the
+    v2.1 reading: one resolve retry for network/5xx/429 only, with a separate budget from the
+    display retry.
 12. **The notice text in the contract doc is abridged** (`"AI-generated visual concept. …"`).
     The server's real text in `creativeService.js` says "no separately editable **doors or
     panels**". Until v2.1 the viewer's fallback said "parts", so it drifted. It is now a verbatim copy.
@@ -789,11 +818,11 @@ States: `loaded`, `textured`, `texture-missing`, `loading`, `invalid&file=bad-ma
 | unavailable: network / CORS / offline / 5xx | `FETCH_FAILED` reason `network` (same origin) / `cross-origin` ("…the connection failed, or the file's server doesn't allow this page to load it") / `offline` / `server` | **yes** | hidden |
 | WebGL: no context, context creation throws | `WEBGL_UNAVAILABLE`; the file is still fetched and validated | no | **offered if the file is valid** (actual bytes) |
 | WebGL: context lost mid-session | `WEBGL_CONTEXT_LOST` (restored → the model comes back) | **yes** | offered (the held file is valid) |
-| FORBIDDEN (403 from `/api/creative`) | `role=alert`; page-wide, see §16 | no | hidden |
+| FORBIDDEN (403 from `/api/creative`) | exactly **one** `role=alert` "This account doesn't have permission to open this 3D concept." (no sign-in wording), announced once; `error.pageWide:true`; page-wide, see §16 | no (`retry()` is a no-op) | hidden |
 | job submission_unknown | "…It may have been charged. It will not be retried automatically." | no | hidden |
 | disposed | nothing (root removed) | n/a | n/a |
 
-All texts are `role=status` (polite) or `role=alert` (assertive); Try again and Download are real
+All texts are in **one** live region that is `role=status` (polite) or `role=alert` (assertive); no extra `aria-live` is set on it (round 5, INT-403: a second live attribute could be announced twice). Try again and Download are real
 `<button type=button>` with 44 px targets and a visible `:focus-visible` ring; the canvas is
 `role=img`, focusable, described by the keyboard help (arrows rotate, + / − zoom, 0 resets, F
 fits). Touch: one finger orbits, two fingers pinch-zoom (OrbitControls; e2e via CDP touch
@@ -849,8 +878,33 @@ So **no 403 is per job** in rev 2. A 403 can only come from something in front o
 message; stop opening other tiles; don't offer per-tile retry), but unlike signed-out, signing in
 again won't fix it, so don't send the user to sign in. The viewer still shows it locally (no Try
 again, no Download) for hosts that don't elevate it. The message says "this 3D concept"; a
-page-wide wording would be more accurate, but it matches the gallery's copy and is pinned there,
-so it is left for the copy owner (open question 16).
+page-wide wording would be more accurate, but it matches the gallery's copy, so it is left for
+the copy owner (open question 16).
+
+**Round 5 (INT-403, shared with Projects).** QE saw the viewer panel stay open after a 403 on
+Open, with four permission messages on the page (the gallery's list panel, two card messages and
+the viewer's own). The viewer's part:
+
+- **Copy:** `ERROR_MESSAGE.FORBIDDEN` is "This account doesn't have permission to open this 3D
+  concept." Nothing about signing in (the gallery made the same change). 401
+  (`SIGN_IN_REQUIRED`) keeps "Please sign in to view this 3D concept."
+- **One alert, one announcement:** the viewer surfaces exactly **one** `role=alert` for FORBIDDEN
+  (its status line), written once. That node no longer carries an extra `aria-live` (`role=alert`
+  is already assertive), the concept notice and labels are `role=note` (not live), there is no
+  Try again or Download, and `retry()` is a no-op (so a host or stray click can't re-request and
+  re-announce it). One `error` event, one `onError` call, one `statechange` with the error.
+- **Machine-readable scope:** the error record (in `getState().error`, the `error` event,
+  `onError` and the `statechange` snapshot) carries **`pageWide: true`** for FORBIDDEN and only for
+  FORBIDDEN. `canRetry` is `false`.
+- **What a host does with it** (Projects owns the gallery side): on `error.pageWide`, either
+  **close the viewer panel** (`viewer.dispose()`: removes the viewer root, so its alert goes with
+  it) and show **one** page-level `role=alert`; or keep the viewer open and add **no** alert of
+  its own (no per-card copy of the same message). Either way the page ends with a single
+  permission announcement. Stop opening other tiles and don't offer a per-tile retry.
+- Tests: `tests/assetViewer/reviewRound5.test.js` (role=alert count, live-region writes, events,
+  `pageWide`, for `load` and `load({ job })`, `autoRetry` on and off) and e2e `F07-N4` (whole host
+  page: exactly one `[role=alert]`, a MutationObserver counts one announcement, none after
+  `retry()`, none left after the host closes the panel).
 
 ## 17. Evidence labels (integration lead taxonomy)
 
@@ -934,9 +988,10 @@ the [v3 changelog](#v3).
     verbatim provider text. Should the backend replace it with FurniAI copy?
 11. **Analytics and logging** (round 1 question 10): should `code`, `serverCode` and `detail` (urls
     redacted) be logged?
-12. **Retry policy sign-off (v2.1).** Is the viewer default in §12.4 what the contract means? In
-    particular: are `*_NOT_CONFIGURED` 503s really never worth a retry, and should a 429 wait
-    (`Retry-After`) instead of retrying at once? The backend sends no `Retry-After` today.
+12. **Retry policy sign-off (v2.1; answered for the default in v3).** The default is now
+    `autoRetry:false` (no silent retries; user-initiated Try again only). Still open for the opt-in
+    `autoRetry:true`: are `*_NOT_CONFIGURED` 503s really never worth a retry, and should a 429 wait
+    for `Retry-After` instead of the fixed 1 s? The backend sends no `Retry-After` today.
 13. **Host-rendered notice (v2.1).** The gallery should set `renderConceptNotice:false` and show
     `getState().concept.notice` (or a download result's `concept.notice`) itself. Who checks
     that it is always visible?
@@ -949,9 +1004,9 @@ the [v3 changelog](#v3).
     re-resolve on a retryable Download failure, and its header still describes the viewer's old
     default. Under the "retries only when the user starts them" rule its owner should drop that
     retry (or pass `autoRetry:true` deliberately).
-16. **FORBIDDEN copy.** The message says "this 3D concept"; rev 2 can only produce a 403 from
-    infrastructure, so it is page-wide (§16). Copy owner to decide on a page-wide wording (the
-    gallery has the same text).
+16. **FORBIDDEN copy.** Round 5: the sign-in sentence is gone (integration lead + QE INT-403), as
+    in the Projects gallery; the message now only says access is blocked. It still says "this 3D
+    concept"; a fully page-wide wording stays with the copy owner.
 17. **CORS vs offline.** A browser reports a CORS block and a dropped connection the same way
     (`TypeError`). v3 says both on a cross-origin link (reason `cross-origin`, BUG-002 fixed), but
     only a FurniAI copy/proxy (U6/U7) removes the ambiguity.
@@ -966,10 +1021,39 @@ the [v3 changelog](#v3).
 - The built-in overlay is minimal. A host can pass `ui:false` and render its own from events.
 - r128 residual PMREM geometry (§8).
 - A browser can't tell a CORS block from a dropped connection; on a cross-origin link the message names both (BUG-002).
-- Core bundle headroom is small (minified 48,884 of 49,152 bytes); the creative adapter was split
-  out for that reason and because Scenario is optional.
+- Core bundle headroom is small (minified 48,877 of 49,152 bytes after round 5; 48,884 in v3); the
+  creative adapter was split out for that reason and because Scenario is optional.
 
 ## Changelog
+
+### v3 review round 5 (on `3411eb2`)
+
+Only module-owned paths changed. Evidence SYNTHETIC/MOCKED and SIMULATED only; nothing LIVE, no
+provider called. Each finding has a test written first (failing on `3411eb2`).
+
+- **FORBIDDEN wording** (integration lead + QE INT-403): the 403 message drops "Signing in again
+  won't change that."; 401 keeps its sign-in prompt (`errors.js`).
+- **INT-403:** exactly one `role=alert` and one announcement for FORBIDDEN (no duplicate
+  `aria-live` on the alert node), `error.pageWide:true` in state and events, host guidance in §16.
+- **AV3-D2:** confirmed and documented (§12.4 "Download rule"): malformed on both attempts with
+  `autoRetry:true` → that code (`PARSE_FAILED`), no Download, no Try again.
+- **AV3-D1:** every mention in this folder now says `autoRetry` defaults to `false` (no silent
+  retries; user-initiated Try again only); v2.1 statements are marked as superseded or opt-in.
+- **retry():** a no-op resolving `{ ok:false, retried:false, state }` unless `canRetry` (§2).
+- **Demo pages at 390 px:** `index.html` and `creative.html` reflow to one column (the viewer was
+  squeezed to ~24 px and overflowed) and every button is at least 44×44 CSS px; `host.html` state
+  links get a 44 px minimum width too. e2e `F08` asserts 0 horizontal overflow (document and
+  per element) and 44×44 targets in the viewer and the demo pages, at 390 and 1440.
+- **Bundles (byte-neutral or smaller, limits unchanged):** core `entry.js` unminified 88,448 →
+  88,461, **minified 48,884 → 48,877** (limit 49,152; 275 B left); creative 18,102 → 18,066 /
+  11,400 → 11,364 (limit 16 KiB).
+- **Tests:** asset-viewer suite 274 → 292 (20 files, +`reviewRound5.test.js`; `rev2.test.js`'s
+  submission-unknown `retry()` expectation updated to the no-op); root `npx vitest run` 2178 → 2196
+  tests, 2020 → 2038 passed, the same 134 pre-existing failures as `f472aef`/`3411eb2` (none new,
+  none fixed), 4 skipped, 20 todo; `npx vitest run src/lib/creative` 77/77. Playwright e2e: 55 →
+  **69 passed, 1 skipped** (new `F07-N4`, `F08-L1` ×4, `F08-L2` ×2 in both projects), axe clean.
+- **Evidence:** `evidence/v3/18-forbidden-*` (both sizes) and `01-loaded-…-mobile` re-captured
+  (labels kept); see `evidence/v3/README.md`.
 
 ### v3
 
@@ -1032,8 +1116,9 @@ Builds on `f971fae`. Only module-owned paths changed. All test evidence is **SIM
 
 - **V1:** `load()` re-resolves **once** when the asset resolve itself fails retryably
   (network, 5xx, 429). It never does so for 401/403/404/409/410, `ASSET_NOT_READY`,
-  integrity, malformed bodies or `*_NOT_CONFIGURED`. This is the viewer's default, because
-  contract §2.5 is ambiguous (§12.4, §12.7 item 11).
+  integrity, malformed bodies or `*_NOT_CONFIGURED`. This was the v2.1 default because contract
+  §2.5 is ambiguous (§12.4, §12.7 item 11). **Superseded in v3:** `autoRetry` defaults to `false`
+  (no silent retries); this behaviour now needs `autoRetry:true`.
 - **V2:** `RESOLVE_FAILED` now means network or transport only (plus unknown server codes). A bad
   body is the new `RESOLVE_MALFORMED`, which is never retried. Every resolve error carries
   `details.cause` (`network | malformed | http`) and `details.retryable`. New export:
@@ -1042,7 +1127,7 @@ Builds on `f971fae`. Only module-owned paths changed. All test evidence is **SIM
   now equals the server's text exactly ("…no separately editable doors or panels…").
 - **V4:** only 401 means signed out. A 403 (`UNAUTHORIZED`, `FORBIDDEN`, or no code) becomes the new
   `FORBIDDEN`, with an honest message.
-- **V5:** `download()` follows the same fresh-resolve and single-retry rule, and accepts
+- **V5:** `download()` follows the same fresh-resolve and single-retry rule (v3: the retry needs `autoRetry:true`), and accepts
   `download({ jobId, index, save })` for an item that isn't on screen. It never reuses a url.
 - **V6:** new mount option `renderConceptNotice` (default `true`). With `false` the host renders
   the notice, and must always do so. `getState().concept.notice` still carries it.

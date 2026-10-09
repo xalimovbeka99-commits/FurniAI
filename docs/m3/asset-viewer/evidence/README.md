@@ -75,6 +75,14 @@ changed: there is no 5xx or network failure on resolve, no 403 API answer and no
 body. The 410 and 409 steps are still not retried. The notice shown is the stand-in's
 verbatim server text, which is also the v2.1 fallback. The video was not regenerated.
 
+**v3 retry default (AV3-D1, round 5):** in v3 `autoRetry` defaults to **`false`**: no silent
+retries, only the user's **Try again**. Steps `06` (expired address → one fresh resolve → shown)
+and `10` (no-CORS address → re-resolved once → `ASSET_DISPLAY_FAILED`) show the **v2.1** single
+automatic retry, which v3 keeps only behind the opt-in `autoRetry:true`. With the v3 default the
+same inputs stop after **one** resolve: `06` shows `FETCH_FAILED` (`denied`) with Try again (a
+click resolves fresh and recovers), `10` shows `FETCH_FAILED` (`cross-origin`) with Try again.
+They were not re-captured; the v3 host-page evidence (`v3/11-…`, `v3/11b-…`) shows the default.
+
 | file | shows |
 |---|---|
 | `creative/01-processing.png` | `watchJob("sim-processing")`: `loading:job-processing`, "Generating 3D concept… This can take a few minutes." The stand-in sends `providerProgress: 0.37`; it is not shown and no % appears anywhere (`noPercentage: true`, `progress: null`) |

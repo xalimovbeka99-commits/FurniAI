@@ -6,8 +6,10 @@
  * taxonomy label (SYNTHETIC-MOCKED | SIMULATED); nothing is LIVE.
  *
  *   node docs/m3/asset-viewer/demo/capture-host.mjs   (starts serve.mjs on 4328)
+ *   CAPTURE_ONLY=18:desktop,18:mobile,01:mobile node …/capture-host.mjs
+ *       re-captures only those shots and replaces just their entries in capture-results.json
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
@@ -43,6 +45,9 @@ const VIEWPORTS = [
   ["mobile", { width: 390, height: 844 }],
 ];
 
+const ONLY = (process.env.CAPTURE_ONLY || "").split(",").map((x) => x.trim()).filter(Boolean);
+const wanted = (nn, vp) => !ONLY.length || ONLY.includes(`${nn}:${vp}`);
+
 async function main() {
   mkdirSync(OUT, { recursive: true });
   const server = await startDemoServer(PORT);
@@ -51,6 +56,7 @@ async function main() {
   try {
     for (const [nn, q, name, cls, expect] of SHOTS) {
       for (const [vp, size] of VIEWPORTS) {
+        if (!wanted(nn, vp)) continue;
         const ctx = await browser.newContext({ viewport: size, deviceScaleFactor: 1, hasTouch: vp === "mobile", isMobile: vp === "mobile" });
         const page = await ctx.newPage();
         await page.goto(`http://127.0.0.1:${PORT}/docs/m3/asset-viewer/demo/host.html?state=${q}`);
@@ -71,7 +77,8 @@ async function main() {
           const s = window.__host.handle.getState();
           return {
             status: s.status,
-            error: s.error && { code: s.error.code, reason: s.error.reason || null, message: s.error.message },
+            error: s.error && { code: s.error.code, reason: s.error.reason || null, message: s.error.message, pageWide: s.error.pageWide === true },
+            alerts: document.querySelectorAll("[role=alert]").length,
             banner: document.getElementById("sim-banner").innerText,
             overflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
             download: (() => {
@@ -92,7 +99,14 @@ async function main() {
     if (server.closeAllConnections) server.closeAllConnections();
     await new Promise((r) => server.close(r));
   }
-  writeFileSync(join(OUT, "capture-results.json"), `${JSON.stringify(results, null, 2)}\n`);
+  const file = join(OUT, "capture-results.json");
+  let all = results;
+  if (ONLY.length && existsSync(file)) {
+    const fresh = new Map(results.map((r) => [r.file, r]));
+    const prev = JSON.parse(readFileSync(file, "utf8"));
+    all = prev.map((r) => fresh.get(r.file) || r);
+  }
+  writeFileSync(file, `${JSON.stringify(all, null, 2)}\n`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {

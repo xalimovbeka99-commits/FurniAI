@@ -13,7 +13,8 @@ was called.
 `auto` = `e2e` (Playwright spec in `tests/assetViewer/e2e/`, run in both the `desktop-1440`
 1440×900 and `mobile-390` 390×844 projects, axe wcag2a/aa/21a/21aa where marked), `unit`
 (vitest, `tests/assetViewer/`), `manual`. Result of the final run: **e2e 55 passed, 1 skipped
-(F02-E3 on desktop: touch only exists on the mobile project); unit 274/274.**
+(F02-E3 on desktop: touch only exists on the mobile project); unit 274/274.** Review round 5
+(on `3411eb2`): **e2e 69 passed, 1 skipped; unit 292/292** (new rows F07-N4/N5, F04-E4, F08-L1/L2).
 
 | case | flow | type | steps | expected | auto | result |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -44,6 +45,12 @@ was called.
 | F07-N1 | | negative: submission unknown | `?state=job&job=submission-unknown` | "may have been charged"; not retried; nothing resolved; no Download | e2e + unit | pass (both) |
 | F07-N2 | | negative: 403 from /api/creative | `?state=forbidden` | FORBIDDEN; no Try again; no Download; one request | e2e + unit | pass (both) |
 | F07-N3 | | negative: download default | unit: download() on 503/429 | 1 resolve, no automatic retry; next click resolves again | unit | pass |
+| F07-N2 (r5) | | negative: FORBIDDEN copy | `?state=forbidden` | alert text is exactly "This account doesn't have permission to open this 3D concept."; no sign-in wording anywhere in the viewer | e2e + unit (reviewRound5.test.js) | pass (both) |
+| F07-N4 | | negative: INT-403 duplicates | `?state=forbidden` with a MutationObserver from page load | exactly ONE `[role=alert]` on the page, none with an extra `aria-live`; ONE announcement of the permission text; `error.pageWide:true`; FORBIDDEN entered once; `retry()` a no-op (no request, no announcement); host closes the panel → 0 alerts | e2e + unit | pass (both) |
+| F07-N5 | | negative: retry() not offered | unit: idle, ready, 404, submission_unknown, disposed | `{ ok:false, retried:false, state }`; no fetch, no state change; still re-runs where `canRetry` | unit | pass |
+| F04-E4 | unavailable asset | edge: broken on both attempts (AV3-D2) | unit: `sim-corrupt` with `autoRetry:true` | `PARSE_FAILED` (`attempts {2,2}`), no Download, no Try again; contrast `sim-cors` twice → `ASSET_DISPLAY_FAILED` with Download | unit | pass |
+| F08-L1 | layout at 390 / 1440 | edge: host page | `?state=loaded / forbidden / unavailable&http=cors / webgl&webgl=none` | 0 horizontal overflow (document and every element); every visible control in the viewer and the host page ≥ 44×44 CSS px | e2e | pass (both) |
+| F08-L2 | | edge: demo pages | `demo/?three=r166`, `demo/creative.html?three=r166` | one column at 390, viewer ≥ 300 px wide, 0 overflow, every control ≥ 44×44 | e2e | pass (both) |
 
 Mutation checks (`replica/mutate.py`, every mutant must fail the unit suite): caching the
 resolved URL, removing model dispose, removing renderer dispose, skipping the pagehide dispose,
