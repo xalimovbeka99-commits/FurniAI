@@ -152,8 +152,8 @@ export function createOverlay(doc, root, { onDownload, onRetry, onControl, rende
       const live = st !== "disposed" && st !== "idle";
       status.setAttribute("data-av-state", st);
       const isError = st === "error" && state.error;
+      // ONE live region: role=alert is already assertive and role=status polite, so no extra aria-live (INT-403).
       status.setAttribute("role", isError ? "alert" : "status");
-      status.setAttribute("aria-live", isError ? "assertive" : "polite");
       show(demo, live && state.demo ? state.demo.label : "");
       // The concept notice is shown in EVERY state that carries a concept (loading, ready, download-only, error).
       // With renderConceptNotice:false the host shows it (from getState().concept.notice) instead.

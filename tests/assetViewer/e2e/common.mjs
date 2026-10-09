@@ -82,6 +82,75 @@ export async function noHorizontalOverflow(page) {
   expect(o, "horizontal overflow (px)").toBeLessThanOrEqual(0);
 }
 
+/**
+ * Review round 5 (QE layout probe, 390 px): no element sticks out past the viewport's right edge
+ * and no clipping box (overflow other than visible, e.g. the viewer root) has content wider than
+ * itself, on top of the document-level check above.
+ */
+export async function noElementOverflow(page) {
+  const bad = await page.evaluate(() => {
+    const vw = document.documentElement.clientWidth;
+    const out = [];
+    for (const e of document.querySelectorAll("body *")) {
+      const cs = getComputedStyle(e);
+      if (cs.display === "none" || cs.visibility === "hidden" || e.closest("[hidden]")) continue;
+      const r = e.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      const name = `${e.tagName.toLowerCase()}${e.id ? "#" + e.id : ""}${[...e.attributes].filter((a) => a.name.startsWith("data-")).map((a) => `[${a.name}]`).join("")}`;
+      if (r.right > vw + 0.5 || r.left < -0.5) out.push(`${name} off-viewport ${Math.round(r.left)}..${Math.round(r.right)} (vw ${vw})`);
+      if (cs.overflowX !== "visible" && e.tagName !== "PRE" && e.scrollWidth > e.clientWidth + 1) out.push(`${name} content ${e.scrollWidth} > box ${e.clientWidth}`);
+    }
+    return out;
+  });
+  expect(bad, "elements overflowing horizontally").toEqual([]);
+}
+
+/** Every visible interactive control (viewer overlay and host/demo page) is at least 44 x 44 CSS px. */
+export async function tapTargets(page, min = 44) {
+  const r = await page.evaluate((m) => {
+    const sel = "button, a[href], input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [tabindex]:not([tabindex='-1']):not(canvas)";
+    const all = [...document.querySelectorAll(sel)].filter((e) => {
+      const cs = getComputedStyle(e);
+      const b = e.getBoundingClientRect();
+      return cs.display !== "none" && cs.visibility !== "hidden" && b.width > 0 && b.height > 0;
+    });
+    const small = all
+      .map((e) => ({ e, b: e.getBoundingClientRect() }))
+      .filter(({ b }) => b.width < m - 0.01 || b.height < m - 0.01)
+      .map(({ e, b }) => `${(e.getAttribute("aria-label") || e.textContent || e.tagName).trim().slice(0, 40)} ${b.width.toFixed(1)}x${b.height.toFixed(1)}`);
+    const inViewer = all.filter((e) => e.closest("[data-asset-viewer]")).length;
+    return { count: all.length, inViewer, small };
+  }, min);
+  expect(r.small, `controls under ${min}x${min} CSS px`).toEqual([]);
+  return r;
+}
+
+/**
+ * Records screen-reader announcements: every DOM text change inside a live region
+ * (role=alert/status/log or aria-live other than off), from page load on. Call before goto.
+ */
+export async function recordAnnouncements(page) {
+  await page.addInitScript(() => {
+    const rec = (window.__announcements = []);
+    const liveOf = (n) => {
+      for (let e = n && n.nodeType === 1 ? n : n && n.parentElement; e; e = e.parentElement) {
+        const role = e.getAttribute("role");
+        const live = e.getAttribute("aria-live");
+        if (/^(alert|status|log)$/.test(role || "") || (live && live !== "off")) return e;
+      }
+      return null;
+    };
+    new MutationObserver((ms) => {
+      for (const m of ms) {
+        const region = liveOf(m.target);
+        if (!region) continue;
+        const text = region.textContent.trim();
+        if (text) rec.push({ role: region.getAttribute("role"), live: region.getAttribute("aria-live"), text });
+      }
+    }).observe(document, { subtree: true, childList: true, characterData: true });
+  });
+}
+
 /** Expected browser messages for deliberately broken inputs. */
 export const EXPECTED = {
   http4xx: /Failed to load resource: the server responded with a status of 4(03|04|10)/,

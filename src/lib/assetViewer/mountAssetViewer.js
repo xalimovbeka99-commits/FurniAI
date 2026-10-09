@@ -43,7 +43,8 @@
  *   viewer.orbit(dAzimuthRad, dPolarRad) / zoom(factor) / resetView() / fitToView()
  *     (also on-screen controls and canvas keys: arrows, + / -, 0, F);
  *     a container resize (incl. phone orientation change) re-fits, keeping the view direction and zoom ratio.
- *   viewer.retry()   re-runs the last load/showJob/watchJob (offered only for transient failures).
+ *   viewer.retry()   re-runs the last load/showJob/watchJob only when state.canRetry (transient failures);
+ *                    otherwise a no-op resolving { ok:false, retried:false, state }.
  *   The viewer never POSTs, never resubmits and never sets acknowledgeUnknownCharge: after a
  *     409 PRIOR_SUBMISSION_UNKNOWN the host may showJob()/watchJob() error.relatedJobId, which
  *     renders SUBMISSION_UNKNOWN ("may have been charged; not retried automatically").
@@ -1104,9 +1105,12 @@ export function mountAssetViewer(el, options = {}) {
     return { distance: sph.radius, fitDistance: lastFit.distance, zoomRatio: sph.radius / lastFit.distance, azimuth: sph.theta, polar: sph.phi };
   }
 
-  /** Re-runs the last load/showJob/watchJob (user-initiated; offered for transient failures only). */
-  function retry() {
-    return !disposed && lastRequest ? lastRequest() : null;
+  /**
+   * Re-runs the last load/showJob/watchJob, only where the state offers it (canRetry: transient
+   * failures). Otherwise a no-op that resolves { ok:false, retried:false, state }.
+   */
+  async function retry() {
+    return state.canRetry && !disposed && lastRequest ? lastRequest() : { ok: false, retried: false, state: snapshot() };
   }
 
   function on(event, cb) {

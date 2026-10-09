@@ -16,7 +16,7 @@ export const ERROR_MESSAGE = /* @__PURE__ */ Object.freeze({
   VIEWER_DISPOSED: "The 3D viewer has been closed.",
   SIGN_IN_REQUIRED: "Please sign in to view this 3D concept.",
   SIGN_IN_UNAVAILABLE: "Sign-in is temporarily unavailable, so this 3D concept can't be opened right now. Please try again later.",
-  FORBIDDEN: "This account doesn't have permission to open this 3D concept. Signing in again won't change that.",
+  FORBIDDEN: "This account doesn't have permission to open this 3D concept.",
   CONCEPTS_NOT_CONFIGURED: "3D concepts aren't available on this site yet.",
   SERVICE_UNAVAILABLE: "The 3D concept service is temporarily unavailable. Please try again later.",
   PROVIDER_UNAVAILABLE: "The 3D generation service couldn't be reached. Please try again later.",
@@ -40,7 +40,8 @@ export const ERROR_MESSAGE = /* @__PURE__ */ Object.freeze({
 /**
  * Every code is its own name (ERROR_CODE.X === "X"), derived from
  * ERROR_MESSAGE so the two can never drift. Notes on some codes:
- * - FORBIDDEN (v2.1): HTTP 403 / UNAUTHORIZED, signed in but not allowed. Hosts should treat it page-wide.
+ * - FORBIDDEN (v2.1): HTTP 403 / UNAUTHORIZED, signed in but not allowed. The message only says access is
+ *   blocked (no sign-in wording; 401 keeps its sign-in prompt). Its record has pageWide:true: hosts treat it page-wide.
  * - RESOLVE_FAILED: network/transport failure ONLY (details.cause "network"; offline, DNS, CORS on
  *   the API call, connection reset). Narrowed in v3.
  * - RESOLVE_SERVER_ERROR (v3): an error answer whose code the viewer does not know (e.g. 500
@@ -115,6 +116,7 @@ export function toErrorRecord(err) {
   if (isViewerError(err)) {
     const rec = { code: err.code, message: err.message, detail: err.detail };
     for (const k of RECORD_EXTRAS) if (err[k] !== undefined) rec[k] = err[k];
+    if (err.code === "FORBIDDEN") rec.pageWide = true; // INT-403: one page-level message; a host may close its viewer panel
     return rec;
   }
   return {

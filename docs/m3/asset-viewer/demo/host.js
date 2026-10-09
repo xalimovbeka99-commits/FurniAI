@@ -97,7 +97,9 @@
   var replaced = false;
 
   function render(s) {
-    var t = s.status + (s.error ? " · " + s.error.code : "") + (s.model ? " · " + s.model.meshCount + " mesh" : "");
+    // error.pageWide (FORBIDDEN, INT-403): a real host closes its viewer panel or shows ONE page-level
+    // message; this demo keeps the viewer so its single role=alert can be inspected, and adds no second alert.
+    var t = s.status + (s.error ? " · " + s.error.code + (s.error.pageWide ? " · page-wide" : "") : "") + (s.model ? " · " + s.model.meshCount + " mesh" : "");
     $("host-state").textContent = t;
     var b = s.job && s.job.billing;
     $("host-billing").textContent = b && C ? C.describeBillingOutcome(b.outcome) : "No job";

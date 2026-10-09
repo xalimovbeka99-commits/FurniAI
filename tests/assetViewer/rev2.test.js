@@ -125,7 +125,7 @@ describe("rev 2 synthetic fixture, loaded from docs/creative/fixtures", () => {
     expect(t.container.find("data-av-status").textContent).toBe(ERROR_MESSAGE.SUBMISSION_UNKNOWN);
     expect(b.calls).toEqual([]);
     expect(b.cdn.calls).toEqual([]);
-    expect(t.viewer.retry()).not.toBeNull(); // re-shows the same job object; still nothing is sent
+    expect(await t.viewer.retry()).toMatchObject({ ok: false, retried: false }); // no retry offered: a no-op, nothing is sent
     expect(b.calls).toEqual([]);
     t.viewer.dispose();
   });
