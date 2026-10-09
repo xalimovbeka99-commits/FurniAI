@@ -35,14 +35,29 @@ export const ERROR_KIND = Object.freeze({
 });
 
 /**
- * Failures a person may sensibly try again. The gallery NEVER retries them by itself: it shows a
- * visible "Try again" action and the request runs again only when that is clicked.
- * Not here: 401/403 (page-wide sign-in / permission), 404/409 integrity (the record), 410 (gone),
- * *_NOT_CONFIGURED (deployment) and ASSET_NOT_READY (the job status is re-checked instead).
+ * Failures a person may sensibly try again (QE PJ-1, 9 Oct): transport, 5xx, 429, the provider
+ * not answering, and a file that isn't ready yet. The gallery NEVER retries them by itself: it
+ * shows a visible "Try again" action and the request runs again only when that is clicked.
+ * Not here, because trying again can't help: 401/403 (page-wide sign-in / permission), 404 and
+ * integrity failures (the record), malformed or unreadable answers, provider refusals (credits,
+ * keys, a rejected request), 410 (gone), *_NOT_CONFIGURED (deployment) and other request errors.
  */
-export const USER_RETRY_KINDS = Object.freeze(
-  new Set(["network", "server", "rate_limited", "provider_unavailable", "provider_refused", "malformed", "request"]),
-);
+export const USER_RETRY_KINDS = Object.freeze(new Set(["network", "server", "rate_limited", "provider_unavailable", "asset_not_ready"]));
+
+/**
+ * Viewer display failures where a fresh attempt can help, because "Try opening again" resolves a
+ * NEW address: the file couldn't be fetched (e.g. an expired link), the browser's graphics context
+ * was lost, or the viewer reports a display failure. A damaged, empty, unsupported or too-large
+ * file is not retried: the same file would fail the same way.
+ */
+export const RETRYABLE_DISPLAY_CODES = Object.freeze(new Set(["FETCH_FAILED", "ASSET_DISPLAY_FAILED", "WEBGL_CONTEXT_LOST"]));
+
+/** Whether a failed Open/Download (gallery asset state { kind, code, action }) gets a visible Try again. */
+export function canUserRetryAsset(a) {
+  if (!a) return false;
+  if (USER_RETRY_KINDS.has(a.kind)) return true;
+  return a.action === "open" && a.kind === ERROR_KIND.REQUEST && RETRYABLE_DISPLAY_CODES.has(a.code);
+}
 
 const PROVIDER_REFUSED = new Set([CODE.PROVIDER_INSUFFICIENT_CREDITS, CODE.PROVIDER_AUTH_REJECTED, CODE.PROVIDER_REJECTED_REQUEST]);
 const PROVIDER_DOWN = new Set([CODE.PROVIDER_UNAVAILABLE, CODE.PROVIDER_UNEXPECTED_RESPONSE]);
@@ -89,8 +104,21 @@ export const DISPLAY_FAILURE_CODES = Object.freeze(
   new Set(["ASSET_DISPLAY_FAILED", "FETCH_FAILED", "PARSE_FAILED", "UNSUPPORTED_FORMAT", "EMPTY_SCENE", "FILE_TOO_LARGE", "WEBGL_UNAVAILABLE", "MISSING_DEPENDENCY", "VIEWER_ERROR"]),
 );
 
+/**
+ * AE viewer v3.1 (22bf5bb) marks a FORBIDDEN record with pageWide:true, in getState().error, the
+ * "error" event and onError (and load()'s result). The flag alone is enough for the gallery to go
+ * page-wide, whatever the code; a pageWide record that is a 401 stays signed-out.
+ */
+export function isPageWideViewerRecord(rec) {
+  return !!rec && typeof rec === "object" && rec.pageWide === true;
+}
+
 function classifyViewerError(e) {
   const status = Number.isInteger(e.status) ? e.status : null;
+  if (isPageWideViewerRecord(e)) {
+    const signedOut = e.code === "SIGN_IN_REQUIRED" || e.serverCode === CODE.MISSING_AUTH || e.serverCode === CODE.SIGNED_OUT || status === 401;
+    return signedOut ? { kind: ERROR_KIND.SIGNED_OUT, code: e.serverCode || e.code || CODE.MISSING_AUTH, status } : { kind: ERROR_KIND.FORBIDDEN, code: e.code || CODE.FORBIDDEN, status };
+  }
   if (typeof e.serverCode === "string" && e.serverCode) return classifyError({ status, code: e.serverCode });
   const kind = VIEWER_CODE_KIND[e.code];
   if (kind) return { kind, code: e.code, status };
@@ -194,11 +222,11 @@ export const PRIOR_SUBMISSION_UNKNOWN_MESSAGE =
  */
 export const BILLING_TEXT = Object.freeze({
   not_submitted: "Not sent yet: FurniAI hasn't sent the paid generation request for this concept.",
-  unconfirmed: "Not confirmed: the request was or may have been sent and no cost has been reported. It may have been charged.",
-  unconfirmedPending: "Not confirmed yet: the request was sent and no cost has been reported so far.",
+  unconfirmed: "Not confirmed: the request was or may have been sent, and the provider hasn't reported a cost. It may have been charged.",
+  unconfirmedPending: "Not confirmed yet: the request was sent and the provider hasn't reported a cost yet. It may be charged.",
   reported: (cost, unit) => `Cost reported by the generation service: ${cost} ${unit === "provider_cost_units" || !unit ? "provider units (unit unverified)" : unit}.`,
   reportedNoCost: "Reported, but the amount wasn't included.",
-  missing: "Not reported by this server.",
+  missing: "This server didn't report billing for this concept, so it isn't known whether it was charged.",
 });
 
 /**

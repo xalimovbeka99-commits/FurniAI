@@ -62,6 +62,12 @@ const okAsset = ({ jobId, index }) => {
   const a = P["asset.200.json"].response.asset;
   return { ok: true, asset: { ...a, jobId, index, url: `${location.origin}${GLB}?resolve=${++n}`, resolvedAt: new Date().toISOString() } };
 };
+/** The same SYNTHETIC file from the OTHER local host name: a cross-origin address, like a provider CDN. */
+const crossOriginAsset = ({ jobId, index }) => {
+  const a = P["asset.200.json"].response.asset;
+  const other = location.hostname === "localhost" ? "127.0.0.1" : "localhost";
+  return { ok: true, asset: { ...a, jobId, index, filename: "asset_out_job_fx_1.glb", url: `${location.protocol}//${other}:${location.port}${GLB}?resolve=${++n}`, resolvedAt: new Date().toISOString() } };
+};
 const REF_PNG = `${location.origin}/tests/projects/fixtures/rev2/SYNTHETIC-reference-drawing.png`;
 
 export const SCENARIOS = {
@@ -111,6 +117,25 @@ export const SCENARIOS = {
     getAssetUrl: throwing(F.errorFor("RECORD_INTEGRITY_FAILED")),
     click: "download",
     pollIntervalMs: 3000,
+  },
+  open_forbidden: {
+    label: "Open: 403 FORBIDDEN (page-wide; the viewer closes)",
+    listJobs: () => ({ ok: true, jobs: [ok] }),
+    getJob: never,
+    getAssetUrl: throwing({ status: 403, code: "FORBIDDEN", message: "Not allowed" }),
+    click: "open",
+  },
+  download_cross_origin: {
+    label: "Download: cross-origin address, default download, FurniAI file name",
+    listJobs: () => ({ ok: true, jobs: [ok] }),
+    getJob: never,
+    getAssetUrl: crossOriginAsset,
+    defaultDownload: true,
+  },
+  signed_out_sign_in_hook: {
+    label: "Signed out (401) with a host sign-in hook (SYNTHETIC hook)",
+    listJobs: throwing(fxErr("error.missing-auth.401.json")),
+    onSignIn: true,
   },
   open: { label: "Open: 3D view of the SYNTHETIC box", listJobs: () => ({ ok: true, jobs: [ok] }), getJob: never, getAssetUrl: okAsset, click: "open" },
   download: { label: "Download: fresh address, real file", listJobs: () => ({ ok: true, jobs: [ok] }), getJob: never, getAssetUrl: okAsset, click: "download" },
@@ -165,8 +190,16 @@ async function mount(id) {
     ...(s.thumb ? { resolveReferenceThumbnail: async (a) => s.thumb(a) } : {}),
     mountAssetViewer,
     viewerOptions: { three: env.three, deps: env.deps },
+    ...(s.onSignIn
+      ? {
+          onSignIn: () => {
+            log.textContent = "SYNTHETIC: the host's sign-in hook was called (the demo has no real sign-in).";
+          },
+        }
+      : {}),
     // A real download of the freshly resolved (local, SYNTHETIC) file; the address is used once and dropped.
-    startDownload: ({ url, filename }) => {
+    // download_cross_origin uses the gallery's DEFAULT download instead.
+    ...(s.defaultDownload ? {} : { startDownload: ({ url, filename }) => {
       const a = document.createElement("a");
       a.href = url;
       a.download = filename;
@@ -174,7 +207,7 @@ async function mount(id) {
       a.click();
       a.remove();
       log.textContent = `SYNTHETIC/MOCKED: downloaded ${filename} (the SYNTHETIC box, not a Scenario output) from a freshly resolved local address. getAssetUrl calls: ${client.count("getAssetUrl")}.`;
-    },
+    } }),
   });
   window.__gallery = gallery;
   window.__calls = () => client.calls.map((c) => (typeof c === "string" ? c : c.method));

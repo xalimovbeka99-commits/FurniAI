@@ -91,7 +91,10 @@ export function startServer(port = 0) {
     if (!file.startsWith(root)) return res.writeHead(403).end();
     try {
       const body = await readFile(file);
-      res.writeHead(200, { "content-type": types[extname(file)] || "application/octet-stream", "cache-control": "no-store" });
+      // .glb only: readable from the other local host name (127.0.0.1 <-> localhost), so the demo can
+      // show a cross-origin download saved under the FurniAI name. Local demo server only.
+      const cors = extname(file) === ".glb" ? { "access-control-allow-origin": "*" } : {};
+      res.writeHead(200, { "content-type": types[extname(file)] || "application/octet-stream", "cache-control": "no-store", ...cors });
       res.end(body);
     } catch {
       res.writeHead(404).end("not found");

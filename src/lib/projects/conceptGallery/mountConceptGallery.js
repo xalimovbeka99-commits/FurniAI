@@ -58,13 +58,15 @@
  *   pollIntervalMs?: number,
  *   formatDate?: (iso: string) => string,
  *   startDownload?: (args: { url: string, filename: string, jobId: string, index: number, format: string|null }) => void,
+ *   fetchImpl?: typeof fetch,          // default download only: reads the file so the FurniAI name sticks cross-origin
+ *   onSignIn?: () => void,             // host's sign-in action; a "Sign in" button on the 401 panel only when given
  *   title?: string,
  *   resolveReferenceThumbnail?: (args: { referenceId: string, jobId: string, signal?: AbortSignal }) => Promise<string|null>,
  * }} options
  * @returns {{ refresh: () => Promise<void>, destroy: () => void, getState: () => object }}
  */
 import { CODE, FALLBACK_CONCEPT_NOTICE, MAX_POLL_MS, MIN_POLL_MS, POLL_FAILURES_BEFORE_PAUSE, isViewableFormat } from "./contract.js";
-import { ASSET_MESSAGES, ConceptAssetError, DISPLAY_FAILED_MESSAGE, DISPLAY_FAILURE_CODES, ERROR_KIND, classifyError, isAbortError } from "./errors.js";
+import { ASSET_MESSAGES, ConceptAssetError, DISPLAY_FAILED_MESSAGE, DISPLAY_FAILURE_CODES, ERROR_KIND, classifyError, isAbortError, isPageWideViewerRecord } from "./errors.js";
 import { defaultFormatDate, el, pollingText, renderBody } from "./render.js";
 import { LIST_STATUS, assetKey, availabilityFrom, hasPollableJobs, initialState, reduce, snapshot } from "./state.js";
 import { CONCEPT_GALLERY_CSS, CONCEPT_GALLERY_STYLE_ID } from "./styles.js";
@@ -85,6 +87,26 @@ export function clampPollInterval(ms) {
  */
 const JOB_LEVEL_KINDS = new Set([ERROR_KIND.INTEGRITY, ERROR_KIND.NOT_FOUND]);
 const PAGE_WIDE_KINDS = new Set([ERROR_KIND.SIGNED_OUT, ERROR_KIND.FORBIDDEN]);
+
+/** furniai-concept-<jobId>-<index>.<fmt|bin>, sanitised the same way as AE's creativeFilename. */
+export function conceptFilename(jobId, index, format) {
+  const safeJob = String(jobId || "unknown").replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 64) || "unknown";
+  const i = Number.isInteger(index) && index >= 0 ? index : 0;
+  const fmt = String(format || "").toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 8) || "bin";
+  return `furniai-concept-${safeJob}-${i}.${fmt}`;
+}
+
+/**
+ * The name a download is saved under: always a FurniAI name. The source's filename is used only
+ * when it is already the FurniAI name for this same job and output (QE: the provider's name,
+ * e.g. asset_out_job_fx_1.glb, must never reach the customer's disk).
+ */
+export function downloadFilename(jobId, index, format, suggested) {
+  const ours = conceptFilename(jobId, index, format);
+  if (typeof suggested !== "string") return ours;
+  const prefix = ours.slice(0, ours.lastIndexOf(".") + 1);
+  return /^furniai-concept-[A-Za-z0-9_-]{1,64}-\d+\.[a-z0-9]{1,8}$/.test(suggested) && suggested.startsWith(prefix) ? suggested : ours;
+}
 
 function signedOutError() {
   return { status: null, code: CODE.SIGNED_OUT };
@@ -125,6 +147,8 @@ export function mountConceptGallery(root, options = {}) {
   const mountViewer = source && typeof options.mountAssetViewer === "function" ? options.mountAssetViewer : null;
   const viewerOptions = options.viewerOptions && typeof options.viewerOptions === "object" ? options.viewerOptions : {};
   const startDownload = typeof options.startDownload === "function" ? options.startDownload : defaultStartDownload;
+  const fetchImpl = typeof options.fetchImpl === "function" ? options.fetchImpl : typeof globalThis.fetch === "function" ? globalThis.fetch.bind(globalThis) : null;
+  const onSignIn = typeof options.onSignIn === "function" ? options.onSignIn : null;
   const resolveThumb = typeof options.resolveReferenceThumbnail === "function" ? options.resolveReferenceThumbnail : null;
   /** jobId -> thumbnail address. Kept here, never in state or storage; dropped on every list load. */
   const thumbUrls = new Map();
@@ -182,6 +206,16 @@ export function mountConceptGallery(root, options = {}) {
     },
     /** The visible "Check status again" after polling paused. */
     onResumePolling: () => resumePolling(),
+    /** Only when the host injected one; the gallery invents no navigation. */
+    onSignIn: onSignIn
+      ? () => {
+          try {
+            onSignIn();
+          } catch {
+            /* the host's error is its own */
+          }
+        }
+      : null,
     thumbFor: (jobId) => thumbUrls.get(jobId) || null,
     onThumbError: (jobId) => {
       thumbUrls.delete(jobId);
@@ -230,9 +264,21 @@ export function mountConceptGallery(root, options = {}) {
     return t;
   }
 
-  /** Signed out (401) or not allowed (403): the whole list is replaced by one panel; polling stops. */
+  /**
+   * Signed out (401) or not allowed (403), from ANY request (list, poll, Open, Download, or the
+   * viewer reporting it): the whole list is replaced by one panel and polling stops. The viewer is
+   * disposed and its panel closed, so its own alert can't linger (QE INT-403), and the announcer
+   * is cleared: the page-wide panel (role=alert) is the ONE announced message.
+   */
   function goPageWide(err) {
+    if (destroyed) return;
+    closeViewer();
+    announce("");
     stopPolling();
+    // Several channels can report the same refusal (load() result, onError, the "error" event,
+    // statechange / getState(), a parallel poll or Download). Only the first changes the page, so
+    // the permission panel is inserted (announced) once (AE v3.1 INT-403).
+    if (state.list === LIST_STATUS.ERROR && state.error?.kind === err.kind) return;
     dispatch({ type: "SIGNED_OUT", error: err });
   }
 
@@ -257,7 +303,7 @@ export function mountConceptGallery(root, options = {}) {
     } catch (err) {
       if (destroyed || seq !== listSeq || isAbortError(err)) return;
       const c = classifyError(err);
-      if (c.kind === ERROR_KIND.SIGNED_OUT) goPageWide(c);
+      if (PAGE_WIDE_KINDS.has(c.kind)) goPageWide(c);
       else dispatch({ type: "LIST_ERR", error: c });
     } finally {
       t.done();
@@ -463,6 +509,11 @@ export function mountConceptGallery(root, options = {}) {
     } catch (err) {
       if (destroyed || isAbortError(err)) throw err;
       const e = err instanceof ConceptAssetError ? err : new ConceptAssetError(classifyError(err), err);
+      if (PAGE_WIDE_KINDS.has(e.kind)) {
+        // No per-file message or announcement: the page-wide panel says it once.
+        goPageWide({ kind: e.kind, code: e.code, status: e.status ?? null });
+        throw e;
+      }
       dispatch({ type: "ASSET_ERR", key, action, error: { kind: e.kind, code: e.code } });
       announce(ASSET_MESSAGES[e.kind] || ASSET_MESSAGES[ERROR_KIND.REQUEST]);
       afterAssetFailure(jobId, { kind: e.kind, code: e.code, status: e.status });
@@ -549,7 +600,38 @@ export function mountConceptGallery(root, options = {}) {
       // viewer's overlay must not show it a second time. autoRetry:false: retries are
       // user-initiated only (viewer v3; older viewers ignore it). Both set last so
       // viewerOptions can't override them.
-      viewer = mountViewer(viewerHost, { ...viewerOptions, creativeSource: source, renderConceptNotice: false, autoRetry: false });
+      // onError: the viewer can also fail on its own (e.g. its own Try again after autoRetry:false).
+      // A 401/403 it reports there sends the page page-wide too; the host's onError still runs.
+      const hostOnError = typeof viewerOptions.onError === "function" ? viewerOptions.onError : null;
+      const mounted = mountViewer(viewerHost, {
+        ...viewerOptions,
+        creativeSource: source,
+        renderConceptNotice: false,
+        autoRetry: false,
+        onError: (rec) => {
+          if (hostOnError) {
+            try {
+              hostOnError(rec);
+            } catch {
+              /* the host's error is its own */
+            }
+          }
+          onViewerError(mounted, rec);
+        },
+      });
+      viewer = mounted;
+      // AE viewer v3.1: FORBIDDEN carries pageWide:true on every channel. Listen to all of them;
+      // onViewerError acts once per viewer (it is a no-op after that viewer is closed).
+      if (mounted && typeof mounted.on === "function") {
+        try {
+          mounted.on("error", (rec) => onViewerError(mounted, rec));
+          mounted.on("statechange", (st) => {
+            if (st && st.error && isPageWideViewerRecord(st.error)) onViewerError(mounted, st.error);
+          });
+        } catch {
+          /* an older viewer without events: onError and load()'s result still cover it */
+        }
+      }
     }
     viewerPanel.textContent = "";
     viewerPanel.appendChild(el(doc, "div", { class: "fcg-viewer-head" }, heading, close));
@@ -597,7 +679,19 @@ export function mountConceptGallery(root, options = {}) {
       setStatus(result.downloadOnly ? "This file can't be shown in the 3D view. Use Download." : "");
       return;
     }
-    const c = classifyError({ name: "AssetViewerError", ...result.error });
+    // v3.1 also flags it in getState().error.pageWide; take that if load()'s record lacks it.
+    let stateError = null;
+    try {
+      stateError = typeof viewer.getState === "function" ? viewer.getState()?.error || null : null;
+    } catch {
+      stateError = null;
+    }
+    const rec = !isPageWideViewerRecord(result.error) && isPageWideViewerRecord(stateError) ? { ...result.error, ...stateError } : result.error;
+    const c = classifyError({ name: "AssetViewerError", ...rec });
+    if (PAGE_WIDE_KINDS.has(c.kind)) {
+      goPageWide({ kind: c.kind, code: c.code, status: c.status ?? null });
+      return;
+    }
     // Only a failure to *show* the file (ASSET_DISPLAY_FAILED and the viewer's other display
     // codes) suggests Download. A server, network, sign-in, permission, configuration or
     // malformed-answer failure would hit Download too, so it gets its own message (QE G2).
@@ -607,6 +701,21 @@ export function mountConceptGallery(root, options = {}) {
     setStatus(text, c.code);
     announce(text);
     afterAssetFailure(request.jobId, c);
+  }
+
+  /**
+   * A failure the viewer reported through onError. Only 401/403 matter here (everything else
+   * reaches the gallery as load()'s result, or stays inside the viewer's own panel). Deferred one
+   * microtask so the viewer is never disposed from inside its own callback; ignored once that
+   * viewer is gone.
+   */
+  function onViewerError(which, rec) {
+    if (destroyed || !rec || viewer !== which) return;
+    const c = classifyError({ name: "AssetViewerError", ...rec });
+    if (!PAGE_WIDE_KINDS.has(c.kind)) return;
+    Promise.resolve().then(() => {
+      if (!destroyed && viewer === which) goPageWide({ kind: c.kind, code: c.code, status: c.status ?? null });
+    });
   }
 
   /**
@@ -640,7 +749,7 @@ export function mountConceptGallery(root, options = {}) {
    */
   function afterAssetFailure(jobId, c) {
     if (destroyed) return;
-    if (c.kind === ERROR_KIND.FORBIDDEN) {
+    if (PAGE_WIDE_KINDS.has(c.kind)) {
       goPageWide({ kind: c.kind, code: c.code, status: c.status ?? null });
     } else if (JOB_LEVEL_KINDS.has(c.kind)) {
       dispatch({ type: "JOB_ERR", jobId, error: { kind: c.kind, code: c.code, status: c.status ?? null } });
@@ -654,20 +763,67 @@ export function mountConceptGallery(root, options = {}) {
     if (!hit || !source || state.assets[assetKey(jobId, index)]?.phase === "resolving") return;
     const d = await runAsset(jobId, index, "download");
     const format = d.format || hit.output.format || null;
-    // Prefer the source's own name (furniai-concept-<job>-<i>.<fmt|bin>); the provider's is not trusted.
-    const filename = typeof d.filename === "string" && d.filename ? d.filename : `furniai-concept-${jobId}-${index}.${format || "bin"}`;
-    startDownload({ url: d.url, filename, jobId, index, format });
+    // Always a FurniAI name; the provider's file name is never used (QE).
+    const filename = downloadFilename(jobId, index, format, d.filename);
+    try {
+      await startDownload({ url: d.url, filename, jobId, index, format });
+    } catch {
+      /* the host's (or the browser's) problem; nothing is retried */
+    }
   }
 
-  function defaultStartDownload({ url, filename }) {
+  function clickLink(href, filename, external) {
     const a = doc.createElement("a");
-    a.setAttribute("href", url);
+    a.setAttribute("href", href);
     a.setAttribute("download", filename);
-    a.setAttribute("rel", "noopener");
-    a.setAttribute("target", "_blank");
+    a.setAttribute("rel", "noopener noreferrer");
+    if (external) a.setAttribute("target", "_blank");
     doc.body.appendChild(a);
     a.click();
     a.parentNode.removeChild(a); // the address is used once and not kept
+  }
+
+  function isSameOrigin(url) {
+    try {
+      const here = doc.location && doc.location.origin;
+      return Boolean(here) && new URL(url, doc.location.href).origin === here;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Browsers ignore <a download="name"> for a cross-origin address and save under the provider's
+   * name. So a cross-origin file is read ONCE (credentials omitted) and saved from a local blob
+   * under the FurniAI name; the blob address is revoked shortly after. If the browser won't let
+   * the page read it (CORS) the gallery falls back to a plain link, which the browser may save
+   * under the provider's name. That is the only case where our name can't be guaranteed.
+   */
+  async function defaultStartDownload({ url, filename }) {
+    const U = globalThis.URL;
+    if (!isSameOrigin(url) && fetchImpl && U && typeof U.createObjectURL === "function") {
+      let blob = null;
+      try {
+        const res = await fetchImpl(url, { credentials: "omit", cache: "no-store" });
+        if (res && res.ok && typeof res.blob === "function") blob = await res.blob();
+      } catch {
+        blob = null;
+      }
+      if (destroyed) return;
+      if (blob) {
+        const local = U.createObjectURL(blob);
+        clickLink(local, filename, false);
+        setT(() => {
+          try {
+            U.revokeObjectURL(local);
+          } catch {
+            /* already gone */
+          }
+        }, 10000);
+        return;
+      }
+    }
+    if (!destroyed) clickLink(url, filename, true);
   }
 
   function destroy() {

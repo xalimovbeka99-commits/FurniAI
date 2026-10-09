@@ -33,7 +33,7 @@ export const CONCEPT_GALLERY_CSS = `
 .fcg-title{font-size:18px;font-weight:700;margin:0}
 .fcg-live{min-height:1.4em;margin:0 0 var(--space-sm,8px);font-size:13px;color:var(--ink-soft,#5C626E)}
 .fcg-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
-.fcg-btn{font-family:var(--font-mono,'Space Mono',monospace);font-size:12px;letter-spacing:.04em;cursor:pointer;border-radius:var(--r-sm,8px);border:1px solid var(--ink,#1C1E21);background:transparent;color:var(--ink,#1C1E21);padding:7px 13px;min-height:36px}
+.fcg-btn{font-family:var(--font-mono,'Space Mono',monospace);font-size:12px;letter-spacing:.04em;cursor:pointer;border-radius:var(--r-sm,8px);border:1px solid var(--ink,#1C1E21);background:transparent;color:var(--ink,#1C1E21);padding:7px 13px;min-height:44px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;text-align:center}
 .fcg-btn:hover:not(:disabled){background:var(--ink,#1C1E21);color:var(--paper,#FAF9F5)}
 .fcg-btn-primary{background:var(--ink,#1C1E21);color:var(--paper,#FAF9F5)}
 .fcg-btn-primary:hover:not(:disabled){background:var(--brass,#1B4D3E);border-color:var(--brass,#1B4D3E)}

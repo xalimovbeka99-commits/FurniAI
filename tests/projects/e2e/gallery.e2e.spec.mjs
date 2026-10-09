@@ -20,7 +20,9 @@ test.beforeEach(async ({ page, baseURL }) => {
   page.on("console", (m) => m.type() === "error" && problems.push(`console: ${m.text()}`));
   page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));
   page.on("response", (r) => r.status() >= 500 && problems.push(`${r.status()} ${r.url()}`));
-  page.on("request", (r) => !r.url().startsWith(origin) && problems.push(`external request ${r.url()}`));
+  // The other local host name on the same port is the demo's stand-in for a cross-origin CDN.
+  const local = [origin, origin.replace("127.0.0.1", "localhost")];
+  page.on("request", (r) => !local.some((o) => r.url().startsWith(o)) && problems.push(`external request ${r.url()}`));
   page.__problems = problems;
 });
 test.afterEach(async ({ page }) => {
@@ -61,7 +63,8 @@ test("F01-H2 billing: each outcome has its own truthful line; nothing on any sta
   await expect(line("not_submitted")).toHaveText(/^Not sent yet/);
   await expect(line("unconfirmed")).toHaveText(/^Not confirmed yet/);
   await expect(line("reported").first()).toHaveText("Cost reported by the generation service: 12 provider units (unit unverified).");
-  await expect(line("unknown")).toHaveText("Not reported by this server.");
+  await expect(line("unknown")).toHaveText("This server didn't report billing for this concept, so it isn't known whether it was charged.");
+  await expect(page.locator("[data-concept-gallery]")).not.toContainText(/no cost has been reported/i);
   for (const s of ["list", "billing", "failed", "submission_unknown", "rate_limited", "provider_refused"]) {
     await go(page, s);
     expect(await page.locator("[data-concept-gallery]").innerText(), s).not.toMatch(FREE_CLAIM);
@@ -80,10 +83,10 @@ const PANELS = [
   ["network", "network", /Check your connection/, true],
   ["server_5xx", "server", /Try again in a moment\.$/, true],
   ["rate_limited", "rate_limited", /busy.*Try again in a moment\.$/, true],
-  ["provider_refused", "provider_refused", /Try again later\.$/, true],
+  ["provider_refused", "provider_refused", /Try again later\.$/, false],
   ["provider_unavailable", "provider_unavailable", /isn't responding right now/, true],
-  ["not_configured", "not_configured", /aren't available on this deployment/, true],
-  ["malformed", "malformed", /couldn't read/, true],
+  ["not_configured", "not_configured", /aren't available on this deployment/, false],
+  ["malformed", "malformed", /couldn't read/, false],
 ];
 test("F06-N2 403 is page-wide with NO sign-in prompt (AE confirmed); 401 keeps it", async ({ page }) => {
   await go(page, "forbidden");
@@ -265,12 +268,84 @@ test("F04-N1 keyboard: Tab reaches Download and Enter starts it", async ({ page,
   expect(d.suggestedFilename()).toMatch(/^furniai-concept-.*\.glb$/);
 });
 
-for (const state of ["list", "empty", "billing", "failed", "submission_unknown", "signed_out", "forbidden", "rate_limited", "provider_unavailable", "not_configured", "asset_unavailable", "asset_rate_limited", "poll_paused", "unavailable", "thumbnails", "long"]) {
+test("QE INT-403: a 403 on Open closes the real viewer panel; ONE permission alert; no sign-in wording", async ({ page }) => {
+  // Counts every write of permission text into a live region (role=alert/status or aria-live).
+  // The gallery must write it once; the viewer's own alert (v3.1 announces one) leaves with the viewer.
+  await page.addInitScript(() => {
+    window.__liveWrites = { gallery: 0, viewer: 0 };
+    const live = (n) => n && n.nodeType === 1 && (/^(alert|status)$/.test(n.getAttribute("role") || "") || n.hasAttribute("aria-live"));
+    const liveOf = (n) => {
+      for (let p = n; p; p = p.parentNode) if (live(p)) return p;
+      return null;
+    };
+    new MutationObserver((recs) => {
+      for (const r of recs) {
+        const nodes = r.type === "characterData" ? [r.target] : [...r.addedNodes];
+        for (const n of nodes) {
+          const region = liveOf(n.nodeType === 1 ? n : n.parentNode);
+          if (!region || !/permission/i.test(n.textContent || "")) continue;
+          const inViewer = region.closest && (region.closest("[data-viewer-panel]") || region.closest("[data-asset-viewer]"));
+          if (inViewer) window.__liveWrites.viewer++;
+          else window.__liveWrites.gallery++;
+        }
+      }
+    }).observe(document, { subtree: true, childList: true, characterData: true });
+  });
+  await go(page, "open_forbidden");
+  await expect(page.locator('[data-panel="forbidden"]')).toBeVisible({ timeout: 10000 });
+  await expect(page.locator("[data-viewer-panel]")).toHaveCount(0);
+  await expect(page.locator("[data-asset-viewer]")).toHaveCount(0);
+  const alerts = page.locator('[role="alert"]').filter({ hasText: /permission/ });
+  await expect(alerts).toHaveCount(1);
+  await expect(page.locator('[role="status"]').filter({ hasText: /permission/ })).toHaveCount(0);
+  await page.waitForTimeout(300); // let any late channel (event / statechange / onError) fire
+  const writes = await page.evaluate(() => window.__liveWrites);
+  expect(writes.gallery).toBe(1);
+  await expect(alerts).toHaveCount(1);
+  await expect(page.locator(".fcg")).not.toContainText(/sign(ing)?[\s-]*in/i);
+  await expect(page.locator('[data-panel="forbidden"] [data-action="retry"]')).toHaveCount(0);
+  expect(await axe(page)).toEqual([]);
+});
+
+test("QE download name: a cross-origin address is saved under the FurniAI name, never the provider's", async ({ page }) => {
+  await go(page, "download_cross_origin");
+  const ready = cards(page).first();
+  const [d] = await Promise.all([page.waitForEvent("download"), ready.getByRole("button", { name: "Download GLB" }).click()]);
+  expect(d.suggestedFilename()).toMatch(/^furniai-concept-[A-Za-z0-9_-]+-0\.glb$/);
+  expect(d.suggestedFilename()).not.toMatch(/asset_out|SYNTHETIC-box/);
+  expect(sha(readFileSync(await d.path()))).toBe(sha(readFileSync(GLB)));
+});
+
+test("QE tap targets: every gallery control is at least 44 x 44 px; no horizontal overflow", async ({ page }) => {
+  for (const state of ["list", "asset_rate_limited", "poll_paused", "signed_out_sign_in_hook", "network", "open"]) {
+    await go(page, state);
+    if (state.startsWith("asset_")) await page.locator("[data-asset-error]").waitFor();
+    if (state === "poll_paused") await page.locator("[data-poll-paused]").waitFor({ timeout: 8000 });
+    if (state === "open") await page.locator('[data-action="close-viewer"]').waitFor({ timeout: 15000 });
+    const sizes = await page.locator("[data-concept-gallery] button:visible").evaluateAll((bs) => bs.map((b) => [b.textContent, Math.round(b.getBoundingClientRect().width), Math.round(b.getBoundingClientRect().height)]));
+    expect(sizes.length, state).toBeGreaterThan(0);
+    expect(sizes.filter(([, w, h]) => w < 44 || h < 44), state).toEqual([]);
+    expect(await noOverflow(page), state).toBe(0);
+  }
+});
+
+test("QE sign-in: a Sign in button only on the 401 panel and only with a host hook; never on 403", async ({ page }) => {
+  await go(page, "signed_out_sign_in_hook");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.locator("#log")).toContainText("sign-in hook was called");
+  await go(page, "signed_out");
+  await expect(page.getByRole("button", { name: "Sign in" })).toHaveCount(0);
+  await go(page, "forbidden");
+  await expect(page.getByRole("button", { name: /sign/i })).toHaveCount(0);
+});
+
+for (const state of ["open_forbidden", "signed_out_sign_in_hook", "list", "empty", "billing", "failed", "submission_unknown", "signed_out", "forbidden", "rate_limited", "provider_unavailable", "not_configured", "asset_unavailable", "asset_rate_limited", "poll_paused", "unavailable", "thumbnails", "long"]) {
   test(`A11Y axe (serious/critical) and no horizontal overflow: ${state}`, async ({ page }) => {
     await go(page, state);
     if (state.startsWith("asset_")) await page.locator("[data-asset-error]").waitFor();
     if (state === "poll_paused") await page.locator("[data-poll-paused]").waitFor({ timeout: 8000 });
     if (state === "thumbnails") await page.locator("img").first().waitFor();
+    if (state === "open_forbidden") await page.locator('[data-panel="forbidden"]').waitFor({ timeout: 10000 });
     expect(await axe(page)).toEqual([]);
     expect(await noOverflow(page)).toBe(0);
   });

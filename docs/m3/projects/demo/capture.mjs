@@ -1,7 +1,7 @@
 // Screenshots of every SYNTHETIC/MOCKED demo state (contract rev 2), desktop 1440x900 and mobile
 // 390x844 (replica-build viewports). Evidence label SYNTHETIC/MOCKED is in every file name and in
 // the demo banner at the top of every image. Not LIVE, not a Scenario demo.
-// Fails on any page error, console error, 5xx, non-local request, horizontal overflow or browser storage use.
+// Fails on any page error, console error, 5xx, non-local request, horizontal overflow, browser storage use or a gallery control under 44px.
 //   node docs/m3/projects/demo/capture.mjs            -> writes to a temp folder
 //   node docs/m3/projects/demo/capture.mjs --update   -> writes docs/m3/projects/artifacts/rev2/{desktop,mobile}/
 import { createHash } from "node:crypto";
@@ -28,6 +28,7 @@ export const STATES = [
   ["21-asset-rate-limited-429-try-again", "asset_rate_limited"], ["22-asset-provider-unavailable-502", "asset_provider_unavailable"],
   ["23-integrity-409", "integrity"], ["24-open-3d-view", "open"], ["25-download", "download"],
   ["26-reference-thumbnails", "thumbnails"], ["27-long-content", "long"], ["28-after-reload-restored", "reload"],
+  ["29-open-forbidden-403-viewer-closed", "open_forbidden"], ["30-signed-out-401-sign-in-hook", "signed_out_sign_in_hook"],
 ];
 const VIEWPORTS = { desktop: { width: 1440, height: 900 }, mobile: { width: 390, height: 844 } };
 
@@ -44,6 +45,10 @@ async function settle(page, state) {
     await page.waitForSelector("[data-viewer-panel] canvas", { timeout: 15000 });
     await page.waitForFunction(() => !document.querySelector("[data-viewer-panel] [aria-busy='true']") && !document.querySelector("[data-viewer-status][data-code]"), null, { timeout: 15000 });
     await page.waitForTimeout(1500); // let the fit + first frames render
+  }
+  if (state === "open_forbidden") {
+    await page.waitForSelector('[data-panel="forbidden"]', { timeout: 10000 });
+    await page.waitForFunction(() => !document.querySelector("[data-viewer-panel]"));
   }
   if (state === "download") await page.waitForFunction(() => document.getElementById("log").textContent.includes("downloaded"), null, { timeout: 8000 });
 }
@@ -89,6 +94,9 @@ try {
       }
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       if (overflow > 0) errors.push(`${tag}: horizontal overflow ${overflow}px`);
+      // QE: every gallery control is at least 44 x 44 CSS px, at both widths.
+      const small = await page.evaluate(() => [...document.querySelectorAll("[data-concept-gallery] button")].filter((b) => b.offsetParent).map((b) => b.getBoundingClientRect()).filter((r) => r.height < 44 || r.width < 44).length);
+      if (small) errors.push(`${tag}: ${small} gallery control(s) smaller than 44px`);
       const stored = await page.evaluate(() => localStorage.length + sessionStorage.length);
       if (stored) errors.push(`${tag}: browser storage used (${stored} keys)`);
       await page.screenshot({ path: join(out, vpName, `${name}.SYNTHETIC.png`), fullPage: true });

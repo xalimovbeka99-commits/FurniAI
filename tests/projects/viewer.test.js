@@ -230,15 +230,18 @@ describe("concept gallery: injected asset viewer (v2)", () => {
     expect(button(card(root, job.jobId), "open")).not.toBeNull(); // not a record problem: no lock
   });
 
-  it("AE Q15: a 403 on Open is FORBIDDEN, page-wide: the panel says why, the list becomes the permission panel, no sign-in prompt", async () => {
-    const { root, client, gallery } = viewerSetup(v2Like([]), {
+  it("AE Q15 / INT-403: a 403 on Open is FORBIDDEN, page-wide: the viewer closes, the list becomes the ONE permission panel, no sign-in prompt", async () => {
+    const { root, client, gallery, mountAssetViewer } = viewerSetup(v2Like([]), {
       getAssetUrl: () => Promise.reject({ status: 403, code: "UNAUTHORIZED", message: "Not allowed." }),
     });
     await flush();
     button(root, "open").click();
     await flush();
     expect(client.count("getAssetUrl")).toBe(1);
-    expect(byAttr(root, "data-viewer-status")[0].textContent).toBe(ASSET_MESSAGES[ERROR_KIND.FORBIDDEN]);
+    // INT-403: the viewer is disposed and its panel closed; only the page-wide panel speaks.
+    expect(byAttr(root, "data-viewer-panel")).toHaveLength(0);
+    expect(mountAssetViewer.made[0].disposed).toBe(true);
+    expect(byAttr(root, "role", "alert").filter((n) => /permission/.test(n.textContent))).toHaveLength(1);
     expect(gallery.getState()).toMatchObject({ list: "error", error: { kind: "forbidden" } });
     expect(byAttr(root, "data-panel", "forbidden")).toHaveLength(1);
     expect(byAttr(root, "data-action", "open")).toHaveLength(0);

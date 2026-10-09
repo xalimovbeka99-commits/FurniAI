@@ -164,12 +164,12 @@ describe("error vs empty: a failed request never looks like an empty gallery", (
   });
 
   it.each([
-    ["network", () => networkError(), ERROR_KIND.NETWORK],
-    ["5xx", () => errorFor("INTERNAL"), ERROR_KIND.SERVER],
-    ["429", () => fixtureError("error.provider-rate-limited.429.json"), ERROR_KIND.RATE_LIMITED],
-    ["502 provider unavailable", () => fixtureError("error.provider-unavailable.submission-unknown.502.json"), ERROR_KIND.PROVIDER_UNAVAILABLE],
-    ["malformed", () => null, ERROR_KIND.MALFORMED],
-  ])("%s: alert panel that says 'this doesn't mean you have none', with Try again", async (_, err, kind) => {
+    ["network", () => networkError(), ERROR_KIND.NETWORK, true],
+    ["5xx", () => errorFor("INTERNAL"), ERROR_KIND.SERVER, true],
+    ["429", () => fixtureError("error.provider-rate-limited.429.json"), ERROR_KIND.RATE_LIMITED, true],
+    ["502 provider unavailable", () => fixtureError("error.provider-unavailable.submission-unknown.502.json"), ERROR_KIND.PROVIDER_UNAVAILABLE, true],
+    ["malformed", () => null, ERROR_KIND.MALFORMED, false],
+  ])("%s: alert panel that says 'this doesn't mean you have none'; Try again only where it can help (QE PJ-1)", async (_, err, kind, retry) => {
     const { root } = setup({ listJobs: () => { const e = err(); if (e === null) return { ok: true }; throw e; } });
     await flush();
     const p = panel(root);
@@ -178,7 +178,8 @@ describe("error vs empty: a failed request never looks like an empty gallery", (
     expect(byAttr(p, "data-not-empty")[0].textContent).toBe("Your concepts couldn't be loaded. This doesn't mean you have none.");
     expect(byClass(p, "fcg-panel-text")[0].textContent).toBe(LIST_MESSAGES[kind]);
     expect(p.textContent).not.toMatch(/No 3D concepts yet/);
-    expect(button(root, "retry")).not.toBeNull();
+    if (retry) expect(button(root, "retry")).not.toBeNull();
+    else expect(button(root, "retry")).toBeNull();
   });
 
   it("401 and page-wide 403: own panels, no 'Try again', no cards, not the empty text", async () => {

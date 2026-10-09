@@ -6,7 +6,7 @@
  * providerProgress and providerStatus are deliberately never read here.
  */
 import { FALLBACK_CONCEPT_NOTICE, JOB_STATUS, LIST_LIMIT, POLL_FAILURES_BEFORE_PAUSE, SUBMISSION_UNKNOWN_WARNING, isKnownStatus, isNonTerminal, isViewableFormat } from "./contract.js";
-import { ASSET_MESSAGES, BILLING_TEXT, ERROR_KIND, FAILED_MESSAGES, JOB_MESSAGES, LIST_MESSAGES, PRIOR_SUBMISSION_UNKNOWN_CARD_NOTE, USER_RETRY_KINDS } from "./errors.js";
+import { ASSET_MESSAGES, BILLING_TEXT, ERROR_KIND, FAILED_MESSAGES, JOB_MESSAGES, LIST_MESSAGES, PRIOR_SUBMISSION_UNKNOWN_CARD_NOTE, USER_RETRY_KINDS, canUserRetryAsset } from "./errors.js";
 import { LIST_STATUS, assetKey } from "./state.js";
 
 export const STATUS_LABEL = Object.freeze({
@@ -191,7 +191,7 @@ function outputActions(doc, job, output, state, ctx, multiple) {
       }),
     );
     // User-initiated only: the request runs again when this is clicked, never by itself.
-    if (USER_RETRY_KINDS.has(a.kind)) {
+    if (canUserRetryAsset(a)) {
       const again = el(doc, "button", {
         type: "button",
         class: "fcg-btn",
@@ -312,6 +312,16 @@ function panel(doc, kind, message, retry) {
 
 /** Renders the variable part of the gallery into `body`. */
 export function renderBody(doc, body, state, ctx) {
+  if (state.list === LIST_STATUS.ERROR) {
+    // The error panel is role=alert: re-inserting an identical one on an unrelated re-render (a
+    // late Open/Download settling, a second 403 channel) would announce it again. Keep the node.
+    const kind = state.error?.kind || ERROR_KIND.REQUEST;
+    const sig = `${kind}|${state.error?.code || ""}|${kind === ERROR_KIND.SIGNED_OUT && typeof ctx.onSignIn === "function" ? 1 : 0}`;
+    if (body.getAttribute("data-error-panel") === sig && body.firstChild) return;
+    body.setAttribute("data-error-panel", sig);
+  } else if (body.getAttribute("data-error-panel") !== null) {
+    body.removeAttribute("data-error-panel");
+  }
   body.textContent = "";
   if (state.list === LIST_STATUS.LOADING) {
     body.appendChild(el(doc, "p", { class: "fcg-sr", text: "Loading your 3D concepts…" }));
@@ -322,8 +332,16 @@ export function renderBody(doc, body, state, ctx) {
   }
   if (state.list === LIST_STATUS.ERROR) {
     const kind = state.error?.kind || ERROR_KIND.REQUEST;
-    const p = panel(doc, kind, LIST_MESSAGES[kind] || LIST_MESSAGES[ERROR_KIND.REQUEST], kind === ERROR_KIND.SIGNED_OUT || kind === ERROR_KIND.FORBIDDEN ? null : ctx.onRefresh);
+    // Try again only where trying again can help (QE PJ-1); the header Refresh always stays.
+    const p = panel(doc, kind, LIST_MESSAGES[kind] || LIST_MESSAGES[ERROR_KIND.REQUEST], USER_RETRY_KINDS.has(kind) ? ctx.onRefresh : null);
     if (state.error?.code) p.setAttribute("data-code", state.error.code);
+    // 401 only: a Sign in button, and only when the host injected onSignIn (no navigation is invented).
+    // 403 never gets one: signing in again doesn't change a permission refusal.
+    if (kind === ERROR_KIND.SIGNED_OUT && typeof ctx.onSignIn === "function") {
+      const b = el(doc, "button", { type: "button", class: "fcg-btn fcg-btn-primary", "data-action": "sign-in", "data-focus-key": "sign-in", text: "Sign in" });
+      b.addEventListener("click", ctx.onSignIn);
+      p.appendChild(b);
+    }
     body.appendChild(p);
     return;
   }

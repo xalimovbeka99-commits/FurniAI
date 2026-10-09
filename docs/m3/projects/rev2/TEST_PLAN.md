@@ -35,8 +35,17 @@ Playwright with role/label selectors, console errors and 5xx responses fail the 
 | F10-H1 | thumbnails | happy/edge | host hook returns url / null / bad scheme / error | reference image or placeholder; only http(s)/blob/data:image | e2e + unit | pass |
 | F10-E1 | list cap | edge | 50 jobs | truncated note | unit | pass |
 | C-01 | contract | SIMULATED | real api/creative.js + stand-in | rev-2 shapes, INVALID_IMAGE 422, PRIOR_SUBMISSION_UNKNOWN → 202 with ack, config ready | contract (vitest) | pass |
-| A11Y | all | axe | 16 states × 2 viewports | 0 violations | e2e | pass |
+| QE-INT403 | auth | negative: 403 anywhere | list / poll / Open / Download / viewer onError FORBIDDEN answer 403 | viewer disposed, panel closed, page-wide panel, exactly one alert, no sign-in wording | unit (real viewer) + e2e | pass |
+| QE-V31 | auth | negative: viewer pageWide:true | FORBIDDEN flagged pageWide on load() result / getState() / onError / "error" event / statechange / all at once | viewer disposed, panel closed, page-wide 403; gallery writes the permission text into a live region exactly once; page ends with one | unit (stand-in + REAL v3.1) + e2e | pass |
+| QE-PJ1 | retry | negative | 403, 404, malformed, invalid, integrity | no Try again; kept for network, 5xx, 429, provider unavailable, not ready | unit + e2e | pass |
+| QE-NAME | download | edge | server filename / cross-origin URL | furniai-concept-<jobId>-<index>.<fmt|bin>, sanitised | unit + e2e | pass |
+| QE-TAP | a11y | edge | 1440 and 390 | all buttons ≥ 44 × 44 px; no overflow at 390 | e2e + capture | pass |
+| QE-SIGNIN | auth | edge: 401 | with / without injected onSignIn | Sign in button only with the hook; never on 403 | unit + e2e | pass |
+| QE-WORDING | billing | edge | billing missing / unconfirmed | never implies no charge | unit + e2e | pass |
+| A11Y | all | axe | 18 states × 2 viewports | 0 violations | e2e | pass |
 
-Totals (8 Oct 2026, box, after the viewer-v3 follow-up): module vitest 222/222 (SIMULATED); Playwright 88/88 (44 per viewport, SYNTHETIC/MOCKED); ESLint clean;
-root vitest: all `tests/projects` pass, 129 pre-existing failures in `tests/acceptance/scenario/**`
-(same on clean `f472aef`).
+Totals (9 Oct 2026, box, after the QE follow-up): module vitest 266/266 (SIMULATED; real viewer
+via AE's harness in qeReview.test.js and viewerPageWide.test.js); Playwright 100/100 (50 per viewport, SYNTHETIC/MOCKED, axe on 18 states); ESLint clean;
+root vitest on this branch: all `tests/projects` pass, 129 pre-existing failures in `tests/acceptance/scenario/**`.
+On the throwaway merge with AE viewer v3 1bb8b59 + QE 03fd0dea, viewer files at v3.1 (22bf5bb tree): module 266/266, e2e 100/100 (real v3.1),
+root 2341 passed / 1 failed (QE galleryViewer 403 test expects a live viewer; QE-1 in CONCEPT_GALLERY.md §11).

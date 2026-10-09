@@ -107,13 +107,13 @@ describe("concept gallery: asset URLs", () => {
     ["502 PROVIDER_UNAVAILABLE", () => errorFor("PROVIDER_UNAVAILABLE"), true],
     ["429 PROVIDER_RATE_LIMITED", () => ({ status: 429, code: "PROVIDER_RATE_LIMITED" }), true],
     ["503 STORAGE_UNAVAILABLE", () => ({ status: 503, code: "STORAGE_UNAVAILABLE" }), true],
-    ["400 BAD_REQUEST", () => ({ status: 400, code: "BAD_REQUEST" }), true],
-    ["a malformed body", (j) => ({ ok: true, asset: { jobId: j.jobId, index: 0 } }), true],
+    ["400 BAD_REQUEST", () => ({ status: 400, code: "BAD_REQUEST" }), false],
+    ["a malformed body", (j) => ({ ok: true, asset: { jobId: j.jobId, index: 0 } }), false],
     ["503 CREATIVE_STORE_NOT_CONFIGURED", () => errorFor("CREATIVE_STORE_NOT_CONFIGURED"), false],
     ["401 MISSING_AUTH", () => errorFor("MISSING_AUTH"), false],
     ["403 UNAUTHORIZED", () => ({ status: 403, code: "UNAUTHORIZED" }), false],
     ["404 MISSING_JOB", () => errorFor("MISSING_JOB"), false],
-    ["409 ASSET_NOT_READY", () => errorFor("ASSET_NOT_READY"), false],
+    ["409 ASSET_NOT_READY", () => errorFor("ASSET_NOT_READY"), true],
     ["409 RECORD_INTEGRITY_FAILED", () => errorFor("RECORD_INTEGRITY_FAILED"), false],
     ["410 ASSET_UNAVAILABLE", () => errorFor("ASSET_UNAVAILABLE"), false],
   ];
@@ -190,8 +190,10 @@ describe("concept gallery: asset URLs", () => {
     expect(gallery.getState()).toMatchObject({ list: "error", error: { kind: "forbidden", code: "UNAUTHORIZED" } });
     expect(card(root, job.jobId)).toBeNull();
     expect(byAttr(root, "data-panel", "forbidden")).toHaveLength(1);
-    expect(announcer(root).textContent).toBe(ASSET_MESSAGES[ERROR_KIND.FORBIDDEN]);
-    expect(announcer(root).textContent).not.toMatch(/^Sign in/);
+    // INT-403: the page-wide panel is the ONE announced message; the announcer stays empty.
+    expect(announcer(root).textContent).toBe("");
+    expect(byAttr(root, "role", "alert").filter((n) => /permission/.test(n.textContent))).toHaveLength(1);
+    expect(root.textContent).not.toMatch(/sign(ing)?[\s-]*in/i);
     forbidden = false;
     button(root, "refresh").click();
     await flush();

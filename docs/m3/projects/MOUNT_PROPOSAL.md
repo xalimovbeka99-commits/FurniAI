@@ -59,6 +59,8 @@ function mountConcepts() {
     creativeSource: AV && AV.createCreativeAssetSource({ fetchImpl, getAuthToken: getAccessToken }),
     mountAssetViewer: AV && AV.mountAssetViewer,
     viewerOptions: { three: window.THREE, deps: { GLTFLoader, OrbitControls } }, // per ASSET_VIEWER.md
+    // optional (QE follow-up, pending AG-6): onSignIn: () => openAuthModal(),
+    //   shows a "Sign in" button on the 401 panel only; never on 403. Omit it and the panel keeps text only.
     // optional: resolveReferenceThumbnail({ referenceId, jobId, signal }) -> url | null
   });
 }
@@ -90,3 +92,7 @@ and disposes the viewer.
 6. AG-2: could the token helper be exposed under a stable name (e.g.
    `window.FurniAuth.getAccessToken`)? `studioAccessToken()` uses `getStudioAccessToken` today.
 7. AG-3: please confirm the mount point (this section, or a tab) so it can be marked agreed.
+8. AG-5: could `design-tokens.css` add a tap-target token (e.g. `--tap-min: 44px`)? The gallery
+   uses a literal 44 px minimum for every button until then.
+9. AG-6: is `openAuthModal()` (about line 4941 in `index.html`) the right thing to call for
+   `onSignIn`, or will you expose a public sign-in hook? The gallery never navigates by itself.

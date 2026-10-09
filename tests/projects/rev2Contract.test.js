@@ -108,7 +108,8 @@ describe("rev 2: billingOutcome", () => {
     expect(line("sub-1").getAttribute("data-billing")).toBe("not_submitted");
     expect(line("sub-1").textContent).toBe(BILLING_TEXT.not_submitted);
     expect(line("rev1-1").getAttribute("data-billing")).toBe("unknown");
-    expect(line("rev1-1").textContent).toBe("Not reported by this server.");
+    expect(line("rev1-1").textContent).toBe(BILLING_TEXT.missing);
+    expect(line("rev1-1").textContent).toMatch(/isn't known whether it was charged/);
     expect(root.textContent).not.toMatch(FREE_CLAIM);
     expect(root.textContent).not.toMatch(/estimated/i);
   });
